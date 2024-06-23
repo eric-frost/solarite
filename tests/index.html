@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Solarite Tests ✨</title>
+	<!-- 💫💥🎇✨☀ -->
+	<link rel="icon" href="data:,">
+	<style>
+		body { font: 14px Consolas; margin: 0; padding: 10px; box-sizing: border-box; min-height: 100vh }
+		table { border-collapse: collapse }
+		td { vertical-align: top; padding: 0; white-space: normal }
+		td:first-child { white-space: nowrap }
+		label { user-select: none }
+		button { border-radius: 10px; border: 2px solid grey; padding: 2px 15px; outline: 0; cursor: pointer }
+		@media (prefers-color-scheme: dark) {
+			body { background: #000; color: #ddd }
+			button { background: #333; color: white }
+		}
+	</style>
+</head>
+
+<body>
+<script type="module">
+	import {Testimony} from './Testimony.js';
+	import './NodeGroup.test.js';
+	import './RedComponent.test.js';
+	import './Benchmark.test.js';
+
+	// For testing:
+	window.getHtml = (item, includeComments=false) => {
+		if (!item)
+			return item;
+
+		if (item.fragment)
+			item = item.fragment; // Shell
+		if (item instanceof DocumentFragment)
+			item = [...item.childNodes]
+
+		else if (item.getNodes)
+			item = item.getNodes()
+
+		let result;
+		if (Array.isArray(item)) {
+			if (!includeComments)
+				item = item.filter(n => n.nodeType !==8)
+
+			result = item.map(n => n.nodeType === 8 ? `<!--${n.textContent}-->` : n.outerHTML || n.textContent).join('|')
+		}
+
+
+		else
+			result = item.outerHTML || item.textContent
+
+		if (!includeComments)
+			result = result.replace(/(<|\x3C)!--(.*?)-->/g, '')
+
+		// Remove whitespace between tags, so we can write simpler tests.
+		return result.replace(/^\s+</g, '<').replace(/>\s+</g, '><').replace(/>\s+$/g, '>');
+	}
+
+	Testimony.throwOnError = false;
+	Testimony.debugOnAssertFail = true;
+	Testimony.run(document.getElementById('tests'));
+</script>
+	<form>
+		<button>Run Tests</button>
+		<div id="tests"></div>
+		<br>
+		<button>Run Tests</button>
+	</form>
+</body>
+
+</html>
+
