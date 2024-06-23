@@ -7,7 +7,7 @@ import {
 	memoize3,
 	memoize4
 } from "../src/unused/Hashes.js";
-import {getObjectHash} from '../src/redcomponent/hash.js'
+import {getObjectHash} from '../src/solarite/hash.js'
 import Testimony from "./Testimony.js";
 
 //import {r, Red} from "../src/RedComponent.js";

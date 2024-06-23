@@ -44,7 +44,7 @@ let connected = new WeakSet();
  *
  * @param extendsTag {?string}
  * @return {Class} */
-export default function CustomRed(extendsTag=null) {
+export default function createSolarite(extendsTag=null) {
 
 	let BaseClass = HTMLElement;
 	if (extendsTag && !extendsTag.includes('-')) {

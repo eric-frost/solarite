@@ -1,5 +1,5 @@
-import {getObjectId} from "../redcomponent/hash.js";
-import Template from "../redcomponent/Template.js";
+import {getObjectId} from "../solarite/hash.js";
+import Template from "../solarite/Template.js";
 
 /**
  * Convert obj to a non-cyclic form that can be given to JSON.serialize.

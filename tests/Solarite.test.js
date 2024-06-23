@@ -1,13 +1,13 @@
 // noinspection DuplicatedCode
 
-import {camelToDashes, htmlContext} from "../src/redcomponent/Util.js";
-import {watchGet, watchSet} from "../src/redcomponent/watch.js";
+import {camelToDashes, htmlContext} from "../src/solarite/Util.js";
+import {watchGet, watchSet} from "../src/solarite/watch.js";
 import Testimony, {assert} from './Testimony.js';
 Testimony.enableJsDom();
 
-import {Red, r} from '../src/redcomponent/RedComponent.js';
+import {Solarite, r} from '../src/solarite/Solarite.js';
 //import {Red, r, Perf} from '../dist/RedComponent.min.js'; // This will help the Benchmark test warm up.
-import {watch} from "../src/redcomponent/watch2.js";
+import {watch} from "../src/solarite/watch2.js";
 
 
 
@@ -54,7 +54,7 @@ Testimony.test('Solarite.basic.empty', () => {
 
 Testimony.test('Solarite.basic.empty2', () => {
 
-    class R11 extends Red {
+    class R11 extends Solarite {
         constructor(args) {
             super();
             //	console.log(args)
@@ -73,7 +73,7 @@ Testimony.test('Solarite.basic.empty2', () => {
 
 
 Testimony.test('Solarite.basic.text', () => {
-	class A extends Red {
+	class A extends Solarite {
 		render() {
 			r(this)`Here's Red 🟥 &lt;Component&gt;` // apostophe, <>, and and unicode.
 		}
@@ -94,7 +94,7 @@ Testimony.test('Solarite.basic.manualRender', () => {
 
 	let children1, children2;
 
-	class A extends Red {
+	class A extends Solarite {
 		constructor() {
 			super();
 			children1 = [...this.childNodes]
@@ -118,7 +118,7 @@ Testimony.test('Solarite.basic.manualRender', () => {
 
 
 Testimony.test('Solarite.basic.pseudoRoot', () => {
-	class R30 extends Red {
+	class R30 extends Solarite {
 		render() {
 			this.html = r`<r-30 title="Hello">World</r-30>`
 		}
@@ -132,7 +132,7 @@ Testimony.test('Solarite.basic.pseudoRoot', () => {
 
 
 Testimony.test('Solarite.basic.createElement', () => {
-	class R35 extends Red {
+	class R35 extends Solarite {
 		constructor() {
 			super();
 			//this.render(); // If uncommented, we get browser error:
@@ -148,7 +148,7 @@ Testimony.test('Solarite.basic.createElement', () => {
 	let a = document.createElement('r-35');
 
 	assert.eq(getHtml(a), `<r-35></r-35>`); // Not rendered yet.
-	assert(a instanceof Red);
+	assert(a instanceof Solarite);
 
 	a.render();
 	assert.eq(getHtml(a), `<r-35><div>Hello!</div></r-35>`);
@@ -157,7 +157,7 @@ Testimony.test('Solarite.basic.createElement', () => {
 
 // Expr
 Testimony.test('Solarite.expr.staticString', () => {
-	class R40 extends Red {
+	class R40 extends Solarite {
 		render() {
 			r(this)`Red ${'🟥'} Component`
 		}
@@ -174,7 +174,7 @@ Testimony.test('Solarite.expr.staticString', () => {
 
 Testimony.test('Solarite.expr.htmlString', () => {
 
-	class A extends Red {
+	class A extends Solarite {
 		constructor() {
 			super();
 			this.render();
@@ -193,7 +193,7 @@ Testimony.test('Solarite.expr.htmlString', () => {
 
 Testimony.test('Solarite.expr.table', () => {
 
-	class R43 extends Red {
+	class R43 extends Solarite {
 		constructor() {
 			super();
 			this.render();
@@ -211,7 +211,7 @@ Testimony.test('Solarite.expr.table', () => {
 
 Testimony.test('Solarite.expr.documentFragment', () => {
 
-	class R44 extends Red {
+	class R44 extends Solarite {
 		render() {
 			r(this)`This text is ${r(`<b>Bold</b><i>Italic</i>`)}!`
 		}
@@ -222,7 +222,7 @@ Testimony.test('Solarite.expr.documentFragment', () => {
 });
 
 Testimony.test('Solarite.expr.undefined', () => {
-	class A extends Red {
+	class A extends Solarite {
 		constructor() {
 			super();
 			this.render();
@@ -239,7 +239,7 @@ Testimony.test('Solarite.expr.undefined', () => {
 });
 
 Testimony.test('Solarite.expr.staticNumber', () => {
-	class A extends Red {
+	class A extends Solarite {
 		constructor() {
 			super();
 			this.render();
@@ -257,7 +257,7 @@ Testimony.test('Solarite.expr.staticNumber', () => {
 
 
 Testimony.test('Solarite.expr.staticDate', () => {
-	class A extends Red {
+	class A extends Solarite {
 		constructor() {
 			super();
 			this.render();
@@ -274,7 +274,7 @@ Testimony.test('Solarite.expr.staticDate', () => {
 });
 
 Testimony.test('Solarite.expr.staticArray', () => {
-	class A extends Red {
+	class A extends Solarite {
 		constructor() {
 			super();
 			this.render();
@@ -292,7 +292,7 @@ Testimony.test('Solarite.expr.staticArray', () => {
 
 
 Testimony.test('Solarite.expr.array', () => {
-	class A extends Red {
+	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
 
 		render() {
@@ -322,7 +322,7 @@ Testimony.test('Solarite.expr.array', () => {
 
 
 Testimony.test('Solarite.expr.arrayReverse', () => {
-	class A extends Red {
+	class A extends Solarite {
 		fruits = ['Apple', 'Banana', 'Cherry', 'Dragonfruit'];
 
 		render() {
@@ -355,7 +355,7 @@ Testimony.test('Solarite.expr.arrayReverse', () => {
 
 
 Testimony.test('Solarite.expr.twoArrays', () => {
-	class A extends Red {
+	class A extends Solarite {
 		fruits = ['Apple'];
 		pets = ['Cat'];
 
@@ -413,7 +413,7 @@ Testimony.test('Solarite.expr.twoArrays', () => {
 });
 
 Testimony.test('Solarite.expr.staticFunction', () => {
-	class A extends Red {
+	class A extends Solarite {
 		constructor() {
 			super();
 			this.render();
@@ -430,7 +430,7 @@ Testimony.test('Solarite.expr.staticFunction', () => {
 });
 
 Testimony.test('Solarite.expr.staticElement', () => {
-	class A extends Red {
+	class A extends Solarite {
 		constructor() {
 			super();
 			this.render();
@@ -448,7 +448,7 @@ Testimony.test('Solarite.expr.staticElement', () => {
 
 
 Testimony.test('Solarite.expr.varText', () => {
-	class A extends Red {
+	class A extends Solarite {
 		value = 'Apple';
 
 		render() { r(this)`The fruit is ${this.value}!` }
@@ -477,7 +477,7 @@ Testimony.test('Solarite.expr.varText', () => {
 Testimony.test('Solarite.expr.cyclicRef', () => {
 
 
-	class R100 extends Red {
+	class R100 extends Solarite {
 		value = { name: 'Apple', self: null };
 
 		render() {
@@ -509,7 +509,7 @@ Testimony.test('Solarite.expr.cyclicRef', () => {
 
 // Loop:
 Testimony.test('Solarite.loop.strings', () => {
-	class A extends Red {
+	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
 
 		render() {
@@ -545,7 +545,7 @@ Testimony.test('Solarite.loop.strings', () => {
 
 
 Testimony.test('Solarite.loop.paragraphs', () => {
-	class A extends Red {
+	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
 
 		render() {
@@ -583,7 +583,7 @@ Testimony.test('Solarite.loop.paragraphs', () => {
 
 
 Testimony.test('Solarite.loop.paragraphsBefore', () => {
-	class A extends Red {
+	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
 
 		render() {
@@ -623,7 +623,7 @@ Testimony.test('Solarite.loop.eventBindings', async () => {
 	await new Promise((resolve, reject) => {
 		let callCount = 0;
 
-		class R215 extends Red {
+		class R215 extends Solarite {
 			fruits = ['Apple', 'Banana'];
 
 			checkFruit(fruit, i) {
@@ -656,7 +656,7 @@ Testimony.test('Solarite.loop.eventBindings', async () => {
 
 Testimony.test('Solarite.loop.pathCache', () => {
 
-	class R216 extends Red {
+	class R216 extends Solarite {
 		pets = ['Cat'];
 		fruits = ['Apple', 'Banana'];
 
@@ -683,7 +683,7 @@ Testimony.test('Solarite.loop.pathCache', () => {
 
 Testimony.test('Solarite.loop.nested', () => {
 
-	class A extends Red {
+	class A extends Solarite {
 		pets = ['Cat', 'Dog'];
 		fruits = ['Apple', 'Banana'];
 
@@ -744,7 +744,7 @@ Testimony.test('Solarite.loop.nested', () => {
 
 Testimony.test('Solarite.loop.nested2', () => {
 
-	class A extends Red {
+	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
 		pets = ['Cat', 'Dog'];
 
@@ -806,7 +806,7 @@ Testimony.test('Solarite.loop.nested2', () => {
 
 Testimony.test('Solarite.loop.nested3', `Move items from one sublist to another.`, () => {
 	
-	class A225 extends Red {
+	class A225 extends Solarite {
 		fruitGroups = [
 			['Apple'],
 			['Banana', 'Cherry']
@@ -846,7 +846,7 @@ Testimony.test('Solarite.loop.nested3', `Move items from one sublist to another.
 // Tried to make a simpler version of nested3, but it works fine:
 Testimony.test('Solarite.loop.nested4', () => {
 	
-	class A226 extends Red {
+	class A226 extends Solarite {
 		fruits1 = ['Apple']
 		fruits2 = ['Banana', 'Cherry']
 		
@@ -897,7 +897,7 @@ Testimony.test('Solarite.loop.nested5', () => {
 	// Since functions are new on each render().
 	let v = 'F1';
 	
-	class A227 extends Red {
+	class A227 extends Solarite {
 		boxes = [
 			["A"],
 			["A", "B"]
@@ -955,7 +955,7 @@ Testimony.test('Solarite.loop.nestedConditional', () => {
 
 	let isGoodBoy = true;
 
-	class R227 extends Red {
+	class R227 extends Solarite {
 		pets = ['Cat', 'Dog'];
 		fruits = ['Apple', 'Banana'];
 
@@ -992,7 +992,7 @@ Testimony.test('Solarite.loop.nestedConditional', () => {
 
 Testimony.test('Solarite.loop.conditionalNested', () => {
 
-	class R240 extends Red {
+	class R240 extends Solarite {
 		pets = [
 			{
 				name: 'Cat',
@@ -1038,7 +1038,7 @@ Testimony.test('Solarite.loop.conditionalNested', () => {
 
 Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 
-	class R250 extends Red {
+	class R250 extends Solarite {
 		rows = [[[0]]];
 
 		render() {
@@ -1111,7 +1111,7 @@ Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 Testimony.test('Solarite.embed.styleStatic', () => {
 	let count = 0;
 
-	class R300 extends Red {
+	class R300 extends Solarite {
 		render() {
 			this.html = r`
 				<style>
@@ -1139,7 +1139,7 @@ Testimony.test('Solarite.embed.styleStatic', () => {
 Testimony.test('Solarite.embed.optionsNoStyles', () => {
 	let count = 0;
 
-	class R310 extends Red {
+	class R310 extends Solarite {
 		render() {
 			let options = {styles: false};
 			r(this, options)`
@@ -1164,7 +1164,7 @@ Testimony.test('Solarite.embed.styleDynamic', () => {
 	let style1 = `:host { color: red }`
 	let style2 = `:host { font-weight: bold }`
 
-	class R320 extends Red {
+	class R320 extends Solarite {
 		render() {
 			this.html = r`
 				<style>
@@ -1191,7 +1191,7 @@ Testimony.test('Solarite.embed.styleDynamicNoSpaces', () => {
 	let style1 = `:host { color: red }`
 	let style2 = `:host { font-weight: bold }`
 
-	class R322 extends Red {
+	class R322 extends Solarite {
 		render() {
 			this.html = r`
 				<style>${style1}${style2}</style>
@@ -1216,7 +1216,7 @@ Testimony.test('Solarite.embed.styleDynamicNoSpaces', () => {
 Testimony.test('Solarite.embed.styleDynamicTag', () => {
 	let style1 = r`<style>:host { color: green }</style>`
 
-	class R325 extends Red {
+	class R325 extends Solarite {
 		render() {
 			this.html = r`${style1}Text.`;
 		}
@@ -1238,7 +1238,7 @@ Testimony.test('Solarite.embed.styleDynamicTag', () => {
 
 
 Testimony.test('Solarite.embed.svg', () => {
-	class R330 extends Red {
+	class R330 extends Solarite {
 		render() {
 			this.html = r`
 				<div>
@@ -1260,7 +1260,7 @@ Testimony.test('Solarite.embed.svg', () => {
 
 Testimony.test('Solarite.embed.scriptStatic', () => {
 	window.scriptStaticCount = 1;
-	class R340 extends Red {
+	class R340 extends Solarite {
 		render() {
 			this.html = r`
 				<div>
@@ -1287,7 +1287,7 @@ Testimony.test('Solarite.embed.scriptStatic', () => {
 Testimony.test('Solarite.embed._scriptDynamic', () => {
 
 	let val = 1;
-	class R350 extends Red {
+	class R350 extends Solarite {
 		render() {
 			this.html = r`
 				<div>
@@ -1320,7 +1320,7 @@ Testimony.test('Solarite.attrib.single', () => {
 
 	let val = 'one';
 
-	class R400 extends Red {
+	class R400 extends Solarite {
 		render() {
 			this.html = r`<div class="${val}">${val}</div>`;
 		}
@@ -1341,7 +1341,7 @@ Testimony.test('Solarite.attrib.singleAndText', () => {
 
 	let val = 'one';
 
-	class R410 extends Red {
+	class R410 extends Solarite {
 		render() {
 			this.html = r`<div class="before ${val} after">${val}</div>`;
 		}
@@ -1368,7 +1368,7 @@ Testimony.test('Solarite.attrib.double', () => {
 	let val1 = 'one';
 	let val2 = 'two';
 
-	class R420 extends Red {
+	class R420 extends Solarite {
 		render() {
 			this.html = r`<div class="${val1}${val2}">${val1}</div>`;
 		}
@@ -1391,7 +1391,7 @@ Testimony.test('Solarite.attrib.doubleAndText', () => {
 	let val1 = 'one';
 	let val2 = 'two';
 
-	class R430 extends Red {
+	class R430 extends Solarite {
 		render() {
 			this.html = r`<div class="a ${val1} b ${val2} c">${val1}</div>`;
 		}
@@ -1413,7 +1413,7 @@ Testimony.test('Solarite.attrib.doubleAndText', () => {
 	let val1 = 'one';
 	let val2 = 'two';
 
-	class R430 extends Red {
+	class R430 extends Solarite {
 		render() {
 			this.html = r`<div class="a ${val1} b ${val2} c">${val1}</div>`;
 		}
@@ -1434,7 +1434,7 @@ Testimony.test('Solarite.attrib.sparse', () => {
 
 	let isEdit = false;
 
-	class R440 extends Red {
+	class R440 extends Solarite {
 		render() {
 			this.html = r`<div ${isEdit && 'contenteditable'}>${isEdit && 'Editable!'}</div>`;
 		}
@@ -1457,7 +1457,7 @@ Testimony.test('Solarite.attrib.doubleSparse', () => {
 
 	let isEdit = false;
 
-	class R450 extends Red {
+	class R450 extends Solarite {
 		render() {
 			this.html = r`<div ${isEdit && 'contenteditable spellcheck="false"'}>${isEdit && 'Editable!'}</div>`;
 		}
@@ -1480,7 +1480,7 @@ Testimony.test('Solarite.attrib.toggle', () => {
 
 	let isEdit = false;
 
-	class R460 extends Red {
+	class R460 extends Solarite {
 		render() {
 			this.html = r`<div contenteditable=${isEdit}>${isEdit && 'Editable!'}</div>`;
 		}
@@ -1502,7 +1502,7 @@ Testimony.test('Solarite.attrib.toggle', () => {
 
 Testimony.test('Solarite.attrib.pseudoRoot', () => {
 	let title = 'Hello'
-	class R470 extends Red {
+	class R470 extends Solarite {
 		render() {
 			this.html = r`<r-470 title="${title}">World</r-470>`
 		}
@@ -1525,7 +1525,7 @@ Testimony.test('Solarite.attrib.pseudoRoot', () => {
 
 Testimony.test('Solarite.attrib.pseudoRoot2', 'Static attribute overrides.', () => {
 	let title = 'Hello'
-	class R472 extends Red {
+	class R472 extends Solarite {
 		render() {
 			this.html = r`<r-472 title="${title}" style="color: red">World</r-472>`
 		}
@@ -1542,7 +1542,7 @@ Testimony.test('Solarite.attrib.pseudoRoot2', 'Static attribute overrides.', () 
 
 Testimony.test('Solarite.attrib.pseudoRoot3', 'Dynamic attribute overrides.', () => {
 	let title = 'Hello'
-	class R473 extends Red {
+	class R473 extends Solarite {
 		render() {
 			this.html = r`<r-473 title="${title}" style="color: red">World</r-473>`
 		}
@@ -1572,7 +1572,7 @@ Testimony.test('Solarite.attrib.pseudoRoot3', 'Dynamic attribute overrides.', ()
 
 Testimony.test('Solarite.comments', () => {
 	
-	class A480 extends Red {
+	class A480 extends Solarite {
 		render() {
 			this.html = r`
 				<!--a-->
@@ -1587,7 +1587,7 @@ Testimony.test('Solarite.comments', () => {
 
 Testimony.test('Solarite.comments2', () => {
 	
-	class A482 extends Red {
+	class A482 extends Solarite {
 		render() {
 			this.html = r`<div><!--${1} ${2}-->${3}</div>`
 		}
@@ -1604,7 +1604,7 @@ Testimony.test('Solarite.comments2', () => {
 
 
 Testimony.test('Solarite.ids', () => {
-	class R500 extends Red {
+	class R500 extends Solarite {
 		one;
 		render() {
 			this.html = r`<div data-id="one"></div>`;
@@ -1679,7 +1679,7 @@ Testimony.test('Solarite.r.lightweightComponent2', () => {
 
 Testimony.test('Solarite.component.tr', () => {
 
-	class TR510 extends Red('tr') {
+	class TR510 extends Solarite('tr') {
 		render() {
 			this.html = r`<td>hello</td>`
 		}
@@ -1700,7 +1700,7 @@ Testimony.test('Solarite.component.tr', () => {
 Testimony.test('Solarite.component.staticAttribs', () => {
 	// Note that all attribs become lowercase.
 	// Not sure how to prevent this w/o using an xml doctype.
-	class B512 extends Red {
+	class B512 extends Solarite {
 		constructor({name, userid}={}) {
 			super();
 			this.name = name;
@@ -1713,7 +1713,7 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 	}
 	B512.define();
 	
-	class A512 extends Red {
+	class A512 extends Solarite {
 		render() {
 			this.html = r`<div><b-512 name="User" userId="2"></b-512></div>`;
 		}
@@ -1730,7 +1730,7 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 
 Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...}', () => {
 	
-	class B513 extends Red {
+	class B513 extends Solarite {
 		constructor({name, userid}={}) {
 			super();
 			this.name = name;
@@ -1743,7 +1743,7 @@ Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...
 	}
 	B513.define();
 	
-	class A513 extends Red {
+	class A513 extends Solarite {
 		render() {
 			this.html = r`<div><b-513 name="${'User'}" userId="${2}"></b-513></div>`;
 		}
@@ -1758,12 +1758,12 @@ Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...
 
 Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Red component.', () => {
 	
-	Red.getArgs = function(el) {
+	Solarite.getArgs = function(el) {
 		debugger;
 		return {};
 	}
 	
-	class B514 extends Red {
+	class B514 extends Solarite {
 		constructor({name, userid}={}) {
 			super();
 			this.name = this.getArg('name', name);
@@ -1792,7 +1792,7 @@ Testimony.test('Solarite.component.nested', () => {
 
 	let bRenderCount = 0;
 
-	class B515 extends Red {
+	class B515 extends Solarite {
 		render() {
 			this.html = r`<div>B</div>`;
 			bRenderCount++;
@@ -1801,7 +1801,7 @@ Testimony.test('Solarite.component.nested', () => {
 	B515.define();
 
 
-	class A515 extends Red {
+	class A515 extends Solarite {
 		render() {
 			this.html =
 				r`<b-515></b-515>`
@@ -1821,7 +1821,7 @@ Testimony.test('Solarite.component.nested', () => {
 Testimony.test('Solarite.component.nested2', () => {
 
 	let bRenderCount = 0;
-	class B520 extends Red {
+	class B520 extends Solarite {
 
 		constructor({user}={}) {
 			super();
@@ -1838,7 +1838,7 @@ Testimony.test('Solarite.component.nested2', () => {
 	}
 	B520.define();
 
-	class A520 extends Red {
+	class A520 extends Solarite {
 		title = 'Users'
 		user = {name: 'John', email: 'john@example.com'};
 		render() {
@@ -1883,7 +1883,7 @@ Testimony.test('Solarite.component.nestedTrLoop', () => {
 		return tr;
 	}
 
-	class MyTable extends Red {
+	class MyTable extends Solarite {
 		users = [
 			{name: 'John', email: 'john@example.com'},
 			{name: 'Fred', email: 'fred@example.com'}
@@ -1916,7 +1916,7 @@ Testimony.test('Solarite.component.nestedTrLoop', () => {
 
 Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
-	class TR540 extends Red('tr') {
+	class TR540 extends Solarite('tr') {
 		constructor({user}={}) {
 			super();
 			this.user = user;
@@ -1928,7 +1928,7 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 	}
 	TR540.define('tr-540');
 
-	class Table540 extends Red {
+	class Table540 extends Solarite {
 
 		users = [
 			{name: 'John', email: 'john@example.com'},
@@ -1964,7 +1964,7 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
 Testimony.test('Solarite.slots.basic', () => {
 
-	class S10 extends Red {
+	class S10 extends Solarite {
 		render() {
 			this.html = r`<div>slot content:<slot></slot></div>`
 		}
@@ -1981,7 +1981,7 @@ Testimony.test('Solarite.slots.basic', () => {
 
 Testimony.test('Solarite.slots.named', () => {
 
-	class S20 extends Red {
+	class S20 extends Solarite {
 		render() {
 			this.html = r`<div>slot content:<slot name="one"></slot><slot></slot><slot name="two"></slot></div>`
 		}
@@ -2002,7 +2002,7 @@ Testimony.test('Solarite.slots.named', () => {
 // TODO:
 Testimony.test('Solarite.events.classic', () => {
 
-	class Ev10 extends Red {
+	class Ev10 extends Solarite {
 		count = 1
 
 		render() {
@@ -2022,7 +2022,7 @@ Testimony.test('Solarite.events.rebind', 'Ensure function is unbound/rebound on 
 	
 	let assignCalls = 0;
 	
-	class Ev20 extends Red {
+	class Ev20 extends Solarite {
 		count = 1
 		
 		assign(val) {
@@ -2049,7 +2049,7 @@ Testimony.test('Solarite.events.rebind', 'Ensure function is unbound/rebound on 
 
 Testimony.test('Solarite.events.args', 'Ensure event function args are received', () => {
 	
-	class Ev30 extends Red {
+	class Ev30 extends Solarite {
 		count = 0
 		
 		assign(val) {
@@ -2074,7 +2074,7 @@ Testimony.test('Solarite.events.args', 'Ensure event function args are received'
 
 Testimony.test('Solarite.events.onComponent', 'Event attrib on root component', () => {
 	
-	class Ev40 extends Red {
+	class Ev40 extends Solarite {
 		count = 0
 		
 		assign(val) {
@@ -2103,7 +2103,7 @@ Testimony.test('Solarite.events.onComponent', 'Event attrib on root component', 
 
 Testimony.test('Solarite.binding.input', () => {
 
-	class B10 extends Red {
+	class B10 extends Solarite {
 		count = 1
 
 		render() {
@@ -2137,7 +2137,7 @@ Testimony.test('Solarite.binding.input', () => {
 
 Testimony.test('Solarite.binding.inputReuse', () => {
 	
-	class B12 extends Red {
+	class B12 extends Solarite {
 		items = [1, 2, 3]
 		
 		render() {
@@ -2163,7 +2163,7 @@ Testimony.test('Solarite.binding.inputReuse', () => {
 
 Testimony.test('Solarite.binding.textarea', () => {
 
-	class B20 extends Red {
+	class B20 extends Solarite {
 		text = 1
 
 		render() {
@@ -2192,7 +2192,7 @@ Testimony.test('Solarite.binding.textarea', () => {
 // TODO: Set select.value when option children are rendered and don't exist when the value attrib is evaluated by ExprPath.applyValueAttrib()
 Testimony.test('Solarite.binding.select', () => {
 
-	class B30 extends Red {
+	class B30 extends Solarite {
 		count = 1
 
 		render() {
@@ -2220,7 +2220,7 @@ Testimony.test('Solarite.binding.select', () => {
 
 Testimony.test('Solarite.binding.selectDynamic', () => {
 	
-	class B32 extends Red {
+	class B32 extends Solarite {
 		count = 1
 		
 		render() {
@@ -2253,7 +2253,7 @@ Testimony.test('Solarite.binding.selectDynamic', () => {
 
 Testimony.test('Solarite.binding.number', () => {
 
-	class B40 extends Red {
+	class B40 extends Solarite {
 		count = 1
 
 		render() {
@@ -2552,7 +2552,7 @@ Testimony.test('Solarite.watch2.set', () => {
 
 Testimony.test('Solarite.watch2._forEach', () => {
 
-	class Table650 extends Red {
+	class Table650 extends Solarite {
 		users = [
 			{name: 'John', email: 'john@example.com'},
 			{name: 'Fred', email: 'fred@example.com'}
@@ -2636,7 +2636,7 @@ Testimony.test('Solarite.watch2._forEach', () => {
 
 Testimony.test('Solarite.watch2._forEachSpliceDelete', () => {
 
-	class W50 extends Red {
+	class W50 extends Solarite {
 		users = [
 			{name: 'John', email: 'john@example.com'},
 			{name: 'Fred', email: 'fred@example.com'},
@@ -2680,7 +2680,7 @@ Testimony.test('Solarite.watch2._forEachSpliceDelete', () => {
 
 Testimony.test('Solarite.watch2._forEachSpliceDeleteStart', () => {
 
-	class W55 extends Red {
+	class W55 extends Solarite {
 		users = [
 			{name: 'John', email: 'john@example.com'},
 			{name: 'Fred', email: 'fred@example.com'},
@@ -2733,7 +2733,7 @@ Testimony.test('Solarite.watch2._forEachSpliceDeleteStart', () => {
 
 Testimony.test('Solarite.watch2._forEachSpliceDeleteEvent', () => {
 
-	class W57 extends Red {
+	class W57 extends Solarite {
 		users = [
 			{name: 'John', email: 'john@example.com'},
 			{name: 'Fred', email: 'fred@example.com'},
@@ -2767,7 +2767,7 @@ Testimony.test('Solarite.watch2._forEachSpliceDeleteEvent', () => {
 
 Testimony.test('Solarite.watch2._forEachSpliceInsert', () => {
 
-	class W60 extends Red {
+	class W60 extends Solarite {
 		users = [
 			{name: 'John', email: 'john@example.com'},
 			{name: 'Fred', email: 'fred@example.com'}
@@ -2835,7 +2835,7 @@ Testimony.test('Solarite.full.treeItems', () => {
 
 	//import '../src/RedComponent.js'
 
-	class TreeItem extends Red {
+	class TreeItem extends Solarite {
 
 		constructor(title, children=[]) {
 			super();

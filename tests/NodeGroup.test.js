@@ -1,11 +1,11 @@
 /**
  * These tests make it easier to debug individual functions of NodeGroup.
  */
-import NodeGroupManager from "../src/redcomponent/NodeGroupManager.js";
-import {r} from "../src/redcomponent/RedComponent.js";
-import NodeGroup from "../src/redcomponent/NodeGroup.js";
-import Shell from "../src/redcomponent/Shell.js";
-import Template from "../src/redcomponent/Template.js";
+import NodeGroupManager from "../src/solarite/NodeGroupManager.js";
+import {r} from "../src/solarite/Solarite.js";
+import NodeGroup from "../src/solarite/NodeGroup.js";
+import Shell from "../src/solarite/Shell.js";
+import Template from "../src/solarite/Template.js";
 import Testimony, {assert} from "./Testimony.js";
 
 
