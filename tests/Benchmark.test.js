@@ -10,8 +10,8 @@ import {
 import {getObjectHash} from '../src/solarite/hash.js'
 import Testimony from "./Testimony.js";
 
-//import {r, Red} from "../src/RedComponent.js";
-import {r, Red} from "../dist/RedComponent.min.js";
+//import {r, Solarite} from "../src/Solarite.js";
+import {r, Solarite} from "../dist/Solarite.min.js";
 
 
 window.verify = false;
@@ -83,7 +83,7 @@ Testimony.test('Benchmark.vanilla._createRows',  `Create ${rowCount} rows`, () =
 });
 
 
-Testimony.test('Benchmark.red._createRows',  `Create ${rowCount.toLocaleString()} rows`, () => {
+Testimony.test('Benchmark.solarite._createRows',  `Create ${rowCount.toLocaleString()} rows`, () => {
 
 	// Setup performance monitoring
 	let startTime;
@@ -96,7 +96,7 @@ Testimony.test('Benchmark.red._createRows',  `Create ${rowCount.toLocaleString()
 
 
 
-	class A extends Red {
+	class A extends Solarite {
 		data = []
 		render() {
 			r(this)`<div>
@@ -184,9 +184,9 @@ Testimony.test('Benchmark.vanilla._partialUpdate',  'Add text to every 10th row'
 });
 
 
-Testimony.test('Benchmark.red.partialUpdate',  `Update ${rowCount.toLocaleString()} rows`, () => {
+Testimony.test('Benchmark.solarite.partialUpdate',  `Update ${rowCount.toLocaleString()} rows`, () => {
 	
-	class R810 extends Red {
+	class R810 extends Solarite {
 		data = []
 
 		// Removing spaces before and after the inner loop speeds up this benchmark by 25%.

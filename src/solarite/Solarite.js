@@ -1,7 +1,7 @@
 import createSolarite from "./createSolarite.js";
 
 /**
- * TODO: The Proxy and the multiple base classes mess up 'instanceof Red'
+ * TODO: The Proxy and the multiple base classes mess up 'instanceof Solarite'
  * @type {Node|Class<HTMLElement>|function(tagName:string):Node|Class<HTMLElement>} */
 let Solarite = new Proxy(createSolarite(), {
 	apply(self, _, args) {

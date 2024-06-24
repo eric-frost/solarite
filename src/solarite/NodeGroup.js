@@ -471,7 +471,7 @@ export default class NodeGroup {
 
 	/**
 	 * Create a nested RedComponent or call render with the new props.
-	 * @param el {Red:HTMLElement}
+	 * @param el {Solarite:HTMLElement}
 	 * @param props {Object} */
 	applyComponentExprs(el, props) {
 		
@@ -538,10 +538,10 @@ export default class NodeGroup {
 		// We pass the childNodes to the constructor so it can know about them,
 		// instead of only afterward when they're appended to the slot below.
 		// This is useful for a custom selectbox, for example.
-		// NodeGroupManager.pendingChildren stores the childen so the super construtor call to Red's constructor
+		// NodeGroupManager.pendingChildren stores the childen so the super construtor call to Solarite's constructor
 		// can add them as children before the rest of the constructor code executes.
 		let ch = [... el.childNodes];
-		NodeGroupManager.pendingChildren.push(ch);  // pop() is called in Red constructor.
+		NodeGroupManager.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
 		let newEl = new Constructor(props, ch);
 
 		if (!isPreHtmlElement)

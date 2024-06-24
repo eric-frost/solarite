@@ -28,12 +28,12 @@ function defineClass(Class, tagName, extendsTag) {
 let elementClasses = {};
 
 /**
- * Store which instances of Red have already been added to the DOM. * @type {WeakSet<HTMLElement>}
+ * Store which instances of Solarite have already been added to the DOM. * @type {WeakSet<HTMLElement>}
  */
 let connected = new WeakSet();
 
 /**
- * Create a version of the Red class that extends from the given tag name.
+ * Create a version of the Solarite class that extends from the given tag name.
  * Reasons to inherit from this instead of HTMLElement.  None of these are all that useful.
  * 1.  customElements.define() is called automatically when you create the first instance.
  * 2.  Calls render() when added to the DOM, if it hasn't been called already.
@@ -72,7 +72,7 @@ export default function createSolarite(extendsTag=null) {
 		}
 	});
 
-	return class Red extends HTMLElementAutoDefine {
+	return class Solarite extends HTMLElementAutoDefine {
 		
 		
 		/**

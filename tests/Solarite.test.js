@@ -6,7 +6,7 @@ import Testimony, {assert} from './Testimony.js';
 Testimony.enableJsDom();
 
 import {Solarite, r} from '../src/solarite/Solarite.js';
-//import {Red, r, Perf} from '../dist/RedComponent.min.js'; // This will help the Benchmark test warm up.
+//import {Red, r, Perf} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 import {watch} from "../src/solarite/watch2.js";
 
 
@@ -75,7 +75,7 @@ Testimony.test('Solarite.basic.empty2', () => {
 Testimony.test('Solarite.basic.text', () => {
 	class A extends Solarite {
 		render() {
-			r(this)`Here's Red 🟥 &lt;Component&gt;` // apostophe, <>, and and unicode.
+			r(this)`Here's Solarite &lt;Component&gt;` // apostophe, <>, and and unicode.
 		}
 	}
 	customElements.define('r-15', A);
@@ -83,7 +83,7 @@ Testimony.test('Solarite.basic.text', () => {
 	let a = new A();
 	document.body.append(a); // Calls render()
 
-	assert.eq(getHtml(a), '<r-15>Here\'s Red 🟥 &lt;Component&gt;</r-15>');
+	assert.eq(getHtml(a), '<r-15>Here\'s Solarite &lt;Component&gt;</r-15>');
 	assert.eq(a.childNodes.length, 1);
 
 	a.remove();
@@ -103,7 +103,7 @@ Testimony.test('Solarite.basic.manualRender', () => {
 		}
 
 		render() {
-			r(this)`Red Component`
+			r(this)`Solarite Component`
 		}
 	}
 	customElements.define('r-20', A);
@@ -112,7 +112,7 @@ Testimony.test('Solarite.basic.manualRender', () => {
 
 	assert.eq(children1.length, 0);
 	assert.eq(children2.length, 1);
-	assert.eq(children2[0].textContent, 'Red Component');
+	assert.eq(children2[0].textContent, 'Solarite Component');
 });
 
 
@@ -159,14 +159,14 @@ Testimony.test('Solarite.basic.createElement', () => {
 Testimony.test('Solarite.expr.staticString', () => {
 	class R40 extends Solarite {
 		render() {
-			r(this)`Red ${'🟥'} Component`
+			r(this)`Solarite ${'🟥'} Component`
 		}
 	}
 
 	let a = new R40();
 	document.body.append(a);
 
-	assert.eq(getHtml(a), '<r-40>Red 🟥 Component</r-40>');
+	assert.eq(getHtml(a), '<r-40>Solarite 🟥 Component</r-40>');
 
 	a.remove();
 });
@@ -246,13 +246,13 @@ Testimony.test('Solarite.expr.staticNumber', () => {
 		}
 
 		render() {
-			r(this)`Red ${123} Component`
+			r(this)`Solarite ${123} Component`
 		}
 	}
 	customElements.define('r-46', A);
 
 	let a = new A();
-	assert.eq(getHtml(a), '<r-46>Red 123 Component</r-46>');
+	assert.eq(getHtml(a), '<r-46>Solarite 123 Component</r-46>');
 });
 
 
@@ -1756,7 +1756,7 @@ Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...
 	assert.eq(a.outerHTML, `<a-513><div><b-513 name="User" userid="2"><!--PathStart:0-->User | 2<!--PathEnd:1--></b-513></div></a-513>`);
 });
 
-Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Red component.', () => {
+Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Solarite component.', () => {
 	
 	Solarite.getArgs = function(el) {
 		debugger;
@@ -2284,7 +2284,7 @@ Testimony.test('Solarite.binding.number', () => {
 /*
 Testimony.test('Solarite.watched.watchSet', () => {
 	
-	class W10 extends Red {
+	class W10 extends Solarite {
 		user = {
 			name: 'John',
 			email: 'john@example.com'
@@ -2324,7 +2324,7 @@ Testimony.test('Solarite.watched.watchSet', () => {
 
 Testimony.test('Solarite.watched.forEach', () => {
 
-	class Table650 extends Red {
+	class Table650 extends Solarite {
 		users = [
 			{name: 'John', email: 'john@example.com'},
 			{name: 'Fred', email: 'fred@example.com'}
@@ -2403,7 +2403,7 @@ Testimony.test('Solarite.watched.forEach', () => {
 
 Testimony.test('Solarite.watched.forEachSpliceDelete', () => {
 
-	class W50 extends Red {
+	class W50 extends Solarite {
 		users = [
 			{name: 'John', email: 'john@example.com'},
 			{name: 'Fred', email: 'fred@example.com'},
@@ -2440,7 +2440,7 @@ Testimony.test('Solarite.watched.forEachSpliceDelete', () => {
 
 Testimony.test('Solarite.watched.forEachSpliceInsert', () => {
 	
-	class W60 extends Red {
+	class W60 extends Solarite {
 		users = [
 			{name: 'John', email: 'john@example.com'},
 			{name: 'Fred', email: 'fred@example.com'}
@@ -2485,7 +2485,7 @@ Testimony.test('Solarite.watched.forEachSpliceInsert', () => {
 // Experiment with a new syntax for watching.
 Testimony.test('Solarite.watched._$', () => {
 
-	class Table670 extends Red {
+	class Table670 extends Solarite {
 		title = 'Title';
 		users = [
 			{name: 'John', email: 'john@example.com'},
@@ -2517,7 +2517,7 @@ Testimony.test('Solarite.watched._$', () => {
 
 Testimony.test('Solarite.watch2.set', () => {
 	
-	class W10 extends Red {
+	class W10 extends Solarite {
 		user = {
 			name: 'John',
 			email: 'john@example.com'
