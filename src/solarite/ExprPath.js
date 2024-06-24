@@ -181,7 +181,7 @@ export default class ExprPath {
 			if (!func) {
 				func = setValue
 				args = [expr[0], expr.slice(1), node]
-				node.value = delve(expr[0], expr.slice(1))
+				node.value = delve(expr[0], expr.slice(1));
 			}
 		}
 		else
@@ -500,7 +500,9 @@ function setValue(root, path, node) {
 	if (node.type === 'number')
 		val = parseFloat(val);
 
-	delve(root, path, val)
+	delve(root, path, val);
+	
+	//this.render();
 }
 
 /** @enum {string} */
