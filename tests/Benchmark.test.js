@@ -184,7 +184,7 @@ Testimony.test('Benchmark.vanilla._partialUpdate',  'Add text to every 10th row'
 });
 
 
-Testimony.test('Benchmark.solarite.partialUpdate',  `Update ${rowCount.toLocaleString()} rows`, () => {
+Testimony.test('Benchmark.solarite._partialUpdate',  `Update ${rowCount.toLocaleString()} rows`, () => {
 	
 	class R810 extends Solarite {
 		data = []

@@ -83,8 +83,8 @@ export default class Shell {
 
 		// 2. Create elements from html with placeholders.
 		let template = document.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
-        let joinedHtml = buffer.join('');
-		
+		let joinedHtml = buffer.join('');
+
 		// Replace '-redcomponent-placeholder' close tags.
 		// TODO: is there a better way?  What if the close tag is inside a comment?
 		for (let name in componentNames)
@@ -108,7 +108,7 @@ export default class Shell {
 
 			// Replace attributes
 			if (node.nodeType === 1) {
-				for (let attr of node.attributes) {
+				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes as we go.
 
 					// Whole attribute
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/)

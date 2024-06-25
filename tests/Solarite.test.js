@@ -1569,6 +1569,22 @@ Testimony.test('Solarite.attrib.pseudoRoot3', 'Dynamic attribute overrides.', ()
 	a.remove();
 });
 
+Testimony.test('Solarite.attrib.multiple', '', () => {
+	let button = 'Hello'
+	class R474 extends Solarite {
+		render() {
+			this.html = r`
+				<r-474><button ${'class="primary"'} onclick=${e => {}}>${button}</button></r-474>`
+		}
+	}
+
+	let a = new R474();
+	a.render();
+
+	assert.eq(getHtml(a), `<r-474><button onclick="" class="primary">Hello</button></r-474>`);
+});
+
+
 
 Testimony.test('Solarite.comments', () => {
 	
