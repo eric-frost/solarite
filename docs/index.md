@@ -1,6 +1,6 @@
 ---
 title:  Solarite Documentation
-append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="module" src="docs/js/documentation.js"></script><link rel="stylesheet" href="docs/media/documentation.css"><link rel="stylesheet" href="/docs/media/eternium.css">
+append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="module" src="docs/js/documentation.js"></script><link rel="stylesheet" href="docs/media/documentation.css"><link rel="stylesheet" href="docs/media/eternium.css">
 
 ---
 
@@ -16,7 +16,7 @@ If using Visual Studio Code, the Leet-Html extension is recommended to syntax hi
 
 ```javascript
 // Type here to edit this code!
-import {Solarite, r} from '/src/solarite/Solarite.js';
+import {Solarite, r} from './dist/Solarite.js';
 
 class ShoppingList extends Solarite {
 	constructor(items=[]) {
@@ -75,8 +75,8 @@ document.body.append(new ShoppingList()); // adds a child named <shopping-list>
 
 Import one of these pre-bundled es6 modules into your project:
 
-- [RedComponent.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 76KB
-- [RedComponent.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 21KB / 7KB gzipped
+- [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 76KB
+- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 21KB / 7KB gzipped
 
 ==TODO: NPM==
 
@@ -88,13 +88,13 @@ Import one of these pre-bundled es6 modules into your project:
 
 In this minimal example, we make a new class called `MyComponent` and provide a `render()` function to set its html.
 
-All browsers require custom web component names to have a dash in the middle.  Red Component looks at the case of the class name and converts it to a name with dashes.  If it can't find at least one place to put a dash, it will append `-element` to the end.
+All browsers require custom web component names to have a dash in the middle.  Solarite looks at the case of the class name and converts it to a name with dashes.  If it can't find at least one place to put a dash, it will append `-element` to the end.
 
 ```javascript
-import {Solarite, r} from '../dist/Solarite.js';
+import {Solarite, r} from './dist/Solarite.js';
 
 class MyComponent extends Solarite {
-	name = 'Red Component';
+	name = 'Solarite';
 	render() { 
 		this.html = r`<my-component>Hello <b>${this.name}!<b></my-component>`
 	}
@@ -105,7 +105,7 @@ document.body.append(new MyComponent());
 
 A JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [PhpStorm](https://www.jetbrains.com/phpstorm/), or [IDEA](https://www.jetbrains.com/idea/) will syntax highlight the html template strings.
 
-Note that the template strings use the `r` prefix.  This `r` parses the html into a data structure that Red Component can use.
+Note that the template strings use the `r` prefix.  This `r` parses the html into a data structure that Solarite can use.
 
 Alternatively, instead of instantiating the element in JavaScript, we could can instantiate the element directly from html.  This only works if we first call `MyComponent.define()` so so that our element's tag name is mapped to our class: 
 
@@ -133,14 +133,14 @@ The `r` function, when used as part of a template literal, converts the html and
 
 The render() function is called automatically when an element is added to the DOM via [connectedCallback()](https://developer.mozilla.org/en-US/docs/Web/API/Web_components#connectedcallback).
 
-Unlike other frameworks Red Component does not re-render automatically when data changes, so you should call the render() function manually as needed.  This is a deliberate design choice to reduce "magic," since in some cases you may want to update internal data without rendering.
+Unlike other frameworks Solarite does not re-render automatically when data changes, so you should call the render() function manually as needed.  This is a deliberate design choice to reduce "magic," since in some cases you may want to update internal data without rendering.
 
 
 
 Wrapping the web component's html in its tag name is optional.  You could instead just assign the html for the child elements to `this.html`.  But then you will have to set any attributes on your web component some other way.
 
 ```javascript
-import {Solarite, r} from '../dist/Solarite.js';
+import {Solarite, r} from './dist/Solarite.js';
 
 class MyComponent extends Solarite {
 	name = 'Solarite';
@@ -163,7 +163,7 @@ If you do provide the outer tag, its name must exactly match the "dashes" versio
 Suppose you want to use a custom component for each `<tr>` in a `<table>`.  Html won't allow you to put just any element as a child of table or tbody.  In this case you can make your web component inherit from the browser's built in `<tr>` element:
 
 ```javascript
-import {Solarite, r} from '../dist/Solarite.js';
+import {Solarite, r} from './dist/Solarite.js';
 
 class LineItem extends Solarite('tr') {
 	constructor(user) {
@@ -194,7 +194,7 @@ document.body.append(table)
 Just as in some of the examples above, loops can be written with the build-in [Array.map()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map) function:
 
 ```javascript
-import {Solarite, r} from '../dist/Solarite.js';
+import {Solarite, r} from './dist/Solarite.js';
 
 class TodoList extends Solarite {
 	render() { 
@@ -227,7 +227,7 @@ When we change an element or add another element to the `items` list, calling `r
 Attributes can be specified by inserting expressions inside a tag.  An expression can be part or all of an attribute value, or a string specifying multiple whole attributes.  For example:
 
 ```javascript
-import {Solarite, r} from '../dist/Solarite.js';
+import {Solarite, r} from './dist/Solarite.js';
 
 let style = 'width: 100px; height: 40px; background: orange';
 let isEditable = true;
@@ -260,7 +260,7 @@ Note that attributes can also be assigned to the root element, such as `class="b
 Listen for events by assigning a function expression to any event attribute.  Or by passing an array where the first item is a function and subsequent items are arguments to that function.
 
 ```javascript
-import {Solarite, r} from '../dist/Solarite.js';
+import {Solarite, r} from './dist/Solarite.js';
 
 class EventDemo extends Solarite {
     showMessage(message) {
@@ -278,7 +278,7 @@ class EventDemo extends Solarite {
 document.body.append(new EventDemo());
 ```
 
-Event binding with an array containing a function and its arguments is slightly faster, since when render() is called, Red Component can see that the function hasn't changed, and it doesn't need to be unbound and rebound.  But the performance difference is negligible in most cases.
+Event binding with an array containing a function and its arguments is slightly faster, since when render() is called, Solarite can see that the function hasn't changed, and it doesn't need to be unbound and rebound.  But the performance difference is negligible in most cases.
 
 Make sure to put your events inside `${...}` expressions, because classic events can't reference variables in the current scope.
 
@@ -289,7 +289,7 @@ Make sure to put your events inside `${...}` expressions, because classic events
 Form elements can update the properties that provide their values if an event attribute such as `oninput` is assigned the path to a property to update:
 
 ```javascript
-import {Solarite, r} from '../dist/Solarite.js';
+import {Solarite, r} from './dist/Solarite.js';
 
 class BindingDemo extends Solarite {
    
@@ -318,7 +318,7 @@ In addition to `<input>`,  `<select>` and `<textarea>` can also use the `value` 
 Any element in the html with an `id` or `data-id` attribute is automatically bound to a property with the same name on the root element.  But this only happens after `render()` is first called:
 
 ```javascript
-import {Solarite, r} from '../dist/Solarite.js';
+import {Solarite, r} from './dist/Solarite.js';
 
 class RaceTeam extends Solarite {
     constructor() {
@@ -357,7 +357,7 @@ These local, "scoped" styles are implemented by:
 2. Replacing any `:host` selectors inside the style with `element-name[data-style="1"]`.  For example the `:host` selector below becomes `fancy-text[data-style="1"]`.
 
 ```javascript
-import {Solarite, r} from '../dist/Solarite.js';
+import {Solarite, r} from './dist/Solarite.js';
 
 class FancyText extends Solarite {
 	render() { 
