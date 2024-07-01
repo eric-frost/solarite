@@ -8,9 +8,11 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite Docs
 
-Solarite is a small (10KB min+gzip), fast, compilation-free JavaScript web component library that follows modern web standards.
+Solarite is a small (10KB min+gzip), fast, compilation-free JavaScript web component library that closely follows modern web standards.
 
 This project is currently in ALPHA stage and not yet recommended for production code.  This documentations is also incomplete.
+
+If using Visual Studio Code, the Leet-Html extension is recommended to syntax highlight html inside template strings.
 
 ```javascript
 // Type here to edit this code!

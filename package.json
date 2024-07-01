@@ -1,0 +1,33 @@
+{
+  "name": "solarite",
+  "version": "0.1.0",
+  "description": "Solarite is a small, fast, compilation-free JavaScript web component library that closely follows modern web standards.",
+  "main": "dist/Solarite.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Vorticode/solarite.git"
+  },
+  "keywords": [
+    "JavaScript",
+    "UI",
+    "framework",
+    "library",
+    "reactive",
+    "vanilla",
+    "minimal",
+    "web component"
+  ],
+  "author": "Eric P",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Vorticode/solarite/issues"
+  },
+  "homepage": "https://vorticode.github.io/solarite/"
+}
