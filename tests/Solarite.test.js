@@ -8,6 +8,7 @@ Testimony.enableJsDom();
 import {Solarite, r} from '../src/solarite/Solarite.js';
 //import {Red, r, Perf} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 import {watch} from "../src/solarite/watch2.js";
+import watch3 from "../src/solarite/watch3.js";
 
 
 
@@ -1623,7 +1624,7 @@ Testimony.test('Solarite.ids', () => {
 	class R500 extends Solarite {
 		one;
 		render() {
-			this.html = r`<div data-id="one"></div>`;
+			r`<div data-id="one"></div>`.toNode(this);
 		}
 	}
 
@@ -1639,8 +1640,6 @@ Testimony.test('Solarite.r._createElement', () => {
 	console.log(button.outerHTML)
 	document.body.append(button);
 })
-
-
 
 
 Testimony.test('Solarite.r.element', () => {
@@ -2837,7 +2836,32 @@ Testimony.test('Solarite.watch2._forEachSpliceInsert', () => {
 
 
 
+/*
+Testimony.test('Solarite.watch3.primitive', () => {
 
+	class W100 extends HTMLElement {
+
+		name = 'Fred';
+
+		constructor() {
+			super();
+			watch3(this, 'name');
+			this.render();
+		}
+
+		render() {
+			r(this)`
+			<w-100>${this.name}</w-100>`;
+		}
+	}
+	customElements.define('w-100', W100);
+
+	let a = new W100();
+	document.body.append(a);
+
+	a.name = 'Jim';
+});
+*/
 
 
 
@@ -2866,7 +2890,7 @@ Testimony.test('Solarite.full.treeItems', () => {
 		}
 
 		render() {
-			this.html = r`
+			r(this)`
 				<tree-item>
 					<style>
 						:host #childItems { padding-left: 20px }

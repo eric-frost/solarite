@@ -54,19 +54,19 @@ export function getArg(el, name, val=null, type=ArgType.String) {
 		case ArgType.Float:
 			return parseFloat(val);
 		case ArgType.String:
-			return val || '';
+			return [undefined, null, false].includes(val) ? '' : val+'';
 		case ArgType.JSON:
-			try {
-				return JSON.parse(val);
-			} catch (e) {
-				return val;
-			}
 		case ArgType.Eval:
-			try {
-				return eval(`(${val})`);
-			} catch (e) {
-				return val;
-			}
+			if (typeof val === 'string' && val.length)
+				try {
+					if (type === ArgType.JSON)
+						return JSON.parse(val);
+					else
+						return eval(`(${val})`);
+				} catch (e) {
+					return val;
+				}
+			else return val;
 		default:
 			return val;
 	}

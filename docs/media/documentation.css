@@ -9,7 +9,7 @@
     src: url("FiraCode400.woff2") format("woff")
 }
 
-html { background: var(--background) !important }
+html { background: var(--background) !important; font-size: 16px !important }
 body::before { content: ''; position: fixed; inset: 0;
 	opacity: .03; filter: grayscale(75%);
 	background: url('solarite-machine.webp') no-repeat -200px -200px / 140% auto ;  }
@@ -41,7 +41,7 @@ html:not([dark]) #write h3 { color: #678; }
 #write h6 { font-size: 100%; font-weight: normal; margin-top: .75em; margin-bottom: 0; text-decoration: underline }
 
 
-#write :is(p, h2, h3, h4, h5, h6, ol, ul) { max-width: 600px }
+#write :is(p, h2, h3, h4, h5, h6, ol, ul) { max-width: 700px }
 #write p { text-align: justify }
 #write a, #write a:visited { color: #08c; text-decoration: none}
 #write a:hover { color: #08c; text-decoration: underline }

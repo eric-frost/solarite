@@ -8,20 +8,28 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite Docs
 
-Solarite is a small (10KB min+gzip), fast, compilation-free JavaScript web component library that closely follows modern web standards.
+Solarite is a small (10KB min+gzip), fast, compilation-free JavaScript library to enhance your vanilla web components.  Features:
+
+- Minimal DOM updates when render() method is manually called.
+- No magic.  Rendering only occurs when you call the render() method.
+- Local scoped styles:  Inherit external styles but define new styles that apply only to the web component and its children.
+- Attributes are passed as constructor arguments to your web components.
+- Elements with `id` or `data-id` attributes become class properties.
+
+No need to set up state.  Instead, use any regular variables or data structures in html templates.  Call `render()` manually and it will update changed elements synchronously.
+
+No custom build steps and no dependencies.  Not even Node.js.  Just `import` Solarite.js or Solarite.min.js.  MIT license.  Free for commercial use.  No attribution needed.
 
 This project is currently in ALPHA stage and not yet recommended for production code.  This documentations is also incomplete.
 
-If using Visual Studio Code, the Leet-Html extension is recommended to syntax highlight html inside template strings.
-
 ```javascript
-// Type here to edit this code!
-import {Solarite, r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.js';
 
-class ShoppingList extends Solarite {
+class ShoppingList extends HTMLElement {
 	constructor(items=[]) {
 		super();
 		this.items = items;
+		this.render();
 	}
 
 	addItem() {
@@ -34,42 +42,44 @@ class ShoppingList extends Solarite {
 		this.render();
 	}
 
-	render() {
-		this.html = r`
+	render() { 
+		// Think of r(this) as like:
+		// this.outerHTML = `<shopping-list>...` 
+		// but rendering only minimal DOM updates when the html changes.
+		r(this)`
 			<shopping-list>
-				<style>
-					:host input { width: 50px }
+				<style> /* scoped styles */
+					:host input { width: 80px }
 				</style>
+				
 				<button onclick=${this.addItem}>Add Item</button>
+													
 				${this.items.map(item => r`
-					<div style="display: flex; flex-direction: row">
-						<input value=${item.name} oninput=${[item, 'name']} placeholder="Name">
-						<input value=${item.qty} oninput=${[item, 'qty']}>
-						<button onclick=${[this.removeItem, item]}>x</button>
-					</div>			   
+					<div>
+						<input placeholder="Name" value=${item.name} 
+							oninput=${e => {
+								item.name = e.target.value; 
+								this.render()
+							}}>
+						<input type="number" value=${item.qty}
+							oninput=${e => {
+								item.qty = e.target.value; 
+								this.render()
+							}}>
+						<button onclick=${()=>this.removeItem(item)}>x</button>
+					</div>			 
 				`)}
+				
 				<pre>items = ${() => JSON.stringify(this.items, null, 4)}</pre>
 			</shopping-list>`
 	}
 }
-document.body.append(new ShoppingList()); // adds a child named <shopping-list>
+
+customElements.define('shopping-list', ShoppingList);
+document.body.append(new ShoppingList()); // add <shopping-list> element
 ```
 
-==TODO Does it re-render all Items on update?== 
 
-## Features
-
-==TODO: Show benchmark==
-
-- No custom build steps and no dependencies.  Not even Node.js.  Just `import` Solarite.js or Solarite.min.js.
-- Creates native HTML Elements and Web Components which can be used anywhere in your document and alongside other libraries.
-- No need to set up state.  Instead, use any regular variables or data structures in html templates.
-- Minimal updates on render
-- Local (scoped) styles
-- Two-way form element binding.
-- Optional shadow DOM (coming soon)
-- Optional JSX support (coming soon)
-- MIT license.  Free for commercial use.  No attribution needed.
 
 ## Using
 
@@ -80,7 +90,7 @@ Import one of these pre-bundled es6 modules into your project:
 
 ==TODO: NPM==
 
-## Examples
+## 
 
 ## Concepts
 
@@ -93,10 +103,10 @@ All browsers require custom web component names to have a dash in the middle.  S
 ```javascript
 import {Solarite, r} from './dist/Solarite.js';
 
-class MyComponent extends Solarite {
+class MyComponent extends HTMLElement {
 	name = 'Solarite';
 	render() { 
-		this.html = r`<my-component>Hello <b>${this.name}!<b></my-component>`
+		r(this)`<my-component>Hello <b>${this.name}!<b></my-component>`
 	}
 }
 
@@ -392,6 +402,8 @@ Calling render() on a parent component will call it on sub-components too.
 
 ## Reference
 
+
+
 ## How it works
 
 Suppose you're looping over an array of 100 objects and printing them to a list or table.  Something like this:
@@ -413,6 +425,8 @@ Suppose you're looping over an array of 100 objects and printing them to a list 
 ```
 
 The code gets the array of raw strings created by tasks.map() using a template literal function.  Then it creates a hash of each of those.  Then it compares those hashes with the hashes from the last time rendering happened, and only update elements associated with the changed hashes.
+
+## Examples
 
 ## Differences from other Libraries
 

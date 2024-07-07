@@ -11,6 +11,7 @@ export {logGets, gets}
 
 let withinSet = 0;
 
+
 /**
  * Turn the props on obj into JavasCript properties that return Proxies when accessed.
  * If called more than once, return the already-converted object.

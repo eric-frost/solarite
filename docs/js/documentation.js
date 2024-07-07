@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			</style>`;
         let value = lines.join('\n');
 		
-        let pg = new Playground({value, language: pre.getAttribute('lang'), width: 75, maxHeight: 620, prefix, limitCodeEditorHeight: true})
+        let pg = new Playground({value, language: pre.getAttribute('lang'), width: 75, maxHeight: 1000, prefix, limitCodeEditorHeight: true})
         pre.replaceWith(pg);
     }
 })

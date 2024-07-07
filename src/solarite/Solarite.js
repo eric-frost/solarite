@@ -14,6 +14,9 @@ let Solarite = new Proxy(createSolarite(), {
 export {Solarite}
 export {default as r} from './r.js';
 export {getArg, ArgType} from './getArg.js';
+export {default as Template} from './Template.js';
 
+
+//Experimental:
 export {forEach, watchGet, watchSet} from './watch.js' // old, unfinished
 export {watch} from './watch2.js'; // unfinished

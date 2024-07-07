@@ -23,11 +23,11 @@ export default class Template {
 	/** Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
 
-    /**
-     * @deprecated
-     * @type {ExprPath} Used with forEach() from watch.js
-   	 * Set in NodeGroup.applyOneExpr() */
-    parentPath;
+	/**
+    * @deprecated
+    * @type {ExprPath} Used with forEach() from watch.js
+	 * Set in NodeGroup.applyOneExpr() */
+	parentPath;
 	
 	/** @type {NodeGroup} */
 	nodeGroup;
@@ -71,8 +71,8 @@ export default class Template {
 		return this.hashedFields
 	}
 
-	toNode() {
-		let ngm = new NodeGroupManager();
+	toNode(el=null) {
+		let ngm = NodeGroupManager.get(el);
 		return ngm.render(this);
 	}
 

@@ -39,8 +39,13 @@ let connected = new WeakSet();
  * 2.  Calls render() when added to the DOM, if it hasn't been called already.
  * 3.  Child elements are added before constructor is called.  But they're also passed to the constructor.
  * 4.  We can use this.html = r`...` to set html.
- * 5.  We have the onConnect, onFirstConnect, and onDisconnect methods.  These could be standalone though.
+ * 5.  We have the onConnect, onFirstConnect, and onDisconnect methods.  Can't figure out how to have these work synchronously standalone though.
  * 6.  Can we extend from other element types like TR?
+ *
+ * Advantages to inheriting from HTMLElement
+ * 1.  Minimization won't break when it renames the Class and we call customElements.define() on the wrong name.
+ * 2.  We can inherit from things like HTMLTableRowElement directly.
+ * 3.  There's less magic, since everyone is familiar with defining custom elements.
  *
  * @param extendsTag {?string}
  * @return {Class} */

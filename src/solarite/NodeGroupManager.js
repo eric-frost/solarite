@@ -10,8 +10,7 @@ import {assert} from "../util/Errors.js";
  * @typedef {Object} RenderOptions
  * @property {boolean=} styles - Indicates whether the Courage component is present.
  * @property {boolean=} scripts - Indicates whether the Power component is present.
- * @property {boolean=} ids
- *
+ * @property {boolean=} ids *
  * @property {?boolean} render
  * 	   Used only when options are given to a class super constructor inheriting from Solarite.
  *     True to call render() immediately in super constructor.
@@ -125,7 +124,8 @@ export default class NodeGroupManager {
 			deleted: []
 		};
 		//#ENDIF
-		
+
+		// TODO: This path never happens?
 		if (!template && template !== '') {
 			this.rootEl.outerHTML = '';
 			this.mutationWatcherEnabled = true;
@@ -503,7 +503,10 @@ export default class NodeGroupManager {
 	 * Get the NodeGroupManager for a Web Component.
 	 * @param rootEl {Solarite|HTMLElement}
 	 * @return {NodeGroupManager} */
-	static get(rootEl) {
+	static get(rootEl=null) {
+		if (!rootEl)
+			return new NodeGroupManager();
+
 		let ngm = nodeGroupManagers.get(rootEl);
 		if (!ngm) {
 			ngm = new NodeGroupManager(rootEl);
