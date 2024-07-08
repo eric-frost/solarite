@@ -84,10 +84,11 @@ export default function watch3(root, path) {
 
 				//ng.manager.findAndDeleteExact(ng.exactKey);
 
-				ng.applyExprs([exprFunction], [exprPath]);  // TODO: This will fail for attributes w/ a value having multiple ExprPaths.
+				ng.applyExprs([exprFunction], [exprPath]);  // TODO: Will fail for attribute w/ a value having multiple ExprPaths.
 
 
-				ng.exactKey = getObjectHash(ng.template);
+				// TODO: This doesn't cascade upward.
+				//ng.exactKey = getObjectHash(ng.template);
 
 			}
 

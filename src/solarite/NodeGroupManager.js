@@ -106,129 +106,6 @@ export default class NodeGroupManager {
 		*/
 	}
 
-	/**
-	 * TODO: Move this to Template ?
-	 * Render the main template, which may indirectly call renderTemplate() to create children.
-	 * @param template {Template}
-	 * @param options {RenderOptions}
-	 * @return {?DocumentFragment} */
-	render(template, options={}) {
-		this.options = options;
-		this.clearSubscribers = false;
-		
-		//#IFDEV
-		this.modifications = {
-			created: [],
-			updated: [],
-			moved: [],
-			deleted: []
-		};
-		//#ENDIF
-
-		// TODO: This path never happens?
-		if (!template && template !== '') {
-			this.rootEl.outerHTML = '';
-			return null;
-		}
-
-
-		this.mutationWatcherEnabled = false;
-		
-		// Fast path for empty component.
-		if (template.html?.length === 1 && !template.html[0]) {
-			this.rootEl.innerHTML = '';
-		}
-		else {
-
-			// Find or create a NodeGroup for the template.
-			// This updates all nodes from the template.
-			let close;
-			let exact = this.getNodeGroup(template, true);
-			if (!exact) {
-				close = this.getNodeGroup(template, false);
-			}
-			
-			
-			let firstTime = !this.rootNg;
-			this.rootNg = exact || close;
-
-			// Reparent NodeGroup
-			// TODO: Move this to NodeGroup?
-			let parent = this.rootNg.getParentNode();
-			if (!this.rootEl)
-				this.rootEl = parent;
-
-			// If this is the first time rendering this element.
-			else if (firstTime) {
-
-				// Save slot children
-				let fragment;
-				if (this.rootEl.childNodes.length) {
-					fragment = document.createDocumentFragment();
-					fragment.append(...this.rootEl.childNodes);
-				}
-
-				// Add rendered elements.
-				if (parent instanceof DocumentFragment)
-					this.rootEl.append(parent);
-				else if (parent)
-					this.rootEl.append(...parent.childNodes)
-
-				// Apply slot children
-				if (fragment) {
-					for (let slot of this.rootEl.querySelectorAll('slot[name]')) {
-						let name = slot.getAttribute('name')
-						if (name)
-							slot.append(...fragment.querySelectorAll(`[slot='${name}']`))
-					}
-					let unamedSlot = this.rootEl.querySelector('slot:not([name])')
-					if (unamedSlot)
-						unamedSlot.append(fragment)
-				}
-
-			}
-
-			// this.rootNg was rendered as childrenOnly=true
-			// Apply attributes from a root element to the real root element.
-			let ng = this.rootNg;
-			if (ng.pseudoRoot && ng.pseudoRoot !== this.rootEl) {
-				/*#IFDEV*/assert(this.rootEl)/*#ENDIF*/
-
-				// Remove old attributes
-				// for (let attrib of this.rootEl.attributes)
-				// 	if (attrib.name !== 'is' && attrib.name !== 'data-style' && !ng.pseudoRoot.hasAttribute(attrib.name))
-				// 		this.rootEl.removeAttribute(attrib.name)
-
-				// Add/set new attributes
-				if (firstTime)
-                    for (let attrib of ng.pseudoRoot.attributes)
-                        if (!this.rootEl.hasAttribute(attrib.name))
-                            this.rootEl.setAttribute(attrib.name, attrib.value);
-
-				// ng.startNode = ng.endNode = this.rootEl;
-				// ng.nodesCache = [ng.startNode]
-				// for (let path of ng.paths) {
-				// 	if (path.nodeMarker === ng.rootEl)
-				// 		path.nodeMarker = this.rootEl;
-				// 	path.nodesCache = null;
-				// 	/*#IFDEV*/assert(path.nodeBefore !== ng.rootEl)/*#ENDIF*/
-				// }
-				//
-				// ng.rootEl = this.rootEl;
-			}
-
-			/*#IFDEV*/this.rootNg.verify();/*#ENDIF*/
-			this.reset();
-			/*#IFDEV*/this.rootNg.verify();/*#ENDIF*/
-		}
-
-		this.mutationWatcherEnabled = true;
-		return this.rootEl;
-		//#IFDEV
-		//return this.modifications;
-		//#ENDIF
-	}
-
 
 	/**
 	 *
@@ -365,7 +242,7 @@ export default class NodeGroupManager {
 	 * but don't reparent it if it's somewhere else.
 	 * @param template {Template}
 	 * @param exact {?boolean}
-	 * @param createForWatch
+	 * @param createForWatch Deprecated.
 	 * @return {?NodeGroup} */
 	getNodeGroup(template, exact=null, createForWatch=false) {
 

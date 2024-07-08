@@ -1624,7 +1624,7 @@ Testimony.test('Solarite.ids', () => {
 	class R500 extends Solarite {
 		one;
 		render() {
-			r`<div data-id="one"></div>`.toNode(this);
+			r(this)`<div data-id="one"></div>`;
 		}
 	}
 
@@ -2890,6 +2890,7 @@ Testimony.test('Solarite.watch3.nodes', () => {
 	console.log(getHtml(a))
 
 	a.name2 = 'Brown';
+	debugger;
 	a.render();
 	console.log(getHtml(a))
 });

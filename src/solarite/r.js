@@ -43,7 +43,7 @@ export default function r(htmlStrings=undefined, ...exprs) {
         if (exprs[0] instanceof Template) {
             let ngm = NodeGroupManager.get(parent);
             let options = exprs[1];
-            ngm.render(template, options);
+            template.render(parent, options);
 
             // Append on the first go.
             if (!parent.childNodes.length && this) {
@@ -63,14 +63,16 @@ export default function r(htmlStrings=undefined, ...exprs) {
                 rendered.add(parent)
                 let template = r(htmlStrings, ...exprs);
                 let ngm = NodeGroupManager.get(parent);
-                return ngm.render(template, options);
+                return template.render(parent, options);
             }
         }
 
         // null for expr[0], remove whole element.
+           // This path never happens?
         else {
-            let ngm = NodeGroupManager.get(parent);
-            ngm.render(null, exprs[1])
+            throw new Error('unsupported');
+            //let ngm = NodeGroupManager.get(parent);
+            //ngm.render(null, exprs[1])
         }
     }
 
@@ -98,14 +100,14 @@ export default function r(htmlStrings=undefined, ...exprs) {
         return (htmlStrings, ...exprs) => {
             //rendered.add(parent)
             let template = r(htmlStrings, ...exprs);
-            return template.toNode();
+            return template.render();
         }
     }
 
     // 8.
     else if (htmlStrings instanceof Template) {
         let ngm = new NodeGroupManager();
-        return ngm.render(htmlStrings);
+        return htmlStrings.render();
     }
 
     // 9. Create dynamic element with render() function.
@@ -118,11 +120,11 @@ export default function r(htmlStrings=undefined, ...exprs) {
 
         let ngm = new NodeGroupManager();
         template.replaceMode = true;
-        let el = ngm.render(template);
+        let el = template.render(); //ngm.render(template);
 
         el.render = (function() {
             template = getTemplate();
-            ngm.render(template)
+            template.render(el)
         }).bind(el);
 
         return el;
