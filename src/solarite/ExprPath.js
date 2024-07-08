@@ -3,6 +3,9 @@ import delve from "../util/delve.js";
 import {getObjectId} from "./hash.js";
 import NodeGroup from "./NodeGroup.js";
 import {div, findArrayDiff, setIndent} from "./Util.js";
+import Template from "./Template.js";
+import {WatchedItem} from "./watch3.js";
+import {watchFunction} from "./watch2.js";
 
 /**
  * Path to where an expression should be evaluated within a Shell.
@@ -120,6 +123,99 @@ export default class ExprPath {
 		this.attrValue = attrValue;
 		if (type === PathType.Multiple)
 			this.attrNames = new Set();
+	}
+
+
+
+	// TODO: Move to ExprPath?
+
+	/**
+	 *
+	 * @param expr {Template|WatchedItem|Node|Array|function|*}
+	 * @param newNodes {Node[]}
+	 * @param secondPass {Array} */
+	applyOneExpr(expr, newNodes, secondPass) {
+
+		if (expr instanceof Template) {
+			expr.nodegroup = this.parentNg; // All tests pass w/o this.
+
+			let ng = this.parentNg.manager.getNodeGroup(expr, true);
+
+
+			if (ng) {
+				//#IFDEV
+				// Make sure the nodeCache of the ExprPath we took it from is sitll valid.
+				if (ng.parentPath)
+					ng.parentPath.verify();
+				//#ENDIF
+
+
+				// TODO: Track ranges of changed nodes and only pass those to udomdiff?
+				// But will that break the swap benchmark?
+				newNodes.push(...ng.getNodes());
+				this.nodeGroups.push(ng);
+			}
+
+			// If expression, evaluate later to find partial match.
+			else {
+				secondPass.push([newNodes.length, this.nodeGroups.length])
+				newNodes.push(expr)
+				this.nodeGroups.push(null); // placeholder
+			}
+		}
+
+		else if (expr instanceof WatchedItem) {
+			expr.exprPath = this;
+			return this.applyOneExpr(expr.getValue(), newNodes, secondPass);
+		}
+
+		// Node created by an expression.
+		else if (expr instanceof Node) {
+
+			// DocumentFragment created by an expression.
+			if (expr instanceof DocumentFragment)
+				newNodes.push(...expr.childNodes);
+			else
+				newNodes.push(expr);
+		}
+
+		else if (Array.isArray(expr))
+			for (let subExpr of expr)
+				this.applyOneExpr(subExpr, newNodes, secondPass)
+
+		else if (typeof expr === 'function') {
+			expr = watchFunction(expr, this.parentNg.manager)
+
+			this.applyOneExpr(expr, newNodes, secondPass)
+		}
+
+		// Text
+		else {
+			// Convert falsy values (but not 0) to empty string.
+			// Convert numbers to string so they compare the same.
+			let text = (expr === undefined || expr === false || expr === null) ? '' : expr + '';
+
+			// Fast path for updating the text of a single text node.
+			let first = this.nodeBefore.nextSibling;
+			if (first.nodeType === 3 && first.nextSibling === this.nodeMarker && !newNodes.includes(first)) {
+				if (first.textContent !== text)
+					first.textContent = text;
+
+				newNodes.push(first);
+			}
+
+			else {
+				// TODO: Optimize this into a Set or Map or something?
+				if (!this.existingTextNodes)
+					this.existingTextNodes = this.getNodes().filter(n => n.nodeType === 3);
+
+				let idx = this.existingTextNodes.findIndex(n => n.textContent === text);
+				if (idx !== -1)
+					newNodes.push(...this.existingTextNodes.splice(idx, 1))
+				else
+					newNodes.push(this.parentNode.ownerDocument.createTextNode(text));
+			}
+		}
 	}
 
 	applyMultipleAttribs(node, expr) {

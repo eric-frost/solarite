@@ -7,6 +7,8 @@ import udomdiff from "./udomdiff.js";
 import {watchFunction} from './watch2.js';
 import Util, {div, findArrayDiff, flattenAndIndent, isEvent, nodeToArrayTree, setIndent} from "./Util.js";
 import NodeGroupManager from "./NodeGroupManager.js";
+import {WatchedItem} from "./watch3.js";
+
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node} Expr */
 
@@ -294,7 +296,7 @@ export default class NodeGroup {
 		//for (let ng of path.nodeGroups) // TODO: Is this necessary?
 		//	ng.parentPath = null;
 		path.nodeGroups = [];
-		this.applyOneExpr(expr, path, newNodes, secondPass);
+		path.applyOneExpr(expr, newNodes, secondPass);
 		this.existingTextNodes = null;
 
 		// TODO: Create an array of old vs Nodes and NodeGroups together.
@@ -380,91 +382,6 @@ export default class NodeGroup {
 					node = oldNodes[i];
 				}
 				fragment.append(endNode);
-			}
-		}
-	}
-
-	// TODO: Move to ExprPath?
-	applyOneExpr(expr, path, newNodes, secondPass) {
-		
-		if (expr instanceof Template) {
-			expr.parentPath = path;
-			expr.nodegroup = this;
-			
-			//if (window.debug && expr.exprs[0] === 'Banana' && path.nodeGroups.length === 0)
-			//if (window.debug && expr.exprs[0] === 'Banana')
-			//	debugger;
-			
-			let ng = this.manager.getNodeGroup(expr, true);
-			
-			
-			if (ng) {
-				//#IFDEV
-				// Make sure the nodeCache of the ExprPath we took it from is sitll valid.
-				if (ng.parentPath)
-					ng.parentPath.verify();
-				//#ENDIF
-				
-				
-				// TODO: Track ranges of changed nodes and only pass those to udomdiff?
-				// But will that break the swap benchmark?
-				newNodes.push(...ng.getNodes());
-				path.nodeGroups.push(ng);
-			}
-			
-			// If expression, evaluate later to find partial match.
-			else {
-				secondPass.push([newNodes.length, path.nodeGroups.length])
-				newNodes.push(expr)
-				path.nodeGroups.push(null); // placeholder
-			}
-		}
-
-		// Node created by an expression.
-		else if (expr instanceof Node) {
-
-			// DocumentFragment created by an expression.
-			if (expr instanceof DocumentFragment)
-				newNodes.push(...expr.childNodes);
-			else
-				newNodes.push(expr);
-		}
-
-		else if (Array.isArray(expr))
-			for (let subExpr of expr)
-				this.applyOneExpr(subExpr, path, newNodes, secondPass)
-
-		else if (typeof expr === 'function') {
-			expr = watchFunction(expr, this.manager)
-			
-			this.applyOneExpr(expr, path, newNodes, secondPass)
-		}
-
-		// Text
-		else {
-			// Convert falsy values (but not 0) to empty string.
-			// Convert numbers to string so they compare the same.
-			let text = (expr === undefined || expr === false || expr === null) ? '' : expr + '';
-
-			// Fast path for updating the text of a single text node.
-			let first = path.nodeBefore.nextSibling;
-			if (first.nodeType === 3 && first.nextSibling === path.nodeMarker && !newNodes.includes(first)) {
-				if (first.textContent !== text)
-					first.textContent = text;
-				
-				newNodes.push(first);
-			}
-
-			else {
-				// TODO: Optimize this into a Set or Map or something?
-				if (!this.existingTextNodes)
-					this.existingTextNodes = path.getNodes().filter(n => n.nodeType === 3);
-				
-				let idx = this.existingTextNodes.findIndex(n => n.textContent === text);
-				if (idx !== -1)
-					newNodes.push(...this.existingTextNodes.splice(idx, 1))
-				else
-					newNodes.push(path.parentNode.ownerDocument.createTextNode(text));
 			}
 		}
 	}

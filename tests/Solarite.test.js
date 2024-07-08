@@ -2836,7 +2836,6 @@ Testimony.test('Solarite.watch2._forEachSpliceInsert', () => {
 
 
 
-/*
 Testimony.test('Solarite.watch3.primitive', () => {
 
 	class W100 extends HTMLElement {
@@ -2850,18 +2849,18 @@ Testimony.test('Solarite.watch3.primitive', () => {
 		}
 
 		render() {
-			r(this)`
-			<w-100>${this.name}</w-100>`;
+			r(this)`<w-100>${this.name}</w-100>`;
 		}
 	}
 	customElements.define('w-100', W100);
 
 	let a = new W100();
 	document.body.append(a);
+	assert(a.outerHTML, `<w-100>Fred</w-100>`);
 
 	a.name = 'Jim';
+	assert(a.outerHTML, `<w-100>Jim</w-100>`);
 });
-*/
 
 
 

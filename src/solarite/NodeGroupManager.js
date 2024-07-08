@@ -112,7 +112,6 @@ export default class NodeGroupManager {
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment} */
 	render(template, options={}) {
-		this.mutationWatcherEnabled = false;
 		this.options = options;
 		this.clearSubscribers = false;
 		
@@ -128,9 +127,11 @@ export default class NodeGroupManager {
 		// TODO: This path never happens?
 		if (!template && template !== '') {
 			this.rootEl.outerHTML = '';
-			this.mutationWatcherEnabled = true;
 			return null;
 		}
+
+
+		this.mutationWatcherEnabled = false;
 		
 		// Fast path for empty component.
 		if (template.html?.length === 1 && !template.html[0]) {

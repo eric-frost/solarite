@@ -46,29 +46,34 @@ a.items.push({name: 'Fred'});
  * WatchedItem needs to be a Proxy to handle objects and arrays.
  */
 
-class WatchedItem {
+export class WatchedItem {
 
 	exprPath = null;
 
-	constructor(root, name) {
+	constructor(root, path, value) {
 		this.root = root;
-		this.name = name;
+		this.path = path;
+		this.value = value;
 	}
 
-	toString() {
-		return this.root[this.name];
+	getValue() {
+		return this.value;
 	}
 }
 
 
 export default function watch3(root, path) {
 
+	let value = root[path];
+
+
 	Object.defineProperty(root, path, {
 		get() { // WatchedItem needs to be a Proxy to handle objects and arrays.
-			return new WatchedItem(root, path);
+			return new WatchedItem(root, path, value);
 		},
 		set(val) {
-			root[path] = val;
+			value = val;
+			root.render();
 			// TODO: re-evaluate the ExprPath.
 		}
 	});
