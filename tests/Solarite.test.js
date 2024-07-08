@@ -2890,7 +2890,7 @@ Testimony.test('Solarite.watch3.nodes', () => {
 	console.log(getHtml(a))
 
 	a.name2 = 'Brown';
-	debugger;
+	//window.debug = true;
 	a.render();
 	console.log(getHtml(a))
 });

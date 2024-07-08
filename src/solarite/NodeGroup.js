@@ -152,7 +152,7 @@ export default class NodeGroup {
 				this.createNewComponent(el)
 		}
 
-		if (this.manager.rootEl) {
+		if (this.manager?.rootEl) {
 
 			// ids
 			if (this.manager.options.ids !== false)
@@ -209,7 +209,7 @@ export default class NodeGroup {
 			// Attributes
 			else {
 				let node = path.nodeMarker;
-				let el = (this.manager.rootEl && node === this.pseudoRoot) ? this.manager.rootEl : node;
+				let el = (this.manager?.rootEl && node === this.pseudoRoot) ? this.manager.rootEl : node;
 				/*#IFDEV*/assert(node);/*#ENDIF*/
 
 				// This is necessary both here and below.
@@ -233,7 +233,7 @@ export default class NodeGroup {
 
 					// Event attribute value
 					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
-						let root = this.manager.rootEl || this.startNode.parentNode;  // latter is used when constructing a whole element.
+						let root = this.manager?.rootEl || this.startNode.parentNode;  // latter is used when constructing a whole element.
 						path.applyEventAttrib(el, expr, root);
 					}
 

@@ -302,7 +302,7 @@ export default class NodeGroupManager {
 				// Perhaps also result could cache its last exprKey and then we'd use only one map?
 				ng.exactKey = exactKey;
 				ng.closeKey = closeKey;
-				if (createForWatch) // TODO: Have this path be a separate function?
+				if (createForWatch)
 					this.nodeGroupsAvailable.add(ng.exactKey, ng);
 				else
 					this.nodeGroupsInUse.push(ng)

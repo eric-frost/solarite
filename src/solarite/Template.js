@@ -1,6 +1,7 @@
 import {assert} from "../util/Errors.js";
 import {getObjectId} from "./hash.js";
 import NodeGroupManager from "./NodeGroupManager.js";
+import NodeGroup from "./NodeGroup.js";
 
 
 /**
@@ -71,26 +72,23 @@ export default class Template {
 		return this.hashedFields
 	}
 
-	/** @depreacted for render() */
-	toNode(el=null) {
-		throw new Error('unsupported');
-		let ngm = NodeGroupManager.get(el);
-		return ngm.render(this);
-	}
-
-
-
 	/**
 	 * Render the main template, which may indirectly call renderTemplate() to create children.
 	 * @param el {HTMLElement}
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
 	render(el=null, options={}) {
-		let template = this;
-		let ngm = NodeGroupManager.get(el);
+		// if (window.debug)
+		// 	debugger;
+		let ng;
+		if (!el) {
+			ng = new NodeGroup(this);
+			el = ng.getParentNode();
+		}
 
-		ngm.options = options;
-		ngm.clearSubscribers = false; // Used for deprecated watch() path?
+		let ngm = NodeGroupManager.get(el);
+		if (ng)
+			ng.manager = ngm;
 
 		//#IFDEV
 		ngm.modifications = {
@@ -101,10 +99,13 @@ export default class Template {
 		};
 		//#ENDIF
 
+
+		ngm.options = options;
+		ngm.clearSubscribers = false; // Used for deprecated watch() path?
 		ngm.mutationWatcherEnabled = false;
 
 		// Fast path for empty component.
-		if (template.html?.length === 1 && !template.html[0]) {
+		if (this.html?.length === 1 && !this.html[0]) {
 			el.innerHTML = '';
 		}
 		else {
@@ -112,11 +113,10 @@ export default class Template {
 			// Find or create a NodeGroup for the template.
 			// This updates all nodes from the template.
 			let close;
-			let exact = ngm.getNodeGroup(template, true);
+			let exact = ngm.getNodeGroup(this, true);
 			if (!exact) {
-				close = ngm.getNodeGroup(template, false);
+				close = ngm.getNodeGroup(this, false);
 			}
-
 
 			let firstTime = !ngm.rootNg;
 			ngm.rootNg = exact || close;
@@ -124,13 +124,10 @@ export default class Template {
 			// Reparent NodeGroup
 			// TODO: Move this to NodeGroup?
 			let parent = ngm.rootNg.getParentNode();
-			if (!el)
-				el = parent;
-
 
 
 			// If this is the first time rendering this element.
-			else if (firstTime) {
+			if (firstTime) {
 
 				// Save slot children
 				let fragment;
