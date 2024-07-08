@@ -292,7 +292,7 @@ class ProxyHandler {
 			let obj2 = obj === this.root && this.props ? this.props : obj;
 			let result = Reflect.get(obj2, prop);
 
-			// This is read by watchFunction() which is called in NodeGroup.applyOneExpr().
+			// This is read by watchFunction() which is called in ExprPath.apply().
 			// It's used to see what variables contribute to an expression.
 			if (logGets)
 				gets.push([this.root, ...this.path, prop]);
@@ -393,7 +393,7 @@ function getProxy(obj, ph, path, path2) {
 
 /**
  * Call a function and record which watched variables it accesess, storing their paths in pathToTemplates.
- * Used by NodeGroup.applyOneExpr().
+ * Used by ExprPath.apply().
  * TODO: only allow this to be called once per callback.
  * @param callback {function}
  * @param ngm {NodeGroupManager}

@@ -125,16 +125,12 @@ export default class ExprPath {
 			this.attrNames = new Set();
 	}
 
-
-
-	// TODO: Move to ExprPath?
-
 	/**
 	 *
 	 * @param expr {Template|WatchedItem|Node|Array|function|*}
 	 * @param newNodes {Node[]}
 	 * @param secondPass {Array} */
-	applyOneExpr(expr, newNodes, secondPass) {
+	apply(expr, newNodes, secondPass) {
 
 		if (expr instanceof Template) {
 			expr.nodegroup = this.parentNg; // All tests pass w/o this.
@@ -166,7 +162,7 @@ export default class ExprPath {
 
 		else if (expr instanceof WatchedItem) {
 			expr.exprPath = this;
-			return this.applyOneExpr(expr.getValue(), newNodes, secondPass);
+			return this.apply(expr.getValue(), newNodes, secondPass);
 		}
 
 		// Node created by an expression.
@@ -181,12 +177,12 @@ export default class ExprPath {
 
 		else if (Array.isArray(expr))
 			for (let subExpr of expr)
-				this.applyOneExpr(subExpr, newNodes, secondPass)
+				this.apply(subExpr, newNodes, secondPass)
 
 		else if (typeof expr === 'function') {
 			expr = watchFunction(expr, this.parentNg.manager)
 
-			this.applyOneExpr(expr, newNodes, secondPass)
+			this.apply(expr, newNodes, secondPass)
 		}
 
 		// Text
@@ -417,7 +413,7 @@ export default class ExprPath {
 			
 			// Clear cache of child ExprPaths that have the same parentNode
 			for (let ng of path.nodeGroups) {
-				if (ng) // Can be null from applyOneExpr()'s push(null) call.
+				if (ng) // Can be null from apply()'s push(null) call.
 					for (let path2 of ng.paths) {
 						if (path2.type === PathType.Content && path2.parentNode === parentNode) {
 							path2.nodesCache = null;

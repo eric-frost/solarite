@@ -296,7 +296,7 @@ export default class NodeGroup {
 		//for (let ng of path.nodeGroups) // TODO: Is this necessary?
 		//	ng.parentPath = null;
 		path.nodeGroups = [];
-		path.applyOneExpr(expr, newNodes, secondPass);
+		path.apply(expr, newNodes, secondPass);
 		this.existingTextNodes = null;
 
 		// TODO: Create an array of old vs Nodes and NodeGroups together.

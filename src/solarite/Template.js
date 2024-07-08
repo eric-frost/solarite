@@ -26,7 +26,7 @@ export default class Template {
 	/**
     * @deprecated
     * @type {ExprPath} Used with forEach() from watch.js
-	 * Set in NodeGroup.applyOneExpr() */
+	 * Set in ExprPath.apply() */
 	parentPath;
 	
 	/** @type {NodeGroup} */

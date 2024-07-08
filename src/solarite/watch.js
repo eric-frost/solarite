@@ -136,7 +136,7 @@ export function forEach(arrayPath, callback) {
 	];
 
 	// We return a template that wraps the array
-	// So that NodeGroup.applyOneExpr can set the ExprPath and nextSibling on the template.
+	// So that ExprPath.apply() can set the ExprPath and nextSibling on the template.
 	// Then the 'insert' path in renderWatched() uses that data fora dding more nodes.
 	let result = new Template(['', ''], [newItems])
 
