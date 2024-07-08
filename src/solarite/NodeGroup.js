@@ -2,12 +2,10 @@ import {assert} from "../util/Errors.js";
 import ExprPath, {PathType, resolveNodePath} from "./ExprPath.js";
 import {getObjectHash} from "./hash.js";
 import Shell from "./Shell.js";
-import Template from "./Template.js";
 import udomdiff from "./udomdiff.js";
 import {watchFunction} from './watch2.js';
 import Util, {div, findArrayDiff, flattenAndIndent, isEvent, nodeToArrayTree, setIndent} from "./Util.js";
 import NodeGroupManager from "./NodeGroupManager.js";
-import {WatchedItem} from "./watch3.js";
 
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node} Expr */
@@ -75,8 +73,10 @@ export default class NodeGroup {
 	 * @returns {NodeGroup} */
 	constructor(template, manager=null) {
 
-		// Used for forEach()
+		/** @type {Template} */
 		this.template = template;
+
+		/** @type {NodeGroupManager} */
 		this.manager = manager;
 		
 		// new!
@@ -183,20 +183,13 @@ export default class NodeGroup {
 		}
 	}
 
-	updateStyles() {
-		if (this.styles)
-			for (let [style, oldText] of this.styles) {
-				let newText = style.textContent;
-				if (oldText !== newText)
-					Util.bindStyles(style, this.manager.rootEl);
-			}
-	}
-
 	/**
 	 * Use the paths to insert the given expressions.
 	 * Dispatches expression handling to other functions depending on the path type.
-	 * @param exprs {(*|*[]|function|Template)[]} */
-	applyExprs(exprs) {
+	 * @param exprs {(*|*[]|function|Template)[]}
+	 * @param paths {?ExprPath[]} Optional.  */
+	applyExprs(exprs, paths=null) {
+		paths = paths || this.paths;
 		
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 		// Update exprs at paths.
@@ -204,7 +197,7 @@ export default class NodeGroup {
 
 		// We apply them in reverse order so that a <select> box has its options created from an expression
 		// before its value attribute is set via an expression.
-		for (let path of this.paths.toReversed()) {
+		for (let path of paths.toReversed()) {
 			expr = exprs[exprIndex];
 
 			// Nodes
@@ -215,8 +208,8 @@ export default class NodeGroup {
 
 			// Attributes
 			else {
-				let node = path.nodeMarker; // path.resolve(result);
-				let node2 = (this.manager.rootEl && node === this.pseudoRoot) ? this.manager.rootEl : node;
+				let node = path.nodeMarker;
+				let el = (this.manager.rootEl && node === this.pseudoRoot) ? this.manager.rootEl : node;
 				/*#IFDEV*/assert(node);/*#ENDIF*/
 
 				// This is necessary both here and below.
@@ -226,7 +219,7 @@ export default class NodeGroup {
 				}
 
 				if (path.type === PathType.Multiple)
-					path.applyMultipleAttribs(node2, expr)
+					path.applyMultipleAttribs(el, expr)
 
 				// Capture attribute expressions to later send to the constructor of a web component.
 				// Ctrl+F "redcomponent-placeholder" in project to find all code that manages subcomponents.
@@ -241,12 +234,12 @@ export default class NodeGroup {
 					// Event attribute value
 					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
 						let root = this.manager.rootEl || this.startNode.parentNode;  // latter is used when constructing a whole element.
-						path.applyEventAttrib(node2, expr, root);
+						path.applyEventAttrib(el, expr, root);
 					}
 
 					// Regular attribute value.
-					else
-						exprIndex = path.applyValueAttrib(node2, exprs, exprIndex);
+					else // One node value may have multiple expressions.  Here we apply them all at once.
+						exprIndex = path.applyValueAttrib(el, exprs, exprIndex);
 				}
 
 				lastNode = path.nodeMarker;
@@ -273,6 +266,10 @@ export default class NodeGroup {
 
 
 		/*#IFDEV*/this.verify();/*#ENDIF*/
+	}
+
+	applyExpr(path, expr) {
+		// TODO: Use this if I can figure out how to adapt applyValueAttrib() to it.
 	}
 
 	/**
@@ -391,27 +388,27 @@ export default class NodeGroup {
 	 * @param el {Solarite:HTMLElement}
 	 * @param props {Object} */
 	applyComponentExprs(el, props) {
-		
+
 		// TODO: Does a hash of this already exist somewhere?
 		// Perhaps if Components were treated as child NodeGroups, which would need to be the child of an ExprPath,
 		// then we could re-use the hash and logic from NodeManager?
 		let newHash = getObjectHash(props);
-		
+
 		let isPreHtmlElement = el.tagName.endsWith('-REDCOMPONENT-PLACEHOLDER');
 		let isPreIsElement = el.hasAttribute('_is')
-		
-		
+
+
 		// Instantiate a placeholder.
 		if (isPreHtmlElement || isPreIsElement)
 			el = this.createNewComponent(el, isPreHtmlElement, props);
-		
+
 		// Update params of placeholder.
 		else if (el.render) {
 			let oldHash = componentHash.get(el);
 			if (oldHash !== newHash)
 				el.render(props); // Pass new values of props to render so it can decide how it wants to respond.
 		}
-		
+
 		componentHash.set(el, newHash);
 	}
 	
@@ -548,6 +545,17 @@ export default class NodeGroup {
 
 	getParentNode() {
 		return this.startNode?.parentNode
+	}
+
+
+
+	updateStyles() {
+		if (this.styles)
+			for (let [style, oldText] of this.styles) {
+				let newText = style.textContent;
+				if (oldText !== newText)
+					Util.bindStyles(style, this.manager.rootEl);
+			}
 	}
 
 

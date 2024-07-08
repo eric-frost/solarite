@@ -1,3 +1,9 @@
+/**
+ * Trying to be able to automatically watch primitive values.
+ * TODO:
+ * 1.  Update NodeGroups when reapplying the expression.
+ * 2.  Override .map() for loops to capture changes.
+ */
 
 
 // Example:
@@ -19,7 +25,7 @@ class WatchExample extends Solarite {
 	render() {
 		r(this)`
 		<watch-example>
-			${this.name}
+			${() => this.name + '!'}
 
 			${this.items.map(item => r`
 				<div>${item.name}</div>
@@ -40,41 +46,51 @@ a.items.push({name: 'Fred'});
 */
 
 
+import Globals from "./Globals.js";
+import {getObjectHash} from "./hash.js";
+
 /**
  * TODO:
  * Have ExprPath set the exprPath property of WatchedItem when it encounters it.
  * WatchedItem needs to be a Proxy to handle objects and arrays.
  */
 
-export class WatchedItem {
-
-	exprPath = null;
-
-	constructor(root, path, value) {
-		this.root = root;
-		this.path = path;
-		this.value = value;
-	}
-
-	getValue() {
-		return this.value;
-	}
-}
-
 
 export default function watch3(root, path) {
 
+	/** @type {ExprPath} The ExprPath that's using this variable.*/
+	let exprPath;
+
+	/** @type {function} Function evaluated by the ExprPath. */
+	let exprFunction;
+
+	// Store internal value used by get/set.
 	let value = root[path];
 
-
 	Object.defineProperty(root, path, {
-		get() { // WatchedItem needs to be a Proxy to handle objects and arrays.
-			return new WatchedItem(root, path, value);
+		get() {
+			// Trach which ExprPath is using this variable.
+			if (Globals.currentExprPath)
+				[exprPath, exprFunction] = Globals.currentExprPath;
+			return value;
 		},
 		set(val) {
 			value = val;
-			root.render();
-			// TODO: re-evaluate the ExprPath.
+
+			if (exprFunction) {
+
+				let ng = exprPath.parentNg;
+
+
+				//ng.manager.findAndDeleteExact(ng.exactKey);
+
+				ng.applyExprs([exprFunction], [exprPath]);  // TODO: This will fail for attributes w/ a value having multiple ExprPaths.
+
+
+				ng.exactKey = getObjectHash(ng.template);
+
+			}
+
 		}
 	});
 }

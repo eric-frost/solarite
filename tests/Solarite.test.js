@@ -2849,21 +2849,50 @@ Testimony.test('Solarite.watch3.primitive', () => {
 		}
 
 		render() {
-			r(this)`<w-100>${this.name}</w-100>`;
+			r(this)`<w-100>${() => this.name + '!'}</w-100>`;
 		}
 	}
 	customElements.define('w-100', W100);
 
 	let a = new W100();
 	document.body.append(a);
-	assert(a.outerHTML, `<w-100>Fred</w-100>`);
+	assert(a.outerHTML, `<w-100>Fred!</w-100>`);
 
 	a.name = 'Jim';
-	assert(a.outerHTML, `<w-100>Jim</w-100>`);
+	assert(a.outerHTML, `<w-100>Jim!</w-100>`);
 });
 
 
+Testimony.test('Solarite.watch3.nodes', () => {
 
+	class W110 extends HTMLElement {
+
+		name = 'Fred';
+		name2 = 'White';
+
+		constructor() {
+			super();
+			watch3(this, 'name');
+			this.render();
+		}
+
+		render() {
+			r(this)`<w-110>${() => r`<div>${this.name + '!'}</div>`} ${this.name2}</w-110>`;
+		}
+	}
+	customElements.define('w-110', W110);
+
+	let a = new W110();
+	document.body.append(a);
+	console.log(getHtml(a))
+
+	a.name = 'Jim';
+	console.log(getHtml(a))
+
+	a.name2 = 'Brown';
+	a.render();
+	console.log(getHtml(a))
+});
 
 
 

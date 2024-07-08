@@ -160,7 +160,7 @@ export default function createSolarite(extendsTag=null) {
 			defineClass(this, tagName, extendsTag)
 		}
 
-
+		/** @deprecated */
 		renderWatched() {
 			let ngm = NodeGroupManager.get(this);
 

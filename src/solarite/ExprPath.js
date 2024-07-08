@@ -4,8 +4,8 @@ import {getObjectId} from "./hash.js";
 import NodeGroup from "./NodeGroup.js";
 import {div, findArrayDiff, setIndent} from "./Util.js";
 import Template from "./Template.js";
-import {WatchedItem} from "./watch3.js";
 import {watchFunction} from "./watch2.js";
+import Globals from "./Globals.js";
 
 /**
  * Path to where an expression should be evaluated within a Shell.
@@ -127,9 +127,9 @@ export default class ExprPath {
 
 	/**
 	 *
-	 * @param expr {Template|WatchedItem|Node|Array|function|*}
-	 * @param newNodes {Node[]}
-	 * @param secondPass {Array} */
+	 * @param expr {Template|Node|Array|function|*}
+	 * @param newNodes {(Node|Template)[]}
+	 * @param secondPass {Array} Locations within newNodes to evaluate later.  */
 	apply(expr, newNodes, secondPass) {
 
 		if (expr instanceof Template) {
@@ -160,11 +160,6 @@ export default class ExprPath {
 			}
 		}
 
-		else if (expr instanceof WatchedItem) {
-			expr.exprPath = this;
-			return this.apply(expr.getValue(), newNodes, secondPass);
-		}
-
 		// Node created by an expression.
 		else if (expr instanceof Node) {
 
@@ -180,9 +175,13 @@ export default class ExprPath {
 				this.apply(subExpr, newNodes, secondPass)
 
 		else if (typeof expr === 'function') {
-			expr = watchFunction(expr, this.parentNg.manager)
+			//expr = watchFunction(expr, this.parentNg.manager); // part of watch2() experiment.
 
-			this.apply(expr, newNodes, secondPass)
+			Globals.currentExprPath = [this, expr]; // Used by watch3()
+			let result = expr();
+			Globals.currentExprPath = null;
+
+			this.apply(result, newNodes, secondPass)
 		}
 
 		// Text

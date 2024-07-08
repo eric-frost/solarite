@@ -107,6 +107,7 @@ export default class NodeGroupManager {
 	}
 
 	/**
+	 * TODO: Move this to Template ?
 	 * Render the main template, which may indirectly call renderTemplate() to create children.
 	 * @param template {Template}
 	 * @param options {RenderOptions}
@@ -153,7 +154,7 @@ export default class NodeGroupManager {
 
 			// Reparent NodeGroup
 			// TODO: Move this to NodeGroup?
-			let parent = this.rootNg.getParentNode()
+			let parent = this.rootNg.getParentNode();
 			if (!this.rootEl)
 				this.rootEl = parent;
 
