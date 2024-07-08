@@ -41,7 +41,6 @@ export default function r(htmlStrings=undefined, ...exprs) {
 
         // 2. Render template created by #4 to element.
         if (exprs[0] instanceof Template) {
-            let ngm = NodeGroupManager.get(parent);
             let options = exprs[1];
             template.render(parent, options);
 
@@ -62,7 +61,6 @@ export default function r(htmlStrings=undefined, ...exprs) {
             return (htmlStrings, ...exprs) => {
                 rendered.add(parent)
                 let template = r(htmlStrings, ...exprs);
-                let ngm = NodeGroupManager.get(parent);
                 return template.render(parent, options);
             }
         }
@@ -106,7 +104,6 @@ export default function r(htmlStrings=undefined, ...exprs) {
 
     // 8.
     else if (htmlStrings instanceof Template) {
-        let ngm = new NodeGroupManager();
         return htmlStrings.render();
     }
 
@@ -118,7 +115,6 @@ export default function r(htmlStrings=undefined, ...exprs) {
         if (typeof template === 'string')
             throw new Error(`Please add the "r" prefix before the string "${template}"`)
 
-        let ngm = new NodeGroupManager();
         template.replaceMode = true;
         let el = template.render(); //ngm.render(template);
 
