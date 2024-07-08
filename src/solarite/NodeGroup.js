@@ -92,7 +92,7 @@ export default class NodeGroup {
 		let replaceMode = typeof template.replaceMode === 'boolean'
 			? template.replaceMode
 			: fragment.children.length===1 &&
-				fragment.firstElementChild?.tagName.replace(/-REDCOMPONENT-PLACEHOLDER$/, '')
+				fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '')
 				=== manager?.rootEl?.tagName
 		if (replaceMode) {
 			this.pseudoRoot = fragment.firstElementChild;
@@ -119,7 +119,7 @@ export default class NodeGroup {
 		
 
 		// Update web component placeholders.
-		// Ctrl+F "redcomponent-placeholder" in project to find all code that manages subcomponents.
+		// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 		// Is this list needed at all?
 		//for (let component of shell.components)
 		//	this.components.push(resolveNodePath(this.startNode.parentNode, getNodePath(component)))
@@ -222,7 +222,7 @@ export default class NodeGroup {
 					path.applyMultipleAttribs(el, expr)
 
 				// Capture attribute expressions to later send to the constructor of a web component.
-				// Ctrl+F "redcomponent-placeholder" in project to find all code that manages subcomponents.
+				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 				else if (path.nodeMarker !== this.pseudoRoot && path.type === PathType.Component)
 					this.currentComponentProps[path.attrName] = expr;
 				
@@ -394,7 +394,7 @@ export default class NodeGroup {
 		// then we could re-use the hash and logic from NodeManager?
 		let newHash = getObjectHash(props);
 
-		let isPreHtmlElement = el.tagName.endsWith('-REDCOMPONENT-PLACEHOLDER');
+		let isPreHtmlElement = el.tagName.endsWith('-SOLARITE-PLACEHOLDER');
 		let isPreIsElement = el.hasAttribute('_is')
 
 
@@ -427,8 +427,8 @@ export default class NodeGroup {
 			isPreHtmlElement = !el.hasAttribute('_is');
 		
 		let tagName = (isPreHtmlElement
-			? el.tagName.endsWith('-REDCOMPONENT-PLACEHOLDER')
-				? el.tagName.slice(0, -25)
+			? el.tagName.endsWith('-SOLARITE-PLACEHOLDER')
+				? el.tagName.slice(0, -21)
 				: el.tagName
 			: el.getAttribute('is')).toLowerCase();
 

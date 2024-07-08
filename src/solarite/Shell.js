@@ -56,7 +56,7 @@ export default class Shell {
 
 			// Swap out Embedded Solarite Components with ${} attributes.
 			// Later, NodeGroup.render() will search for these and replace them with the real components.
-			// Ctrl+F "redcomponent-placeholder" in project to find all code that manages subcomponents.
+			// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 			if (context === htmlContext.Attribute) {
 
 				let lastIndex, lastMatch;
@@ -66,7 +66,7 @@ export default class Shell {
 				})
 
 				if (lastMatch) {
-					let newTagName = lastMatch + '-redcomponent-placeholder';
+					let newTagName = lastMatch + '-solarite-placeholder';
 					lastHtml = lastHtml.slice(0, lastIndex) + newTagName + lastHtml.slice(lastIndex + lastMatch.length);
 					componentNames[lastMatch] = newTagName
 				}
@@ -85,7 +85,7 @@ export default class Shell {
 		let template = document.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
 		let joinedHtml = buffer.join('');
 
-		// Replace '-redcomponent-placeholder' close tags.
+		// Replace '-solarite-placeholder' close tags.
 		// TODO: is there a better way?  What if the close tag is inside a comment?
 		for (let name in componentNames)
 			joinedHtml = joinedHtml.replaceAll(`</${name}>`, `</${componentNames[name]}>`);
@@ -210,8 +210,8 @@ export default class Shell {
 		}
 		toRemove.map(el => el.remove());
 
-		// Handle redcomponent-placeholder's.
-		// Ctrl+F "redcomponent-placeholder" in project to find all code that manages subcomponents.
+		// Handle solarite-placeholder's.
+		// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 		//if (componentNames.size)
 		//	this.components = [...this.fragment.querySelectorAll([...componentNames].join(','))]
 
