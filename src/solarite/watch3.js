@@ -48,13 +48,7 @@ a.items.push({name: 'Fred'});
 
 
 import Globals from "./Globals.js";
-import {getObjectHash} from "./hash.js";
-
-/**
- * TODO:
- * Have ExprPath set the exprPath property of WatchedItem when it encounters it.
- * WatchedItem needs to be a Proxy to handle objects and arrays.
- */
+import NodeGroupManager from "./NodeGroupManager.js";
 
 
 export default function watch3(root, path) {
@@ -67,6 +61,8 @@ export default function watch3(root, path) {
 
 	// Store internal value used by get/set.
 	let value = root[path];
+
+	let ngm = NodeGroupManager.get(root);
 
 	Object.defineProperty(root, path, {
 		get() {
@@ -84,12 +80,12 @@ export default function watch3(root, path) {
 
 				ng.applyExprs([exprFunction], [exprPath]);  // TODO: Will fail for attribute w/ a value having multiple ExprPaths.
 
-
 				// TODO: This doesn't cascade upward.
 				//ng.exactKey = getObjectHash(ng.template);
 
-			}
+				ngm.reset(); // TODO: This could be skipped if applyExprs() never marked them as in-use.
 
+			}
 		}
 	});
 }

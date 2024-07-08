@@ -78,8 +78,7 @@ export default class Template {
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
 	render(el=null, options={}) {
-		// if (window.debug)
-		// 	debugger;
+
 		let ng;
 		if (!el) {
 			ng = new NodeGroup(this);
@@ -98,7 +97,6 @@ export default class Template {
 			deleted: []
 		};
 		//#ENDIF
-
 
 		ngm.options = options;
 		ngm.clearSubscribers = false; // Used for deprecated watch() path?
