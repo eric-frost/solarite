@@ -2886,6 +2886,7 @@ Testimony.test('Solarite.watch3.nodes', () => {
 	document.body.append(a);
 	console.log(getHtml(a))
 
+	debugger;
 	a.name = 'Jim';
 	console.log(getHtml(a))
 

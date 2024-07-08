@@ -19,7 +19,11 @@ export default class MultiValueMap {
 		return this.data[key] || [];
 	}
 
-	// Remove one value from a key, and return it
+	/**
+	 * Remove one value from a key, and return it.
+	 * @param key {string}
+	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
+	 * @returns {*} */
 	delete(key, val=undefined) {
 		// if (key === '["Html2",[[["Html3",["F1","A"]],["Html3",["F1","B"]]]]]')
 		// 	debugger;

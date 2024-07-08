@@ -3,6 +3,7 @@
  * TODO:
  * 1.  Update NodeGroups when reapplying the expression.
  * 2.  Override .map() for loops to capture changes.
+ * 3.  Have get() return Proxies for nested updates.
  */
 
 
@@ -78,10 +79,7 @@ export default function watch3(root, path) {
 			value = val;
 
 			if (exprFunction) {
-
 				let ng = exprPath.parentNg;
-
-
 				//ng.manager.findAndDeleteExact(ng.exactKey);
 
 				ng.applyExprs([exprFunction], [exprPath]);  // TODO: Will fail for attribute w/ a value having multiple ExprPaths.

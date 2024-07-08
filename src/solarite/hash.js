@@ -18,7 +18,7 @@ export function getObjectId(obj, prefix=null) {
 			prefix = 'Func';
 		else if (typeof obj === 'object')
 			prefix = 'Obj'
-		}
+	}
 	//#ENDIF
 	
 	prefix = prefix || '~\f';

@@ -65,6 +65,7 @@ export default class NodeGroupManager {
 	 * @param rootEl {HTMLElement|DocumentFragment} If not specified, the first element of the html will be the rootEl. */
 	constructor(rootEl=null) {
 		this.rootEl = rootEl;
+
 		/*
 		//#IFDEV
 		
@@ -203,6 +204,7 @@ export default class NodeGroupManager {
 					if (!ng2.inUse) {
 						ng2.inUse = true; // Might speed it up slightly?
 						let success = this.nodeGroupsAvailable.delete(ng2.exactKey, ng2);
+						this.nodeGroupsInUse.push(ng2);
 						/*#IFDEV*/assert(success);/*#ENDIF*/
 
 						// But it can still be a close match, so we don't use this code.

@@ -187,8 +187,10 @@ export default class Template {
 			}
 
 			/*#IFDEV*/ngm.rootNg.verify();/*#ENDIF*/
-			ngm.reset();
+			ngm.reset(); // Mark all NodeGroups as available, for next render.
 			/*#IFDEV*/ngm.rootNg.verify();/*#ENDIF*/
+
+			window.ngm = ngm;
 		}
 
 		ngm.mutationWatcherEnabled = true;
