@@ -393,8 +393,7 @@ export default class ExprPath {
 	 * Clear the nodeCache of this ExprPath, as well as all parent and child ExprPaths that
 	 * share the same DOM parent node.
 	 *
-	 * TODO: Is recursive clearing ever necessary?
-	 */
+	 * TODO: Is recursive clearing ever necessary? */
 	clearNodesCache() {
 		let path = this;
 		

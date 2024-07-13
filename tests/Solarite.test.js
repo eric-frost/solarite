@@ -5,7 +5,7 @@ import {watchGet, watchSet} from "../src/solarite/watch.js";
 import Testimony, {assert} from './Testimony.js';
 Testimony.enableJsDom();
 
-import {Solarite, r} from '../src/solarite/Solarite.js';
+import {Solarite, r, getArg} from '../src/solarite/Solarite.js';
 //import {Red, r, Perf} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 import {watch} from "../src/solarite/watch2.js";
 import watch3 from "../src/solarite/watch3.js";
@@ -1653,6 +1653,7 @@ Testimony.test('Solarite.r.element', () => {
 
 Testimony.test('Solarite.r.lightweightComponent', () => {
 	function betterButton(count=0) {
+		// Pass a function to r() and it becomes the render() function.
 		let result = r(
 			() => r`<button onclick=${(ev, self)=>{count++; self.render()}}>I'm a ${count}X better button</button>`
 		);
@@ -1671,23 +1672,29 @@ Testimony.test('Solarite.r.lightweightComponent', () => {
 })
 
 Testimony.test('Solarite.r.lightweightComponent2', () => {
-	function betterButton(count=0) {
-		let result = r(
-			() => r`<button onclick=${(ev, self)=>{count++; self.render()}}>I'm a ${count}X better button</button>`
-		);
-		result.inc = () => {
-			count++;
-			result.render();
-		}
-		return result;
-	}
 
-	let button = betterButton(3);
+	// Provide a function plus an object of other methods.
+	let count = 3;
+	let button = r(
+		() => r`
+			<button onclick=${(ev, self) => {
+				count++;
+				self.render();
+			}}>I'm a ${count}X better button</button>`,
+		{
+			inc() {
+				count++;
+				this.render();
+			}
+		}
+	);
+
 	assert.eq(getHtml(button), `<button onclick="">I'm a 3X better button</button>`)
 
 	button.inc();
 	assert.eq(getHtml(button), `<button onclick="">I'm a 4X better button</button>`)
-})
+});
+
 
 
 
@@ -1772,17 +1779,13 @@ Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...
 });
 
 Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Solarite component.', () => {
-	
-	Solarite.getArgs = function(el) {
-		debugger;
-		return {};
-	}
-	
+
 	class B514 extends Solarite {
 		constructor({name, userid}={}) {
 			super();
-			this.name = this.getArg('name', name);
-			this.userId = this.getArg('userid', userid);
+
+			this.name = getArg(this, 'name', name);
+			this.userId = getArg(this, 'userid', userid);
 			this.render();
 		}
 		
@@ -1795,7 +1798,7 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 
 	let div = document.createElement('div');
 	div.innerHTML = `<b-514 name="User" userid="2"></b-514>`
-	
+
 	assert.eq(div.outerHTML, `<div><b-514 name="User" userid="2"><!--PathStart:0-->User | 2<!--PathEnd:1--></b-514></div>`)
 	
 });

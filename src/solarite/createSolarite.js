@@ -110,7 +110,7 @@ export default function createSolarite(extendsTag=null) {
 			if (ch)
 				(this.querySelector('slot') || this).append(...ch);
 
-
+			/** @deprecated */
 			Object.defineProperty(this, 'html', {
 				set(html) {
 					rendered.add(this);
@@ -265,6 +265,7 @@ export default function createSolarite(extendsTag=null) {
 		/**
 		 * @deprecated Use the getArg() function instead. */
 		getArg(name, val=null, type=ArgType.String) {
+			throw new Error('deprecated');
 			return getArg(this, name, val, type);
 		}
 	}

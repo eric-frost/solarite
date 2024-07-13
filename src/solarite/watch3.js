@@ -1,9 +1,8 @@
 /**
  * Trying to be able to automatically watch primitive values.
  * TODO:
- * 1.  Update NodeGroups when reapplying the expression.
+ * 1.  Have get() return Proxies for nested updates.
  * 2.  Override .map() for loops to capture changes.
- * 3.  Have get() return Proxies for nested updates.
  */
 
 
@@ -66,9 +65,11 @@ export default function watch3(root, path) {
 
 	Object.defineProperty(root, path, {
 		get() {
-			// Trach which ExprPath is using this variable.
+			// Track which ExprPath is using this variable.
 			if (Globals.currentExprPath)
 				[exprPath, exprFunction] = Globals.currentExprPath;
+
+			// TODO: Return Proxy for non-primitive value, to track path changed.
 			return value;
 		},
 		set(val) {
@@ -76,7 +77,6 @@ export default function watch3(root, path) {
 
 			if (exprFunction) {
 				let ng = exprPath.parentNg;
-				//ng.manager.findAndDeleteExact(ng.exactKey);
 
 				ng.applyExprs([exprFunction], [exprPath]);  // TODO: Will fail for attribute w/ a value having multiple ExprPaths.
 

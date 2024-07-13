@@ -146,7 +146,7 @@ function themeSolarIce(lang, isDark=false) {
 			tag: [t.atom], // Css value like 'Arial' or 'none'.  Keyword 'super' in javascript
 			color: lang === 'js'
 				? (isDark ? '#26f' : '#00f')
-				: (isDark ? '#75f' : '')
+				: (isDark ? '#26f' : '')
 		},
 		{
 			tag: [t.unit],
