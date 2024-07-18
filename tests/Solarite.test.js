@@ -30,6 +30,8 @@ Testimony.test('Util.camelToDashes', () => {
 	assert.eq(camelToDashes('BigUI'), 'big-ui');
 	assert.eq(camelToDashes('UIForm'), 'ui-form');
 	assert.eq(camelToDashes('A100'), 'a-100');
+
+	throw new Error('dashed failure');
 });
 
 Testimony.test('Solarite.basic.empty', () => {
@@ -49,6 +51,9 @@ Testimony.test('Solarite.basic.empty', () => {
 	let a = new A();
 	assert.eq(getHtml(a), '<r-10></r-10>');
 	assert.eq(a.childNodes.length, 0);
+
+
+	throw new Error('basic.empty error');
 });
 
 
@@ -87,6 +92,8 @@ Testimony.test('Solarite.basic.text', () => {
 	assert.eq(a.childNodes.length, 1);
 
 	a.remove();
+
+	assert(false);
 });
 
 
