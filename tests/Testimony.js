@@ -625,7 +625,7 @@ var Testimony = {
 		else {
 			console.log(`These tests failed:`);
 			for (const [testName, testError] of failedTests) {
-				console.log(`${testName} - %c${testError}`, 'color: red');
+				console.error(`${testName} - %c${testError}`, 'color: red');
 			}
 		}
 	},
