@@ -3,7 +3,6 @@
 import {camelToDashes, htmlContext} from "../src/solarite/Util.js";
 import {watchGet, watchSet} from "../src/solarite/watch.js";
 import Testimony, {assert} from './Testimony.js';
-Testimony.enableJsDom();
 
 import {Solarite, r, getArg} from '../src/solarite/Solarite.js';
 //import {Red, r, Perf} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.

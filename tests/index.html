@@ -3,7 +3,6 @@
 <head>
 	<meta charset="UTF-8">
 	<title>Solarite Tests ✨</title>
-	<!-- 💫💥🎇✨☀ -->
 	<link rel="icon" href="data:,">
 	<style>
 		body { font: 14px Consolas; margin: 0; padding: 10px; box-sizing: border-box; min-height: 100vh }
@@ -27,7 +26,7 @@
 	import './Solarite.test.js';
 	import './Benchmark.test.js';
 
-	// For testing:
+	// This function is used by the various tests.
 	window.getHtml = (item, includeComments=false) => {
 		if (!item)
 			return item;
@@ -47,13 +46,11 @@
 
 			result = item.map(n => n.nodeType === 8 ? `<!--${n.textContent}-->` : n.outerHTML || n.textContent).join('|')
 		}
-
-
 		else
 			result = item.outerHTML || item.textContent
 
 		if (!includeComments)
-			result = result.replace(/(<|\x3C)!--(.*?)-->/g, '')
+			result = result.replace(/(<)!--(.*?)-->/g, '')
 
 		// Remove whitespace between tags, so we can write simpler tests.
 		return result.replace(/^\s+</g, '<').replace(/>\s+</g, '><').replace(/>\s+$/g, '>');
@@ -61,7 +58,14 @@
 
 	Testimony.throwOnError = false;
 	Testimony.debugOnAssertFail = true;
-	Testimony.run(document.getElementById('tests'));
+
+
+	//let result = await Testimony.run(document.getElementById('tests'));
+
+	Testimony.setTestsEnabled(null, true);
+
+
+	let result = await Testimony.run(document.getElementById('tests'));
 </script>
 	<form>
 		<button>Run Tests</button>

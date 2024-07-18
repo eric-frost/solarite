@@ -3,6 +3,10 @@
  * Has no external dependencies.
  *
  * TODO:
+ * Make a Test interface and a Test web component.
+ * That way we can render and run the same test object separately.
+ *
+ *
  * 4.  Integrate with IntelliJ file watcher so we run cmd line tests when files change.
  * 5.  Run tests from @expect doc tags.
  * 6.  Documentation - Web tests, deno tests, intellij integration
@@ -287,7 +291,7 @@ var HtmlRenderer = {
 	}
 }
 
-// Not used since Deno renders the tests.
+// Not used.
 var TextRenderer = {
 
 	render(test) {
@@ -328,16 +332,15 @@ class Test {
 	name;
 	desc;
 	expanded;
-	enable;
+	enabled;
 
 	/**
 	 * @type {boolean|Error|null}
-	 * true:  Test passed or all child tests passed
+	 * true:  Test passed or all non-disabled child tests passed
 	 * false:  One or more child tests failed.
 	 * Error:  Test failed.
 	 * null:  Hasn't been run yet. */
 	status = null;
-
 	/**
 	 * Every test will have either a fn OR children.
 	 * @type {?function} */
@@ -357,16 +360,17 @@ class Test {
 			this.expanded = url.searchParams.getAll('x').includes(name);
 
 			// Enabled if this or a parent is checked
-			this.enabled = false;
-			let r = url.searchParams.getAll('r');
-			let parent = name;
-			do {
-				if (r.includes(parent) && !this.getShortName().startsWith('_')) {
-					this.enabled = true;
-					break;
-				}
-				parent = parent.split('.').slice(0, -1).join('.')
-			} while (parent);
+			if (this.enabled === null) { // if not otherwise set, set it from url:
+				let r = url.searchParams.getAll('r');
+				let parent = name;
+				do {
+					if (r.includes(parent) && !this.getShortName().startsWith('_')) {
+						this.enabled = true;
+						break;
+					}
+					parent = parent.split('.').slice(0, -1).join('.')
+				} while (parent);
+			}
 		}
 		else // TODO: Get enabled tests from the command line enable arguments.
 			this.enabled = true;
@@ -393,6 +397,8 @@ class Test {
 					if (result !== false)
 						this.status = true;
 				} catch (e) {
+					console.log(e)
+					Testimony.failedTests.push([this.name, Testimony.shortenError(e, '\n')]);
 					this.status = e;
 				}
 			}
@@ -409,8 +415,8 @@ class Test {
 					if (child.status === false || child.status instanceof Error)
 						this.status = false;
 
-					else if (child.status === null && this.status !== false)
-						this.status = null;
+					// else if (child.status === null && this.status !== false)
+					// 	this.status = null;
 
 					else if (child.status === true)
 						hasPassingChild = true;
@@ -421,17 +427,39 @@ class Test {
 			if (this.status === true && !hasPassingChild)
 				this.status = null;
 		}
+
+		return this.status;
 	}
 
+	/**
+	 * Set the enabled status of this test and its children, checking their checkbox.
+	 * @param tests {string[]} Names of tests.
+	 * @param enabled {boolean} */
+	setEnabled(tests, enabled) {
+		if (!tests || tests.includes(this.name))
+			this.enabled = enabled;
+
+		for (let childName in this.children || {}) {
+			let child = this.children[childName];
+			if (!childName.startsWith('_'))
+				child.setEnabled(tests, enabled);
+		}
+	}
+
+	/**
+	 * The top level test returns a depth of 0.
+	 * @returns {int} */
 	getDepth() {
 		return ((this.name || '').match(/\./g) || []).length;
 	}
 
+	/**
+	 * Get the name after the last dot.
+	 * @returns {string} */
 	getShortName() {
 		return /[^.]*$/.exec(this.name)[0];
 	}
 }
-
 
 var Testimony = {
 
@@ -442,11 +470,40 @@ var Testimony = {
 	/** @type {Test} */
 	rootTest: new Test(),
 
+
+
+
+	finished: false,
+
+	/**
+	 * A map from the test name to the error.
+	 * @type {[string, string][]} */
+	failedTests: [],
+
+
+
+	/**
+	 *
+	 * @param tests {?string[]} Test names.  E.g. ['Main.one', 'Main.two'].  If null, apply to all tests that are not disabled.
+	 * @param enabled {boolean} */
+	setTestsEnabled(tests, enabled) {
+		this.rootTest.setEnabled(tests, enabled);
+	},
+
+	/**
+	 * Run the root test and any of the root tests children.
+	 * TODO: Separate rendering from running.
+	 * @param parent {?HTMLElement}
+	 * @returns {Promise<[string, Error][]>}
+	 */
 	async run(parent) {
+		this.failedTests = []; // resets
 		let renderer = parent ? HtmlRenderer : TextRenderer;
 
 		if (parent) {
-			// Expand
+
+
+			// Expand recursively
 			function doExpand(test, expand) {
 				if (expand) {
 					test.expanded = true;
@@ -473,7 +530,106 @@ var Testimony = {
 			await Testimony.rootTest.run();
 			console.log(renderer.render(Testimony.rootTest));
 		}
+
+
+		this.finished = true;
+		return this.failedTests;
 	},
+
+	/**
+	 * Requires Deno and a regular Chrome installation.
+	 * @param page {string}
+	 * @param webRoot {?string}
+	 * @param tests {?string[]}
+	 * @param port {int} Defaults to 8004 to not conflict with commonly used development ports like 8000 or 8080.
+	 * @returns {Promise<void>} */
+	async runPage(page, webRoot=null, tests=null, headless, port=8004) {
+
+		/*
+		import puppeteer from 'https://esm.sh/puppeteer@13.0.0';
+		import { serve } from 'https://deno.land/std/http/server.ts';
+		import { serveFile } from 'https://deno.land/std@0.102.0/http/file_server.ts';
+		import { Launcher } from 'https://esm.sh/chrome-launcher@0.15.0';
+		 */
+
+		// Dynamically import so we only pull them in if necessary.
+		const [
+			{default: puppeteer},
+			{Launcher},
+			{serve},
+			{serveFile},
+		] = await Promise.all([
+			import('https://deno.land/x/puppeteer@16.2.0/mod.ts'),
+			import('https://esm.sh/chrome-launcher@0.15.0'),
+			import('https://deno.land/std@0.102.0/http/server.ts'),
+			import('https://deno.land/std@0.102.0/http/file_server.ts')
+		]);
+
+		const startServer = () => {
+
+			const absWebRoot = Deno.realPathSync(webRoot);
+			const server = serve({port: 8004});
+			//console.log("HTTP web server running. Access it at: http://localhost:8000/");
+
+			(async () => {
+				for await (const request of server) {
+					const url = new URL(request.url, `http://${request.headers.get("host")}`);
+					const filepath = `${absWebRoot}${url.pathname}`;
+					//console.log(filepath)
+					try {
+						const content = await serveFile(request, filepath);
+						request.respond(content);
+					} catch {
+						request.respond({status: 404, body: "File not found"});
+					}
+				}
+			})();
+
+			return server;
+		};
+
+		const stopServer = (server) => {
+			server.close();
+		};
+
+		const server = startServer();
+
+		const installations = await Launcher.getInstallations();
+		if (installations.length === 0)
+			throw new Error("No Chrome installations found.");
+
+		const executablePath = installations[0]; // Use the first found installation
+
+
+		const browser = await puppeteer.launch({headless, executablePath});
+		const browserPage = await browser.newPage();
+		const url = `http://localhost:${port}/${page}`;
+		//console.log(url)
+		await browserPage.goto(url);
+
+		// Wait for the tests to finish
+		await browserPage.waitForFunction(() => window.Testimony?.finished === true);
+
+		const failedTests = await browserPage.evaluate(() => window.Testimony?.failedTests);
+		this.printTestResult(failedTests);
+
+		await browser.close();
+		stopServer(server);
+
+		Deno.exit(failedTests.length ? 1 : 0);
+	},
+
+	printTestResult(failedTests) {
+		if (!failedTests.length)
+			console.log(`%cAll tests passed.`, 'color: #0c0');
+		else {
+			console.log(`These tests failed:`);
+			for (const [testName, testError] of failedTests) {
+				console.log(`${testName} - %c${testError}`, 'color: red');
+			}
+		}
+	},
+
 
 	/**
 	 * Add a test.
@@ -530,73 +686,96 @@ var Testimony = {
 			}
 		}
 
-		if (globalThis.Deno) {
-			Deno.test(name2, func2);
-		}
-		else {
 
-			// Add to rootTest tree.
-			let path = name.split(/\./g);
-			let pathSoFar = [];
-			let test = this.rootTest;
-			for (let item of path) {
-				pathSoFar.push(item);
+		// Add to rootTest tree.
+		let path = name.split(/\./g);
+		let pathSoFar = [];
+		let test = this.rootTest;
+		for (let item of path) {
+			pathSoFar.push(item);
 
-				if (!test.children)
-					test.children = {};
+			if (!test.children)
+				test.children = {};
 
-				// If at leaf
-				if (pathSoFar.length === path.length)
-					test.children[item] = new Test(name2, desc2, func2);
+			// If at leaf
+			if (pathSoFar.length === path.length)
+				test.children[item] = new Test(name2, desc2, func2);
 
-				// Create test if it doesn't exist.
-				else {
-					test.children[item] = test.children[item] || new Test(pathSoFar.join('.'));
-					test = test.children[item];
-				}
+			// Create test if it doesn't exist.
+			else {
+				test.children[item] = test.children[item] || new Test(pathSoFar.join('.'));
+				test = test.children[item];
 			}
 		}
+
 	},
 
 	// Internal functions:
 
+	/**
+	 * @param error {Error}
+	 * @param br {string}
+	 * @returns {string} */
 	shortenError(error, br='<br>&nbsp;&nbsp;') {
 		// slice(0, -3) to remove the 3 stacktrace lines inside Testimony.js that calls runtests.
 		let errorStack = error.stack.split(/\n/g).slice(0, -3).join('\r\n');
 
 		errorStack = errorStack.replace(/\r?\n/g, br);
 		return errorStack.replace(new RegExp(window.location.origin, 'g'), ''); // Remove server name to shorten error stack.
-	},
-
-	/**
-	 * TODO: This doesn't wor0 because there's no DOMRect.
-	 * I should conslut the jsdom docs and mabye try the "Executing scripts" section
-	 * to run the tests inside the jsdom document?
-	 *
-	 * Used only when running from the command line.
-	 * Define document object to allow us to run all modules from the command line.  */
-	async enableJsDom() {
-		if (!globalThis.document) {
-			await (async () => {
-				let { default: jsdom} = await import('https://dev.jspm.io/jsdom');
-				let dom = new jsdom.JSDOM(`<!DOCTYPE html>`, {
-					pretendToBeVisual: true,
-					resources: 'usable'
-				});
-				let window = dom.window;
-
-				for (let name in window)
-					globalThis[name] = window[name];
-
-				/*let module =*/ /*import('https://deno.land/std@0.73.0/testing/asserts.ts');*/
-
-				// Sleep is required for JSDom to resolve its promises before tests begin.
-				await new Promise(resolve => setTimeout(resolve, 10));
-			})()
-		}
-	},
+	}
 }
-await Testimony.enableJsDom();
+window.Testimony = Testimony; // used by command line test runner.
 
 export default Testimony;
 export {assert, Testimony, TextRenderer, HtmlRenderer};
+
+
+// If Testimony.js is run directly from the command line
+if (import.meta.main) {
+	let pages = null;
+	let imports = null;
+	let tests = null;
+	let webroot = null;
+	let headless = false;
+	for (let arg of Deno.args) {
+
+		if (arg.startsWith('--page=')) {
+			if (!pages)
+				pages = [];
+			pages.push(arg.slice('--page='.length));
+		}
+
+		else if (arg.startsWith('--import=')) {
+			if (!imports)
+				imports = [];
+			imports.push(arg.slice('--import='.length));
+		}
+
+		else if (arg.startsWith('--webroot='))
+			webroot = arg.slice('--webroot='.length);
+
+
+		else if (arg == '--headless')
+			headless = true;
+
+		else if (arg.startsWith('--')) {
+			console.error(`Unsupported arg ${arg}`);
+			Deno.exit(1);
+		}
+
+		// Capture test names to run.
+		else {
+			if (!tests)
+				tests = [];
+			tests.push(arg);
+		}
+	}
+
+	if (webroot && !pages)
+		pages = ['index.html'];
+
+	if (pages) {
+		for (let page of pages)
+			Testimony.runPage(page, webroot, tests, headless);
+	}
+}

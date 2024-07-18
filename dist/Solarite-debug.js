@@ -1895,8 +1895,7 @@ class ExprPath {
 	 * Clear the nodeCache of this ExprPath, as well as all parent and child ExprPaths that
 	 * share the same DOM parent node.
 	 *
-	 * TODO: Is recursive clearing ever necessary?
-	 */
+	 * TODO: Is recursive clearing ever necessary? */
 	clearNodesCache() {
 		let path = this;
 		
@@ -3745,10 +3744,10 @@ class LoopInfo {
  * 6. r('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
  * 7. r()`Hello<b>${'World'}!</b>`     // Same as 4-6, but evaluates the string as a Solarite template, which includes properly handling nested components and r`` sub-expressions.
  * 8. r(template)                      // Render Template created by #1.
- * 9. r(() => r`<b>Hello</b>`);        // Create dynamic element that has a render() function.
+ * 9. r(() => r`<b>Hello</b>`, {...}); // Create dynamic element that has a render() function.
  *
  * @param htmlStrings {?HTMLElement|string|string[]|function():Template}
- * @param exprs {*[]|string|Template}
+ * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template} */
 function r(htmlStrings=undefined, ...exprs) {
 
@@ -3828,6 +3827,7 @@ function r(htmlStrings=undefined, ...exprs) {
         return htmlStrings.render();
     }
 
+
     // 9. Create dynamic element with render() function.
     else if (typeof htmlStrings === 'function') {
         let getTemplate = htmlStrings;
@@ -3837,15 +3837,26 @@ function r(htmlStrings=undefined, ...exprs) {
             throw new Error(`Please add the "r" prefix before the string "${template}"`)
 
         template.replaceMode = true;
-        let el = template.render(); //ngm.render(template);
+        let el = template.render();
 
+        // Create the render() function from the function we were given.
         el.render = (function() {
             template = getTemplate();
             template.render(el);
         }).bind(el);
 
+
+        // The second argument was an object of additional properties to add.
+        let props = exprs[0];
+        for (let name in props)
+            if (typeof props[name] === 'function')
+                el[name] = props[name].bind(el);
+            else
+                el[name] = props[name];
+
         return el;
     }
+
     else
         throw new Error('Unsupported arguments.')
 }
@@ -3961,7 +3972,7 @@ function createSolarite(extendsTag=null) {
 			if (ch)
 				(this.querySelector('slot') || this).append(...ch);
 
-
+			/** @deprecated */
 			Object.defineProperty(this, 'html', {
 				set(html) {
 					rendered.add(this);
@@ -4116,7 +4127,7 @@ function createSolarite(extendsTag=null) {
 		/**
 		 * @deprecated Use the getArg() function instead. */
 		getArg(name, val=null, type=ArgType.String) {
-			return getArg(this, name, val, type);
+			throw new Error('deprecated');
 		}
 	}
 }
