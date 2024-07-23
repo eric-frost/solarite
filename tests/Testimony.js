@@ -360,16 +360,24 @@ class Test {
 			this.expanded = url.searchParams.getAll('x').includes(name);
 
 			// Enabled if this or a parent is checked
-			if (this.enabled === null) { // if not otherwise set, set it from url:
-				let r = url.searchParams.getAll('r');
-				let parent = name;
-				do {
-					if (r.includes(parent) && !this.getShortName().startsWith('_')) {
-						this.enabled = true;
-						break;
-					}
-					parent = parent.split('.').slice(0, -1).join('.')
-				} while (parent);
+			if (this.enabled === undefined && !this.getShortName().startsWith('_')) { // if not otherwise set, set it from url:
+				if (url.searchParams.has('allTests'))
+					this.enabled = true;
+
+				else {
+
+					let r = url.searchParams.getAll('r');
+					let parent = name;
+					do {
+
+						// Enable test if a parent is enabled.
+						if (r.includes(parent)) {
+							this.enabled = true;
+							break;
+						}
+						parent = parent.split('.').slice(0, -1).join('.')
+					} while (parent);
+				}
 			}
 		}
 		else // TODO: Get enabled tests from the command line enable arguments.
@@ -501,8 +509,6 @@ var Testimony = {
 		let renderer = parent ? HtmlRenderer : TextRenderer;
 
 		if (parent) {
-
-
 			// Expand recursively
 			function doExpand(test, expand) {
 				if (expand) {
@@ -526,6 +532,7 @@ var Testimony = {
 			renderer.render(Testimony.rootTest);
 		}
 
+		// Command line
 		else {
 			await Testimony.rootTest.run();
 			console.log(renderer.render(Testimony.rootTest));
@@ -541,9 +548,10 @@ var Testimony = {
 	 * @param page {string}
 	 * @param webRoot {?string}
 	 * @param tests {?string[]}
+	 * @param headless {boolean}
 	 * @param port {int} Defaults to 8004 to not conflict with commonly used development ports like 8000 or 8080.
 	 * @returns {Promise<void>} */
-	async runPage(page, webRoot=null, tests=null, headless, port=8004) {
+	async runPage(page, webRoot=null, tests=null, headless=false, port=8004) {
 
 		/*
 		import puppeteer from 'https://esm.sh/puppeteer@13.0.0';
@@ -603,7 +611,16 @@ var Testimony = {
 
 		const browser = await puppeteer.launch({headless, executablePath});
 		const browserPage = await browser.newPage();
-		const url = `http://localhost:${port}/${page}`;
+		let args = [];
+
+		if (!tests)
+			args.push('allTests');
+		else
+			for (let test of tests)
+				args.push(`&r=${test}`);
+
+
+		const url = `http://localhost:${port}/${page}?${args.join('&')}`;
 		//console.log(url)
 		await browserPage.goto(url);
 
@@ -707,7 +724,18 @@ var Testimony = {
 				test = test.children[item];
 			}
 		}
+	},
 
+	/**
+	 * @param test {?Test} */
+	getAllTestNames(test=null) {
+		test = test || this.rootTest;
+		let result = [];
+		if (test.name.length)
+			result.push(test.name);
+		for (let name in test.children)
+			result.push(...this.getAllTestNames(test.children[name]));
+		return result;
 	},
 
 	// Internal functions:

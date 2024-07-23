@@ -21,51 +21,16 @@
 <body>
 <script type="module">
 	import {Testimony} from './Testimony.js';
-	import './Shell.test.js';
-	import './NodeGroup.test.js';
+
 	import './Solarite.test.js';
 	import './Benchmark.test.js';
 
-	// This function is used by the various tests.
-	window.getHtml = (item, includeComments=false) => {
-		if (!item)
-			return item;
 
-		if (item.fragment)
-			item = item.fragment; // Shell
-		if (item instanceof DocumentFragment)
-			item = [...item.childNodes]
-
-		else if (item.getNodes)
-			item = item.getNodes()
-
-		let result;
-		if (Array.isArray(item)) {
-			if (!includeComments)
-				item = item.filter(n => n.nodeType !==8)
-
-			result = item.map(n => n.nodeType === 8 ? `<!--${n.textContent}-->` : n.outerHTML || n.textContent).join('|')
-		}
-		else
-			result = item.outerHTML || item.textContent
-
-		if (!includeComments)
-			result = result.replace(/(<)!--(.*?)-->/g, '')
-
-		// Remove whitespace between tags, so we can write simpler tests.
-		return result.replace(/^\s+</g, '<').replace(/>\s+</g, '><').replace(/>\s+$/g, '>');
-	}
-
-	Testimony.throwOnError = false;
 	Testimony.debugOnAssertFail = true;
+	Testimony.throwOnError = false;
 
 
-	//let result = await Testimony.run(document.getElementById('tests'));
-
-	Testimony.setTestsEnabled(null, true);
-
-
-	let result = await Testimony.run(document.getElementById('tests'));
+	Testimony.run(document.getElementById('tests'));
 </script>
 	<form>
 		<button>Run Tests</button>

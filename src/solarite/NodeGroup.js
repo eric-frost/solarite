@@ -37,10 +37,10 @@ export default class NodeGroup {
 	/** @type {ExprPath[]} */
 	paths = [];
 
-	/** @type {string} */
+	/** @type {string} Key that matches the template and the expressions. */
 	exactKey;
 
-	/** @type {string} */
+	/** @type {string} Key that only matches the template.  */
 	closeKey;
 
 	/** @type {boolean} Used by NodeGroupManager. */
@@ -158,7 +158,13 @@ export default class NodeGroup {
 			if (this.manager.options.ids !== false)
 				for (let path of shell.ids) {
 					let el = resolveNodePath(root, path);
-					let id = el.getAttribute('data-id') || el.getAttribute('id')
+					let id = el.getAttribute('data-id') || el.getAttribute('id');
+
+					// Don't allow overwriting existing class properties if they already have a non-Node value.
+					if (this.manager.rootEl[id] && !(this.manager.rootEl[id] instanceof Node))
+						throw new Error(`${this.manager.rootEl.constructor.name}.${id} already has a value.  `+
+							`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
+
 					this.manager.rootEl[id] = el;
 				}
 

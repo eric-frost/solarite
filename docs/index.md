@@ -10,17 +10,16 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 Solarite is a small (10KB min+gzip), fast, compilation-free JavaScript library to enhance your vanilla web components.  Features:
 
-- Minimal DOM updates when render() method is manually called.
-- No magic.  Rendering only occurs when you call the render() method.
+- Nearly identical to writing native Web Components.
+- Minimal DOM updates when rendering.
+- No magic:  Rendering only when you want it, via the manually invoked render() method.
 - Local scoped styles:  Inherit external styles but define new styles that apply only to the web component and its children.
-- Attributes are passed as constructor arguments to your web components.
 - Elements with `id` or `data-id` attributes become class properties.
+- Attributes are passed as constructor arguments to nested web components.
+- Single file.  No build steps and no dependencies.  Not even Node.js.  Just `import` Solarite.js or Solarite.min.js into your vanilla JavaScript and start coding.
+- MIT license.  Free for commercial use.  No attribution needed.
 
-No need to set up state.  Instead, use any regular variables or data structures in html templates.  Call `render()` manually and it will update changed elements synchronously.
-
-No custom build steps and no dependencies.  Not even Node.js.  Just `import` Solarite.js or Solarite.min.js.  MIT license.  Free for commercial use.  No attribution needed.
-
-This project is currently in ALPHA stage and not yet recommended for production code.  This documentations is also incomplete.
+With Solarite there's no need to set up state like with other frameworks.  Instead, use any regular variables or data structures in html templates.  Call `render()` manually and it will update changed elements synchronously.
 
 ```javascript
 import {r} from './dist/Solarite.js';
@@ -70,7 +69,7 @@ class ShoppingList extends HTMLElement {
 					</div>			 
 				`)}
 				
-				<pre>items = ${() => JSON.stringify(this.items, null, 4)}</pre>
+				<pre>items = ${JSON.stringify(this.items, null, 4)}</pre>
 			</shopping-list>`
 	}
 }
@@ -79,7 +78,7 @@ customElements.define('shopping-list', ShoppingList);
 document.body.append(new ShoppingList()); // add <shopping-list> element
 ```
 
-
+This project is currently in ALPHA stage and not yet recommended for production code.  This documentations is also incomplete.
 
 ## Using
 
@@ -88,15 +87,19 @@ Import one of these pre-bundled es6 modules into your project:
 - [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 76KB
 - [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 21KB / 7KB gzipped
 
-==TODO: NPM==
+Alternatively:
+
+```bash
+npm install solarite
+```
 
 ## Concepts
 
 ### Web Components
 
-In this minimal example, we make a new class called `MyComponent` and provide a `render()` function to set its html, and a constructor to call it when a new instance is created.
+In this minimal example, we make a new class called `MyComponent` which extends from `HTMLElement` like other web components.  We provide a `render()` function to set its html, and a constructor to call it when a new instance is created.
 
-All browsers require custom web component names to have a dash in the middle.  
+All browsers require custom web component tag names to have at least one dash in the middle.  
 
 ```javascript
 import {r} from './dist/Solarite.js';
@@ -118,23 +121,23 @@ customElements.define('my-component', MyComponent);
 document.body.append(new MyComponent());
 ```
 
-JavaScript veterans will realize that other than the `r()` function, this is highly similar to one might create vanilla JavaScript web components.  This is by design.
-
 Alternatively, instead of instantiating the element in JavaScript, we could can instantiate the element directly from html:
 
 ```html
 <my-component></my-component>
 ```
 
-A JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [PhpStorm](https://www.jetbrains.com/phpstorm/), or [IDEA](https://www.jetbrains.com/idea/) will syntax highlight the html template strings.
+JavaScript veterans will realize that other than the `r()` function, this is highly similar to one might create vanilla JavaScript web components.  This is by design!  
+
+Tip:  A JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [PhpStorm](https://www.jetbrains.com/phpstorm/), or [IDEA](https://www.jetbrains.com/idea/) will syntax highlight the html template strings.
 
 ### render() and r()
 
-The `r` function, when used as part of a [tagged template literal](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals#tagged_templates) , converts the html and embedded expressions into a `Template`, which is an internal data structure used by Solarite to store processed html and expressions.  The call to `r(this)` then renders that `Template` to the web component.  You can think of this like assigning to the browser's built-in `this.outerHTML` property, except it's much faster because only the changed elements are replaced, instead of all nodes.
+The `r` function, when used as part of a [tagged template literal](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals#tagged_templates) , converts the html and embedded expressions into a `Template`, which is an internal data structure used by Solarite to store processed html and expressions.  The call to `r(this)` then renders that `Template` to the web component.  You can think of this like assigning to the browser's built-in `this.outerHTML` property, except updates are much faster because only the changed elements are replaced, instead of all nodes.
 
 Unlike other frameworks Solarite does not re-render automatically when data changes, so you should call the render() function manually as needed.  This is a deliberate design choice to reduce "magic," since in some cases you may want to update internal data without rendering.
 
-Wrapping the web component's html in its tag name is optional.  But without it you then must set any attributes on your web component some other way.
+Wrapping the web component's html in its tag name is optional.  But without it you then must set any attributes on your web component manually.
 
 ```javascript
 import {r} from './dist/Solarite.js';
@@ -154,7 +157,7 @@ customElements.define('my-component', MyComponent);
 document.body.append(new MyComponent());
 ```
 
-If you do provide the outer tag, its name must exactly match the tag name passed to customElements.define().
+If you do wrap the components html in its tag, that tag name must exactly match the tag name passed to customElements.define().
 
 ### Loops
 

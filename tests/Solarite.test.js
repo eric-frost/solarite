@@ -8,10 +8,200 @@ import {Solarite, r, getArg} from '../src/solarite/Solarite.js';
 //import {Red, r, Perf} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 import {watch} from "../src/solarite/watch2.js";
 import watch3 from "../src/solarite/watch3.js";
+import NodeGroupManager from "../src/solarite/NodeGroupManager.js";
+import NodeGroup from "../src/solarite/NodeGroup.js";
+import Template from "../src/solarite/Template.js";
+import Shell from "../src/solarite/Shell.js";
+
+
+// This function is used by the various tests.
+window.getHtml = (item, includeComments=false) => {
+	if (!item)
+		return item;
+
+	if (item.fragment)
+		item = item.fragment; // Shell
+	if (item instanceof DocumentFragment)
+		item = [...item.childNodes]
+
+	else if (item.getNodes)
+		item = item.getNodes()
+
+	let result;
+	if (Array.isArray(item)) {
+		if (!includeComments)
+			item = item.filter(n => n.nodeType !==8)
+
+		result = item.map(n => n.nodeType === 8 ? `<!--${n.textContent}-->` : n.outerHTML || n.textContent).join('|')
+	}
+	else
+		result = item.outerHTML || item.textContent
+
+	if (!includeComments)
+		result = result.replace(/(<)!--(.*?)-->/g, '')
+
+	// Remove whitespace between tags, so we can write simpler tests.
+	return result.replace(/^\s+</g, '<').replace(/>\s+</g, '><').replace(/>\s+$/g, '>');
+}
+
+
+Testimony.test('Solarite.Shell.empty', () => {
+	let shell = new Shell(['', ''])
+	assert.eq(getHtml(shell, true), '<!--PathStart:0-->|<!--PathEnd:0-->')
+});
+
+Testimony.test('Solarite.Shell.paragraph', () => {
+	let shell = new Shell(['<p>', '</p>'])
+	assert.eq(getHtml(shell, true), '<p><!--PathStart:0--><!--PathEnd:0--></p>')
+});
+
+Testimony.test('Solarite.Shell.nodeBefore', () => {
+	let shell = new Shell(['a', ''])
+	assert.eq(getHtml(shell, true), 'a|<!--PathEnd:0-->')
+});
+
+Testimony.test('Solarite.Shell.nodeAfter', () => {
+	let shell = new Shell(['', 'b'])
+	assert.eq(getHtml(shell, true), '<!--PathStart:0-->|b')
+});
+
+Testimony.test('Solarite.Shell.nodeBeforeAfter', () => {
+	let shell = new Shell(['a', 'b'])
+	assert.eq(getHtml(shell, true), 'a|b')
+});
+
+Testimony.test('Solarite.Shell.emptyTwoPaths', () => {
+	let shell = new Shell(['', '', ''])
+	assert.eq(getHtml(shell, true), '<!--PathStart:0-->|<!--PathEnd:0-->|<!--PathEnd:1-->')
+});
+
+Testimony.test('Solarite.Shell.nodeBetweenPaths', () => {
+	let shell = new Shell(['', 'a', ''])
+	assert.eq(getHtml(shell, true), '<!--PathStart:0-->|a|<!--PathEnd:1-->')
+});
+
+Testimony.test('Solarite.Shell.nodesAroundPaths', () => {
+	let shell = new Shell(['a', 'b', 'c'])
+	assert.eq(getHtml(shell, true), 'a|b|c')
+});
+
+Testimony.test('Solarite.Shell.emptyTwoPathsNested', () => {
+	let shell = new Shell(['<p>', '', '</p>'])
+	assert.eq(getHtml(shell, true), '<p><!--PathStart:0--><!--PathEnd:0--><!--PathEnd:1--></p>')
+});
+
+Testimony.test('Solarite.Shell.nodesAroundPathsNested', () => {
+	let shell = new Shell(['<p>a', 'b', 'c</p>'])
+	assert.eq(getHtml(shell, true), '<p>abc</p>')
+});
+
+
+// Testimony.test('Shell.emptySpacer', () => {
+// 	let expr = 1;
+// 	let shell = new Shell(['<input ', '', 'onclick=','>'])
+// 	console.log(getHtml(shell, true))
+// });
 
 
 
-Testimony.test('Util.htmlContext', () => {
+Testimony.test('Solarite.NodeGroup.empty', () => {
+	let ngm = new NodeGroupManager(document.body);
+
+	let ng = new NodeGroup(new Template([``], []), ngm)
+	assert.eq(getHtml(ng), '')
+
+	ng.applyExprs([])
+	assert.eq(getHtml(ng), '')
+});
+
+
+Testimony.test('Solarite.NodeGroup.oneExpr', () => {
+	let ngm = new NodeGroupManager(document.body);
+
+	let ng = new NodeGroup(new Template([``, ``], ['1']), ngm)
+	assert.eq(getHtml(ng), '1')
+
+	ng.applyExprs([2])
+	assert.eq(getHtml(ng), '2')
+
+	ng.applyExprs([[3, 4, 5]])
+	assert.eq(getHtml(ng), '3|4|5')
+});
+
+Testimony.test('Solarite.NodeGroup.emptyAdjacent', () => {
+	let ngm = new NodeGroupManager(document.body);
+	let ng = new NodeGroup(new Template([``, ``, ``], ['1', '2']), ngm)
+	ng.verify();
+
+	assert.eq(getHtml(ng), '1|2')
+
+	ng.applyExprs([3, 4])
+	assert.eq(getHtml(ng), '3|4')
+
+	ng.applyExprs([[1, 2, 3], [4, 5, 6]])
+	assert.eq(getHtml(ng), '1|2|3|4|5|6')
+});
+
+
+Testimony.test('Solarite.NodeGroup.paragraph', () => {
+	let ngm = new NodeGroupManager(document.body);
+	let ng = new NodeGroup(new Template(['<p>', '</p>'], ['1']), ngm)
+	assert.eq(getHtml(ng), '<p>1</p>')
+
+	ng.applyExprs([2])
+	assert.eq(getHtml(ng), '<p>2</p>')
+
+	ng.applyExprs([[3, 4, 5]])
+	assert.eq(getHtml(ng), '<p>345</p>')
+});
+
+Testimony.test('Solarite.NodeGroup.node', () => {
+	let ngm = new NodeGroupManager(document.body);
+	let a = r('<p>a</p>')
+	let b = r('<p>b</p>')
+	let ng = new NodeGroup(new Template(['<div>', '</div>'], [a]), ngm)
+
+	assert.eq(getHtml(ng), '<div><p>a</p></div>')
+
+	ng.applyExprs([b]);
+	assert.eq(getHtml(ng), '<div><p>b</p></div>')
+
+	ng.applyExprs([1]);
+	assert.eq(getHtml(ng), '<div>1</div>')
+
+	ng.applyExprs([a]);
+	assert.eq(getHtml(ng), '<div><p>a</p></div>')
+});
+
+Testimony.test('Solarite.NodeGroup._nodeSwap', () => {
+	let ngm = new NodeGroupManager(document.body);
+	let a = r('<p>a</p>')
+	let b = r('<p>b</p>')
+	let ng = new NodeGroup(new Template(['<div>', '', '</div>'], [a, b]), ngm)
+	document.body.append(ng.startNode)
+
+	assert.eq(getHtml(ng), '<div><p>a</p><p>b</p></div>')
+
+	ng.applyExprs([b, a]);
+	assert.eq(getHtml(ng), '<div><p>b</p><p>a</p></div>');
+});
+
+
+Testimony.test('Solarite.NodeGroup.arrayReverse', () => {
+	let ngm = new NodeGroupManager(document.body);
+	let list = [r('a'), r('b')];
+
+	let ng = new NodeGroup(new Template(['<div>', '</div>'], [list]), ngm)
+	ng.verify();
+	assert(getHtml(ng), '<div>ab</div')
+
+	list.reverse();
+	ng.applyExprs([list])
+	assert(getHtml(ng), '<div>ba</div')
+});
+
+
+Testimony.test('Solarite.Util.htmlContext', () => {
 	assert.eq(htmlContext('<div class="test'), htmlContext.Attribute)
 	assert.eq(htmlContext('">hello '), htmlContext.Text);
 	assert.eq(htmlContext('<span data-attr="hi > there"'), htmlContext.Tag);
@@ -24,14 +214,12 @@ Testimony.test('Util.htmlContext', () => {
 	assert.eq(htmlContext('>'), htmlContext.Text);
 });
 
-Testimony.test('Util.camelToDashes', () => {
+Testimony.test('Solarite.Util.camelToDashes', () => {
 	assert.eq(camelToDashes('ProperName'), 'proper-name');
 	assert.eq(camelToDashes('HTMLElement'), 'html-element');
 	assert.eq(camelToDashes('BigUI'), 'big-ui');
 	assert.eq(camelToDashes('UIForm'), 'ui-form');
 	assert.eq(camelToDashes('A100'), 'a-100');
-
-	throw new Error('dashed failure');
 });
 
 Testimony.test('Solarite.basic.empty', () => {
@@ -51,9 +239,6 @@ Testimony.test('Solarite.basic.empty', () => {
 	let a = new A();
 	assert.eq(getHtml(a), '<r-10></r-10>');
 	assert.eq(a.childNodes.length, 0);
-
-
-	throw new Error('basic.empty error');
 });
 
 
@@ -92,8 +277,6 @@ Testimony.test('Solarite.basic.text', () => {
 	assert.eq(a.childNodes.length, 1);
 
 	a.remove();
-
-	assert(false);
 });
 
 
@@ -2935,7 +3118,7 @@ Testimony.test('Solarite.full.treeItems', () => {
 						:host #childItems { padding-left: 20px }
 					</style>				
 					<div onclick="${this.toggleChildren}">${this.titleText}</div>
-					<div id="childItems" hidden="${!this.showChildren}">
+					<div hidden="${!this.showChildren}">
 						${this.childItems}
 					</div>
 				</tree-item>`;
