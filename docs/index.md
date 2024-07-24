@@ -78,11 +78,9 @@ customElements.define('shopping-list', ShoppingList);
 document.body.append(new ShoppingList()); // add <shopping-list> element
 ```
 
-This project is currently in ALPHA stage and not yet recommended for production code.  This documentations is also incomplete.
+This project is currently in BETA stage and not yet recommended for production code.
 
-## Using
-
-Import one of these pre-bundled es6 modules into your project:
+To use, import one of these pre-bundled es6 modules into your project:
 
 - [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 76KB
 - [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 21KB / 7KB gzipped
@@ -458,7 +456,7 @@ let button = r(
 document.body.append(button);
 ```
 
-### Extending existing DOM elements.
+### Extending Other DOM Elements.
 
 Suppose you want to use a custom component for each `<tr>` in a `<table>`.  Html won't allow you to put just any element as a child of table or tbody.  In this case you can make your web component inherit from the browser's built in `<tr>` element, by passing it as the third argument to `customElements.define`:
 
@@ -489,7 +487,7 @@ for (let i=0; i<10; i++) {
 document.body.append(table);
 ```
 
-### The Solarite Class (experimental)
+### The Solarite Class (Experimental)
 
 Instead of inheriting from HTMLElement, you can inherit from the `Solarite` class, which will add a little bit of magic to your web component:
 
@@ -564,5 +562,5 @@ document.body.append(myTasks);
 
 1. Solarite's `r()` function gets the array of raw strings created by tasks.map() using a template literal function.  
 2. It then creates a hash of the values of each item in the array.  
-3. Then it compares those hashes with the hashes from the last time rendering happened, and only update elements associated with the changed hashes.
+3. Then it compares those hashes with the hashes from the last time rendering happened, and only update elements and attributes given values that have changed.
 
