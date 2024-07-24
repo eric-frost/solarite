@@ -2,7 +2,6 @@
 
 import {camelToDashes, htmlContext} from "../src/solarite/Util.js";
 import {watchGet, watchSet} from "../src/solarite/watch.js";
-import Testimony, {assert} from './Testimony.js';
 
 import {Solarite, r, getArg} from '../src/solarite/Solarite.js';
 //import {Red, r, Perf} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
@@ -12,6 +11,8 @@ import NodeGroupManager from "../src/solarite/NodeGroupManager.js";
 import NodeGroup from "../src/solarite/NodeGroup.js";
 import Template from "../src/solarite/Template.js";
 import Shell from "../src/solarite/Shell.js";
+
+import Testimony, {assert} from './Testimony.js';
 
 
 // This function is used by the various tests.
@@ -1863,13 +1864,13 @@ Testimony.test('Solarite.r.lightweightComponent', () => {
 Testimony.test('Solarite.r.lightweightComponent2', () => {
 
 	// Provide a function plus an object of other methods.
-	let count = 3;
+	let count = 0;
 	let button = r(
 		() => r`
 			<button onclick=${(ev, self) => {
 				count++;
 				self.render();
-			}}>I'm a ${count}X better button</button>`,
+			}}>I've been clicked ${count} times.</button>`,
 		{
 			inc() {
 				count++;
@@ -1878,10 +1879,10 @@ Testimony.test('Solarite.r.lightweightComponent2', () => {
 		}
 	);
 
-	assert.eq(getHtml(button), `<button onclick="">I'm a 3X better button</button>`)
+	assert.eq(getHtml(button), `<button onclick="">I've been clicked 0 times.</button>`)
 
 	button.inc();
-	assert.eq(getHtml(button), `<button onclick="">I'm a 4X better button</button>`)
+	assert.eq(getHtml(button), `<button onclick="">I've been clicked 1 times.</button>`)
 });
 
 
