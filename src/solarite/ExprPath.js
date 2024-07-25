@@ -4,7 +4,6 @@ import {getObjectId} from "./hash.js";
 import NodeGroup from "./NodeGroup.js";
 import {div, findArrayDiff, setIndent} from "./Util.js";
 import Template from "./Template.js";
-import {watchFunction} from "./watch2.js";
 import Globals from "./Globals.js";
 
 /**

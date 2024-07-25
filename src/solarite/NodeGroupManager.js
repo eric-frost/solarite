@@ -350,7 +350,10 @@ export default class NodeGroupManager {
 	//pathToLoopInfo = new MultiValueMap(); // uses a Set() for each value.
 	clearSubscribers = false;
 
+	//#IFDEV
+
 	/**
+	 * @deprecated - part of watch.js (Watch v1)
 	 * One path may be used to loop in more than one place, so we use this to get every anchor from each loop.
 	 * @param path {Array}
 	 * @return {LoopInfo[]} A function that gets the loop anchor NodeGroup */
@@ -358,6 +361,8 @@ export default class NodeGroupManager {
 		let serializedArrayPath = serializePath(path);
 		return [...this.pathToLoopInfo.getAll(serializedArrayPath)]; // This is set inside forEach()
 	}
+
+	//#ENDIF
 
 	
 	/**

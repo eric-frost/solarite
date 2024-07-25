@@ -114,8 +114,8 @@ class MyComponent extends HTMLElement {
 		r(this)`<my-component>Hello <b>${this.name}!<b></my-component>`
 	}
 }
-customElements.define('my-component', MyComponent);
 
+customElements.define('my-component', MyComponent);
 document.body.append(new MyComponent());
 ```
 
@@ -236,18 +236,23 @@ Listen for events by assigning a function expression to any event attribute.  Or
 import {r} from './dist/Solarite.js';
 
 class EventDemo extends HTMLElement {
-    showMessage(message) {
-        alert(message);
-    }
-    
+	constructor() {
+		super();
+		this.render();
+	}
+	
+	showMessage(message) {
+		alert(message);
+	}
+	
 	render() { 
 		r(this)`
-        <event-demo>
-            <div onclick=${(ev, el)=>alert('Element ' + el.tagName + ' clicked!')}>Click me</div>
-            <div onclick=${[this.showMessage, 'I too was clicked!']}>Click me</div>
-        </event-demo>`
+		<event-demo>
+			<button onclick=${(ev, el)=>alert('Element ' + el.tagName + ' clicked!')}>Click me</button>
+			<button onclick=${[this.showMessage, 'I too was clicked!']}>Click me too!</button>
+		</event-demo>`
 	}
-}
+} 
 customElements.define('event-demo', EventDemo);
 document.body.append(new EventDemo());
 ```
@@ -523,7 +528,7 @@ list.render();
 
 ## How it works
 
-Suppose you're looping over an array of 10 objects and printing them to a list or table.  Something like this:
+Suppose you're looping over an array of 10 objects and printing them to a list or table:
 
 ```javascript
 import {r} from './dist/Solarite.js';
@@ -559,6 +564,8 @@ for (let i=0; i<10; i++)
 myTasks.render();
 document.body.append(myTasks);
 ```
+
+When `render()` is called:
 
 1. Solarite's `r()` function gets the array of raw strings created by tasks.map() using a template literal function.  
 2. It then creates a hash of the values of each item in the array.  
