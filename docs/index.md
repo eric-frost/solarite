@@ -1,5 +1,5 @@
 ---
-title:  Solarite Documentation
+title:  Solarite JS Library
 append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="module" src="docs/js/documentation.js"></script><link rel="stylesheet" href="docs/media/documentation.css"><link rel="stylesheet" href="docs/media/eternium.css"><link rel="icon" href="docs/media/solarite-machine.webp" type="image/webp">
 
 ---
@@ -8,7 +8,7 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite
 
-Solarite is a small (10KB min+gzip), fast, compilation-free JavaScript library to enhance your vanilla web components.  Features:
+Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript library to enhance your vanilla web components.  Features:
 
 - Very similar to writing native Web Components.
 - Minimal DOM updates when rendering.
@@ -85,11 +85,11 @@ To use, import one of these pre-bundled es6 modules into your project:
 - [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 87KB
 - [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 24KB / 8KB gzipped
 
-Alternatively:
+Or get Solarite from GitHub or NPM:
 
-```bash
-npm install solarite
-```
+- [Solarite GitHub Repository](https://github.com/Vorticode/solarite)
+- `git clone https://github.com/Vorticode/solarite.git`
+- `npm install solarite`
 
 ## Concepts
 

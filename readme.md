@@ -4,7 +4,7 @@ Solarite is a small (10KB min+gzip), fast, compilation-free JavaScript web compo
 
 It's currently in beta.
 
-See examples on the **[Documentation Page](https://vorticode.github.io/solarite/)**.
+For documentation and examples, see the **[Official Solarite Page](https://vorticode.github.io/solarite/)**.
 
 Download [Solarite.js](https://vorticode.github.io/solarite/dist/Solarite.js) (87KB, 8KB min+gzip)
 

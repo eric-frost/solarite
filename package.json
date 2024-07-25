@@ -1,6 +1,6 @@
 {
   "name": "solarite",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Solarite is a small, fast, compilation-free JavaScript web component library that closely follows modern web standards.",
   "main": "dist/Solarite.js",
   "directories": {
