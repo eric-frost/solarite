@@ -1,12 +1,15 @@
 import Util from "../util/Util.js";
-import {assert} from "../util/Errors.js";
+//import {assert} from "../util/Errors.js";
 import delve from "../util/delve.js";
 import {getArg, ArgType} from "./getArg.js";
 import {getObjectHash} from "./hash.js";
 import NodeGroupManager from "./NodeGroupManager.js";
 import r, {rendered} from "./r.js";
 import {camelToDashes} from "./Util.js";
-import {watchGet, watchSet} from "./watch.js";
+
+
+//import {watchGet, watchSet} from "./watch.js";
+
 
 
 function defineClass(Class, tagName, extendsTag) {
@@ -161,6 +164,8 @@ export default function createSolarite(extendsTag=null) {
 			defineClass(this, tagName, extendsTag)
 		}
 
+		//#IFDEV
+
 		/** @deprecated */
 		renderWatched() {
 			let ngm = NodeGroupManager.get(this);
@@ -235,8 +240,7 @@ export default function createSolarite(extendsTag=null) {
 							// Create new NodeGroup
 							let ng = ngm.getNodeGroup(template, false, true);
 							ng.parentPath = beforeNg?.parentPath || loopInfo.template.parentPath;
-							/*#IFDEV*/
-							assert(ng.parentPath);/*#ENDIF*/
+
 							for (let node of ng.getNodes())
 								beforeNode.parentNode.insertBefore(node, beforeNode);
 
@@ -269,6 +273,7 @@ export default function createSolarite(extendsTag=null) {
 			throw new Error('deprecated');
 			return getArg(this, name, val, type);
 		}
+		//#ENDIF
 	}
 }
 

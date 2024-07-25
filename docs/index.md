@@ -10,12 +10,12 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 Solarite is a small (10KB min+gzip), fast, compilation-free JavaScript library to enhance your vanilla web components.  Features:
 
-- Nearly identical to writing native Web Components.
+- Very similar to writing native Web Components.
 - Minimal DOM updates when rendering.
 - No magic:  Rendering only when you want it, via the manually invoked render() method.
 - Local scoped styles:  Inherit external styles but define new styles that apply only to the web component and its children.
 - Elements with `id` or `data-id` attributes become class properties.
-- Attributes are passed as constructor arguments to nested web components.
+- Attributes are passed as constructor arguments to nested Solarite components.
 - Single file.  No build steps and no dependencies.  Not even Node.js.  Just `import` Solarite.js or Solarite.min.js into your vanilla JavaScript and start coding.
 - MIT license.  Free for commercial use.  No attribution needed.
 
@@ -82,8 +82,8 @@ This project is currently in BETA stage and not yet recommended for production c
 
 To use, import one of these pre-bundled es6 modules into your project:
 
-- [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 76KB
-- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 21KB / 7KB gzipped
+- [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 87KB
+- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 24KB / 8KB gzipped
 
 Alternatively:
 

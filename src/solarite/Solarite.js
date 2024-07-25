@@ -18,5 +18,5 @@ export {default as Template} from './Template.js';
 
 
 //Experimental:
-export {forEach, watchGet, watchSet} from './watch.js' // old, unfinished
-export {watch} from './watch2.js'; // unfinished
+//export {forEach, watchGet, watchSet} from './watch.js' // old, unfinished
+//export {watch} from './watch2.js'; // unfinished

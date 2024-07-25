@@ -81,16 +81,6 @@ var Util$1 = {
 
 };
 
-//#IFDEV
-/*@__NO_SIDE_EFFECTS__*/
-function assert(val) {
-	if (!val) {
-		debugger;
-		throw new Error('Assertion failed: ' + val);
-	}
-}
-//#ENDIF
-
 /**
  * Follow a path into an object.
  * @param obj {object}
@@ -402,6 +392,16 @@ class MultiValueMap {
 		return names;
 	}
 }
+
+//#IFDEV
+/*@__NO_SIDE_EFFECTS__*/
+function assert(val) {
+	if (!val) {
+		debugger;
+		throw new Error('Assertion failed: ' + val);
+	}
+}
+//#ENDIF
 
 let Util = {
 
@@ -823,693 +823,6 @@ class Template {
 		//return '@'+this.html.join('|')
 
 		return '@'+this.hashedFields[0];
-	}
-}
-
-/**
- * Tools for watch variables and performing precise renders.
- */
-
-
-/**
- * Stores info how to transform a path to a template. */
-class TransformerInfo {
-	constructor(path, transformer, hash) {
-		this.path = path;
-		this.transformer = transformer;
-		this.hash = hash;
-	}
-}
-
-
-/**
- * Maps an object path to the function that converts it to a Template.
- * Once it's convert to a template, we can get the hash of that Tempate.
- * Then that hash tells us what NodeGroups are affected by the object.
- *
- * We store the function to get the Template, instead of the Template itself,
- * so we can call that function again when the object has a new value.
- * @type {MultiValueMap<Object, function(...Object):Template>} */
-let pathToTransformer = new MultiValueMap(); // uses a Set() for each value.
-
-/**
- *
- * @param objectPaths {(*|function)[]}
- * @returns {Template} */
-function watchGet(...objectPaths) {
-	
-	/** @type {function} */
-	let transformer = objectPaths.at(-1);
-	let paths;
-	if (typeof transformer === 'function') {
-		paths = objectPaths.slice(0, -1);
-	}
-
-	// No transformer provided, so we create our own.
-	else if (objectPaths.length === 1) {
-		paths = [objectPaths[0].slice(0, -1)];
-		let prop = objectPaths[0].at(-1);
-		transformer = (...args) => (args[0][prop]);
-	}
-
-	
-	// Save arguments used to call the template, so we can call it again when those args have their values change.
-	let args = [];
-	for (let path of paths) {
-
-
-		let obj = delve(watchSet(path[0]), path.slice(1));
-		args.push(obj);
-	}
-	
-	let template = transformer(...args);
-	
-	// If the result isn't a Template, convert the function to return a Template that wraps the result.
-	// This way NodeGroupManager.findAndDelete() can find a NodeGroup that matches this Template's hash.
-	if (!(template instanceof Template)) {
-		let oldToTemplate = transformer;
-		transformer = function() {
-			return new Template(['', ''], [oldToTemplate(...arguments)]);
-		};
-		template = transformer(...args);
-	}
-	
-	// Map the object paths to the function that creates a template.
-	let hash = getObjectHash(template);
-	for (let path of paths) {
-		let serializedPath = serializePath(path);
-		pathToTransformer.add(serializedPath, new TransformerInfo(path, transformer, hash)); // Uses a Set() to ensure no duplicates.
-	}
-
-	return template;
-}
-
-//let proxyCache = new WeakMap();
-
-
-/**
- * Set the value of a variable in a way that's watched, so later when we call .renderWatched()
- * We can find what NodeGroups to update.*/
-function watchSet(obj) {
-	if (obj?.$isProxy===true)
-		return obj; // It's already a Proxy.
-
-	// This cache doesn't make things faster.
-	// let result = proxyCache.get(obj);
-	// if (!result) {
-	// 	result = new Proxy(obj, new ProxyHandler(obj));
-	// 	proxyCache.set(obj, result);
-	// }
-	// return result;
-	return new Proxy(obj, new ProxyHandler$1(obj));
-}
-
-/**
- * Loop over each item and apply watchGet() to each item.
- * @param arrayPath {*[]}
- * @param callback {function(obj:Object, index:int):Template}
- * @returns {Template} */
-function forEach(arrayPath, callback) {
-	let array = delve(arrayPath[0], arrayPath.slice(1));
-
-	// This is retrieved on the 'insert' path inside renderWatched()
-	let ngm = NodeGroupManager.get(arrayPath[0]);
-	if (ngm.clearSubscribers) {
-		ngm.clearSubscribers = false;
-		ngm.pathToLoopInfo = new MultiValueMap();
-	} // TODO: Move tis into NodeGroupMAnager.get() without breaking things?
-
-
-	let newItems = [...array.map((item, i) => {
-			// TODO: This needs to wrap callback so we can pass it the index also.
-			return watchGet([...arrayPath, i], callback); // calls callback(array[i], i)
-		})
-	];
-
-	// We return a template that wraps the array
-	// So that ExprPath.apply() can set the ExprPath and nextSibling on the template.
-	// Then the 'insert' path in renderWatched() uses that data fora dding more nodes.
-	let result = new Template(['', ''], [newItems]);
-
-
-	// We get a unique hash for each foreach template because the [''] array is unique each time.
-	let loopInfo = new LoopInfo(result, callback);
-	ngm.pathToLoopInfo.add(serializePath(arrayPath), loopInfo);
-	return result;
-}
-
-function serializePath(path) {
-	// Convert any array indices to strings, so serialized comparisons work.
-	return JSON.stringify([getObjectId(path[0]), ...path.slice(1).map(item => item+'')])
-
-}
-
-
-/**
- * When an object property is accessed, a new Proxy with a new instance of this handler class is created,
- * but it tracks the path from the root to the property.
- * That way when a property is set, it can report the changed path. */
-class ProxyHandler$1 {
-	
-	/**
-	 * @param root An element managed by a NodeGroupManager.  The same as the NodeGroupManager's rootEl.
-	 * @param path {string[]} Used internally. */
-	constructor(root, path=[]) {
-		/*#IFDEV*/assert(NodeGroupManager.get(root));/*#ENDIF*/
-		this.root = root;
-		this.path = path; // path from root to this Proxy.
-	}
-
-	/**
-	 * @param obj {Object}
-	 * @param prop {string} */
-	get(obj, prop) {
-		
-		// Special props.  Currently unused.
-		// if (prop === '$path')
-		// 	return this.path;
-		// if (prop === '$root')
-		// 	return this.root;
-		if (prop === '$isProxy')
-		 	return true;
-		
-		
-		// 1. Array.splice()
-		if (prop === 'splice' && Array.isArray(obj)) {
-			return (index, deleteCount, ...items) => {
-				let ngm = NodeGroupManager.get(this.root);
-
-				if (deleteCount) {
-
-					// Get the hash of each object along the delete range.  The process to get the hash is:
-					// Serialized Path -> transformer -> Template -> hash.
-					let hashes = [];
-					for (let i=index; i<index+deleteCount; i++) {
-						let serializedPath = serializePath([this.root, ...this.path, i+'']);
-
-						let obj = delve(this.root, [...this.path, i]);
-						for (let transformerInfo of pathToTransformer.getAll(serializedPath)) {
-							let template = transformerInfo.transformer(obj);
-							let hash = getObjectHash(template);
-							hashes.push(hash); // Hashes may go to nodes in more than one loop.
-						}
-					}
-
-					ngm.changes.push(new Change('delete', this.root, [...this.path, index+''], hashes));
-				}
-
-				//let oldArray = [...obj];
-				let result = obj.splice(index, deleteCount);
-
-				// Inserting
-				if (items.length) {
-
-					let beforeNgs;
-					for (let loopInfo of ngm.getLoopInfo([this.root, ...this.path])) {
-						let beforeObj = delve(this.root, [...this.path, index]);
-
-						// Find where to insert before.
-						if (beforeObj) {
-							let beforeTemplate = loopInfo.itemTransformer(beforeObj);
-							let beforeHash = getObjectHash(beforeTemplate);
-							beforeNgs = ngm.nodeGroupsAvailable.data[beforeHash];
-
-							if (beforeNgs) {
-								let hash = getObjectHash(loopInfo.template);
-								let loopNgs = ngm.nodeGroupsAvailable.data[hash] || [];
-								for (let loopNg of loopNgs)
-									for (let beforeNg of beforeNgs)
-										if (beforeNg.startNode.parentNode === loopNg.startNode.parentNode)
-											ngm.changes.push(new Change('insert', this.root, [...this.path, index + ''], items, beforeTemplate));
-							}
-						}
-						if (!beforeNgs)
-							ngm.changes.push(new Change('insert', this.root, [...this.path, index + ''], items));
-					}
-					obj.splice(index, 0, ...items);
-				}
-				return result;
-			}
-		}
-		
-
-
-		// 2.  Get property
-		// If we're getting an object or array property, apply watch() to it recursively.
-		let result = Reflect.get(obj, prop);
-		if (result && typeof result === 'object') {
-			let handler = new ProxyHandler$1(this.root, [...this.path, prop]); // same root, one level deeper on the path.
-			return new Proxy(result, handler);
-		}
-
-		return result;
-	}
-
-
-	set(obj, prop, newValue) {
-		let ngm = NodeGroupManager.get(this.root);
-		ngm.changes.push(new Change('set', this.root, [...this.path, prop], newValue));
-		return Reflect.set(obj, prop, newValue)
-	}
-}
-
-
-/**
- *
- */
-class Change {
-	
-	/**
-	 * @param action {string}
-	 * @param root {Object|Array}
-	 * @param path {string[]}
-	 * @param value
-	 *	 If setting a value, this is the new value.
-	 *	 If deleting from an array, this is an array of all the NodeGroups to delete.
-	 *
-	 * @param beforeTemplate
-	 * */
-	constructor(action, root, path, value, beforeTemplate=null) {
-		this.action = action;
-
-		// TODO: Store root as first item of path, to be consistent with code elsewhere.
-		this.root = root;
-		this.path = path;
-		this.value = value;
-		this.beforeTemplate = beforeTemplate;
-
-		/** @type {TransformerInfo[]} */
-		this.transformerInfo = [];
-
-		// Traverse up the path.
-		for (let i=this.path.length; i>0; i--) {
-			let path = this.path.slice(0, i);
-			let fullPath = [this.root, ...path];
-
-			let serializedPath = getObjectHash(fullPath); // TODO: Why not serializedPath() ?
-			this.transformerInfo.push(...pathToTransformer.getAll(serializedPath));
-		}
-	}
-}
-
-let withinSet = 0;
-
-
-/**
- * Turn the props on obj into JavasCript properties that return Proxies when accessed.
- * If called more than once, return the already-converted object.
- * @param obj {Object}
- * @param props {string}
- * @returns {*|{$proxyHandler}}
- */
-function watch(obj, ...props) {
-	
-	if (props.length) {
-		let internalProps = {};
-		for (let prop of props) {
-			internalProps[prop] = obj[prop];
-			Object.defineProperty(obj, prop, {
-				get() {
-					return new Proxy(obj, new ProxyHandler(obj, [], internalProps))[prop];
-				},
-				set(value) {
-					return watch(this)[prop] = value;
-				}
-			});
-		}
-		return;
-	}
-	
-	
-	if (obj?.$proxyHandler)
-		return obj; // It's already a Proxy.
-	
-	// This cache doesn't make things faster.
-	// But could it save memory?
-	// let result = proxyCache.get(obj);
-	// if (!result) {
-	// 	result = new Proxy(obj, new ProxyHandler(obj));
-	// 	proxyCache.set(obj, result);
-	// }
-	// return result;
-	/*#IFDEV*/assert(!obj.$proxyHandler);/*#ENDIF*/
-	return new Proxy(obj, new ProxyHandler(obj));
-}
-
-/**
- * Provides methods used when a Proxied version of a property is accessed on an object returned by watch() */
-class ProxyHandler {
-	
-	serializedPath;
-	
-	/**
-	 * @param root An element managed by a NodeGroupManager.  The same as the NodeGroupManager's rootEl.
-	 * @param path {string[]} Used internally.
-	 * @param props */
-	constructor(root, path=[], props=null) {
-		/*#IFDEV*/assert(NodeGroupManager.get(root));/*#ENDIF*/
-		this.root = root;
-		this.path = path; // path from root to this Proxy.
-		this.props = props;
-	}
-	
-	/**
-	 * Get the full path to this property from the root watched object.
-	 * @param atIndex
-	 * @returns {string} */
-	getSerializedPath(atIndex=null) {
-		if (!this.serializedPath)
-			this.serializedPath = JSON.stringify([getObjectId(this.root), ...this.path.map(item => item + '')]);
-			
-		if (atIndex!== null)
-			return this.serializedPath.slice(0, -1) + ',"' + atIndex + '"]';
-		return this.serializedPath;
-	}
-	
-	/**
-	 * Return a ProxyHandler for a property one level deeper at pathItem.
-	 * @param pathItem {string}
-	 * @returns {ProxyHandler} */
-	extend(pathItem) {
-		pathItem += '';
-		assert(!this.root.$proxyHandler);
-		let result = new ProxyHandler(this.root, [...this.path, pathItem], this.props);
-		if (this.serializedPath)
-			result.serializedPath = this.getSerializedPath(pathItem);
-		
-		return result;
-	}
-	
-	/**
-	 * Called directly by JavaScript when accessing the value of a property.
-	 * @param obj {Object}
-	 * @param prop {string} */
-	get(obj, prop) {
-		
-		// 1.  Special props.
-		if (prop === '$proxyHandler')
-			return this;
-		else if (prop === '$removeProxy')
-			return delve(this.props || this.root, this.path);
-		
-		// 2. Array functions.
-		else if (prop === 'map' && Array.isArray(obj)) {
-			
-			let ngm = NodeGroupManager.get(this.root);
-			ngm.clearSubscribersIfNeeded();
-			
-			return callback => {
-				let loopInfo;
-				
-				let children = [];
-				let transformer = obj => {
-					let templates = [];
-					
-					for (let i = 0; i < obj.length; i++) {
-
-						// Watch obj[i].
-						let handler = this.extend(i);
-						let item = obj[i];
-						if (!item.$proxyHandler)
-							item = new Proxy(item, handler);
-
-						let template = callback(item, i, obj);
-						templates.push(template);
-
-						// If the loop is re-evaluted via Set() then we add duplicate TemplateInfo's
-						//if (!withinSet) {
-							let spath = this.getSerializedPath(i);
-							let subscriber = new Subscriber(callback, template);
-							subscriber.parent = loopInfo;
-							ngm.subscribers.add(spath, subscriber);
-							children.push([spath, subscriber]);
-						//}
-					}
-					
-					// A parent Template that surrounds all the items in the loop.
-					// This lets us get template.nodeGroup.endNode so we can insertBefore().
-					return new Template(['', ''], [templates]);
-				};
-
-				if (!withinSet)
-					loopInfo = new Subscriber(transformer, null, callback);
-				let wholeLoopTemplate = transformer(obj);
-				if (!withinSet) {
-					loopInfo.template = wholeLoopTemplate;
-					loopInfo.children = children;
-					ngm.subscribers.add(this.getSerializedPath(), loopInfo);
-				}
-				return wholeLoopTemplate;
-			}
-		}
-
-		else if ((prop ==='splice' || prop === 'fastSplice') && Array.isArray(obj)) {
-			let ngm = NodeGroupManager.get(this.root);
-			return (index, deleteCount, ...items) => {
-				let diff = items.length - deleteCount;
-                let objLength = obj.length;
-				
-				// Delete
-				if (deleteCount) {
-					for (let i=index; i<index+deleteCount; i++) {
-						
-						// Update pathToTemplates
-						let spath = this.getSerializedPath(i);
-						
-						// Delete nodes of associated NodeGroups.
-						for (let subscriber of ngm.subscribers.data[spath] || []) {
-							let ng = subscriber.template.nodeGroup;
-							for (let node of ng.getNodes())
-								node.remove();
-							
-							// Delete NodeGroup from NodeGroupManager.
-							ngm.nodeGroupsAvailable.delete(ng.exactKey, ng);
-						}
-						
-						delete ngm.subscribers.data[spath]; // Deletes templates associated with every loop where this is used.
-					}
-				}
-				
-				// Update indices of subsequent items.
-				if (diff) {
-					let loopPath = this.getSerializedPath();
-					let loopInfo = [...ngm.subscribers.getAll(loopPath)][0]; // TODO: Handle multiple loops.
-					
-					let move = (oldIndex) => {
-                        let newIndex = oldIndex+diff;
-						let oldPath = this.getSerializedPath(oldIndex);
-						let newPath = this.getSerializedPath(newIndex);
-
-						let subscribers = ngm.subscribers.data[oldPath];
-						delete ngm.subscribers.data[oldPath]; // TODO: Some can be overwritten w/o being deleted?
-						ngm.subscribers.data[newPath] = subscribers;
-
-						
-						// Update associated NodeGroups by passing them newIndex.
-						// This is unnecessary for most loops since they don't use the index.
-						// fastSplice skips this path, it skips updating item indices.
-						if (prop === 'splice') {
-							let array = delve(this.root, this.path);
-							for (let subscriber of subscribers) {
-								let ng = subscriber.template.nodeGroup;
-								
-								let item = array[oldIndex];
-
-								//assert(!item.$proxyHandler)
-								let proxyItem = getProxy(item, this, this.path, newIndex); //new Proxy(item, this.extend(newIndex));
-								let exprs = loopInfo.itemTransformer(proxyItem, newIndex).exprs; // TODO: Pass updated array as third argument to transformer.
-								ng.applyExprs(exprs); // this is the slow part.
-							}
-						}
-					};
-					
-					// Iterate in different directions depending on whether diff is positive or negative.
-					if (diff > 0) // Moving items to the right, so we iterate backward from the end.
-						for (let i = objLength-1; i >= index + items.length + deleteCount; i--)
-							move(i);
-
-					else // Moving items to the left, so we iterate forward.
-						for (let i = index + items.length + deleteCount; i < objLength; i++)
-							move(i);
-				}
-				
-				
-				// Add new items
-				if (items.length) {
-					let loopPath = this.getSerializedPath();
-					
-					let beforePath = this.getSerializedPath(index);
-					let ngm = NodeGroupManager.get(this.root);
-					
-					for (let loopInfo of ngm.subscribers.getAll(loopPath)) {
-						let beforeNodes = index < objLength - deleteCount
-							? [...ngm.subscribers.getAll(beforePath)].map(t => t.template.nodeGroup.startNode)
-							: [loopInfo.template.nodeGroup.endNode];
-						for (let beforeNode of beforeNodes) { // TODO: Need to match the beforeNg with the loopInfo instead of iterating.
-							for (let i = 0; i < items.length; i++) {
-								
-								// Create NodeGroup of new item.
-								let itemHandler = this.extend(index + i);
-								assert(!items[i].$proxyHandler);
-								let proxyItem = new Proxy(items[i], itemHandler);
-								let template = loopInfo.itemTransformer(proxyItem);
-								let ng = ngm.getNodeGroup(template, null, true);
-								
-								
-								for (let node of ng.getNodes()) {
-									beforeNode.parentNode.insertBefore(node, beforeNode);
-									//loopInfo.template.nodeGroup.endNode = node; // The loop's end node is actually an empty text node, so don't do this.
-								}
-								
-								
-								// Add new items to ngm.templateInfo
-								let spath = itemHandler.getSerializedPath();
-								let subscriber = new Subscriber(loopInfo.itemTransformer, template);
-								subscriber.parent = loopInfo;
-								ngm.subscribers.add(spath, subscriber);
-							}
-						}
-						loopInfo.template.nodeGroup.parentPath.clearNodesCache();
-						loopInfo.template.nodeGroup.nodesCache = null;
-					}
-				}
-				
-				let result = obj.splice(index, deleteCount, ...items);
-				
-				//this.notify(this.path);
-				
-				return result;
-			}
-		}
-
-		// Allow these functions to use proxied objects as arguments.
-		else if (prop ==='indexOf' && Array.isArray(obj)) {
-			return item => {
-				return obj.indexOf(item.$removeProxy || item)
-			}
-		}
-
-		// 3.  Get property
-		else {
-
-			let obj2 = obj === this.root && this.props ? this.props : obj;
-			let result = Reflect.get(obj2, prop);
-
-			// If we're getting an object or array property, apply watch() to it recursively.
-			if (result && typeof result === 'object') {
-				let handler = this.extend(prop); // same root, one level deeper on the path.
-				/*#IFDEV*/assert(!result.$proxyHandler);/*#ENDIF*/
-				return new Proxy(result, handler);
-			}
-
-			return result;
-		}
-	}
-	
-	
-	/**
-	 * Called directly by JavaScript when setting the value of a property via equals.
-	 * @param obj
-	 * @param prop
-	 * @param value
-	 * @returns {boolean} */
-	set(obj, prop, value) {
-		withinSet++;
-
-		let obj2 = obj === this.root && this.props ? this.props : obj;
-		let result = Reflect.set(obj2, prop, value);
-		let fullPath = [...this.path, prop+''];
-		this.notify(fullPath);
-		
-		withinSet --;
-
-		return result;
-	}
-	
-	/**
-	 * Find every subscriber for fullPath, and above, and call applyExprs() for it.
-	 * @param fullPath {string[]}
-	 * @param excluded {Set} */
-	notify(fullPath, excluded = new Set()) {
-		
-		// Traverse upward through the path, looking for pathToTemplates.
-		let ngm = NodeGroupManager.get(this.root);
-		
-		let rootHash = getObjectId(this.root);
-	
-		let len = fullPath.length;
-		while (len >= 1) {
-			let path = fullPath.slice(0, len);
-			let val = delve(this.root, path);
-			let serializedPath = JSON.stringify([rootHash, ...path]);
-			for (let subscriber of ngm.subscribers.getAll(serializedPath)) {
-				// We already applied expressions for a single item within this loop.
-				if (excluded.has(subscriber))
-					continue;
-				
-				
-				// Delete child subscriptions so we don't have duplicate subscriptions when we call applyExprs() directly below.
-				if (subscriber.children) {
-					for (let [spath, childInfo] of subscriber.children)
-						ngm.subscribers.delete(spath, childInfo);
-					subscriber.children = undefined;
-				}
-
-				let proxyVal = getProxy(val, this, path);
-				let exprs = subscriber.transformer(proxyVal).exprs; // TODO: Pass updated array as third argument to transformer.
-				for (let path of subscriber.template.nodeGroup.paths)
-					path.clearNodesCache();
-				
-				// Apply expressions.
-				subscriber.template.nodeGroup.applyExprs(exprs);
-				
-				// Don't also process parent loop after updating a single item within it.
-				if (subscriber.parent)
-					excluded.add(subscriber.parent);
-			}
-			len--;
-		}
-	}
-}
-
-function getProxy(obj, ph, path, path2) {
-	if (!obj || !typeof obj !== 'object')
-		return obj;
-	
-	if (obj.$proxyHandler) {
-		//#IFDEV
-		if (path2)
-			path = [...path, path2+''];
-		//#ENDIF
-		assert(obj.$proxyHandler.root === ph.root && JSON.stringify(obj.$proxyHandler.path) === JSON.stringify(path));
-		return obj;
-	}
-	if (path2)
-		path = [...path, path2+''];
-	return new Proxy(obj, new ProxyHandler(ph.root, path, ph.props));
-}
-
-/**
- * Represents a place where nodes will be updated.
- * TODO: Merge this with Template, or ExprPath? */
-class Subscriber {
-	
-	/** @type {Subscriber} Used only for children of a loop. */
-	parent;
-	
-	/** @type {Subscriber[]} TemplateInfo for each child of a loop. */
-	children;
-	
-	/**
-	 * @param transformer {function} Function that turns the object at the path into a template.
-	 * @param template {Template}
-	 * @param itemTransformer {function} If a loop, this transforms each item in the loop. */
-	constructor(transformer, template, itemTransformer=null) {
-		this.transformer = transformer;
-		this.template = template;
-		
-		// Used only for loops
-		this.itemTransformer = itemTransformer;
 	}
 }
 
@@ -3288,6 +2601,16 @@ class NodeGroup {
 let componentHash = new WeakMap();
 
 /**
+ * Tools for watch variables and performing precise renders.
+ */
+
+function serializePath(path) {
+	// Convert any array indices to strings, so serialized comparisons work.
+	return JSON.stringify([getObjectId(path[0]), ...path.slice(1).map(item => item+'')])
+
+}
+
+/**
  * @typedef {Object} RenderOptions
  * @property {boolean=} styles - Indicates whether the Courage component is present.
  * @property {boolean=} scripts - Indicates whether the Power component is present.
@@ -3615,7 +2938,10 @@ class NodeGroupManager {
 	//pathToLoopInfo = new MultiValueMap(); // uses a Set() for each value.
 	clearSubscribers = false;
 
+	//#IFDEV
+
 	/**
+	 * @deprecated - part of watch.js (Watch v1)
 	 * One path may be used to loop in more than one place, so we use this to get every anchor from each loop.
 	 * @param path {Array}
 	 * @return {LoopInfo[]} A function that gets the loop anchor NodeGroup */
@@ -3623,6 +2949,8 @@ class NodeGroupManager {
 		let serializedArrayPath = serializePath(path);
 		return [...this.pathToLoopInfo.getAll(serializedArrayPath)]; // This is set inside forEach()
 	}
+
+	//#ENDIF
 
 	
 	/**
@@ -3717,15 +3045,6 @@ NodeGroupManager.pendingChildren = [];
  * Each Element that has Expr children has an associated NodeGroupManager here.
  * @type {WeakMap<HTMLElement, NodeGroupManager>} */
 let nodeGroupManagers = new WeakMap();
-
-
-
-class LoopInfo {
-	constructor(loopTemplate, itemTransformer) {
-		this.template = loopTemplate;
-		this.itemTransformer = itemTransformer;
-	}
-}
 
 /**
  * Convert strings to HTMLNodes.
@@ -3876,6 +3195,10 @@ function r(htmlStrings=undefined, ...exprs) {
  * Elements that have been rendered to by r() at least once.
  * @type {WeakSet<HTMLElement>} */
 let rendered = new WeakSet();
+
+//import {watchGet, watchSet} from "./watch.js";
+
+
 
 function defineClass(Class, tagName, extendsTag) {
 	if (!customElements.getName(Class)) { // If not previously defined.
@@ -4029,6 +3352,8 @@ function createSolarite(extendsTag=null) {
 			defineClass(this, tagName, extendsTag);
 		}
 
+		//#IFDEV
+
 		/** @deprecated */
 		renderWatched() {
 			let ngm = NodeGroupManager.get(this);
@@ -4103,8 +3428,7 @@ function createSolarite(extendsTag=null) {
 							// Create new NodeGroup
 							let ng = ngm.getNodeGroup(template, false, true);
 							ng.parentPath = beforeNg?.parentPath || loopInfo.template.parentPath;
-							/*#IFDEV*/
-							assert(ng.parentPath);/*#ENDIF*/
+
 							for (let node of ng.getNodes())
 								beforeNode.parentNode.insertBefore(node, beforeNode);
 
@@ -4136,6 +3460,7 @@ function createSolarite(extendsTag=null) {
 		getArg(name, val=null, type=ArgType.String) {
 			throw new Error('deprecated');
 		}
+		//#ENDIF
 	}
 }
 
@@ -4147,6 +3472,10 @@ let Solarite = new Proxy(createSolarite(), {
 		return createSolarite(...args)
 	}
 });
- // unfinished
 
-export { ArgType, Solarite, Template, forEach, getArg, r, watch, watchGet, watchSet };
+
+//Experimental:
+//export {forEach, watchGet, watchSet} from './watch.js' // old, unfinished
+//export {watch} from './watch2.js'; // unfinished
+
+export { ArgType, Solarite, Template, getArg, r };

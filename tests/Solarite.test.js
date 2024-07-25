@@ -1,10 +1,10 @@
 // noinspection DuplicatedCode
 
 import {camelToDashes, htmlContext} from "../src/solarite/Util.js";
-import {watchGet, watchSet} from "../src/solarite/watch.js";
+//import {watchGet, watchSet} from "../src/solarite/watch.js";
 
 import {Solarite, r, getArg} from '../src/solarite/Solarite.js';
-//import {Red, r, Perf} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
+//import {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 import {watch} from "../src/solarite/watch2.js";
 import watch3 from "../src/solarite/watch3.js";
 import NodeGroupManager from "../src/solarite/NodeGroupManager.js";
