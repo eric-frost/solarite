@@ -1,10 +1,13 @@
 ---
 title:  Solarite JS Library
 append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="module" src="docs/js/documentation.js"></script><link rel="stylesheet" href="docs/media/documentation.css"><link rel="stylesheet" href="docs/media/eternium.css"><link rel="icon" href="docs/media/solarite-machine.webp" type="image/webp">
+<script async defer src="https://buttons.github.io/buttons.js"></script>
 
 ---
 
 <!-- To convert documentation to html: (1) Open in Typora.  (2) Select the GitHub theme. (3) Export as html with styles to index.html. -->
+
+<!-- Playgrounds that don't have a lowercase language name will not have a preview. -->
 
 # Solarite
 
@@ -87,7 +90,7 @@ To use, import one of these pre-bundled es6 modules into your project:
 
 Or get Solarite from GitHub or NPM:
 
-- [Solarite GitHub Repository](https://github.com/Vorticode/solarite)
+- [Solarite GitHub Repository](https://github.com/Vorticode/solarite)  <a class="github-button" href="https://github.com/vorticode/solarite" data-color-scheme="no-preference: light; light: light; dark: dark;" data-icon="octicon-star" data-size="small" data-show-count="true" aria-label="Star vorticode/solarite on GitHub">Star</a>
 - `git clone https://github.com/Vorticode/solarite.git`
 - `npm install solarite`
 
@@ -129,7 +132,7 @@ JavaScript veterans will realize that other than the `r()` function, this is hig
 
 Tip:  A JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [PhpStorm](https://www.jetbrains.com/phpstorm/), or [IDEA](https://www.jetbrains.com/idea/) will syntax highlight the html template strings.
 
-### render() and r()
+### Rendering
 
 The `r` function, when used as part of a [tagged template literal](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals#tagged_templates) , converts the html and embedded expressions into a Solarite `Template`.  This is a data structure used by Solarite to store processed html and expressions.  The call to `r(this)` then renders that `Template` as web component's attributes and children.  You can think of this like assigning to the browser's built-in `this.outerHTML` property, except updates are much faster because only the changed elements are replaced, instead of all nodes.
 
@@ -434,31 +437,90 @@ document.body.append(list);
 
 Note that calling `render()` on a parent component will call it on sub-components too.
 
+In the above code, we could also have created `<notes-item>` via the `new` keyword:
+
+```JavaScript
+class NotesList extends HTMLElement {
+	render() { 
+		r(this)`
+		<notes-list>
+			${this.items.map(item => // Pass item object to NotesItem constructor:
+				new NotesItem({item: item})
+			)}
+		</notes-list>`
+	}
+}
+```
+
+
+
 ### Classless Elements
 
-The `r()` function can also create elements outside of a class.  Pass a function that returns a `Template` as the first argument.  Optionally set the second argument to an object of additional properties and methods.
+The `r()` function can also create elements outside of a class.  Pass any object with a `render()` function as the first argument.  This object can optionally have additional properties and methods:
 
 ```javascript
+import {r} from './src/solarite/Solarite.js';
+
+let button = r({
+    count: 0,
+
+    inc() {
+        this.count++;
+        this.render();
+    },
+
+    render() {
+        r(this)`<button onclick=${this.inc}>I've been clicked ${this.count} times.</button>`
+    }
+});
+document.body.append(button);
+```
+
+### The r() function
+
+There are multiple ways to use the `r()` function:
+
+```JavaScript
 import {r} from './dist/Solarite.js';
 
-let count = 0;
-let button = r(
-    	// Render function
-		() => r`
-			<button onclick=${(ev, self) => {
-				count++;
-				self.render();
-			}}>I've been clicked ${count} times</button>`,
-    
-    	// User-defined function
-		{
-			inc() {
-				count++;
-				this.render();
-			}
-		}
-	);
+// r`string`
+// Convert the html to a Template that can later be used to create nodes.
+let template = r`Hello ${"World"}!`;
+
+// r(HTMLElement, Template)
+// Render the template created by #1 to the <body> tag.
+r(document.body, template);  
+
+// r(Template):Node|HTMLElement
+// Render Template created by #1 creating a standaline HTML Element
+let el = r(template);
+
+// r(HTMLElement)`string`
+// Create template and render its nodes to el.
+r(el)`<b>${'Hi'}</b>`;
+
+// r(html:string):TextNode
+// Create single text node.
+let textNode = r('Hello');           
+
+// r(html:string):HTMLElement
+// Create single HTMLElement
+let el2 = r('<b>Hello</b>');
+
+// r(html:string):DocumentFragment
+// Create document fragment because there's more than one node.
+let fragment = r('<b>Hello</b><u>Goodbye</u>');
+
+// r(function():Template, Object<string, function|*>):HTMLElement
+// Crete a standalone element, with the fist function being the render function.
+// This is seen in the "Classless Elements" section above.
+let button = r({
+    render() {
+        r(this)`<button>Submit</button>`
+    }
+});
 document.body.append(button);
+
 ```
 
 ### Extending Other DOM Elements.
@@ -491,6 +553,61 @@ for (let i=0; i<10; i++) {
 }
 document.body.append(table);
 ```
+
+### Manual DOM Ops
+
+This example creates a list as a Classless Element.
+
+```javascript
+import {r} from './src/solarite/Solarite.js';
+
+let list = r({
+    items: [],
+
+    add() {
+        this.items.push('Item ' + this.items.length);
+        this.render();
+    },
+
+    render() {
+        r(this)`<div>
+        	<button onclick=${this.add}>Add Item</button>
+        	<hr>
+        	${this.items.map(item => r`
+        		<p>${item}</p>
+        	`)}
+        </div>`
+    }
+});
+
+document.body.append(list);
+
+// Remove the <hr> element.
+// This is fine, because the hr element isn't part of an expression.
+//setTimeout(() => {
+	list.querySelector('hr').remove();
+    list.render();
+//}, 1000);
+
+// Remove the first <p> element and add it back again.
+// This is fine, because we put it back the way it was before render()
+//setTimeout(() => {
+    list.add();
+    let p = list.querySelector('p');
+	list.append(p);
+    list.render();
+//}, 2000);
+
+// Remove the first <p> element.
+// This is bad(!) because we're modifying nodes created by an expression.
+//setTimeout(() => {
+//	list.querySelector('p').remove();
+//  list.render();
+//}, 3000);
+
+```
+
+
 
 ### The Solarite Class (Experimental)
 

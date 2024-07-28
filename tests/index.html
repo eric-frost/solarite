@@ -10,7 +10,8 @@
 		td { vertical-align: top; padding: 0; white-space: normal }
 		td:first-child { white-space: nowrap }
 		label { user-select: none }
-		button { border-radius: 10px; border: 2px solid grey; padding: 2px 15px; outline: 0; cursor: pointer }
+		button { border: 1px solid #1b1e22; padding: 2px 15px; outline: 0; cursor: pointer }
+		a, a:visited { color: #58f }
 		@media (prefers-color-scheme: dark) {
 			body { background: #000; color: #ddd }
 			button { background: #333; color: white }
@@ -34,6 +35,7 @@
 </script>
 	<form>
 		<button>Run Tests</button>
+		<a href=".">Reset</a>
 		<div id="tests"></div>
 		<br>
 		<button>Run Tests</button>

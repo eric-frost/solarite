@@ -29,10 +29,10 @@ export default class Template {
     * @type {ExprPath} Used with forEach() from watch.js
 	 * Set in ExprPath.apply() */
 	parentPath;
-	
+
 	/** @type {NodeGroup} */
 	nodeGroup;
-	
+
 	/**
 	 * @type {string[][]} */
 	paths = [];
@@ -44,7 +44,7 @@ export default class Template {
 	constructor(htmlStrings, exprs) {
 		this.html = htmlStrings;
 		this.exprs = exprs;
-		
+
 		//this.trace = new Error().stack.split(/\n/g)
 
 		// Multiple templates can share the same htmlStrings array.
@@ -53,7 +53,7 @@ export default class Template {
 		//#IFDEV
 		assert(Array.isArray(htmlStrings))
 		assert(Array.isArray(exprs))
-		
+
 		Object.defineProperty(this, 'debug', {
 			get() {
 				return JSON.stringify([this.html, this.exprs]);
@@ -68,7 +68,7 @@ export default class Template {
 	toJSON() {
 		if (!this.hashedFields)
 			this.hashedFields = [getObjectId(this.html, 'Html'), this.exprs];
-		
+
 		return this.hashedFields
 	}
 
@@ -78,16 +78,24 @@ export default class Template {
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
 	render(el=null, options={}) {
+		let ng, ngm;
+		let standalone = !el;
 
-		let ng;
-		if (!el) {
+		// Rendering a standalone element.
+		if (standalone) {
 			ng = new NodeGroup(this);
 			el = ng.getParentNode();
-		}
-
-		let ngm = NodeGroupManager.get(el);
-		if (ng)
+			ngm = NodeGroupManager.get(el);
 			ng.manager = ngm;
+			ngm.rootNg = ng;
+			ngm.nodeGroupsInUse.push(ng);
+		}
+		else
+			ngm = NodeGroupManager.get(el);
+
+		ngm.options = options;
+		ngm.mutationWatcherEnabled = false;
+
 
 		//#IFDEV
 		ngm.modifications = {
@@ -98,10 +106,6 @@ export default class Template {
 		};
 		//#ENDIF
 
-		ngm.options = options;
-		ngm.clearSubscribers = false; // Used for deprecated watch() path?
-		ngm.mutationWatcherEnabled = false;
-
 		// Fast path for empty component.
 		if (this.html?.length === 1 && !this.html[0]) {
 			el.innerHTML = '';
@@ -110,19 +114,10 @@ export default class Template {
 
 			// Find or create a NodeGroup for the template.
 			// This updates all nodes from the template.
-			let close;
-			let exact = ngm.getNodeGroup(this, true);
-			if (!exact) {
-				close = ngm.getNodeGroup(this, false);
-			}
-
 			let firstTime = !ngm.rootNg;
-			ngm.rootNg = exact || close;
-
-			// Reparent NodeGroup
-			// TODO: Move this to NodeGroup?
-			let parent = ngm.rootNg.getParentNode();
-
+			if (!standalone) {
+				ngm.rootNg = ngm.getNodeGroup(this, false);
+			}
 
 			// If this is the first time rendering this element.
 			if (firstTime) {
@@ -133,6 +128,10 @@ export default class Template {
 					fragment = document.createDocumentFragment();
 					fragment.append(...el.childNodes);
 				}
+
+				// Reparent NodeGroup
+				// TODO: Move this to NodeGroup?
+				let parent = ngm.rootNg.getParentNode();
 
 				// Add rendered elements.
 				if (parent instanceof DocumentFragment)
@@ -151,51 +150,26 @@ export default class Template {
 					if (unamedSlot)
 						unamedSlot.append(fragment)
 				}
+
+				// Copy attributes from pseudoroot to root.
+				// this.rootNg was rendered as childrenOnly=true
+				// Apply attributes from a root element to the real root element.
+				if (ngm.rootNg.pseudoRoot && ngm.rootNg.pseudoRoot !== el) {
+					/*#IFDEV*/assert(el)/*#ENDIF*/
+
+					// Add/set new attributes
+					for (let attrib of ngm.rootNg.pseudoRoot.attributes)
+						if (!el.hasAttribute(attrib.name))
+							el.setAttribute(attrib.name, attrib.value);
+				}
 			}
 
 			ngm.rootEl = el;
-
-			// this.rootNg was rendered as childrenOnly=true
-			// Apply attributes from a root element to the real root element.
-			let ng = ngm.rootNg;
-			if (ng.pseudoRoot && ng.pseudoRoot !== el) {
-				/*#IFDEV*/assert(el)/*#ENDIF*/
-
-				// Remove old attributes
-				// for (let attrib of this.rootEl.attributes)
-				// 	if (attrib.name !== 'is' && attrib.name !== 'data-style' && !ng.pseudoRoot.hasAttribute(attrib.name))
-				// 		this.rootEl.removeAttribute(attrib.name)
-
-				// Add/set new attributes
-				if (firstTime)
-					for (let attrib of ng.pseudoRoot.attributes)
-						if (!el.hasAttribute(attrib.name))
-							el.setAttribute(attrib.name, attrib.value);
-
-				// ng.startNode = ng.endNode = this.rootEl;
-				// ng.nodesCache = [ng.startNode]
-				// for (let path of ng.paths) {
-				// 	if (path.nodeMarker === ng.rootEl)
-				// 		path.nodeMarker = this.rootEl;
-				// 	path.nodesCache = null;
-				// 	/*#IFDEV*/assert(path.nodeBefore !== ng.rootEl)/*#ENDIF*/
-				// }
-				//
-				// ng.rootEl = this.rootEl;
-			}
-
-			/*#IFDEV*/ngm.rootNg.verify();/*#ENDIF*/
 			ngm.reset(); // Mark all NodeGroups as available, for next render.
-			/*#IFDEV*/ngm.rootNg.verify();/*#ENDIF*/
-
-			window.ngm = ngm;
 		}
 
 		ngm.mutationWatcherEnabled = true;
 		return el;
-		//#IFDEV
-		//return ngm.modifications;
-		//#ENDIF
 	}
 
 

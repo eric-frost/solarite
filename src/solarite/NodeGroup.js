@@ -238,7 +238,15 @@ export default class NodeGroup {
 
 					// Event attribute value
 					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
-						let root = this.manager?.rootEl || this.startNode.parentNode;  // latter is used when constructing a whole element.
+						let root = this.manager?.rootEl
+
+						// this.startNode and this.startNode.parentNode are used when constructing a classless element.
+						if (!root || root instanceof DocumentFragment) {
+							root = this.startNode;
+							while (root.parentNode && !(root.parentNode instanceof DocumentFragment))
+								root = root.parentNode;
+						}
+
 						path.applyEventAttrib(el, expr, root);
 					}
 

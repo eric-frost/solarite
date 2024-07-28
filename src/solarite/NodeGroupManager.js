@@ -8,11 +8,11 @@ import {assert} from "../util/Errors.js";
 
 /**
  * @typedef {Object} RenderOptions
- * @property {boolean=} styles - Indicates whether the Courage component is present.
- * @property {boolean=} scripts - Indicates whether the Power component is present.
- * @property {boolean=} ids *
- * @property {?boolean} render
- * 	   Used only when options are given to a class super constructor inheriting from Solarite.
+ * @property {boolean=} styles - Replace :host in style tags to scope them locally.
+ * @property {boolean=} scripts - Execute script tags.
+ * @property {boolean=} ids - Create references to elements with id or data-id attributes.
+ * @property {?boolean} render - Deprecated.
+ * 	 Used only when options are given to a class super constructor inheriting from Solarite.
  *     True to call render() immediately in super constructor.
  *     False to automatically call render() at all.
  *     Undefined (default) to call render() when added to the DOM, unless already rendered.
@@ -52,7 +52,7 @@ export default class NodeGroupManager {
 	nodeGroupsInUse = [];
 
 
-	/** @type {RenderOptions} */
+	/** @type {RenderOptions} TODO: Where is this ever used? */
 	options = {};
 
 	
@@ -244,57 +244,52 @@ export default class NodeGroupManager {
 	 * Get an existing or create a new NodeGroup that matches the template,
 	 * but don't reparent it if it's somewhere else.
 	 * @param template {Template}
-	 * @param exact {?boolean}
-	 * @param createForWatch Deprecated.
+	 * @param exact {?boolean} If true, only get a NodeGroup if it matches both the template
 	 * @return {?NodeGroup} */
-	getNodeGroup(template, exact=null, createForWatch=false) {
-
+	getNodeGroup(template, exact=null) {
 		let exactKey = getObjectHash(template)
 
 		/*#IFDEV*/if(NodeGroupManager.logEnabled) this.log(`Looking for ${exact ? 'exact' : 'close'} match: ` + template.debug)/*#ENDIF*/
 
 		// 1. Try to find an exact match.
-		let ng;
-		if (exact === true) {
-			ng = this.findAndDeleteExact(exactKey);
-
-			if (!ng) {
-				/*#IFDEV*/this.log(`Not found.`)/*#ENDIF*/
-				return null;
-			}
-			/*#IFDEV*/if(NodeGroupManager.logEnabled) this.log(`Found exact: ` + ng.debug)/*#ENDIF*/
+		let ng = this.findAndDeleteExact(exactKey);
+		if (exact && !ng) {
+			/*#IFDEV*/this.log(`Not found.`)/*#ENDIF*/
+			return null;
 		}
+		/*#IFDEV*/if(NodeGroupManager.logEnabled) this.log(`Found exact: ` + ng.debug)/*#ENDIF*/
 
 		// 2.  Try to find a close match.
-		else {
+		else if (!ng) {
 			// We don't need to delete the exact match bc it's already been deleted in the prev pass.
 			let closeKey = template.getCloseKey();
-			ng = createForWatch ? null : this.findAndDeleteClose(closeKey, exactKey);
+			ng = this.findAndDeleteClose(closeKey, exactKey);
 
 			// 2. Update expression values if they've changed.
 			if (ng) {
-				
-				// Temporary for debugging:
-				if (window.debug && !window.ng)
-					window.ng = ng;
+				//#IFDEV
+				if (NodeGroupManager.logEnabled) this.log(`Found close: ` + closeKey + '   ' + ng.debug)
+				this.incrementLogDepth(1);
+				ng.verify();
+				//#ENDIF
 
-				/*#IFDEV*/if(NodeGroupManager.logEnabled) this.log(`Found close: ` + closeKey + '   ' + ng.debug)/*#ENDIF*/
-				/*#IFDEV*/this.incrementLogDepth(1);/*#ENDIF*/
-				/*#IFDEV*/ng.verify();/*#ENDIF*/
 				ng.applyExprs(template.exprs);
 
-				/*#IFDEV*/ng.verify()/*#ENDIF*/
-				/*#IFDEV*/this.incrementLogDepth(-1);/*#ENDIF*/
-				/*#IFDEV*/if(NodeGroupManager.logEnabled) this.log(`Updated close to: ` + ng.debug)/*#ENDIF*/
+				//#IFDEV
+				ng.verify()
+				this.incrementLogDepth(-1);
+				if (NodeGroupManager.logEnabled) this.log(`Updated close to: ` + ng.debug)
+				//#ENDIF
 			}
 
 			// 3. Or if not found, create a new NodeGroup
 			else {
 				/*#IFDEV*/this.incrementLogDepth(1);/*#ENDIF*/
+
 				ng = new NodeGroup(template, this);
-				/*#IFDEV*/this.incrementLogDepth(-1);/*#ENDIF*/
 
 				//#IFDEV
+				this.incrementLogDepth(-1);
 				this.modifications.created.push(...ng.getNodes())
 				//#ENDIF
 
@@ -305,12 +300,9 @@ export default class NodeGroupManager {
 				// Perhaps also result could cache its last exprKey and then we'd use only one map?
 				ng.exactKey = exactKey;
 				ng.closeKey = closeKey;
-				if (createForWatch)
-					this.nodeGroupsAvailable.add(ng.exactKey, ng);
-				else
-					this.nodeGroupsInUse.push(ng)
+				this.nodeGroupsInUse.push(ng)
 
-				/*#IFDEV*/if(NodeGroupManager.logEnabled) this.log(`Created new ` + ng.debug)/*#ENDIF*/
+				/*#IFDEV*/if (NodeGroupManager.logEnabled) this.log(`Created new ` + ng.debug)/*#ENDIF*/
 			}
 		}
 		
@@ -329,6 +321,9 @@ export default class NodeGroupManager {
 	}
 
 	reset() {
+
+		/*#IFDEV*/this.rootNg.verify();/*#ENDIF*/
+
 		//this.changes = [];
 		let available = this.nodeGroupsAvailable
 		for (let ng of this.nodeGroupsInUse) {
@@ -343,6 +338,9 @@ export default class NodeGroupManager {
 
 		/*#IFDEV*/this.log('----------------------')/*#ENDIF*/
 		// TODO: free the memory from any nodeGroupsAvailable() after render is done, since they weren't used?
+
+
+		/*#IFDEV*/this.rootNg.verify();/*#ENDIF*/
 	}
 
 

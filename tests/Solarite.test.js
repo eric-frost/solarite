@@ -1840,50 +1840,72 @@ Testimony.test('Solarite.r.element', () => {
 })
 
 
+Testimony.test('Solarite.r.standalone1', () => {
+	let button = r({
+		count: 0,
 
-Testimony.test('Solarite.r.lightweightComponent', () => {
-	function betterButton(count=0) {
-		// Pass a function to r() and it becomes the render() function.
-		let result = r(
-			() => r`<button onclick=${(ev, self)=>{count++; self.render()}}>I'm a ${count}X better button</button>`
-		);
-		result.inc = () => {
-			count++;
-			result.render();
+		inc() {
+			this.count++;
+			this.render();
+		},
+
+		render() {
+			r(this)`<button onclick=${this.inc}>I've been clicked ${this.count} times.</button>`
 		}
-		return result;
-	}
-
-	let button = betterButton(3);
-	assert.eq(getHtml(button), `<button onclick="">I'm a 3X better button</button>`)
-
-	button.inc();
-	assert.eq(getHtml(button), `<button onclick="">I'm a 4X better button</button>`)
-})
-
-Testimony.test('Solarite.r.lightweightComponent2', () => {
-
-	// Provide a function plus an object of other methods.
-	let count = 0;
-	let button = r(
-		() => r`
-			<button onclick=${(ev, self) => {
-				count++;
-				self.render();
-			}}>I've been clicked ${count} times.</button>`,
-		{
-			inc() {
-				count++;
-				this.render();
-			}
-		}
-	);
+	});
+	//document.body.append(button);
 
 	assert.eq(getHtml(button), `<button onclick="">I've been clicked 0 times.</button>`)
 
 	button.inc();
-	assert.eq(getHtml(button), `<button onclick="">I've been clicked 1 times.</button>`)
+	assert.eq(getHtml(button), `<button onclick="">I've been clicked 1 times.</button>`);
+
+	button.dispatchEvent(new MouseEvent('click'));
+	assert.eq(getHtml(button), `<button onclick="">I've been clicked 2 times.</button>`);
+
+	//button.remove();
 });
+
+
+Testimony.test('Solarite.r.standalone2', () => {
+	let list = r({
+		items: [],
+
+		add() {
+			this.items.push('Item ' + this.items.length);
+			this.render();
+		},
+
+		render() {
+			// TODO: Fails if there's a space before <div>
+			r(this)`<div>
+	            <button onclick=${this.add}>Add Item</button>
+	            <hr>
+	            ${this.items.map(item => r`
+	                <p>${item}</p>
+	            `)}
+	        </div>`
+		}
+	});
+
+	document.body.append(list);
+
+	list.querySelector('hr').remove();
+	list.render();
+
+
+	/*
+	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><hr></div>`);
+
+	list.add();
+	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><hr><p>Item 0</p></div>`);
+
+	list.querySelector('button').dispatchEvent(new MouseEvent('click'));
+	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><hr><p>Item 0</p><p>Item 1</p></div>`);
+	*/
+	//button.remove();
+});
+
 
 
 
@@ -2087,7 +2109,11 @@ Testimony.test('Solarite.component.nested2', () => {
 Testimony.test('Solarite.component.nestedTrLoop', () => {
 
 	function tableRow(user) {
-		let tr = r(() => r`<tr><td>${user.name}</td><td>${user.email}</td></tr>`)
+		let tr = r({
+			render() {
+				r(this)`<tr><td>${user.name}</td><td>${user.email}</td></tr>`
+			}
+		})
 		return tr;
 	}
 

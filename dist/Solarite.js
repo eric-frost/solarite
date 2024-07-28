@@ -571,10 +571,10 @@ class Template {
     * @type {ExprPath} Used with forEach() from watch.js
 	 * Set in ExprPath.apply() */
 	parentPath;
-	
+
 	/** @type {NodeGroup} */
 	nodeGroup;
-	
+
 	/**
 	 * @type {string[][]} */
 	paths = [];
@@ -586,7 +586,7 @@ class Template {
 	constructor(htmlStrings, exprs) {
 		this.html = htmlStrings;
 		this.exprs = exprs;
-		
+
 		//this.trace = new Error().stack.split(/\n/g)
 
 		// Multiple templates can share the same htmlStrings array.
@@ -601,7 +601,7 @@ class Template {
 	toJSON() {
 		if (!this.hashedFields)
 			this.hashedFields = [getObjectId(this.html, 'Html'), this.exprs];
-		
+
 		return this.hashedFields
 	}
 
@@ -611,22 +611,26 @@ class Template {
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
 	render(el=null, options={}) {
+		let ng, ngm;
+		let standalone = !el;
 
-		let ng;
-		if (!el) {
+		// Rendering a standalone element.
+		if (standalone) {
 			ng = new NodeGroup(this);
 			el = ng.getParentNode();
-		}
-
-		let ngm = NodeGroupManager.get(el);
-		if (ng)
+			ngm = NodeGroupManager.get(el);
 			ng.manager = ngm;
-
-		
+			ngm.rootNg = ng;
+			ngm.nodeGroupsInUse.push(ng);
+		}
+		else
+			ngm = NodeGroupManager.get(el);
 
 		ngm.options = options;
-		ngm.clearSubscribers = false; // Used for deprecated watch() path?
 		ngm.mutationWatcherEnabled = false;
+
+
+		
 
 		// Fast path for empty component.
 		if (this.html?.length === 1 && !this.html[0]) {
@@ -636,19 +640,10 @@ class Template {
 
 			// Find or create a NodeGroup for the template.
 			// This updates all nodes from the template.
-			let close;
-			let exact = ngm.getNodeGroup(this, true);
-			if (!exact) {
-				close = ngm.getNodeGroup(this, false);
-			}
-
 			let firstTime = !ngm.rootNg;
-			ngm.rootNg = exact || close;
-
-			// Reparent NodeGroup
-			// TODO: Move this to NodeGroup?
-			let parent = ngm.rootNg.getParentNode();
-
+			if (!standalone) {
+				ngm.rootNg = ngm.getNodeGroup(this, false);
+			}
 
 			// If this is the first time rendering this element.
 			if (firstTime) {
@@ -659,6 +654,10 @@ class Template {
 					fragment = document.createDocumentFragment();
 					fragment.append(...el.childNodes);
 				}
+
+				// Reparent NodeGroup
+				// TODO: Move this to NodeGroup?
+				let parent = ngm.rootNg.getParentNode();
 
 				// Add rendered elements.
 				if (parent instanceof DocumentFragment)
@@ -677,49 +676,26 @@ class Template {
 					if (unamedSlot)
 						unamedSlot.append(fragment);
 				}
+
+				// Copy attributes from pseudoroot to root.
+				// this.rootNg was rendered as childrenOnly=true
+				// Apply attributes from a root element to the real root element.
+				if (ngm.rootNg.pseudoRoot && ngm.rootNg.pseudoRoot !== el) {
+					
+
+					// Add/set new attributes
+					for (let attrib of ngm.rootNg.pseudoRoot.attributes)
+						if (!el.hasAttribute(attrib.name))
+							el.setAttribute(attrib.name, attrib.value);
+				}
 			}
 
 			ngm.rootEl = el;
-
-			// this.rootNg was rendered as childrenOnly=true
-			// Apply attributes from a root element to the real root element.
-			let ng = ngm.rootNg;
-			if (ng.pseudoRoot && ng.pseudoRoot !== el) {
-				
-
-				// Remove old attributes
-				// for (let attrib of this.rootEl.attributes)
-				// 	if (attrib.name !== 'is' && attrib.name !== 'data-style' && !ng.pseudoRoot.hasAttribute(attrib.name))
-				// 		this.rootEl.removeAttribute(attrib.name)
-
-				// Add/set new attributes
-				if (firstTime)
-					for (let attrib of ng.pseudoRoot.attributes)
-						if (!el.hasAttribute(attrib.name))
-							el.setAttribute(attrib.name, attrib.value);
-
-				// ng.startNode = ng.endNode = this.rootEl;
-				// ng.nodesCache = [ng.startNode]
-				// for (let path of ng.paths) {
-				// 	if (path.nodeMarker === ng.rootEl)
-				// 		path.nodeMarker = this.rootEl;
-				// 	path.nodesCache = null;
-				// 	
-				// }
-				//
-				// ng.rootEl = this.rootEl;
-			}
-
-			
 			ngm.reset(); // Mark all NodeGroups as available, for next render.
-			
-
-			window.ngm = ngm;
 		}
 
 		ngm.mutationWatcherEnabled = true;
 		return el;
-		
 	}
 
 
@@ -1957,7 +1933,15 @@ class NodeGroup {
 
 					// Event attribute value
 					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
-						let root = this.manager?.rootEl || this.startNode.parentNode;  // latter is used when constructing a whole element.
+						let root = this.manager?.rootEl;
+
+						// this.startNode and this.startNode.parentNode are used when constructing a classless element.
+						if (!root || root instanceof DocumentFragment) {
+							root = this.startNode;
+							while (root.parentNode && !(root.parentNode instanceof DocumentFragment))
+								root = root.parentNode;
+						}
+
 						path.applyEventAttrib(el, expr, root);
 					}
 
@@ -2301,11 +2285,11 @@ function serializePath(path) {
 
 /**
  * @typedef {Object} RenderOptions
- * @property {boolean=} styles - Indicates whether the Courage component is present.
- * @property {boolean=} scripts - Indicates whether the Power component is present.
- * @property {boolean=} ids *
- * @property {?boolean} render
- * 	   Used only when options are given to a class super constructor inheriting from Solarite.
+ * @property {boolean=} styles - Replace :host in style tags to scope them locally.
+ * @property {boolean=} scripts - Execute script tags.
+ * @property {boolean=} ids - Create references to elements with id or data-id attributes.
+ * @property {?boolean} render - Deprecated.
+ * 	 Used only when options are given to a class super constructor inheriting from Solarite.
  *     True to call render() immediately in super constructor.
  *     False to automatically call render() at all.
  *     Undefined (default) to call render() when added to the DOM, unless already rendered.
@@ -2342,7 +2326,7 @@ class NodeGroupManager {
 	nodeGroupsInUse = [];
 
 
-	/** @type {RenderOptions} */
+	/** @type {RenderOptions} TODO: Where is this ever used? */
 	options = {};
 
 	
@@ -2487,49 +2471,20 @@ class NodeGroupManager {
 	 * Get an existing or create a new NodeGroup that matches the template,
 	 * but don't reparent it if it's somewhere else.
 	 * @param template {Template}
-	 * @param exact {?boolean}
-	 * @param createForWatch Deprecated.
+	 * @param exact {?boolean} If true, only get a NodeGroup if it matches both the template
 	 * @return {?NodeGroup} */
-	getNodeGroup(template, exact=null, createForWatch=false) {
-
+	getNodeGroup(template, exact=null) {
 		let exactKey = getObjectHash(template);
 
 		// 1. Try to find an exact match.
-		let ng;
-		if (exact === true) {
-			ng = this.findAndDeleteExact(exactKey);
-
-			if (!ng) {
-				
-				return null;
-			}
+		let ng = this.findAndDeleteExact(exactKey);
+		if (exact && !ng) {
+			
+			return null;
 		}
+		
 
-		// 2.  Try to find a close match.
-		else {
-			// We don't need to delete the exact match bc it's already been deleted in the prev pass.
-			let closeKey = template.getCloseKey();
-			ng = createForWatch ? null : this.findAndDeleteClose(closeKey, exactKey);
-
-			// 2. Update expression values if they've changed.
-			if (ng) {
-				
-				// Temporary for debugging:
-				if (window.debug && !window.ng)
-					window.ng = ng;
-				
-				
-				ng.applyExprs(template.exprs);
-
-				
-				
-			}
-
-			// 3. Or if not found, create a new NodeGroup
-			else {
-				
 				ng = new NodeGroup(template, this);
-				
 
 				
 
@@ -2540,10 +2495,7 @@ class NodeGroupManager {
 				// Perhaps also result could cache its last exprKey and then we'd use only one map?
 				ng.exactKey = exactKey;
 				ng.closeKey = closeKey;
-				if (createForWatch)
-					this.nodeGroupsAvailable.add(ng.exactKey, ng);
-				else
-					this.nodeGroupsInUse.push(ng);
+				this.nodeGroupsInUse.push(ng);
 			}
 		}
 		
@@ -2562,6 +2514,9 @@ class NodeGroupManager {
 	}
 
 	reset() {
+
+		
+
 		//this.changes = [];
 		let available = this.nodeGroupsAvailable;
 		for (let ng of this.nodeGroupsInUse) {
@@ -2576,6 +2531,9 @@ class NodeGroupManager {
 
 		
 		// TODO: free the memory from any nodeGroupsAvailable() after render is done, since they weren't used?
+
+
+		
 	}
 
 
@@ -2648,9 +2606,9 @@ let nodeGroupManagers = new WeakMap();
  * 5. TODO:  list more
  *
  * Currently supported:
- * 1. r`<b>Hello${'World'}!`           // Create Template that can later be used to create nodes.
+ * 1. r`<b>Hello</b> ${'World'}!`           // Create Template that can later be used to create nodes.
  *
- * 2. r(el, template, ?options)        // Render the template created by #1 to element.
+ * 2. r(el, template, ?options)        // Render the Template created by #1 to element.
  * 3. r(el, options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
  *
  * 4. r('Hello');                      // Create single text node.
@@ -2658,125 +2616,127 @@ let nodeGroupManagers = new WeakMap();
  * 6. r('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
  * 7. r()`Hello<b>${'World'}!</b>`     // Same as 4-6, but evaluates the string as a Solarite template, which includes properly handling nested components and r`` sub-expressions.
  * 8. r(template)                      // Render Template created by #1.
- * 9. r(() => r`<b>Hello</b>`, {...}); // Create dynamic element that has a render() function.
  *
- * @param htmlStrings {?HTMLElement|string|string[]|function():Template}
+ * 9. r({render(){...}})              // Pass an object with a render method, and optionally other props/methods.
+ *
+ * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template} */
 function r(htmlStrings=undefined, ...exprs) {
 
-    // 1. Path if used as a template tag.
-    if (Array.isArray(htmlStrings)) {
-        return new Template(htmlStrings, exprs);
-    }
+	// 1. Path if used as a template tag.
+	if (Array.isArray(htmlStrings)) {
+		return new Template(htmlStrings, exprs);
+	}
 
-    else if (htmlStrings instanceof Node) {
-        let parent = htmlStrings, template = exprs[0];
+	else if (htmlStrings instanceof Node) {
+		let parent = htmlStrings, template = exprs[0];
 
-        // 2. Render template created by #4 to element.
-        if (exprs[0] instanceof Template) {
-            let options = exprs[1];
-            template.render(parent, options);
+		// 2. Render template created by #4 to element.
+		if (exprs[0] instanceof Template) {
+			let options = exprs[1];
+			template.render(parent, options);
 
-            // Append on the first go.
-            if (!parent.childNodes.length && this) {
-                // TODO: Is htis ever executed?
-                debugger;
-                parent.append(this.rootNg.getParentNode());
-            }
-        }
+			// Append on the first go.
+			if (!parent.childNodes.length && this) {
+				// TODO: Is htis ever executed?
+				debugger;
+				parent.append(this.rootNg.getParentNode());
+			}
+		}
 
-        // 3
-        else if (!exprs.length || exprs[0]) {
-            if (parent.shadowRoot)
-                parent.innerHTML = ''; // Remove shadowroot.  TODO: This could mess up paths?
+		// 3
+		else if (!exprs.length || exprs[0]) {
+			if (parent.shadowRoot)
+				parent.innerHTML = ''; // Remove shadowroot.  TODO: This could mess up paths?
 
-            let options = exprs[0];
-            return (htmlStrings, ...exprs) => {
-                rendered.add(parent);
-                let template = r(htmlStrings, ...exprs);
-                return template.render(parent, options);
-            }
-        }
+			let options = exprs[0];
+			return (htmlStrings, ...exprs) => {
+				rendered.add(parent);
+				let template = r(htmlStrings, ...exprs);
+				return template.render(parent, options);
+			}
+		}
 
-        // null for expr[0], remove whole element.
-           // This path never happens?
-        else {
-            throw new Error('unsupported');
-            //let ngm = NodeGroupManager.get(parent);
-            //ngm.render(null, exprs[1])
-        }
-    }
+		// null for expr[0], remove whole element.
+		   // This path never happens?
+		else {
+			throw new Error('unsupported');
+			//let ngm = NodeGroupManager.get(parent);
+			//ngm.render(null, exprs[1])
+		}
+	}
 
-    else if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {
-        // If it starts with a string, trim both ends.
-        // TODO: Also trim if it ends with whitespace?
-        if (htmlStrings.match(/^\s^</))
-            htmlStrings = htmlStrings.trim();
+	else if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {
+		// If it starts with a string, trim both ends.
+		// TODO: Also trim if it ends with whitespace?
+		if (htmlStrings.match(/^\s^</))
+			htmlStrings = htmlStrings.trim();
 
-        // We create a new one each time because otherwise
-        // the returned fragment will have its content replaced by a subsequent call.
-        let templateEl = document.createElement('template');
-        templateEl.innerHTML = htmlStrings;
+		// We create a new one each time because otherwise
+		// the returned fragment will have its content replaced by a subsequent call.
+		let templateEl = document.createElement('template');
+		templateEl.innerHTML = htmlStrings;
 
-        // 4+5. Return Node if there's one child.
-        if (templateEl.content.childNodes.length === 1)
-            return templateEl.content.firstChild;
+		// 4+5. Return Node if there's one child.
+		if (templateEl.content.childNodes.length === 1)
+			return templateEl.content.firstChild;
 
-        // 6. Otherwise return DocumentFragment.
-        return templateEl.content;
-    }
+		// 6. Otherwise return DocumentFragment.
+		return templateEl.content;
+	}
 
-    // 7. Create a static element
-    else if (htmlStrings === undefined) {
-        return (htmlStrings, ...exprs) => {
-            //rendered.add(parent)
-            let template = r(htmlStrings, ...exprs);
-            return template.render();
-        }
-    }
+	// 7. Create a static element
+	else if (htmlStrings === undefined) {
+		return (htmlStrings, ...exprs) => {
+			//rendered.add(parent)
+			let template = r(htmlStrings, ...exprs);
+			return template.render();
+		}
+	}
 
-    // 8.
-    else if (htmlStrings instanceof Template) {
-        return htmlStrings.render();
-    }
-
-
-    // 9. Create dynamic element with render() function.
-    else if (typeof htmlStrings === 'function') {
-        let getTemplate = htmlStrings;
-        let template = getTemplate();
-
-        if (typeof template === 'string')
-            throw new Error(`Please add the "r" prefix before the string "${template}"`)
-
-        template.replaceMode = true;
-        let el = template.render();
-
-        // Create the render() function from the function we were given.
-        el.render = (function() {
-            template = getTemplate();
-            template.render(el);
-        }).bind(el);
+	// 8.
+	else if (htmlStrings instanceof Template) {
+		return htmlStrings.render();
+	}
 
 
-        // The second argument was an object of additional properties to add.
-        let props = exprs[0];
-        for (let name in props)
-            if (typeof props[name] === 'function')
-                el[name] = props[name].bind(el);
-            else
-                el[name] = props[name];
+	// 9. Create dynamic element with render() function.
+	else if (typeof htmlStrings === 'object') {
+		let obj = htmlStrings;
 
-        return el;
-    }
+		// Special rebound render path.
+		if (objToEl.has(obj)) {
+			return function(...args) {
+			   let template = r(...args);
+			   let fragment = template.render();
+				objToEl.set(obj, fragment.firstElementChild);
+			}.bind(obj);
+		}
 
-    else
-        throw new Error('Unsupported arguments.')
+
+		// Normal path
+		else {
+			objToEl.set(obj, null);
+			obj.render(); // Calls the Special rebound render path above, when the render function calls r(this)
+			let el = objToEl.get(obj);
+			objToEl.delete(obj);
+
+			for (let name in obj)
+				if (typeof obj[name] === 'function')
+					el[name] = obj[name].bind(el);
+				else
+					el[name] = obj[name];
+
+			return el;
+		}
+	}
+
+	else
+		throw new Error('Unsupported arguments.')
 }
 
-
-
+let objToEl = new Map();
 
 
 

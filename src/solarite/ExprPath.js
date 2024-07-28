@@ -251,7 +251,10 @@ export default class ExprPath {
 	 * @param expr
 	 * @param root */
 	applyEventAttrib(node, expr, root) {
-		/*#IFDEV*/assert(this.type === PathType.Value || this.type === PathType.Component);/*#ENDIF*/
+		/*#IFDEV*/
+		assert(this.type === PathType.Value || this.type === PathType.Component);
+		assert(root instanceof HTMLElement);
+		/*#ENDIF*/
 
 		let eventName = this.attrName.slice(2);
 		let func;
