@@ -83,6 +83,7 @@ export default class Template {
 
 		// Rendering a standalone element.
 		if (standalone) {
+			//ngm = NodeGroupManager.get(this);
 			ng = new NodeGroup(this);
 			el = ng.getParentNode();
 			ngm = NodeGroupManager.get(el);
@@ -98,12 +99,7 @@ export default class Template {
 
 
 		//#IFDEV
-		ngm.modifications = {
-			created: [],
-			updated: [],
-			moved: [],
-			deleted: []
-		};
+		ngm.resetModifications();
 		//#ENDIF
 
 		// Fast path for empty component.

@@ -702,6 +702,7 @@ class Template {
 
 		// Rendering a standalone element.
 		if (standalone) {
+			//ngm = NodeGroupManager.get(this);
 			ng = new NodeGroup(this);
 			el = ng.getParentNode();
 			ngm = NodeGroupManager.get(el);
@@ -717,12 +718,7 @@ class Template {
 
 
 		//#IFDEV
-		ngm.modifications = {
-			created: [],
-			updated: [],
-			moved: [],
-			deleted: []
-		};
+		ngm.resetModifications();
 		//#ENDIF
 
 		// Fast path for empty component.
@@ -799,6 +795,23 @@ class Template {
 		return '@'+this.hashedFields[0];
 	}
 }
+
+var Globals = {
+
+	currentExprPath: [],
+
+	/**
+	 * Elements that are currently rendering via the r() function.
+	 * @type {WeakSet<HTMLElement>} */
+	rendering: new WeakSet(),
+
+
+	/**
+	 * Each Element that has Expr children has an associated NodeGroupManager here.
+	 * @type {WeakMap<HTMLElement, NodeGroupManager>} */
+	nodeGroupManagers: new WeakMap()
+
+};
 
 /**
  * Path to where an expression should be evaluated within a Shell.
@@ -968,7 +981,11 @@ class ExprPath {
 				this.apply(subExpr, newNodes, secondPass);
 
 		else if (typeof expr === 'function') {
+			//expr = watchFunction(expr, this.parentNg.manager); // part of watch2() experiment.
+
+			Globals.currentExprPath = [this, expr]; // Used by watch3()
 			let result = expr();
+			Globals.currentExprPath = null;
 
 			this.apply(result, newNodes, secondPass);
 		}
@@ -2654,6 +2671,7 @@ class NodeGroupManager {
 	 * @param rootEl {HTMLElement|DocumentFragment} If not specified, the first element of the html will be the rootEl. */
 	constructor(rootEl=null) {
 		this.rootEl = rootEl;
+		this.resetModifications();
 
 		/*
 		//#IFDEV
@@ -2914,6 +2932,15 @@ class NodeGroupManager {
 		/*#IFDEV*/this.rootNg.verify();/*#ENDIF*/
 	}
 
+	resetModifications() {
+		this.modifications = {
+			created: [],
+			updated: [],
+			moved: [],
+			deleted: []
+		};
+	}
+
 
 	// deprecated
 	//pathToLoopInfo = new MultiValueMap(); // uses a Set() for each value.
@@ -2945,7 +2972,8 @@ class NodeGroupManager {
 	 * Maps variable paths to the templates used to create NodeGroups
 	 * @type {MultiValueMap<string, Subscriber>} */
 	subscribers = new MultiValueMap();
-	
+
+
 	clearSubscribersIfNeeded() {
 		if (this.clearSubscribers) {
 			this.pathToLoopInfo = new MultiValueMap();
@@ -2957,16 +2985,22 @@ class NodeGroupManager {
 
 	/**
 	 * Get the NodeGroupManager for a Web Component.
-	 * @param rootEl {Solarite|HTMLElement}
+	 * @param rootEl {Solarite|HTMLElement|Template}
 	 * @return {NodeGroupManager} */
 	static get(rootEl=null) {
-		if (!rootEl)
-			return new NodeGroupManager();
+		let ngm;
+		if (rootEl instanceof Template) {
+			ngm = new NodeGroupManager();
+			ngm.rootNg = ngm.getNodeGroup(rootEl, false);
+			debugger;
+		}
+		else {
 
-		let ngm = nodeGroupManagers.get(rootEl);
-		if (!ngm) {
-			ngm = new NodeGroupManager(rootEl);
-			nodeGroupManagers.set(rootEl, ngm);
+			ngm = Globals.nodeGroupManagers.get(rootEl);
+			if (!ngm) {
+				ngm = new NodeGroupManager(rootEl);
+				Globals.nodeGroupManagers.set(rootEl, ngm);
+			}
 		}
 
 		return ngm;
@@ -3021,11 +3055,6 @@ class NodeGroupManager {
 }
 
 NodeGroupManager.pendingChildren = [];
-
-/**
- * Each Element that has Expr children has an associated NodeGroupManager here.
- * @type {WeakMap<HTMLElement, NodeGroupManager>} */
-let nodeGroupManagers = new WeakMap();
 
 /**
  * Convert strings to HTMLNodes.

@@ -4,6 +4,8 @@ import {getObjectHash} from "./hash.js";
 import {serializePath} from "./watch.js";
 
 import {assert} from "../util/Errors.js";
+import Globals from "./Globals.js";
+import Template from "./Template.js";
 
 
 /**
@@ -65,6 +67,7 @@ export default class NodeGroupManager {
 	 * @param rootEl {HTMLElement|DocumentFragment} If not specified, the first element of the html will be the rootEl. */
 	constructor(rootEl=null) {
 		this.rootEl = rootEl;
+		this.resetModifications();
 
 		/*
 		//#IFDEV
@@ -343,6 +346,15 @@ export default class NodeGroupManager {
 		/*#IFDEV*/this.rootNg.verify();/*#ENDIF*/
 	}
 
+	resetModifications() {
+		this.modifications = {
+			created: [],
+			updated: [],
+			moved: [],
+			deleted: []
+		};
+	}
+
 
 	// deprecated
 	//pathToLoopInfo = new MultiValueMap(); // uses a Set() for each value.
@@ -374,7 +386,8 @@ export default class NodeGroupManager {
 	 * Maps variable paths to the templates used to create NodeGroups
 	 * @type {MultiValueMap<string, Subscriber>} */
 	subscribers = new MultiValueMap();
-	
+
+
 	clearSubscribersIfNeeded() {
 		if (this.clearSubscribers) {
 			this.pathToLoopInfo = new MultiValueMap();
@@ -386,16 +399,22 @@ export default class NodeGroupManager {
 
 	/**
 	 * Get the NodeGroupManager for a Web Component.
-	 * @param rootEl {Solarite|HTMLElement}
+	 * @param rootEl {Solarite|HTMLElement|Template}
 	 * @return {NodeGroupManager} */
 	static get(rootEl=null) {
-		if (!rootEl)
-			return new NodeGroupManager();
+		let ngm;
+		if (rootEl instanceof Template) {
+			ngm = new NodeGroupManager();
+			ngm.rootNg = ngm.getNodeGroup(rootEl, false);
+			debugger;
+		}
+		else {
 
-		let ngm = nodeGroupManagers.get(rootEl);
-		if (!ngm) {
-			ngm = new NodeGroupManager(rootEl);
-			nodeGroupManagers.set(rootEl, ngm);
+			ngm = Globals.nodeGroupManagers.get(rootEl);
+			if (!ngm) {
+				ngm = new NodeGroupManager(rootEl);
+				Globals.nodeGroupManagers.set(rootEl, ngm);
+			}
 		}
 
 		return ngm;
@@ -454,11 +473,6 @@ export default class NodeGroupManager {
 }
 
 NodeGroupManager.pendingChildren = [];
-
-/**
- * Each Element that has Expr children has an associated NodeGroupManager here.
- * @type {WeakMap<HTMLElement, NodeGroupManager>} */
-let nodeGroupManagers = new WeakMap();
 
 
 
