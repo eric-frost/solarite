@@ -398,7 +398,9 @@ export default class NodeGroupManager {
 	
 
 	/**
-	 * Get the NodeGroupManager for a Web Component.
+	 * Get the NodeGroupManager for a Web Component, given either its root element or its Template.
+	 * If given a Template, create a new NodeGroup.
+	 * Using a Template is typically used when creating a standalone component.
 	 * @param rootEl {Solarite|HTMLElement|Template}
 	 * @return {NodeGroupManager} */
 	static get(rootEl=null) {
@@ -406,7 +408,8 @@ export default class NodeGroupManager {
 		if (rootEl instanceof Template) {
 			ngm = new NodeGroupManager();
 			ngm.rootNg = ngm.getNodeGroup(rootEl, false);
-			debugger;
+			let el = ngm.rootNg.getRootNode();
+			Globals.nodeGroupManagers.set(el, ngm);
 		}
 		else {
 

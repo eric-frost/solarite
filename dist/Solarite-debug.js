@@ -697,18 +697,19 @@ class Template {
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
 	render(el=null, options={}) {
-		let ng, ngm;
+		let ngm;
 		let standalone = !el;
 
 		// Rendering a standalone element.
 		if (standalone) {
-			//ngm = NodeGroupManager.get(this);
-			ng = new NodeGroup(this);
-			el = ng.getParentNode();
-			ngm = NodeGroupManager.get(el);
-			ng.manager = ngm;
-			ngm.rootNg = ng;
-			ngm.nodeGroupsInUse.push(ng);
+			ngm = NodeGroupManager.get(this);
+			el = ngm.rootNg.getParentNode();
+			// ng = new NodeGroup(this);
+			// el = ng.getParentNode();
+			// ngm = NodeGroupManager.get(el);
+			// ng.manager = ngm;
+			// ngm.rootNg = ng;
+			// ngm.nodeGroupsInUse.push(ng);
 		}
 		else
 			ngm = NodeGroupManager.get(el);
@@ -2197,14 +2198,15 @@ class NodeGroup {
 
 					// Event attribute value
 					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
-						let root = this.manager?.rootEl;
+						let root = /*this.manager?.rootEl ||*/ this.getRootNode();
 
+						/*
 						// this.startNode and this.startNode.parentNode are used when constructing a classless element.
 						if (!root || root instanceof DocumentFragment) {
 							root = this.startNode;
 							while (root.parentNode && !(root.parentNode instanceof DocumentFragment))
 								root = root.parentNode;
-						}
+						}*/
 
 						path.applyEventAttrib(el, expr, root);
 					}
@@ -2519,6 +2521,16 @@ class NodeGroup {
 		return this.startNode?.parentNode
 	}
 
+	getRootNode() {
+		let ng = this;
+		while (ng.parentPath?.parentNg)
+			ng = ng.parentPath?.parentNg;
+		let result = this.startNode;
+
+		if (!(result instanceof HTMLElement))
+			result = result.nextElementSibling;
+		return result;
+	}
 
 
 	updateStyles() {
@@ -2984,7 +2996,9 @@ class NodeGroupManager {
 	
 
 	/**
-	 * Get the NodeGroupManager for a Web Component.
+	 * Get the NodeGroupManager for a Web Component, given either its root element or its Template.
+	 * If given a Template, create a new NodeGroup.
+	 * Using a Template is typically used when creating a standalone component.
 	 * @param rootEl {Solarite|HTMLElement|Template}
 	 * @return {NodeGroupManager} */
 	static get(rootEl=null) {
@@ -2992,7 +3006,8 @@ class NodeGroupManager {
 		if (rootEl instanceof Template) {
 			ngm = new NodeGroupManager();
 			ngm.rootNg = ngm.getNodeGroup(rootEl, false);
-			debugger;
+			let el = ngm.rootNg.getRootNode();
+			Globals.nodeGroupManagers.set(el, ngm);
 		}
 		else {
 

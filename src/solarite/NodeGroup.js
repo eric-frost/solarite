@@ -238,14 +238,15 @@ export default class NodeGroup {
 
 					// Event attribute value
 					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
-						let root = this.manager?.rootEl
+						let root = /*this.manager?.rootEl ||*/ this.getRootNode();
 
+						/*
 						// this.startNode and this.startNode.parentNode are used when constructing a classless element.
 						if (!root || root instanceof DocumentFragment) {
 							root = this.startNode;
 							while (root.parentNode && !(root.parentNode instanceof DocumentFragment))
 								root = root.parentNode;
-						}
+						}*/
 
 						path.applyEventAttrib(el, expr, root);
 					}
@@ -560,6 +561,16 @@ export default class NodeGroup {
 		return this.startNode?.parentNode
 	}
 
+	getRootNode() {
+		let ng = this;
+		while (ng.parentPath?.parentNg)
+			ng = ng.parentPath?.parentNg;
+		let result = this.startNode;
+
+		if (!(result instanceof HTMLElement))
+			result = result.nextElementSibling;
+		return result;
+	}
 
 
 	updateStyles() {

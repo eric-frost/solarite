@@ -1877,8 +1877,8 @@ Testimony.test('Solarite.r.standalone2', () => {
 		},
 
 		render() {
-			// TODO: Fails if there's a space before <div>
-			r(this)`<div>
+			r(this)`
+			<div>
 	            <button onclick=${this.add}>Add Item</button>
 	            <hr>
 	            ${this.items.map(item => r`
@@ -1888,21 +1888,23 @@ Testimony.test('Solarite.r.standalone2', () => {
 		}
 	});
 
-	document.body.append(list);
+	//document.body.append(list);
 
+	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><hr></div>`);
+
+	// At one point, rendering a standalone component the first time would re-render everything.
+	// Here we make sure the hr element doesn't come back.
 	list.querySelector('hr').remove();
 	list.render();
 
-
-	/*
-	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><hr></div>`);
+	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button></div>`);
 
 	list.add();
-	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><hr><p>Item 0</p></div>`);
+	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><p>Item 0</p></div>`);
 
 	list.querySelector('button').dispatchEvent(new MouseEvent('click'));
-	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><hr><p>Item 0</p><p>Item 1</p></div>`);
-	*/
+	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><p>Item 0</p><p>Item 1</p></div>`);
+
 	//button.remove();
 });
 

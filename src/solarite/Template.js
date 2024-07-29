@@ -78,18 +78,19 @@ export default class Template {
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
 	render(el=null, options={}) {
-		let ng, ngm;
+		let ngm;
 		let standalone = !el;
 
 		// Rendering a standalone element.
 		if (standalone) {
-			//ngm = NodeGroupManager.get(this);
-			ng = new NodeGroup(this);
-			el = ng.getParentNode();
-			ngm = NodeGroupManager.get(el);
-			ng.manager = ngm;
-			ngm.rootNg = ng;
-			ngm.nodeGroupsInUse.push(ng);
+			ngm = NodeGroupManager.get(this);
+			el = ngm.rootNg.getParentNode();
+			// ng = new NodeGroup(this);
+			// el = ng.getParentNode();
+			// ngm = NodeGroupManager.get(el);
+			// ng.manager = ngm;
+			// ngm.rootNg = ng;
+			// ngm.nodeGroupsInUse.push(ng);
 		}
 		else
 			ngm = NodeGroupManager.get(el);
