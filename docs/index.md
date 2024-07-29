@@ -25,7 +25,7 @@ Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript library to
 With Solarite there's no need to set up state like with other frameworks.  Instead, use any regular variables or data structures in html templates.  Call `render()` manually and it will update changed elements synchronously.
 
 ```javascript
-import {r} from './src/solarite/Solarite.js';
+import {r} from './dist/Solarite.js';
 
 class ShoppingList extends HTMLElement {
 	constructor(items=[]) {
@@ -59,7 +59,7 @@ class ShoppingList extends HTMLElement {
             ${this.items.map(item => r`
                 <div>
                     <input placeholder="Name" value=${item.name} 
-                        oninput=${e => {
+                        oninput=${e => { // two-way binding
                             item.name = e.target.value; 
                             this.render()
                         }}>
@@ -93,6 +93,8 @@ Or get Solarite from GitHub or NPM:
 - [Solarite GitHub Repository](https://github.com/Vorticode/solarite)  <a class="github-button" href="https://github.com/vorticode/solarite" data-color-scheme="no-preference: light; light: light; dark: dark;" data-icon="octicon-star" data-size="small" data-show-count="true" aria-label="Star vorticode/solarite on GitHub">Star</a>
 - `git clone https://github.com/Vorticode/solarite.git`
 - `npm install solarite`
+
+Tip:  A JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [PhpStorm](https://www.jetbrains.com/phpstorm/), or [IDEA](https://www.jetbrains.com/idea/) will syntax highlight the html template strings.
 
 ## Concepts
 
@@ -130,7 +132,27 @@ Alternatively, instead of instantiating the element in JavaScript, we could can 
 
 JavaScript veterans will realize that other than the `r()` function, this is highly similar to one might create vanilla JavaScript web components.  This is by design!  
 
-Tip:  A JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [PhpStorm](https://www.jetbrains.com/phpstorm/), or [IDEA](https://www.jetbrains.com/idea/) will syntax highlight the html template strings.
+### Classless Elements
+
+The `r()` function can also create elements outside of a class.  Pass any object with a `render()` function as the first argument.  This object can optionally have additional properties and methods:
+
+```javascript
+import {r} from './dist/Solarite.js';
+
+let button = r({
+    count: 0,
+
+    inc() {
+        this.count++;
+        this.render();
+    },
+
+    render() {
+        r(this)`<button onclick=${this.inc}>I've been clicked ${this.count} times.</button>`
+    }
+});
+document.body.append(button);
+```
 
 ### Rendering
 
@@ -159,6 +181,36 @@ document.body.append(new MyComponent());
 ```
 
 If you do wrap the components html in its tag, that tag name must exactly match the tag name passed to `customElements.define()`.
+
+Note that by default, expressions will be rendered as text, with escaped html entities.  To render as html, wrap a variable in the `r()` function:
+
+```javascript
+import {r} from './dist/Solarite.js';
+
+let folderIcon = `
+<svg width="10em" height="10em" viewBox="0 0 24 24">
+	<path fill="currentColor" d="M2 4h8l2 2h10v14H2V4Zm2 2v12h16V8h-8.825l-2-2H4Zm0 12V6v12Z"/>
+</svg>`;
+
+
+let icon1 = r({
+	render() {
+		r(this)`<div>${folderIcon}</div>`
+	}
+});
+document.body.append(icon1);
+
+
+let icon2 = r({
+	render() { // string wrapped in r()
+		r(this)`<div>${r(folderIcon)}</div>`
+	}
+});
+document.body.append(icon2);
+
+```
+
+Folder icon comes from [Google](https://icon-sets.iconify.design/material-symbols/folder-outline/).
 
 ### Loops
 
@@ -266,7 +318,7 @@ Make sure to put your events inside `${...}` expressions, because classic events
 
 ### Two-Way Binding
 
-Form elements can update the properties that provide their values if an event attribute such as `oninput` is assigned the path to a property to update:
+Form elements can update the properties that provide their values if an event attribute such as `oninput` is assigned a function to perform the update:
 
 ```javascript
 import {r} from './dist/Solarite.js';
@@ -453,28 +505,6 @@ class NotesList extends HTMLElement {
 ```
 
 
-
-### Classless Elements
-
-The `r()` function can also create elements outside of a class.  Pass any object with a `render()` function as the first argument.  This object can optionally have additional properties and methods:
-
-```javascript
-import {r} from './dist/Solarite.js';
-
-let button = r({
-    count: 0,
-
-    inc() {
-        this.count++;
-        this.render();
-    },
-
-    render() {
-        r(this)`<button onclick=${this.inc}>I've been clicked ${this.count} times.</button>`
-    }
-});
-document.body.append(button);
-```
 
 ### The r() function
 
