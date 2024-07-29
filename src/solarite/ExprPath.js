@@ -349,7 +349,13 @@ export default class ExprPath {
 				value.unshift(expr);
 
 			let joinedValue = value.join('')
-			node.setAttribute(this.attrName, joinedValue);
+
+			// Only update attributes if the value has changed.
+			// The .value property is special.  If it changes we don't update the attribute.
+			let oldVal = this.attrName === 'value' ? node.value : node.getAttribute(this.attrName);
+			if (oldVal !== joinedValue) {
+				node.setAttribute(this.attrName, joinedValue);
+			}
 
 			// This is needed for setting input.value, .checked, option.selected, etc.
 			// But in some cases setting the attribute is enough.  such as div.setAttribute('title') updates div.title.
