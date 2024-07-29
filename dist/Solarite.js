@@ -1956,15 +1956,12 @@ class NodeGroup {
 
 					// Event attribute value
 					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
-						let root = /*this.manager?.rootEl ||*/ this.getRootNode();
 
-						/*
-						// this.startNode and this.startNode.parentNode are used when constructing a classless element.
-						if (!root || root instanceof DocumentFragment) {
-							root = this.startNode;
-							while (root.parentNode && !(root.parentNode instanceof DocumentFragment))
-								root = root.parentNode;
-						}*/
+						let root = this.manager?.rootEl;
+
+						// For standalone elements:
+						if (!root || root instanceof DocumentFragment)
+							root = this.getRootNode();
 
 						path.applyEventAttrib(el, expr, root);
 					}

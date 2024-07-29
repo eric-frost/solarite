@@ -2333,6 +2333,64 @@ Testimony.test('Solarite.events.onComponent', 'Event attrib on root component', 
 	assert.eq(a.count, '2');
 });
 
+Testimony.test('Solarite.events.onChild', () => {
+
+	class E50 extends HTMLElement {
+		constructor() {
+			super();
+			this.items = [];
+			this.render();
+		}
+
+		addItem() {
+			this.items.push(1);
+			this.render();
+		}
+
+		render() {
+			r(this)`
+			<e-50>				
+				<button onclick=${this.addItem}>Add Item</button>
+			</e-50>`
+		}
+	}
+	customElements.define('e-50', E50);
+
+	let e = new E50();
+	e.querySelector('button').dispatchEvent(new MouseEvent('click'));
+	assert.eq(e.items.length, 1);
+});
+
+
+
+Testimony.test('Solarite.events.onExprChild', () => {
+
+	class E60 extends HTMLElement {
+		constructor() {
+			super();
+			this.items = [];
+			this.render();
+		}
+
+		addItem() {
+			this.items.push(1);
+			this.render();
+		}
+
+		render() {
+			r(this)`
+			<e-60>				
+				${r`<button onclick=${this.addItem}>Add Item</button>`}
+			</e-60>`
+		}
+	}
+	customElements.define('e-60', E60);
+
+	let e = new E60();
+	e.querySelector('button').dispatchEvent(new MouseEvent('click'));
+	assert.eq(e.items.length, 1);
+});
+
 
 
 // Binding

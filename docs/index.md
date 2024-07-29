@@ -25,7 +25,7 @@ Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript library to
 With Solarite there's no need to set up state like with other frameworks.  Instead, use any regular variables or data structures in html templates.  Call `render()` manually and it will update changed elements synchronously.
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './src/solarite/Solarite.js';
 
 class ShoppingList extends HTMLElement {
 	constructor(items=[]) {
@@ -124,7 +124,7 @@ document.body.append(new MyComponent());
 
 Alternatively, instead of instantiating the element in JavaScript, we could can instantiate the element directly from html:
 
-```html
+```Html
 <my-component></my-component>
 ```
 
@@ -158,7 +158,7 @@ customElements.define('my-component', MyComponent);
 document.body.append(new MyComponent());
 ```
 
-If you do wrap the components html in its tag, that tag name must exactly match the tag name passed to customElements.define().
+If you do wrap the components html in its tag, that tag name must exactly match the tag name passed to `customElements.define()`.
 
 ### Loops
 
@@ -459,7 +459,7 @@ class NotesList extends HTMLElement {
 The `r()` function can also create elements outside of a class.  Pass any object with a `render()` function as the first argument.  This object can optionally have additional properties and methods:
 
 ```javascript
-import {r} from './src/solarite/Solarite.js';
+import {r} from './dist/Solarite.js';
 
 let button = r({
     count: 0,
@@ -568,7 +568,7 @@ You can perform manual DOM operations on your elements in these cases:
 This example creates a list as a Classless Element and demonstrates which manual DOM operations are allowed.
 
 ```javascript
-import {r} from './src/solarite/Solarite.js';
+import {r} from './dist/Solarite.js';
 
 let list = r({
     items: [],

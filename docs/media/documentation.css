@@ -8,7 +8,10 @@
     font-weight: 400;
     src: url("FiraCode400.woff2") format("woff")
 }
-
+html[dark] {
+	--card-background: #06090c !important;
+	--card-border: #1a1c1e !important;
+}
 html { background: var(--background) !important; font-size: 16px !important }
 body::before { content: ''; position: fixed; inset: 0;
 	opacity: .03; filter: grayscale(75%);
