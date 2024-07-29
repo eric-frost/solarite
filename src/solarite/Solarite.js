@@ -15,6 +15,7 @@ export {Solarite}
 export {default as r} from './r.js';
 export {getArg, ArgType} from './getArg.js';
 export {default as Template} from './Template.js';
+export {default as Globals} from './Globals.js';
 
 
 //Experimental:

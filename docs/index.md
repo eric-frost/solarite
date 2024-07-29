@@ -98,43 +98,9 @@ Tip:  A JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [Php
 
 ## Concepts
 
-### Web Components
+### Regular Elements
 
-In this minimal example, we make a new class called `MyComponent` which extends from `HTMLElement` like other web components.  We provide a `render()` function to set its html, and a constructor to call it when a new instance is created.
-
-All browsers require custom web component tag names to have at least one dash in the middle.  
-
-```javascript
-import {r} from './dist/Solarite.js';
-
-class MyComponent extends HTMLElement {
-	name = 'Solarite';
-    
-    constructor() {
-        super();
-        this.render();
-    }
-    
-	render() { 
-		r(this)`<my-component>Hello <b>${this.name}!<b></my-component>`
-	}
-}
-
-customElements.define('my-component', MyComponent);
-document.body.append(new MyComponent());
-```
-
-Alternatively, instead of instantiating the element in JavaScript, we could can instantiate the element directly from html:
-
-```Html
-<my-component></my-component>
-```
-
-JavaScript veterans will realize that other than the `r()` function, this is highly similar to one might create vanilla JavaScript web components.  This is by design!  
-
-### Classless Elements
-
-The `r()` function can also create elements outside of a class.  Pass any object with a `render()` function as the first argument.  This object can optionally have additional properties and methods:
+The `r()` function can create elements.  Pass any object with a `render()` function as the first argument.  This object can optionally have additional properties and methods, which become bound to the resulting element.  When `render()` is called, only the changed nodes will be updated.
 
 ```javascript
 import {r} from './dist/Solarite.js';
@@ -154,11 +120,78 @@ let button = r({
 document.body.append(button);
 ```
 
+If you want multiple instances of such an element, the code above can be wrapped in a function:
+
+```javascript
+import {r} from './dist/Solarite.js';
+
+function createButton(text) {
+	return r({
+		count: 0,
+
+		inc() {
+			this.count++;
+			this.render();
+		},
+
+		render() {
+			r(this)`<button onclick=${this.inc}>${this.count} ${text}</button>`
+		}
+	})
+}
+document.body.append(createButton('clicks'));
+document.body.append(createButton('tickles'));
+```
+
+### Web Components
+
+Solarite can also create [web components](https://developer.mozilla.org/en-US/docs/Web/API/Web_components).  In this minimal example, we make a new class called `MyComponent` which extends from `HTMLElement` like any other web component.  We provide a `render()` function to set its html, and a constructor to call it when a new instance is created.
+
+All browsers require web component tag names to have at least one dash in the middle.  
+
+```javascript
+import {r} from './dist/Solarite.js';
+
+class MyComponent extends HTMLElement {
+	name = 'Solarite';
+    
+    constructor() {
+        super(); // JavaScript requires a super() call for sub-class construtors.
+        this.render();
+    }
+    
+	render() {
+        // This is how we'd create a web component using vanilla JavaScript
+        // without Solarite.  But this recreates all children on every render!
+        //this.innerHTML = `Hello <b>${this.name}!<b>`;
+        
+        // Using Solarite's r() function performs minimal updates on render.
+		r(this)`<my-component>Hello <b>${this.name}!<b></my-component>`
+	}
+}
+
+// Register the <my-component> tag name with the browser.
+// Browsers require this for all web components.
+customElements.define('my-component', MyComponent);
+
+document.body.append(new MyComponent());
+```
+
+Alternatively, instead of instantiating the element in JavaScript, we could can instantiate the element directly from html:
+
+```Html
+<my-component></my-component>
+```
+
+JavaScript veterans will realize that other than the `r()` function, this is highly similar to one might create vanilla JavaScript web components.  This is by design!
+
+Since these are just regular web components, they can define the [connectedCallback()](https://developer.salesforce.com/docs/platform/lwc/guide/create-lifecycle-hooks-dom.html#connectedcallback) and [disconnectedCallback()](https://developer.salesforce.com/docs/platform/lwc/guide/create-lifecycle-hooks-dom.html#disconnectedcallback) methods that will be called when they're added and removed from the DOM, respectively.  These functions are only supported for web components and not regular elements.
+
 ### Rendering
 
-The `r` function, when used as part of a [tagged template literal](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals#tagged_templates) , converts the html and embedded expressions into a Solarite `Template`.  This is a data structure used by Solarite to store processed html and expressions.  The call to `r(this)` then renders that `Template` as web component's attributes and children.  You can think of this like assigning to the browser's built-in `this.outerHTML` property, except updates are much faster because only the changed elements are replaced, instead of all nodes.
+The `r` function, when used as a [tagged template literal](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals#tagged_templates) , converts the html and embedded expressions into a Solarite `Template`.  This is a data structure used by Solarite to store processed html and expressions.  The call to `r(this)` then renders that `Template` as an element's attributes and children.  You can think of this like assigning to the browser's built-in `this.outerHTML` property, except updates are much faster because only the changed elements are replaced, instead of all nodes.
 
-Unlike other frameworks, Solarite does not re-render automatically when data changes, so you should call the `render()` function manually.  This is a deliberate design choice to reduce magic, since in some cases you may want to update internal data without rendering.
+Unlike other frameworks, Solarite does not re-render automatically when data changes, so you should call the `render()` function manually.  This is a deliberate design choice to reduce unexpected side effects, since in some cases you may want to update internal data without rendering.
 
 Wrapping the web component's html in its tag name is optional.  But without it you then must set any attributes on your web component manually, as seen in this example:
 
@@ -180,9 +213,9 @@ customElements.define('my-component', MyComponent);
 document.body.append(new MyComponent());
 ```
 
-If you do wrap the components html in its tag, that tag name must exactly match the tag name passed to `customElements.define()`.
+If you do wrap the web component's html in its tag, that tag name must exactly match the tag name passed to `customElements.define()`.
 
-Note that by default, expressions will be rendered as text, with escaped html entities.  To render as html, wrap a variable in the `r()` function:
+Note that by default, `r()` will render expressions as text, with escaped html entities.  To render as html, wrap a variable in the `r()` function:
 
 ```javascript
 import {r} from './dist/Solarite.js';
@@ -212,40 +245,15 @@ document.body.append(icon2);
 
 Folder icon comes from [Google](https://icon-sets.iconify.design/material-symbols/folder-outline/).
 
-### Loops
+These types of objects can be returned by in expressions with `r` tagged template literals:
 
-As previously seen, loops can be written with JavaScript's [Array.map()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map) function:
-
-```javascript
-import {r} from './dist/Solarite.js';
-
-class TodoList extends HTMLElement {
-	render() { 
-		r(this)`
-        <todo-list>
-            ${this.items.map(item => 
-                r`${item}<br>`
-            )}
-        </todo-list>`
-	}
-}
-customElements.define('todo-list', TodoList);
-
-let list = new TodoList();
-list.items = ['one', 'two', 'three'];
-list.render();
-document.body.append(list);
-
-list.items[1] = '2';
-list.render();
-
-list.items.splice(1, 0, 'two and a half');
-list.render();
-```
-
-When we change an element or add another element to the `items` list, calling `render()` only redraws the changed or new element.  The other list items are not modified.
-
-Note that nested template literals must also have the `r` prefix. Otherwise they'll be rendered as escaped text instead of HTML elements.
+1. strings and numbers.
+2. boolean true, which will be rendered as 'true'
+3. false, null, and undefined, which will be rendered as empty string.
+4. Solarite Templates created by `r`-tagged template literals.
+5. DOM Nodes, including other web components.
+6. Arrays of any of the above.
+7. Functions that return any of the above.
 
 ### Attributes
 
@@ -282,77 +290,6 @@ document.body.append(ad);
 Expressions can also toggle the presence of an attribute.  In the last div above, if `isEditable` is false, null, or undefined, the contenteditable attribute will be removed.
 
 Note that attributes can also be assigned to the root element, such as `class="big"` on the `<attribute-demo>` tag above.
-
-### Events
-
-Listen for events by assigning a function expression to any event attribute.  Or by passing an array where the first item is a function and subsequent items are arguments to that function.
-
-```javascript
-import {r} from './dist/Solarite.js';
-
-class EventDemo extends HTMLElement {
-	constructor() {
-		super();
-		this.render();
-	}
-	
-	showMessage(message) {
-		alert(message);
-	}
-	
-	render() { 
-		r(this)`
-		<event-demo>
-			<button onclick=${(ev, el)=>alert('Element ' + el.tagName + ' clicked!')}>Click me</button>
-			<button onclick=${[this.showMessage, 'I too was clicked!']}>Click me too!</button>
-		</event-demo>`
-	}
-} 
-customElements.define('event-demo', EventDemo);
-document.body.append(new EventDemo());
-```
-
-Event binding with an array containing a function and its arguments is slightly faster, since when `render()` is called, Solarite can see that the function hasn't changed, and it doesn't need to be unbound and rebound.  But the performance difference is usually negligible.
-
-Make sure to put your events inside `${...}` expressions, because classic events can't reference variables in the current scope.
-
-### Two-Way Binding
-
-Form elements can update the properties that provide their values if an event attribute such as `oninput` is assigned a function to perform the update:
-
-```javascript
-import {r} from './dist/Solarite.js';
-
-class BindingDemo extends HTMLElement {
-   
-	constructor() {
-        super();
-        this.count = 0;
-        this.render();
-    }
-    
-	render() { 
-		r(this)`
-        <binding-demo>
-            <input type="number" value=${this.count} 
-                oninput=${ev => {
-                    this.count = ev.target.value;
-                    this.render();
-                }}>
-            <pre>count is ${this.count}</pre>
-            <button onclick=${()=> { 
-                this.count = 0;
-                this.render();
-            }}>Reset</button>
-        </binding-demo>`
-	}
-}
-customElements.define('binding-demo', BindingDemo);
-
-document.body.append(new BindingDemo());
-```
-
-In addition to `<input>`,  `<select>` and `<textarea>` can also use the `value` attribute to set their value on render.  Likewise so can any custom web components that define a `value` property.
 
 ### Id's
 
@@ -392,6 +329,112 @@ raceTeam.car.style.border = '1px solid green';
 ```
 
 Id's that have values matching built-in HTMLElement attribute names such as `title` or `disabled` are not allowed.
+
+### Events
+
+Listen for events by assigning a function expression to any event attribute.  Or by passing an array where the first item is a function and subsequent items are arguments to that function.
+
+```javascript
+import {r} from './dist/Solarite.js';
+
+class EventDemo extends HTMLElement {
+	constructor() {
+		super();
+		this.render();
+	}
+	
+	showMessage(message) {
+		alert(message);
+	}
+	
+	render() { 
+		r(this)`
+		<event-demo>
+			<button onclick=${(ev, el)=>alert('Element ' + el.tagName + ' clicked!')}>Click me</button>
+			<button onclick=${[this.showMessage, 'I too was clicked!']}>Click me too!</button>
+		</event-demo>`
+	}
+} 
+customElements.define('event-demo', EventDemo);
+document.body.append(new EventDemo());
+```
+
+Event binding with an array containing a function and its arguments is slightly faster, since when `render()` is called, Solarite can see that the function hasn't changed, and it doesn't need to be unbound and rebound.  But the performance difference is usually negligible.
+
+Make sure to put your events inside `${...}` expressions, because classic events can't reference variables in the current scope.
+
+### Loops
+
+As previously seen, loops can be written with JavaScript's [Array.map()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map) function:
+
+```javascript
+import {r} from './dist/Solarite.js';
+
+class TodoList extends HTMLElement {
+	render() { 
+		r(this)`
+        <todo-list>
+            ${this.items.map(item => 
+                r`${item}<br>`
+            )}
+        </todo-list>`
+	}
+}
+customElements.define('todo-list', TodoList);
+
+let list = new TodoList();
+list.items = ['one', 'two', 'three'];
+list.render();
+document.body.append(list);
+
+list.items[1] = '2';
+list.render();
+
+list.items.splice(1, 0, 'two and a half');
+list.render();
+```
+
+When we change an element or add another element to the `items` list, calling `render()` only redraws the changed or new element.  The other list items are not modified.
+
+Note that nested template literals must also have the `r` prefix. Otherwise they'll be rendered as escaped text instead of HTML elements.
+
+### Two-Way Binding
+
+Form elements can update the properties that provide their values if an event attribute such as `oninput` is assigned a function to perform the update:
+
+```javascript
+import {r} from './dist/Solarite.js';
+
+class BindingDemo extends HTMLElement {
+   
+	constructor() {
+        super();
+        this.count = 0;
+        this.render();
+    }
+    
+	render() { 
+		r(this)`
+        <binding-demo>
+            <input type="number" value=${this.count} 
+                oninput=${ev => {
+                    this.count = ev.target.value;
+                    this.render();
+                }}>
+            <pre>count is ${this.count}</pre>
+            <button onclick=${()=> { 
+                this.count = 0;
+                this.render();
+            }}>Reset</button>
+        </binding-demo>`
+	}
+}
+customElements.define('binding-demo', BindingDemo);
+
+document.body.append(new BindingDemo());
+```
+
+In addition to `<input>`,  `<select>` and `<textarea>` can also use the `value` attribute to set their value on render.  Likewise so can any custom web components that define a `value` property.
 
 ### Scoped Styles
 
@@ -437,7 +480,7 @@ Note that if shadow-dom is used, the element will not replace the `:host` select
 
 ### Sub Components
 
-When one Solarite component is embedded within another, its attributes and children are passed as arguments to the constructor:
+When one Solarite web component is embedded within another, its attributes and children are passed as arguments to the constructor:
 
 ```javascript
 import {r} from './dist/Solarite.js';
@@ -489,7 +532,7 @@ document.body.append(list);
 
 Note that calling `render()` on a parent component will call it on sub-components too.
 
-In the above code, we could also have created `<notes-item>` via the `new` keyword:
+In the above code, we could also have created the `<notes-item>` element via the `new` keyword:
 
 ```JavaScript
 class NotesList extends HTMLElement {
@@ -534,7 +577,7 @@ r(el)`<b>${'Hi'}</b>`;
 let textNode = r('Hello');           
 
 // r(html:string):HTMLElement
-// Create single HTMLElement
+// Create single HTMLElement.
 let el2 = r('<b>Hello</b>');
 
 // r(html:string):DocumentFragment
@@ -542,8 +585,7 @@ let el2 = r('<b>Hello</b>');
 let fragment = r('<b>Hello</b><u>Goodbye</u>');
 
 // r(function():Template, Object<string, function|*>):HTMLElement
-// Crete a standalone element, with the fist function being the render function.
-// This is seen in the "Classless Elements" section above.
+// Crete a button element, with the fist function being the render function.
 let button = r({
     render() {
         r(this)`<button>Submit</button>`
@@ -595,7 +637,7 @@ You can perform manual DOM operations on your elements in these cases:
    3. Do not have any attributes created by expressions.
 3. Modify any node, as long as you restore its previous position and attributes before `render()` is called again.
 
-This example creates a list as a Classless Element and demonstrates which manual DOM operations are allowed.
+This example creates a list inside a `div` element and demonstrates which manual DOM operations are allowed.
 
 ```javascript
 import {r} from './dist/Solarite.js';

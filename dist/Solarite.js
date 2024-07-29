@@ -2855,6 +2855,7 @@ let connected = new WeakSet();
  * 5.  We have the onConnect, onFirstConnect, and onDisconnect methods.
  *     Can't figure out how to have these work standalone though, and still be synchronous.
  * 6.  Can we extend from other element types like TR?
+ * 7.  Shows default text if render() function isn't defined.
  *
  * Advantages to inheriting from HTMLElement
  * 1.  Minimization won't break when it renames the Class and we call customElements.define() on the wrong name.
@@ -2992,4 +2993,4 @@ let Solarite = new Proxy(createSolarite(), {
 //export {forEach, watchGet, watchSet} from './watch.js' // old, unfinished
 //export {watch} from './watch2.js'; // unfinished
 
-export { ArgType, Solarite, Template, getArg, r };
+export { ArgType, Globals, Solarite, Template, getArg, r };
