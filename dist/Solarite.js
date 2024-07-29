@@ -2517,10 +2517,31 @@ class NodeGroupManager {
 			
 			return null;
 		}
-		
+
+		// 2.  Try to find a close match.
+		if (!ng) {
+			// We don't need to delete the exact match bc it's already been deleted in the prev pass.
+			let closeKey = template.getCloseKey();
+			ng = this.findAndDeleteClose(closeKey, exactKey);
+
+			// 2. Update expression values if they've changed.
+			if (ng) {
+				
+				
+
+				ng.applyExprs(template.exprs);
+
+				
+				
+			}
+
+			// 3. Or if not found, create a new NodeGroup
+			else {
+				
 
 				ng = new NodeGroup(template, this);
 
+				
 				
 
 

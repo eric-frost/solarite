@@ -252,7 +252,7 @@ export default class NodeGroupManager {
 	getNodeGroup(template, exact=null) {
 		let exactKey = getObjectHash(template)
 
-		/*#IFDEV*/if(NodeGroupManager.logEnabled) this.log(`Looking for ${exact ? 'exact' : 'close'} match: ` + template.debug)/*#ENDIF*/
+		/*#IFDEV*/if(logEnabled) this.log(`Looking for ${exact ? 'exact' : 'close'} match: ` + template.debug)/*#ENDIF*/
 
 		// 1. Try to find an exact match.
 		let ng = this.findAndDeleteExact(exactKey);
@@ -260,29 +260,25 @@ export default class NodeGroupManager {
 			/*#IFDEV*/this.log(`Not found.`)/*#ENDIF*/
 			return null;
 		}
-		/*#IFDEV*/if(NodeGroupManager.logEnabled) this.log(`Found exact: ` + ng.debug)/*#ENDIF*/
+		/*#IFDEV*/if (logEnabled) this.log(`Found exact: ` + ng.debug);/*#ENDIF*/
 
 		// 2.  Try to find a close match.
-		else if (!ng) {
+		if (!ng) {
 			// We don't need to delete the exact match bc it's already been deleted in the prev pass.
 			let closeKey = template.getCloseKey();
 			ng = this.findAndDeleteClose(closeKey, exactKey);
 
 			// 2. Update expression values if they've changed.
 			if (ng) {
-				//#IFDEV
-				if (NodeGroupManager.logEnabled) this.log(`Found close: ` + closeKey + '   ' + ng.debug)
-				this.incrementLogDepth(1);
-				ng.verify();
-				//#ENDIF
+				/*#IFDEV*/if (logEnabled) this.log(`Found close: ` + closeKey + '   ' + ng.debug);/*#ENDIF*/
+				/*#IFDEV*/this.incrementLogDepth(1);/*#ENDIF*/
+				/*#IFDEV*/ng.verify();/*#ENDIF*/
 
 				ng.applyExprs(template.exprs);
 
-				//#IFDEV
-				ng.verify()
-				this.incrementLogDepth(-1);
-				if (NodeGroupManager.logEnabled) this.log(`Updated close to: ` + ng.debug)
-				//#ENDIF
+				/*#IFDEV*/ng.verify();/*#ENDIF*/
+				/*#IFDEV*/this.incrementLogDepth(-1);/*#ENDIF*/
+				/*#IFDEV*/if (logEnabled) this.log(`Updated close to: ` + ng.debug);/*#ENDIF*/
 			}
 
 			// 3. Or if not found, create a new NodeGroup
@@ -291,10 +287,8 @@ export default class NodeGroupManager {
 
 				ng = new NodeGroup(template, this);
 
-				//#IFDEV
-				this.incrementLogDepth(-1);
-				this.modifications.created.push(...ng.getNodes())
-				//#ENDIF
+				/*#IFDEV*/this.incrementLogDepth(-1);/*#ENDIF*/
+				/*#IFDEV*/this.modifications.created.push(...ng.getNodes())/*#ENDIF*/
 
 
 				// 4. Mark NodeGroup as being in-use.
@@ -305,7 +299,7 @@ export default class NodeGroupManager {
 				ng.closeKey = closeKey;
 				this.nodeGroupsInUse.push(ng)
 
-				/*#IFDEV*/if (NodeGroupManager.logEnabled) this.log(`Created new ` + ng.debug)/*#ENDIF*/
+				/*#IFDEV*/if (logEnabled) this.log(`Created new ` + ng.debug)/*#ENDIF*/
 			}
 		}
 		
@@ -425,13 +419,14 @@ export default class NodeGroupManager {
 
 
 	//#IFDEV
-	static logEnabled = false;
+
+
 	incrementLogDepth(level) {
 		this.logDepth += level;
 	}
 	log(msg, level=0) {
 		this.logDepth += level;
-		if (NodeGroupManager.logEnabled) {
+		if (logEnabled) {
 			let indent = '	'.repeat(this.logDepth);
 			console.log(indent + msg);
 		}
@@ -477,6 +472,9 @@ export default class NodeGroupManager {
 
 NodeGroupManager.pendingChildren = [];
 
+//#IFDEV
+let logEnabled = false // Prevent rollup's static analyzer from removing this.
+//#ENDIF
 
 
 export class LoopInfo {

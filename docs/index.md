@@ -5,7 +5,7 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 ---
 
-<!-- To convert documentation to html: (1) Open in Typora.  (2) Select the GitHub theme. (3) Export as html with styles to index.html. -->
+<!-- To convert documentation to html: (1) Open in Typora.  (2) Select the GitHub theme, or go to Settings -> Export -> Html -> Theme -> Github. (3) Export as html with styles to index.html. -->
 
 <!-- Playgrounds that don't have a lowercase language name will not have a preview. -->
 
@@ -556,7 +556,16 @@ document.body.append(table);
 
 ### Manual DOM Ops
 
-This example creates a list as a Classless Element.
+You can perform manual DOM operations on your elements in these cases:
+
+1. Modify any attributes that are not created by expressions, on any nodes not created by expressions.
+2. Add/remove nodes that:
+   1. Are not created by an expression
+   2. Are not directly before or after an expression that creates nodes.
+   3. Do not have any attributes created by expressions.
+3. Modify any node, as long as you restore its previous position and attributes before `render()` is called again.
+
+This example creates a list as a Classless Element and demonstrates which manual DOM operations are allowed.
 
 ```javascript
 import {r} from './src/solarite/Solarite.js';
@@ -582,29 +591,29 @@ let list = r({
 
 document.body.append(list);
 
+// Set attributes not created by expressions.  This is allowed. 
+list.setAttribute('title', 'DOM manipuulation demo');
+list.querySelector('button').setAttribute('title', 'Click me');
+
 // Remove the <hr> element.
 // This is fine, because the hr element isn't part of an expression.
-//setTimeout(() => {
-	list.querySelector('hr').remove();
-    list.render();
-//}, 1000);
+// And isn't adjacent to an expression, because there's a whitespace
+// node between the <hr> and the expression.
+// You could also put a comment node between them.
+list.querySelector('hr').remove();
+list.render();
 
 // Remove the first <p> element and add it back again.
 // This is fine, because we put it back the way it was before render()
-//setTimeout(() => {
-    list.add();
-    let p = list.querySelector('p');
-	list.append(p);
-    list.render();
-//}, 2000);
+list.add();
+let p = list.querySelector('p');
+list.append(p); // put it back.
+list.render();
 
 // Remove the first <p> element.
-// This is bad(!) because we're modifying nodes created by an expression.
-//setTimeout(() => {
-//	list.querySelector('p').remove();
-//  list.render();
-//}, 3000);
-
+// This will cause an error because we're modifying nodes created by an expression.
+// list.querySelector('p').remove();
+// list.render();
 ```
 
 

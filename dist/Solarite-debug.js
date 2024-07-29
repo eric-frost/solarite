@@ -2866,23 +2866,22 @@ class NodeGroupManager {
 			/*#IFDEV*/this.log(`Not found.`);/*#ENDIF*/
 			return null;
 		}
-		/*#IFDEV*/if (!ng) {
+
+		// 2.  Try to find a close match.
+		if (!ng) {
 			// We don't need to delete the exact match bc it's already been deleted in the prev pass.
 			let closeKey = template.getCloseKey();
 			ng = this.findAndDeleteClose(closeKey, exactKey);
 
 			// 2. Update expression values if they've changed.
 			if (ng) {
-				this.incrementLogDepth(1);
-				ng.verify();
-				//#ENDIF
+				/*#IFDEV*/this.incrementLogDepth(1);/*#ENDIF*/
+				/*#IFDEV*/ng.verify();/*#ENDIF*/
 
 				ng.applyExprs(template.exprs);
 
-				//#IFDEV
-				ng.verify();
-				this.incrementLogDepth(-1);
-				//#ENDIF
+				/*#IFDEV*/ng.verify();/*#ENDIF*/
+				/*#IFDEV*/this.incrementLogDepth(-1);/*#ENDIF*/
 			}
 
 			// 3. Or if not found, create a new NodeGroup
@@ -2891,10 +2890,8 @@ class NodeGroupManager {
 
 				ng = new NodeGroup(template, this);
 
-				//#IFDEV
-				this.incrementLogDepth(-1);
-				this.modifications.created.push(...ng.getNodes());
-				//#ENDIF
+				/*#IFDEV*/this.incrementLogDepth(-1);/*#ENDIF*/
+				/*#IFDEV*/this.modifications.created.push(...ng.getNodes());/*#ENDIF*/
 
 
 				// 4. Mark NodeGroup as being in-use.
@@ -3023,7 +3020,8 @@ class NodeGroupManager {
 
 
 	//#IFDEV
-	static logEnabled = false;
+
+
 	incrementLogDepth(level) {
 		this.logDepth += level;
 	}
