@@ -3199,10 +3199,7 @@ function r(htmlStrings=undefined, ...exprs) {
 		return (htmlStrings, ...exprs) => {
 			//rendered.add(parent)
 			let template = r(htmlStrings, ...exprs);
-			let result = template.render();
-			//if (result instanceof DocumentFragment)
-
-			return result;
+			return template.render();
 		}
 	}
 
@@ -3216,7 +3213,7 @@ function r(htmlStrings=undefined, ...exprs) {
 	else if (typeof htmlStrings === 'object') {
 		let obj = htmlStrings;
 
-		// Special rebound render path.
+		// Special rebound render path, called by normal path.
 		if (objToEl.has(obj)) {
 			return function(...args) {
 			   let template = r(...args);
@@ -3224,7 +3221,6 @@ function r(htmlStrings=undefined, ...exprs) {
 				objToEl.set(obj, el);
 			}.bind(obj);
 		}
-
 
 		// Normal path
 		else {
@@ -3249,7 +3245,7 @@ function r(htmlStrings=undefined, ...exprs) {
 
 /**
  * Used by r() path 9. */
-let objToEl = new Map();
+let objToEl = new WeakMap();
 
 /**
  * Elements that have been rendered to by r() at least once.

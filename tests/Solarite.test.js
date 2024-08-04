@@ -1871,6 +1871,27 @@ Testimony.test('Solarite.r.staticElement2', () => {
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
 
+
+Testimony.test('Solarite.r.staticElement3', () => {
+	let button = r(` <!-- comment -->
+		<button>hi</button>`);
+	assert(button instanceof HTMLElement); // Not a DocumentFragment
+	assert.eq(getHtml(button), `<button>hi</button>`)
+})
+
+
+Testimony.test('Solarite.r.staticElement4', () => {
+	let button = r(` Hello`);
+	assert(button instanceof Text);
+	assert.eq(getHtml(button), ` Hello`)
+})
+
+Testimony.test('Solarite.r.staticElement5', () => {
+	let button = r(` <!--comment--> Hello`);
+	assert(button instanceof Text);
+	assert.eq(getHtml(button), ` Hello`)
+})
+
 Testimony.test('Solarite.r.fragment', () => {
 	let fragment = r(`Hello <button>hi</button>`);
 	assert(fragment instanceof DocumentFragment);
