@@ -11,11 +11,11 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite
 
-Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript library to enhance your vanilla web components.  Features:
+Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript library for creating elements and web components.  Features:
 
-- Very similar to writing native Web Components.
 - Minimal DOM updates when rendering.
 - No magic:  Rendering only when you want it, via the manually invoked render() method.
+- Integrates well with vanilla JavaScript.
 - Local scoped styles:  Inherit external styles but define new styles that apply only to the web component and its children.
 - Elements with `id` or `data-id` attributes become class properties.
 - Attributes are passed as constructor arguments to nested Solarite components.
@@ -769,3 +769,11 @@ When `render()` is called:
 2. It then creates a hash of the values of each item in the array.  
 3. Then it compares those hashes with the hashes from the last time rendering happened, and only update elements and attributes given values that have changed.
 
+## Upcoming Features
+
+These are possible features to come:
+
+1. Optional shadow DOM support
+2. Optional JSX support
+3. Option to render automatically when properties change, without calling render()
+4. Faster rendering performance.

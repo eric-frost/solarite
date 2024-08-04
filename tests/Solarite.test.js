@@ -1810,7 +1810,7 @@ Testimony.test('Solarite.comments2', () => {
 
 
 
-Testimony.test('Solarite.ids', () => {
+Testimony.test('Solarite.ids.one', () => {
 	class R500 extends Solarite {
 		one;
 		render() {
@@ -1824,11 +1824,54 @@ Testimony.test('Solarite.ids', () => {
 	assert(a.one.tagName === 'DIV')
 });
 
-Testimony.test('Solarite.r._createElement', () => {
 
-	let button = r()`<button>hi</button>`
-	console.log(button.outerHTML)
-	document.body.append(button);
+Testimony.test('Solarite.ids.two', () => {
+	class R510 extends Solarite {
+		one;
+		render() {
+			r(this)`<div data-id="one"><p id="two"></p></div>`;
+		}
+	}
+
+	let a = new R510();
+	a.render();
+
+	assert(a.one.tagName === 'DIV')
+	assert(a.two.tagName === 'P')
+});
+
+Testimony.test('Solarite.ids.delve', () => {
+	class R520 extends Solarite {
+		one;
+		render() {
+			r(this)`<div data-id="one"><p id="path.to.p"></p></div>`;
+		}
+	}
+
+	let a = new R520();
+	a.render();
+
+	assert(a.one.tagName === 'DIV')
+	assert(a.path.to.p.tagName === 'P')
+});
+
+
+
+
+
+Testimony.test('Solarite.r.staticElement', () => {
+
+	let button = r(`<button>hi</button>`);
+	assert(button instanceof HTMLElement); // Not a DocumentFragment
+	assert.eq(getHtml(button), `<button>hi</button>`)
+})
+
+Testimony.test('Solarite.r._staticElement2', () => {
+
+	let button = r()`<button>hi</button>`;
+	console.log(button)
+	assert(button instanceof HTMLElement);
+	assert.eq(getHtml(button), `<button>hi</button>`)
 })
 
 
@@ -1906,6 +1949,31 @@ Testimony.test('Solarite.r.standalone2', () => {
 	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><p>Item 0</p><p>Item 1</p></div>`);
 
 	//button.remove();
+});
+
+
+Testimony.test('Solarite.r._standalone3', () => {
+	let list = r({
+		items: [],
+
+		add() {
+			this.items.push('Item ' + this.items.length);
+			this.render();
+		},
+
+		render() {
+			r(this)`
+			<div>
+	            <button data-id="button" onclick=${this.add}>Add Item</button>
+	            <hr>
+	            ${this.items.map(item => r`
+	                <p>${item}</p>
+	            `)}
+	        </div>`
+		}
+	});
+
+	//console.log(list.button)
 });
 
 

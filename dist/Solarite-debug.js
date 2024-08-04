@@ -2132,7 +2132,7 @@ class NodeGroup {
 						throw new Error(`${this.manager.rootEl.constructor.name}.${id} already has a value.  `+
 							`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
 
-					this.manager.rootEl[id] = el;
+					delve(this.manager.rootEl, id.split(/\./g), el);
 				}
 
 			// styles
@@ -2455,7 +2455,7 @@ class NodeGroup {
 		// If an id pointed at the placeholder, update it to point to the new element.
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
 		if (id)
-			this.manager.rootEl[id] = newEl;
+			delve(this.manager.rootEl, id.split(/\./g), newEl);
 		
 		
 		// Update paths to use replaced element.
