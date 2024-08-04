@@ -152,7 +152,8 @@ export default class NodeGroup {
 				this.createNewComponent(el)
 		}
 
-		if (this.manager?.rootEl) {
+		let rootEl = this.manager.rootEl || this.getRootNode();
+		if (rootEl) {
 
 			// ids
 			if (this.manager.options.ids !== false)
@@ -161,11 +162,11 @@ export default class NodeGroup {
 					let id = el.getAttribute('data-id') || el.getAttribute('id');
 
 					// Don't allow overwriting existing class properties if they already have a non-Node value.
-					if (this.manager.rootEl[id] && !(this.manager.rootEl[id] instanceof Node))
-						throw new Error(`${this.manager.rootEl.constructor.name}.${id} already has a value.  `+
+					if (rootEl[id] && !(rootEl[id] instanceof Node))
+						throw new Error(`${rootEl.constructor.name}.${id} already has a value.  `+
 							`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
 
-					delve(this.manager.rootEl, id.split(/\./g), el);
+					delve(rootEl, id.split(/\./g), el);
 				}
 
 			// styles
@@ -174,7 +175,7 @@ export default class NodeGroup {
 					this.styles = new Map();
 				for (let path of shell.styles) {
 					let style = resolveNodePath(root, path);
-					Util.bindStyles(style, this.manager.rootEl);
+					Util.bindStyles(style, rootEl);
 					this.styles.set(style, style.textContent);
 				}
 
@@ -559,14 +560,24 @@ export default class NodeGroup {
 		return this.startNode?.parentNode
 	}
 
+	/**
+	 * Get the root element of the NodeGroup's most ancestral Nodegroup.
+	 * Should never return a DocumentFragment.
+	 * This function is poorly tested and may be unreliable.
+	 * @returns {Node}
+	 */
 	getRootNode() {
 		let ng = this;
 		while (ng.parentPath?.parentNg)
 			ng = ng.parentPath?.parentNg;
 		let result = this.startNode;
 
+		// First el is preceeded by space/comments.
 		if (!(result instanceof HTMLElement))
 			result = result.nextElementSibling;
+
+		// TODO: Also try ng.manager.rootEl ?
+
 		return result;
 	}
 

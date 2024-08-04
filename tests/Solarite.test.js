@@ -1952,7 +1952,7 @@ Testimony.test('Solarite.r.standalone2', () => {
 });
 
 
-Testimony.test('Solarite.r._standalone3', () => {
+Testimony.test('Solarite.r.standaloneId', "Test id's on standalone elmenets.", () => {
 	let list = r({
 		items: [],
 
@@ -1964,18 +1964,28 @@ Testimony.test('Solarite.r._standalone3', () => {
 		render() {
 			r(this)`
 			<div>
-	            <button data-id="button" onclick=${this.add}>Add Item</button>
-	            <hr>
-	            ${this.items.map(item => r`
-	                <p>${item}</p>
-	            `)}
-	        </div>`
+			   <button data-id="button" onclick=${this.add}>Add Item</button>
+			</div>`
 		}
 	});
 
-	//console.log(list.button)
+	assert.eq(list.button.tagName, 'BUTTON');
 });
 
+
+Testimony.test('Solarite.r.standaloneStyle', "Test id's on standalone elmenets.", () => {
+	let box = r({
+		render() {
+			r(this)`
+			<div>
+	         <style>:host { display: block; background: red; width: 20px; height: 20px }</style>      
+	      </div>`
+		}
+	});
+
+	let styleId = box.getAttribute('data-style');
+	assert.eq(box.firstElementChild.textContent, `div[data-style="${styleId}"] { display: block; background: red; width: 20px; height: 20px }`);
+});
 
 
 
