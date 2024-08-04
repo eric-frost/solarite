@@ -2035,6 +2035,33 @@ Testimony.test('Solarite.r.standaloneStyle', "Test id's on standalone elmenets."
 });
 
 
+Testimony.test('Solarite.r.standalone3', () => {
+
+	// Make sure a div inside a div doesn't replace the parent div.
+	let list = r({
+		items: [],
+
+		render() {
+			r(this)`
+			<div>
+				${this.items.map(item => r`
+					<div>
+						<input placeholder="Name" value=${item.name}>
+						<input type="number" value=${item.qty}>
+						<button onclick=${()=>this.removeItem(item)}>x</button>
+					</div>		   
+				`)}
+			</div>`
+		}
+	});
+
+	list.items.push({name: 'name', qty: 2});
+	list.render();
+
+	assert.eq(getHtml(list), `<div><div><input placeholder="Name" value="name"><input type="number" value="2"><button onclick="">x</button></div></div>`);
+});
+
+
 
 
 

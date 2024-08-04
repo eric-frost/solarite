@@ -659,11 +659,6 @@ class Template {
 	/** @type {string[]} */
 	html = [];
 
-	/**
-	 * If true, use this template to replace an existing element, instead of appending children to it.
-	 * @type {?boolean} */
-	replaceMode;
-
 	/** Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
 
@@ -2056,8 +2051,9 @@ class NodeGroup {
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
 	 * @param manager {?NodeGroupManager}
+	 * @param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
 	 * @returns {NodeGroup} */
-	constructor(template, manager=null) {
+	constructor(template, manager=null, replaceMode=null) {
 
 		/** @type {Template} */
 		this.template = template;
@@ -2075,11 +2071,10 @@ class NodeGroup {
 
 		// Figure out value of replaceMode option if it isn't set,
 		// Assume replaceMode if there's only one child element and its tagname matches the root el.
-		let replaceMode = typeof template.replaceMode === 'boolean'
+		replaceMode = typeof replaceMode === 'boolean'
 			? template.replaceMode
 			: fragment.children.length===1 &&
-				fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '')
-				=== manager?.rootEl?.tagName;
+				fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '') === manager?.rootEl?.tagName;
 		if (replaceMode) {
 			this.pseudoRoot = fragment.firstElementChild;
 			// if (!manager.rootEl)
@@ -2301,7 +2296,7 @@ class NodeGroup {
 		let flatten = false;
 		if (secondPass.length) {
 			for (let [nodesIndex, ngIndex] of secondPass) {
-				let ng = this.manager.getNodeGroup(newNodes[nodesIndex], false);
+				let ng = this.manager.getNodeGroup(newNodes[nodesIndex], false, false);
 				
 				ng.parentPath = path;
 				let ngNodes = ng.getNodes();
@@ -2556,9 +2551,11 @@ class NodeGroup {
 
 		// Return single child of the nodes, or a DocumentFragment containing several.
 		let result = this.startNode.parentNode;
-		let children = Util.trimEmptyNodes(result.childNodes);
-		if (children.length === 1)
-			return children[0];
+		if (result instanceof DocumentFragment) {
+			let children = Util.trimEmptyNodes(result.childNodes);
+			if (children.length === 1)
+				return children[0];
+		}
 		return result;
 	}
 
@@ -2886,8 +2883,9 @@ class NodeGroupManager {
 	 * but don't reparent it if it's somewhere else.
 	 * @param template {Template}
 	 * @param exact {?boolean} If true, only get a NodeGroup if it matches both the template
+	 * @param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
 	 * @return {?NodeGroup} */
-	getNodeGroup(template, exact=null) {
+	getNodeGroup(template, exact=null, replaceMode=null) {
 		let exactKey = getObjectHash(template);
 
 		// 1. Try to find an exact match.
@@ -2918,7 +2916,7 @@ class NodeGroupManager {
 			else {
 				/*#IFDEV*/this.incrementLogDepth(1);/*#ENDIF*/
 
-				ng = new NodeGroup(template, this);
+				ng = new NodeGroup(template, this, replaceMode);
 
 				/*#IFDEV*/this.incrementLogDepth(-1);/*#ENDIF*/
 				/*#IFDEV*/this.modifications.created.push(...ng.getNodes());/*#ENDIF*/

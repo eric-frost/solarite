@@ -1,8 +1,6 @@
 import {assert} from "../util/Errors.js";
 import {getObjectId} from "./hash.js";
 import NodeGroupManager from "./NodeGroupManager.js";
-import NodeGroup from "./NodeGroup.js";
-
 
 /**
  * The html strings and evaluated expressions from an html tagged template.
@@ -15,11 +13,6 @@ export default class Template {
 
 	/** @type {string[]} */
 	html = [];
-
-	/**
-	 * If true, use this template to replace an existing element, instead of appending children to it.
-	 * @type {?boolean} */
-	replaceMode;
 
 	/** Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;

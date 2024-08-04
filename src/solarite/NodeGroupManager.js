@@ -248,8 +248,9 @@ export default class NodeGroupManager {
 	 * but don't reparent it if it's somewhere else.
 	 * @param template {Template}
 	 * @param exact {?boolean} If true, only get a NodeGroup if it matches both the template
+	 * @param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
 	 * @return {?NodeGroup} */
-	getNodeGroup(template, exact=null) {
+	getNodeGroup(template, exact=null, replaceMode=null) {
 		let exactKey = getObjectHash(template)
 
 		/*#IFDEV*/if(logEnabled) this.log(`Looking for ${exact ? 'exact' : 'close'} match: ` + template.debug)/*#ENDIF*/
@@ -285,7 +286,7 @@ export default class NodeGroupManager {
 			else {
 				/*#IFDEV*/this.incrementLogDepth(1);/*#ENDIF*/
 
-				ng = new NodeGroup(template, this);
+				ng = new NodeGroup(template, this, replaceMode);
 
 				/*#IFDEV*/this.incrementLogDepth(-1);/*#ENDIF*/
 				/*#IFDEV*/this.modifications.created.push(...ng.getNodes())/*#ENDIF*/

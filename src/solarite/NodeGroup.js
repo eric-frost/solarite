@@ -70,8 +70,9 @@ export default class NodeGroup {
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
 	 * @param manager {?NodeGroupManager}
+	 * @param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
 	 * @returns {NodeGroup} */
-	constructor(template, manager=null) {
+	constructor(template, manager=null, replaceMode=null) {
 
 		/** @type {Template} */
 		this.template = template;
@@ -89,11 +90,10 @@ export default class NodeGroup {
 
 		// Figure out value of replaceMode option if it isn't set,
 		// Assume replaceMode if there's only one child element and its tagname matches the root el.
-		let replaceMode = typeof template.replaceMode === 'boolean'
+		replaceMode = typeof replaceMode === 'boolean'
 			? template.replaceMode
 			: fragment.children.length===1 &&
-				fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '')
-				=== manager?.rootEl?.tagName
+				fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '') === manager?.rootEl?.tagName
 		if (replaceMode) {
 			this.pseudoRoot = fragment.firstElementChild;
 			// if (!manager.rootEl)
@@ -317,7 +317,7 @@ export default class NodeGroup {
 		let flatten = false;
 		if (secondPass.length) {
 			for (let [nodesIndex, ngIndex] of secondPass) {
-				let ng = this.manager.getNodeGroup(newNodes[nodesIndex], false);
+				let ng = this.manager.getNodeGroup(newNodes[nodesIndex], false, false);
 				
 				ng.parentPath = path;
 				let ngNodes = ng.getNodes();
@@ -572,9 +572,11 @@ export default class NodeGroup {
 
 		// Return single child of the nodes, or a DocumentFragment containing several.
 		let result = this.startNode.parentNode;
-		let children = Util.trimEmptyNodes(result.childNodes);
-		if (children.length === 1)
-			return children[0];
+		if (result instanceof DocumentFragment) {
+			let children = Util.trimEmptyNodes(result.childNodes);
+			if (children.length === 1)
+				return children[0];
+		}
 		return result;
 	}
 
