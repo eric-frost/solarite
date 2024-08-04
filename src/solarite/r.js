@@ -1,4 +1,5 @@
 import Template from "./Template.js";
+import Util from "./Util.js";
 
 /**
  * Convert strings to HTMLNodes.
@@ -87,11 +88,9 @@ export default function r(htmlStrings=undefined, ...exprs) {
 		templateEl.innerHTML = htmlStrings;
 
 		// 4+5. Return Node if there's one child.
-		if (templateEl.content.childElementCount === 1)
-			return templateEl.content.firstElementChild;
-
-		if (templateEl.content.childNodes.length === 1)
-			return templateEl.content.firstChild;
+		let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);
+		if (relevantNodes.length === 1)
+			return relevantNodes[0];
 
 		// 6. Otherwise return DocumentFragment.
 		return templateEl.content;
@@ -150,12 +149,13 @@ export default function r(htmlStrings=undefined, ...exprs) {
 		throw new Error('Unsupported arguments.')
 }
 
+/**
+ * Used by r() path 9. */
 let objToEl = new Map();
-
-
 
 /**
  * Elements that have been rendered to by r() at least once.
+ * This is used by the Solarite class to know when to call onFirstConnect()
  * @type {WeakSet<HTMLElement>} */
 let rendered = new WeakSet();
 export {rendered}

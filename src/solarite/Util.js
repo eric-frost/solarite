@@ -21,9 +21,33 @@ let Util = {
 					child.textContent = newText;
 			}
 		}
+	},
+
+
+	/**
+	 * Remove nodes from the beginning and end that are not:
+	 * 1.  Elements.
+	 * 2.  Non-whitespace text nodes.
+	 * @param nodes {Node[]|NodeList}
+	 * @returns {Node[]} */
+	trimEmptyNodes(nodes) {
+		const shouldTrimNode = node =>
+			node.nodeType !== Node.ELEMENT_NODE &&
+			(node.nodeType !== Node.TEXT_NODE || node.textContent.trim() === '');
+
+		// Convert nodeList to an array for easier manipulation
+		const result = [...nodes]
+
+		// Trim from the start
+		while (result.length > 0 && shouldTrimNode(result[0]))
+			result.shift();
+
+		// Trim from the end
+		while (result.length > 0 && shouldTrimNode(result[result.length - 1]))
+			result.pop();
+
+		return result;
 	}
-
-
 };
 
 export default Util;

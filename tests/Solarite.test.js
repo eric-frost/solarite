@@ -1871,11 +1871,19 @@ Testimony.test('Solarite.r.staticElement2', () => {
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
 
-Testimony.test('Solarite.r._fragment', () => {
+Testimony.test('Solarite.r.fragment', () => {
 	let fragment = r(`Hello <button>hi</button>`);
 	assert(fragment instanceof DocumentFragment);
-	assert.eq(getHtml(fragment), `Hello <button>hi</button>`)
-})
+	assert.eq(getHtml(fragment), `Hello |<button>hi</button>`)
+});
+
+
+Testimony.test('Solarite.r.fragment2', () => {
+	let fragment = r()`Hello <button>hi</button>`;
+	assert(fragment instanceof DocumentFragment);
+	assert.eq(getHtml(fragment), `Hello |<button>hi</button>`)
+});
+
 
 Testimony.test('Solarite.r.staticElement3', () => {
 	let button = r()`<button>hi</button>`;

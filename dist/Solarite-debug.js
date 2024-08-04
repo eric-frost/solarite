@@ -426,9 +426,33 @@ let Util = {
 					child.textContent = newText;
 			}
 		}
+	},
+
+
+	/**
+	 * Remove nodes from the beginning and end that are not:
+	 * 1.  Elements.
+	 * 2.  Non-whitespace text nodes.
+	 * @param nodes {Node[]|NodeList}
+	 * @returns {Node[]} */
+	trimEmptyNodes(nodes) {
+		const shouldTrimNode = node =>
+			node.nodeType !== Node.ELEMENT_NODE &&
+			(node.nodeType !== Node.TEXT_NODE || node.textContent.trim() === '');
+
+		// Convert nodeList to an array for easier manipulation
+		const result = [...nodes];
+
+		// Trim from the start
+		while (result.length > 0 && shouldTrimNode(result[0]))
+			result.shift();
+
+		// Trim from the end
+		while (result.length > 0 && shouldTrimNode(result[result.length - 1]))
+			result.pop();
+
+		return result;
 	}
-
-
 };
 
 
@@ -2522,22 +2546,19 @@ class NodeGroup {
 
 	/**
 	 * Get the root element of the NodeGroup's most ancestral Nodegroup.
-	 * Should never return a DocumentFragment.
 	 * This function is poorly tested and may be unreliable.
-	 * @returns {Node}
-	 */
+	 * @returns {Node|DocumentFragment}	 */
 	getRootNode() {
+		// Find the most ancestral NdoeGroup
 		let ng = this;
 		while (ng.parentPath?.parentNg)
 			ng = ng.parentPath?.parentNg;
-		let result = this.startNode;
 
-		// First el is preceeded by space/comments.
-		if (!(result instanceof HTMLElement))
-			result = result.nextElementSibling;
-
-		// TODO: Also try ng.manager.rootEl ?
-
+		// Return single child of the nodes, or a DocumentFragment containing several.
+		let result = this.startNode.parentNode;
+		let children = Util.trimEmptyNodes(result.childNodes);
+		if (children.length === 1)
+			return children[0];
 		return result;
 	}
 
@@ -3165,11 +3186,9 @@ function r(htmlStrings=undefined, ...exprs) {
 		templateEl.innerHTML = htmlStrings;
 
 		// 4+5. Return Node if there's one child.
-		if (templateEl.content.childElementCount === 1)
-			return templateEl.content.firstElementChild;
-
-		if (templateEl.content.childNodes.length === 1)
-			return templateEl.content.firstChild;
+		let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);
+		if (relevantNodes.length === 1)
+			return relevantNodes[0];
 
 		// 6. Otherwise return DocumentFragment.
 		return templateEl.content;
@@ -3228,12 +3247,13 @@ function r(htmlStrings=undefined, ...exprs) {
 		throw new Error('Unsupported arguments.')
 }
 
+/**
+ * Used by r() path 9. */
 let objToEl = new Map();
-
-
 
 /**
  * Elements that have been rendered to by r() at least once.
+ * This is used by the Solarite class to know when to call onFirstConnect()
  * @type {WeakSet<HTMLElement>} */
 let rendered = new WeakSet();
 

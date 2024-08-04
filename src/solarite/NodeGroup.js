@@ -562,22 +562,19 @@ export default class NodeGroup {
 
 	/**
 	 * Get the root element of the NodeGroup's most ancestral Nodegroup.
-	 * Should never return a DocumentFragment.
 	 * This function is poorly tested and may be unreliable.
-	 * @returns {Node}
-	 */
+	 * @returns {Node|DocumentFragment}	 */
 	getRootNode() {
+		// Find the most ancestral NdoeGroup
 		let ng = this;
 		while (ng.parentPath?.parentNg)
 			ng = ng.parentPath?.parentNg;
-		let result = this.startNode;
 
-		// First el is preceeded by space/comments.
-		if (!(result instanceof HTMLElement))
-			result = result.nextElementSibling;
-
-		// TODO: Also try ng.manager.rootEl ?
-
+		// Return single child of the nodes, or a DocumentFragment containing several.
+		let result = this.startNode.parentNode;
+		let children = Util.trimEmptyNodes(result.childNodes);
+		if (children.length === 1)
+			return children[0];
 		return result;
 	}
 
