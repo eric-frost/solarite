@@ -1860,19 +1860,37 @@ Testimony.test('Solarite.ids.delve', () => {
 
 
 Testimony.test('Solarite.r.staticElement', () => {
-
 	let button = r(`<button>hi</button>`);
 	assert(button instanceof HTMLElement); // Not a DocumentFragment
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
+Testimony.test('Solarite.r.staticElement2', () => {
+	let button = r(`
+		<button>hi</button>`);
+	assert(button instanceof HTMLElement); // Not a DocumentFragment
+	assert.eq(getHtml(button), `<button>hi</button>`)
+})
 
-Testimony.test('Solarite.r._staticElement2', () => {
+Testimony.test('Solarite.r._fragment', () => {
+	let fragment = r(`Hello <button>hi</button>`);
+	assert(fragment instanceof DocumentFragment);
+	assert.eq(getHtml(fragment), `Hello <button>hi</button>`)
+})
 
+Testimony.test('Solarite.r.staticElement3', () => {
 	let button = r()`<button>hi</button>`;
-	console.log(button)
 	assert(button instanceof HTMLElement);
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
+
+Testimony.test('Solarite.r.staticElement4', () => {
+	// with line return
+	let button = r()`
+		<button>hi</button>`;
+	assert(button instanceof HTMLElement);
+	assert.eq(getHtml(button), `<button>hi</button>`)
+})
+
 
 
 Testimony.test('Solarite.r.element', () => {

@@ -21,7 +21,8 @@ import Template from "./Template.js";
  * 4. r('Hello');                      // Create single text node.
  * 5. r('<b>Hello</b>');               // Create single HTMLElement
  * 6. r('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
- * 7. r()`Hello<b>${'World'}!</b>`     // Same as 4-6, but evaluates the string as a Solarite template, which includes properly handling nested components and r`` sub-expressions.
+ * 7. r()`Hello<b>${'World'}!</b>`     // Same as 4-6, but evaluates the string as a Solarite template, which
+ *                                     // includes properly handling nested components and r`` sub-expressions.
  * 8. r(template)                      // Render Template created by #1.
  *
  * 9. r({render(){...}})              // Pass an object with a render method, and optionally other props/methods.
@@ -86,6 +87,9 @@ export default function r(htmlStrings=undefined, ...exprs) {
 		templateEl.innerHTML = htmlStrings;
 
 		// 4+5. Return Node if there's one child.
+		if (templateEl.content.childElementCount === 1)
+			return templateEl.content.firstElementChild;
+
 		if (templateEl.content.childNodes.length === 1)
 			return templateEl.content.firstChild;
 
@@ -98,7 +102,10 @@ export default function r(htmlStrings=undefined, ...exprs) {
 		return (htmlStrings, ...exprs) => {
 			//rendered.add(parent)
 			let template = r(htmlStrings, ...exprs);
-			return template.render();
+			let result = template.render();
+			//if (result instanceof DocumentFragment)
+
+			return result;
 		}
 	}
 
@@ -116,8 +123,8 @@ export default function r(htmlStrings=undefined, ...exprs) {
 		if (objToEl.has(obj)) {
 			return function(...args) {
 			   let template = r(...args);
-			   let fragment = template.render();
-				objToEl.set(obj, fragment.firstElementChild);
+			   let el = template.render();
+				objToEl.set(obj, el);
 			}.bind(obj);
 		}
 

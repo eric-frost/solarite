@@ -84,13 +84,7 @@ export default class Template {
 		// Rendering a standalone element.
 		if (standalone) {
 			ngm = NodeGroupManager.get(this);
-			el = ngm.rootNg.getParentNode();
-			// ng = new NodeGroup(this);
-			// el = ng.getParentNode();
-			// ngm = NodeGroupManager.get(el);
-			// ng.manager = ngm;
-			// ngm.rootNg = ng;
-			// ngm.nodeGroupsInUse.push(ng);
+			el = ngm.rootNg.getRootNode();
 		}
 		else
 			ngm = NodeGroupManager.get(el);
@@ -118,6 +112,7 @@ export default class Template {
 
 			// If this is the first time rendering this element.
 			if (firstTime) {
+
 
 				// Save slot children
 				let fragment;
