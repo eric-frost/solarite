@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	    
 	    let prefix = `
 			<style>
-				html[dark] { background: #06090c; color: white }
+				html[dark] { background: #0f1318; color: white }
 				body { font: 12px Arial; background: transparent !important }
 			</style>`;
         let value = lines.join('\n');

@@ -2062,7 +2062,56 @@ Testimony.test('Solarite.r.standalone3', () => {
 });
 
 
+Testimony.test('Solarite.r.standaloneChild', () => {
 
+	function createItem(item) {
+		return r({
+			item: item,
+			render(attribs = null) {
+				// If attributes passed to constructor have changed.
+				console.log(attribs)
+				if (attribs)
+					this.item = attribs.item;
+				r(this)`
+				<div>
+				   <b>${this.item.name}</b> - ${this.item.description}<br>
+				</div>`
+			}
+		});
+	}
+
+	function createList(items) {
+		return r({
+			items: items,
+			render() {
+				r(this)`
+				<div>
+					${this.items.map(item =>
+					createItem(item)
+				)}
+				</div>`
+			}
+		});
+	}
+
+	let list = createList([
+		{
+			name: 'English',
+			description: 'See spot run.'
+		},
+
+		{
+			name: 'Science',
+			description: 'Snails are mollusks.'
+		}
+	]);
+	document.body.append(list);
+
+	list.items[0].name = 'PhysEd';
+	list.render(); // calls NotesItem.render() with the new item.
+
+	assert.eq(getHtml(list), `<div><div><b>PhysEd</b> - See spot run.<br></div><div><b>Science</b> - Snails are mollusks.<br></div></div>`);
+});
 
 
 Testimony.test('Solarite.component.tr', () => {
@@ -2251,12 +2300,69 @@ Testimony.test('Solarite.component.nested2', () => {
 	a.title = 'Users2'
 	a.render();
 	assert.eq(getHtml(a), `<a-520>Users2<b-520 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-520></a-520>`)
-	assert.eq(bRenderCount, 0) // Value passed to b didn't change, so it shouldn't re-render.
+	assert.eq(bRenderCount, 0); // Value passed to b didn't change, so it shouldn't re-render.
 
 	a.remove();
 });
 
 
+// Pass an object to the child.
+Testimony.test('Solarite.component.nestedNonSolarite', () => {
+
+	let bRenderCount = 0;
+	class B530 extends HTMLElement {
+
+		constructor({user}={}) {
+			super();
+			this.user = user;
+			this.render();
+		}
+
+		render(props={}) {
+			console.log(props)
+			if (props.user)
+				this.user = props.user;
+			r(this)`<div>Name:</div><div>${this.user.name}</div><div>Email:</div><div>${this.user.email}</div>`;
+			bRenderCount++;
+		}
+	}
+	customElements.define('b-530', B530);
+
+	class A530 extends HTMLElement {
+		title = 'Users'
+		user = {name: 'John', email: 'john@example.com'};
+		render() {
+			r(this)`${this.title}<b-530 user="${this.user}"></b-530>`
+		}
+	}
+	customElements.define('a-530', A530);
+
+	let a = new A530();
+	a.render();
+	document.body.append(a);
+	assert.eq(getHtml(a), `<a-530>Users<b-530 user=""><div>Name:</div><div>John</div><div>Email:</div><div>john@example.com</div></b-530></a-530>`)
+
+
+	a.user = {name: 'Fred', email: 'fred@example.com'};
+	a.render();
+	assert.eq(getHtml(a), `<a-530>Users<b-530 user=""><div>Name:</div><div>Fred</div><div>Email:</div><div>fred@example.com</div></b-530></a-530>`)
+
+
+	a.user.name = 'Barry'
+	a.render();
+	assert.eq(getHtml(a), `<a-530>Users<b-530 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-530></a-530>`)
+
+	bRenderCount = 0
+	a.render();
+	assert.eq(bRenderCount, 0)
+
+	a.title = 'Users2'
+	a.render();
+	assert.eq(getHtml(a), `<a-530>Users2<b-530 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-530></a-530>`)
+	assert.eq(bRenderCount, 0) // Value passed to b didn't change, so it shouldn't re-render.
+
+	a.remove();
+});
 
 // TODO: This redraws every tr on every update.
 // Maybe that can be fixed when keying is supported?

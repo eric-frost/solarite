@@ -246,7 +246,7 @@ export default class CodeEditor extends Solarite {
 		let doc = this.ownerDocument || window.top.document;
 		if (isDark === undefined)
 			isDark = doc.documentElement.hasAttribute('dark');
-		
+
 		let languageExtensions = this.getLanguageExtension(this.language, this.languageConfig)
 		return [
 			//basicSetup,
@@ -258,8 +258,6 @@ export default class CodeEditor extends Solarite {
 			//foldGutter(),
 			drawSelection(),
 			indentUnit.of("\t"),
-			this.compartments.tabSize.of(EditorState.tabSize.of(this.tabSize)),
-			this.compartments.lineWrapping.of(wordWrap ? EditorView.lineWrapping : []),
 			EditorState.allowMultipleSelections.of(true),
 			indentOnInput(),
 			bracketMatching(),
@@ -285,11 +283,14 @@ export default class CodeEditor extends Solarite {
 			
 			Extensions.changeDetection(this),
 			Extensions.asyncField,
+
 			
+			syntaxHighlighting(defaultHighlightStyle, {fallback: true}), // fallback: true lets us use our own theme.
+
+			// Compartments let options be changed after init.
 			this.compartments.theme.of(themeSolarIce(this.language, isDark)),
-			
-			syntaxHighlighting(defaultHighlightStyle, {fallback: true}),
-			
+			this.compartments.tabSize.of(EditorState.tabSize.of(this.tabSize)),
+			this.compartments.lineWrapping.of(wordWrap ? EditorView.lineWrapping : []),
 			this.compartments.language.of(languageExtensions)
 		];
 	}
@@ -516,7 +517,7 @@ export default class CodeEditor extends Solarite {
 
 
 	render() {
-		this.html = r`
+		r(this)`
 		<code-editor>
 			<style>
 				:host { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0 }
@@ -609,7 +610,7 @@ var ParseUtil = {
 		wrap: parseMixed((node, docInput) => {
 			if (node.name == "StyleText")
 				return {parser: cssParser}
-			if (node.name == "ScriptText")
+			if (node.name == "ScriptText"/* || node.name == "Interpolation"*/)
 				return {parser: ParseUtil.jsParser}
 			
 			// Use javascript parser for template expressions
@@ -621,6 +622,18 @@ var ParseUtil = {
 					if (endIndex !== -1)
 						overlay.push({from: node.from + startIndex, to: node.from + endIndex + 1});
 				})
+
+
+
+				// Prevent overlay ranges from overlapping.
+				// Even if the new cur.to we set isn't the right spot, this will prevent CodeMirror from crashing.
+				for (let i=0; i<overlay.length-1; i++) {
+					let cur = overlay[i];
+					let next = overlay[i+1];
+					if (cur.to > next.from)
+						cur.to = next.from; // TODO: calculate correct value to have it start at the next html template?
+				}
+
 				return {
 					parser: ParseUtil.jsParser,
 					overlay
@@ -637,8 +650,11 @@ var ParseUtil = {
 				let code = docInput.doc.sliceString(node.from, node.to);
 				
 				// Only if node text starts and ends with tags, allowing for spaces.
-				if (code.match(/^`\s*</) && code.match(/>\s*`$/))
-					return {parser: ParseUtil.htmlParser}
+				if (code.match(/^`\s*</)/* && code.match(/>\s*`$/)*/) {
+					return {
+						parser: ParseUtil.htmlParser,
+					}
+				}
 			}
 			return null;
 		})
@@ -661,10 +677,11 @@ var ParseUtil = {
 		top: "Template"
 	
 	}),
-	
-	
+
+
 	/**
 	 * Used by javascriptWithHtml()
+	 * TODO: This needs tests!
 	 * @param str {string}
 	 * @param startIndex {int}
 	 * @returns {int} -1 if no match. */
@@ -672,56 +689,73 @@ var ParseUtil = {
 		let stack = 0;
 		let inString = null;
 		let inComment = null;
-		
-		for (let i=startIndex; i<str.length; i++) {
+
+		for (let i = startIndex; i < str.length; i++) {
 			let char = str[i];
 			if (inString && char === '\\') { // Skip escaped characters in strings.
 				i++;
 				continue;
 			}
-			let nextChar = i + 1 < str.length ? str[i+1] : '';
-			
+			let nextChar = i + 1 < str.length ? str[i + 1] : '';
+
 			// String start/end
-			if (char === '`' && !inComment)
-				inString = inString ? null : '`';
-			else if ((char === '"' || char === "'") && !inComment)
-				inString = inString === char ? null : char;
-			
+			if (!inComment) {
+				if (!inString && (char === '`' || char === '`' || char === '`'))
+					inString = char;
+				else if (inString === char)
+					inString = null;
+			}
+
 			// Comment start/end
-			if (!inString && char === '/' && (nextChar === '*' || nextChar === '/')) {
-				inComment = nextChar === '*' ? 'block' : 'line';
-				i++; // Skip the next character as it's part of the comment syntax
+			if (!inString) {
+				if (char === '/' && (nextChar === '*' || nextChar === '/')) {
+					inComment = nextChar === '*' ? 'block' : 'line';
+					i++; // Skip the next character as it's part of the comment syntax
+				}
+
+				// End block comment
+				else if (inComment === 'block' && char === '*' && nextChar === '/') {
+					inComment = null;
+					i++; // Skip the '/' character
+				}
+
+				// End line comment
+				else if (inComment === 'line' && char === '\n')
+					inComment = null;
 			}
-			else if (inComment === 'block' && char === '*' && nextChar === '/') {
-				inComment = null;
-				i++; // Skip the '/' character
-			}
-			else if (inComment === 'line' && char === '\n')
-				inComment = null;
-			
+
 			// Template literal boundaries
 			if (!inString && !inComment) {
-				if (char === '$' && nextChar === '{') {
+				if (char === '{')
+					stack++;
+
+				else if (char === '$' && nextChar === '{') {
 					stack++;
 					i++; // Skip the '{' character
-				} else if (char === '}') {
+				}
+
+				else if (char === '}') {
 					if (stack === 0)
 						return i; // Matching closing brace found
 					stack--;
 				}
 			}
 		}
-		
+
 		return -1;
 	}
 };
 
 
 /**
- * @typedef ToolbarButton
+ * @typedef {Object} ToolbarButton
  * @property {string} html
- * @property {function(el:Node|HTMLElement)} update */
-export class CodeEditorToolbar extends Solarite {
+ * @property {function(el:Node|HTMLElement)=} update */
+
+/**
+ *
+ */
+export class CodeEditorToolbar extends HTMLElement {
 
 	/** @type {object} Should have functions for everything the buttons array uses. */
 	ed;
@@ -770,7 +804,7 @@ export class CodeEditorToolbar extends Solarite {
 		
 		if (typeof buttons === 'string')
 			buttons = buttons.split(/[,\s]+/g);
-		
+
 		for (let button of buttons||[]) {
 			let item = typeof button === 'string'
 				? this.buttonTemplates[button]
@@ -812,7 +846,7 @@ export class CodeEditorToolbar extends Solarite {
 	}
 
 	render() {
-		this.html = r`
+		r(this)`
 		<code-editor-toolbar>
 			<style>
 				:host { display: block }
@@ -836,5 +870,5 @@ export class CodeEditorToolbar extends Solarite {
 	}
 
 }
-CodeEditorToolbar.define();
+customElements.define('code-editor-toolbar', CodeEditorToolbar);
 

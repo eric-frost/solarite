@@ -973,11 +973,13 @@ class ExprPath {
 					break;
 				}
 
+			// Undocumented.
 			// oninput=${[this, 'value']}
 			if (!func) {
 				func = setValue;
 				args = [expr[0], expr.slice(1), node];
 				node.value = delve(expr[0], expr.slice(1));
+				// root.render(); // TODO: This causes infinite recursion.
 			}
 		}
 		else
@@ -1222,8 +1224,6 @@ function setValue(root, path, node) {
 		val = parseFloat(val);
 
 	delve(root, path, val);
-	
-	//this.render();
 }
 
 /** @enum {string} */
