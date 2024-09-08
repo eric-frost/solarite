@@ -617,21 +617,29 @@ var ParseUtil = {
 			if (node.type.name === 'Document' && docInput.doc) {
 				let code = docInput.doc.sliceString(node.from, node.to);
 				let overlay = [];
-				code.replace(/\${/g, (a, startIndex, c) => {
-					let endIndex = ParseUtil.findMatchingBrace(code, startIndex+2);
-					if (endIndex !== -1)
-						overlay.push({from: node.from + startIndex, to: node.from + endIndex + 1});
-				})
+				//code.replace(/\${/g, (a, startIndex) => {
 
+				let ranges = ParseUtil.findJavaScriptRanges(code, 0);
 
+				if (ranges.length) {
 
-				// Prevent overlay ranges from overlapping.
-				// Even if the new cur.to we set isn't the right spot, this will prevent CodeMirror from crashing.
+					ranges = ranges.map(item => ({
+						from: node.from + item[0],
+						to: node.from + item[1]
+					}));
+
+					overlay.push(...ranges);
+				}
+				//});
+
+				// Make sure overlays don't overlap.
+				// TODO: Is this still necessary?
+				overlay.sort((a, b) => a.from - b.from);
 				for (let i=0; i<overlay.length-1; i++) {
 					let cur = overlay[i];
 					let next = overlay[i+1];
-					if (cur.to > next.from)
-						cur.to = next.from; // TODO: calculate correct value to have it start at the next html template?
+					if (cur.to >= next.from)
+						cur.to = next.from;
 				}
 
 				return {
@@ -678,8 +686,104 @@ var ParseUtil = {
 	
 	}),
 
+	/**
+	 * Used by javascriptWithHtml()
+	 * Handles single and multiline comments and all three string types.
+	 * TODO: This needs tests!
+	 * @param str {string}
+	 * @param startIndex {int}
+	 * @returns {int[][]}  */
+	findJavaScriptRanges(str, startIndex) {
+		let depth = 0;
+		let depthStack = [];
+		let inString = null;
+		let stringStack = [];
+		let inComment = null;
+
+		let result = [];
+
+		for (let i = startIndex; i < str.length; i++) {
+
+			let char = str[i];
+			if (inString && char === '\\') { // Skip escaped characters in strings.
+				i++;
+				continue;
+			}
+			let nextChar = i + 1 < str.length ? str[i + 1] : '';
+
+			// String start/end
+			if (!inComment) {
+				if (!inString && (char === '`' || char === '`' || char === '`')) {
+					inString = char;
+					if (char === '`') {
+						if (i > startIndex) {
+							result.push([startIndex, i]);
+						}
+					}
+				}
+				else if (inString === char) {
+					if (inString === '`')
+						startIndex = i + 1;
+					inString = null;
+				}
+			}
+
+
+			if (!inString) {
+				// Comment start/end
+				if (char === '/' && (nextChar === '*' || nextChar === '/')) {
+					inComment = nextChar === '*' ? 'block' : 'line';
+					i++; // Skip the next character as it's part of the comment syntax
+				}
+
+				// End block comment
+				else if (inComment === 'block' && char === '*' && nextChar === '/') {
+					inComment = null;
+					i++; // Skip the '/' character
+				}
+
+				// End line comment
+				else if (inComment === 'line' && char === '\n')
+					inComment = null;
+			}
+
+			// Template literal boundaries
+			if (!inComment) {
+
+				if (inString) {
+					if (char === '$' && nextChar === '{') {
+						startIndex = i;
+						i++; // Skip the '{' character
+						stringStack.push(inString);
+						inString = null;
+						depthStack.push(depth);
+						depth = 0;
+					}
+				}
+
+				else {
+					if (char === '{')
+						depth++;
+
+					else if (char === '}') {
+						if (depth === 0) {
+							inString = stringStack.pop();
+							depth = depthStack.pop();
+							if (i > startIndex)
+								result.push([startIndex, i+1]);
+						}
+						else
+							depth--;
+					}
+				}
+			}
+		}
+
+		return result;
+	},
 
 	/**
+	 * @deprecated
 	 * Used by javascriptWithHtml()
 	 * TODO: This needs tests!
 	 * @param str {string}
