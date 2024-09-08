@@ -81,7 +81,7 @@ document.body.append(new ShoppingList()); // add <shopping-list> element
 To use, import one of these pre-bundled es6 modules into your project:
 
 - [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 87KB
-- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 24KB / 8KB gzipped
+- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) - 24KB / 8KB gzipped
 
 Or get Solarite from GitHub or NPM:
 
