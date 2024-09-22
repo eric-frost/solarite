@@ -40,7 +40,7 @@ export default class NodeGroup {
 	/** @type {string} Key that matches the template and the expressions. */
 	exactKey;
 
-	/** @type {string} Key that only matches the template.  */
+	/** @type {string} Key that only matches the template. */
 	closeKey;
 
 	/** @type {boolean} Used by NodeGroupManager. */
@@ -72,7 +72,9 @@ export default class NodeGroup {
 	 * @param manager {?NodeGroupManager}
 	 * @param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
 	 * @returns {NodeGroup} */
-	constructor(template, manager=null, replaceMode=null) {
+	constructor(template, manager=null, replaceMode=null, exactKey, closeKey) {
+		this.exactKey = exactKey;
+		this.closeKey = closeKey;
 
 		/** @type {Template} */
 		this.template = template;
@@ -160,13 +162,15 @@ export default class NodeGroup {
 				for (let path of shell.ids) {
 					let el = resolveNodePath(root, path);
 					let id = el.getAttribute('data-id') || el.getAttribute('id');
-
-					// Don't allow overwriting existing class properties if they already have a non-Node value.
-					if (rootEl[id] && !(rootEl[id] instanceof Node))
-						throw new Error(`${rootEl.constructor.name}.${id} already has a value.  `+
-							`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
-
-					delve(rootEl, id.split(/\./g), el);
+					if (id) { // If something hasn't removed the id.
+						
+						// Don't allow overwriting existing class properties if they already have a non-Node value.
+						if (rootEl[id] && !(rootEl[id] instanceof Node))
+							throw new Error(`${rootEl.constructor.name}.${id} already has a value.  ` +
+								`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
+						
+						delve(rootEl, id.split(/\./g), el);
+					}
 				}
 
 			// styles
@@ -486,6 +490,16 @@ export default class NodeGroup {
 			let val = props[propName];
 			if (propName.startsWith('on') && typeof val === 'function')
 				newEl.addEventListener(propName.slice(2), e => val(e, newEl));
+
+			// Bind array based event attributes on value.
+			// This same logic is in ExprPath.applyValueAttrib() for non-components.
+			if ((propName === 'value' || propName === 'data-value') && Util.isPath(val)) {
+				let [obj, path] = [val[0], val.slice(1)];
+				newEl.value = delve(obj, path);
+				newEl.addEventListener('input', e => {
+					delve(obj, path, Util.getInputValue(newEl));
+				}, true); // We use capture so we update the values before other events added by the user.
+			}
 		}
 		
 		// If an id pointed at the placeholder, update it to point to the new element.

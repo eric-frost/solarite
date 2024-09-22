@@ -2,7 +2,7 @@ import {assert} from "../util/Errors.js";
 import delve from "../util/delve.js";
 import {getObjectId} from "./hash.js";
 import NodeGroup from "./NodeGroup.js";
-import {div, findArrayDiff, setIndent} from "./Util.js";
+import Util, {div, findArrayDiff, setIndent} from "./Util.js";
 import Template from "./Template.js";
 import Globals from "./Globals.js";
 
@@ -244,7 +244,7 @@ export default class ExprPath {
 	/**
 	 * Handle attributes for event binding, such as:
 	 * onclick=${(e, el) => this.doSomething(el, 'meow')}
-	 * onclick=${[this.doSomething, 'meow']}
+	 * oninput=${[this.doSomething, 'meow']}
 	 * onclick=${[this, 'doSomething', 'meow']}
 	 *
 	 * @param node
@@ -328,6 +328,16 @@ export default class ExprPath {
 		
 		else if (!this.attrValue && expr === true)
 			node.setAttribute(this.attrName, '');
+
+		// Passing a path to the value attribute.
+		// This same logic is in NodeGroup.createNewComponent() for components.
+		else if ((this.attrName === 'value' || this.attrName === 'data-value') && Util.isPath(expr)) {
+			let [obj, path] = [expr[0], expr.slice(1)];
+			node.value = delve(obj, path);
+			node.addEventListener('input', () => {
+				delve(obj, path, Util.getInputValue(node));
+			}, true); // We use capture so we update the values before other events added by the user.
+		}
 
 		// Regular attribute
 		else {

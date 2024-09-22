@@ -160,7 +160,7 @@ export default class Template {
 
 	getCloseKey() {
 		// Use the joined html when debugging?
-		//return '@'+this.html.join('|')
+		return '@'+this.html.join('|')
 
 		return '@'+this.hashedFields[0];
 	}

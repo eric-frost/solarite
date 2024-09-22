@@ -23,6 +23,32 @@ let Util = {
 		}
 	},
 
+	/**
+	 * Get the value of an input as the most appropriate JavaScript type.
+	 * @param node {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|HTMLDivElement}
+	 * @return {string|string[]|number|[]|File[]|Date|boolean} */
+	getInputValue(node) {
+		if (node.type === 'checkbox' || node.type === 'radio')
+			return node.checked; // Boolean
+		if (node.type === 'file')
+			return [...node.files]; // FileList
+		if (node.type === 'number' || node.type === 'range')
+			return node.valueAsNumber; // Number
+		if (node.type === 'date' || node.type === 'time' || node.type === 'datetime-local')
+			return node.valueAsDate; // Date Object
+		if (node.type === 'select-multiple') // <select multiple>
+			return [...node.selectedOptions].map(option => option.value); // Array of Strings
+
+		return node.value; // String
+	},
+
+	/**
+	 * Is it an array and a path that can be evaluated by delve() ?
+	 * @param arr {Array|*}
+	 * @returns {boolean} */
+	isPath(arr) {
+		return Array.isArray(arr) && typeof arr[0] === 'object' && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
+	},
 
 	/**
 	 * Remove nodes from the beginning and end that are not:

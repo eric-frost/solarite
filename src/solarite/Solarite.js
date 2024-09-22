@@ -17,6 +17,10 @@ export {getArg, ArgType} from './getArg.js';
 export {default as Template} from './Template.js';
 export {default as Globals} from './Globals.js';
 
+import Util from './Util.js';
+let getInputValue = Util.getInputValue;
+export {getInputValue};
+export {default as delve} from '../util/delve.js';
 
 //Experimental:
 //export {forEach, watchGet, watchSet} from './watch.js' // old, unfinished

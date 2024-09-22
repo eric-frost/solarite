@@ -192,6 +192,7 @@ export default class NodeGroupManager {
 		if (ng) {
 			
 			// We matched on a new key, so delete the old exactKey.
+			/*#IFDEV*/assert(ng.exactKey);/*#ENDIF*/
 			let exactNg = this.nodeGroupsAvailable.delete(ng.exactKey, ng);
 			
 			/*#IFDEV*/assert(exactNg);/*#ENDIF*/
@@ -206,10 +207,12 @@ export default class NodeGroupManager {
 				while (ng2 = ng2?.parentPath?.parentNg) {
 					if (!ng2.inUse) {
 						ng2.inUse = true; // Might speed it up slightly?
+						/*#IFDEV*/assert(ng2.exactKey);/*#ENDIF*/
 						let success = this.nodeGroupsAvailable.delete(ng2.exactKey, ng2);
 						/*#IFDEV*/assert(success);/*#ENDIF*/
 
 						// But it can still be a close match, so we don't use this code.
+						/*#IFDEV*/assert(ng2.closeKey);/*#ENDIF*/
 						success = this.nodeGroupsAvailable.delete(ng2.closeKey, ng2);
 						/*#IFDEV*/assert(success);/*#ENDIF*/
 
@@ -286,7 +289,7 @@ export default class NodeGroupManager {
 			else {
 				/*#IFDEV*/this.incrementLogDepth(1);/*#ENDIF*/
 
-				ng = new NodeGroup(template, this, replaceMode);
+				ng = new NodeGroup(template, this, replaceMode, exactKey, closeKey);
 
 				/*#IFDEV*/this.incrementLogDepth(-1);/*#ENDIF*/
 				/*#IFDEV*/this.modifications.created.push(...ng.getNodes())/*#ENDIF*/

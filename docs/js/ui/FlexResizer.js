@@ -60,9 +60,15 @@ export default class FlexResizer extends Solarite {
 			}
 		});
 	}
-	
+
+	/**
+	 * It's vertical if the user drags the resizer vertically to resize.
+   * When vertical, the resizer will be stretched horizontally to fill the available space.
+	 * @returns {boolean} */
 	isVertical() {
-		return getComputedStyle(this.parentNode).flexDirection !== 'column';
+		if (this.parentNode) {
+			return getComputedStyle(this.parentNode).flexDirection === 'row';
+		}
 	}
 
 	/** @return {Number} */
@@ -126,10 +132,15 @@ export default class FlexResizer extends Solarite {
 				:host {
 					display: block; z-index: 1;
 				
-					/* We put the resize region (the margin thickness) all to the right / top bc vertical scrollbars are often to the left, and tab bars below the top. */
+					/* We put the resize region (the margin thickness) all to the right / top bc vertical scrollbars 
+					 * are often to the left, and tab bars below the top.*/
 					${this.isVertical()
+			
+						/* Stretch horizontally */
 						? `min-width: ${this.thickness-1}px !important; max-width: ${this.thickness-1}px !important;
 							margin-left: -1px; margin-right: -${this.thickness-1}px; cursor: ew-resize`
+			
+						/* Stretch vertically */
 						: `min-height: ${this.thickness}px !important; max-height: ${this.thickness}px !important;
 							margin-top: -${this.thickness/2}px; margin-bottom: -${this.thickness/2}px; cursor: ns-resize`
 					};
