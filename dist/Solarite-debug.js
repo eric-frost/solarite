@@ -221,6 +221,16 @@ var ArgType = {
 	Eval: 'Eval'
 };
 
+//#IFDEV
+/*@__NO_SIDE_EFFECTS__*/
+function assert(val) {
+	if (!val) {
+		debugger;
+		throw new Error('Assertion failed: ' + val);
+	}
+}
+//#ENDIF
+
 let lastObjectId = 1>>>0; // Is a 32-bit int faster to increment than JavaScript's Number, which is a 64-bit float?
 let objectIds = new WeakMap();
 
@@ -300,6 +310,8 @@ function getObjectHash(obj) {
 		result = getObjectHashCircular(obj);
 	}
 	isHashing = false;
+
+	/*#IFDEV*/assert(result);/*#ENDIF*/
 	return result;
 }
 
@@ -393,16 +405,6 @@ class MultiValueMap {
 	}
 }
 
-//#IFDEV
-/*@__NO_SIDE_EFFECTS__*/
-function assert(val) {
-	if (!val) {
-		debugger;
-		throw new Error('Assertion failed: ' + val);
-	}
-}
-//#ENDIF
-
 let Util = {
 
 	bindStyles(style, root) {
@@ -428,6 +430,32 @@ let Util = {
 		}
 	},
 
+	/**
+	 * Get the value of an input as the most appropriate JavaScript type.
+	 * @param node {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|HTMLDivElement}
+	 * @return {string|string[]|number|[]|File[]|Date|boolean} */
+	getInputValue(node) {
+		if (node.type === 'checkbox' || node.type === 'radio')
+			return node.checked; // Boolean
+		if (node.type === 'file')
+			return [...node.files]; // FileList
+		if (node.type === 'number' || node.type === 'range')
+			return node.valueAsNumber; // Number
+		if (node.type === 'date' || node.type === 'time' || node.type === 'datetime-local')
+			return node.valueAsDate; // Date Object
+		if (node.type === 'select-multiple') // <select multiple>
+			return [...node.selectedOptions].map(option => option.value); // Array of Strings
+
+		return node.value; // String
+	},
+
+	/**
+	 * Is it an array and a path that can be evaluated by delve() ?
+	 * @param arr {Array|*}
+	 * @returns {boolean} */
+	isPath(arr) {
+		return Array.isArray(arr) && typeof arr[0] === 'object' && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
+	},
 
 	/**
 	 * Remove nodes from the beginning and end that are not:
@@ -804,7 +832,7 @@ class Template {
 
 
 	getCloseKey() {
-		// Use the joined html when debugging?
+		// Use the joined html when debugging?  But it breaks some tests.
 		//return '@'+this.html.join('|')
 
 		return '@'+this.hashedFields[0];
@@ -1066,7 +1094,7 @@ class ExprPath {
 	/**
 	 * Handle attributes for event binding, such as:
 	 * onclick=${(e, el) => this.doSomething(el, 'meow')}
-	 * onclick=${[this.doSomething, 'meow']}
+	 * oninput=${[this.doSomething, 'meow']}
 	 * onclick=${[this, 'doSomething', 'meow']}
 	 *
 	 * @param node
@@ -1150,6 +1178,16 @@ class ExprPath {
 		
 		else if (!this.attrValue && expr === true)
 			node.setAttribute(this.attrName, '');
+
+		// Passing a path to the value attribute.
+		// This same logic is in NodeGroup.createNewComponent() for components.
+		else if ((this.attrName === 'value' || this.attrName === 'data-value') && Util.isPath(expr)) {
+			let [obj, path] = [expr[0], expr.slice(1)];
+			node.value = delve(obj, path);
+			node.addEventListener('input', () => {
+				delve(obj, path, Util.getInputValue(node));
+			}, true); // We use capture so we update the values before other events added by the user.
+		}
 
 		// Regular attribute
 		else {
@@ -2021,7 +2059,7 @@ class NodeGroup {
 	/** @type {string} Key that matches the template and the expressions. */
 	exactKey;
 
-	/** @type {string} Key that only matches the template.  */
+	/** @type {string} Key that only matches the template. */
 	closeKey;
 
 	/** @type {boolean} Used by NodeGroupManager. */
@@ -2053,7 +2091,9 @@ class NodeGroup {
 	 * @param manager {?NodeGroupManager}
 	 * @param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
 	 * @returns {NodeGroup} */
-	constructor(template, manager=null, replaceMode=null) {
+	constructor(template, manager=null, replaceMode=null, exactKey, closeKey) {
+		this.exactKey = exactKey;
+		this.closeKey = closeKey;
 
 		/** @type {Template} */
 		this.template = template;
@@ -2141,13 +2181,15 @@ class NodeGroup {
 				for (let path of shell.ids) {
 					let el = resolveNodePath(root, path);
 					let id = el.getAttribute('data-id') || el.getAttribute('id');
-
-					// Don't allow overwriting existing class properties if they already have a non-Node value.
-					if (rootEl[id] && !(rootEl[id] instanceof Node))
-						throw new Error(`${rootEl.constructor.name}.${id} already has a value.  `+
-							`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
-
-					delve(rootEl, id.split(/\./g), el);
+					if (id) { // If something hasn't removed the id.
+						
+						// Don't allow overwriting existing class properties if they already have a non-Node value.
+						if (rootEl[id] && !(rootEl[id] instanceof Node))
+							throw new Error(`${rootEl.constructor.name}.${id} already has a value.  ` +
+								`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
+						
+						delve(rootEl, id.split(/\./g), el);
+					}
 				}
 
 			// styles
@@ -2465,6 +2507,16 @@ class NodeGroup {
 			let val = props[propName];
 			if (propName.startsWith('on') && typeof val === 'function')
 				newEl.addEventListener(propName.slice(2), e => val(e, newEl));
+
+			// Bind array based event attributes on value.
+			// This same logic is in ExprPath.applyValueAttrib() for non-components.
+			if ((propName === 'value' || propName === 'data-value') && Util.isPath(val)) {
+				let [obj, path] = [val[0], val.slice(1)];
+				newEl.value = delve(obj, path);
+				newEl.addEventListener('input', e => {
+					delve(obj, path, Util.getInputValue(newEl));
+				}, true); // We use capture so we update the values before other events added by the user.
+			}
 		}
 		
 		// If an id pointed at the placeholder, update it to point to the new element.
@@ -2831,6 +2883,7 @@ class NodeGroupManager {
 		if (ng) {
 			
 			// We matched on a new key, so delete the old exactKey.
+			/*#IFDEV*/assert(ng.exactKey);/*#ENDIF*/
 			let exactNg = this.nodeGroupsAvailable.delete(ng.exactKey, ng);
 			
 			/*#IFDEV*/assert(exactNg);/*#ENDIF*/
@@ -2845,10 +2898,12 @@ class NodeGroupManager {
 				while (ng2 = ng2?.parentPath?.parentNg) {
 					if (!ng2.inUse) {
 						ng2.inUse = true; // Might speed it up slightly?
+						/*#IFDEV*/assert(ng2.exactKey);/*#ENDIF*/
 						let success = this.nodeGroupsAvailable.delete(ng2.exactKey, ng2);
 						/*#IFDEV*/assert(success);/*#ENDIF*/
 
 						// But it can still be a close match, so we don't use this code.
+						/*#IFDEV*/assert(ng2.closeKey);/*#ENDIF*/
 						success = this.nodeGroupsAvailable.delete(ng2.closeKey, ng2);
 						/*#IFDEV*/assert(success);/*#ENDIF*/
 
@@ -2916,7 +2971,7 @@ class NodeGroupManager {
 			else {
 				/*#IFDEV*/this.incrementLogDepth(1);/*#ENDIF*/
 
-				ng = new NodeGroup(template, this, replaceMode);
+				ng = new NodeGroup(template, this, replaceMode, exactKey, closeKey);
 
 				/*#IFDEV*/this.incrementLogDepth(-1);/*#ENDIF*/
 				/*#IFDEV*/this.modifications.created.push(...ng.getNodes());/*#ENDIF*/
@@ -3528,10 +3583,10 @@ let Solarite = new Proxy(createSolarite(), {
 		return createSolarite(...args)
 	}
 });
-
+let getInputValue = Util.getInputValue;
 
 //Experimental:
 //export {forEach, watchGet, watchSet} from './watch.js' // old, unfinished
 //export {watch} from './watch2.js'; // unfinished
 
-export { ArgType, Globals, Solarite, Template, getArg, r };
+export { ArgType, Globals, Solarite, Template, delve, getArg, getInputValue, r };
