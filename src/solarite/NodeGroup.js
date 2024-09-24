@@ -6,6 +6,7 @@ import udomdiff from "./udomdiff.js";
 import Util, {div, findArrayDiff, flattenAndIndent, isEvent, nodeToArrayTree, setIndent} from "./Util.js";
 import NodeGroupManager from "./NodeGroupManager.js";
 import delve from "../util/delve.js";
+import Globals from "./Globals.js";
 
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node} Expr */
@@ -421,12 +422,12 @@ export default class NodeGroup {
 
 		// Update params of placeholder.
 		else if (el.render) {
-			let oldHash = componentHash.get(el);
+			let oldHash = Globals.componentHash.get(el);
 			if (oldHash !== newHash)
 				el.render(props); // Pass new values of props to render so it can decide how it wants to respond.
 		}
 
-		componentHash.set(el, newHash);
+		Globals.componentHash.set(el, newHash);
 	}
 	
 	/**
@@ -672,6 +673,3 @@ export default class NodeGroup {
 	}
 	//#ENDIF
 }
-
-
-let componentHash = new WeakMap()

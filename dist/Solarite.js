@@ -221,8 +221,6 @@ var ArgType = {
 	Eval: 'Eval'
 };
 
-
-
 let lastObjectId = 1>>>0; // Is a 32-bit int faster to increment than JavaScript's Number, which is a 64-bit float?
 let objectIds = new WeakMap();
 
@@ -292,8 +290,6 @@ function getObjectHash(obj) {
 		result = getObjectHashCircular(obj);
 	}
 	isHashing = false;
-
-	
 	return result;
 }
 
@@ -386,6 +382,8 @@ class MultiValueMap {
 		return names;
 	}
 }
+
+
 
 let Util = {
 
@@ -610,7 +608,7 @@ class Template {
 	/** @type {string[]} */
 	html = [];
 
-	/** Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
+	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
 
 	/**
@@ -753,7 +751,35 @@ class Template {
 
 var Globals = {
 
+	/**
+	 * Used by NodeGroup.applyComponentExprs() */
+	componentHash: new WeakMap(),
+
+	/**
+	 * Store which instances of Solarite have already been added to the DOM.
+	 * @type {WeakSet<HTMLElement>} */
+	connected: new WeakSet(),
+
+	/**
+	 * Elements that have been rendered to by r() at least once.
+	 * This is used by the Solarite class to know when to call onFirstConnect()
+	 * @type {WeakSet<HTMLElement>} */
+	rendered: new WeakSet(),
+
 	currentExprPath: [],
+
+	/**
+	 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
+	elementClasses: {},
+
+	/**
+	 * Used by ExprPath.applyEventAttrib.
+	 * TODO: Memory from this is never freed.  Use a WeakMap<Node, Object<eventName:string, function[]>> */
+	nodeEvents: {},
+
+	/**
+	 * Used by r() path 9. */
+	objToEl: new WeakMap(),
 
 	/**
 	 * Elements that are currently rendering via the r() function.
@@ -764,12 +790,14 @@ var Globals = {
 	/**
 	 * Each Element that has Expr children has an associated NodeGroupManager here.
 	 * @type {WeakMap<HTMLElement, NodeGroupManager>} */
-	nodeGroupManagers: new WeakMap()
+	nodeGroupManagers: new WeakMap(),
+
+	shells: new WeakMap()
 
 };
 
 /**
- * Path to where an expression should be evaluated within a Shell.
+ * Path to where an expression should be evaluated within a Shell or NodeGroup.
  * Path is only valid until the expressions before it are evaluated.
  * TODO: Make this based on parent and node instead of path? */
 class ExprPath {
@@ -832,15 +860,23 @@ class ExprPath {
 	 * @type {Node[]} Cached result of getNodes() */
 	nodesCache;
 
-	// What are these?
+	/**
+	 * {int} Index of nodeBefore among its parentNode's children. */
 	nodeBeforeIndex;
+
+
+	/**
+	 * {int[]} Path to the node marker. */
 	nodeMarkerPath;
 
-    // TODO: Keep this cached?
-    expr;
+	// TODO: Keep this cached?
+	expr;
 
-    // for debugging
+	// for debugging
 	
+
+	// New as of Sep 2024.
+	lastNodeGroup;
 
 	/**
 	 * @param nodeBefore {Node}
@@ -868,12 +904,20 @@ class ExprPath {
 	 * @param newNodes {(Node|Template)[]}
 	 * @param secondPass {Array} Locations within newNodes to evaluate later.  */
 	apply(expr, newNodes, secondPass) {
+		//this.nodeGroups = [];
 
 		if (expr instanceof Template) {
-			expr.nodegroup = this.parentNg; // All tests pass w/o this.
 
-			let ng = this.parentNg.manager.getNodeGroup(expr, true);
+			let exactKey = getObjectHash(expr);
 
+			// if (this.lastNodeGroup?.exactKey === exactKey) {
+			// 	let ng = this.parentNg.manager.findAndDeleteExact(exactKey);
+			// 	this.parentNg.manager.findAndDeleteClose(ng.closeKey, ng.exactKey);
+			// 	return;
+			// }
+
+			let ng = this.parentNg.manager.getNodeGroup(expr, true, null, exactKey);
+			this.lastNodeGroup = ng;
 
 			if (ng) {
 				
@@ -908,8 +952,6 @@ class ExprPath {
 				this.apply(subExpr, newNodes, secondPass);
 
 		else if (typeof expr === 'function') {
-			//expr = watchFunction(expr, this.parentNg.manager); // part of watch2() experiment.
-
 			Globals.currentExprPath = [this, expr]; // Used by watch3()
 			let result = expr();
 			Globals.currentExprPath = null;
@@ -1014,8 +1056,8 @@ class ExprPath {
 			func = expr;
 
 		let eventKey = getObjectId(node) + eventName;
-		let [existing, existingBound] = nodeEvents[eventKey] || [];
-		nodeEventArgs[eventKey] = args; // TODO: Put this in nodeEvents[]
+		let [existing, existingBound] = Globals.nodeEvents[eventKey] || [];
+		//Globals.nodeEventArgs[eventKey] = args; // TODO: Put this in Globals.nodeEvents[]  Where is this ever used?
 
 
 		if (existing !== func) {
@@ -1030,7 +1072,7 @@ class ExprPath {
 			// Save both the original and bound functions.
 			// Original so we can compare it against a newly assigned function.
 			// Bound so we can use it with removeEventListner().
-			nodeEvents[eventKey] = [originalFunc, boundFunc];
+			Globals.nodeEvents[eventKey] = [originalFunc, boundFunc];
 
 			node.addEventListener(eventName, boundFunc);
 
@@ -1307,25 +1349,21 @@ function resolveNodePath(root, path) {
 	return root;
 }
 
-
-// TODO: Memory from this is never freed.  Use a WeakMap<Node, Object<eventName:string, function[]>>
-let nodeEvents = {};
-let nodeEventArgs = {};
-
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
- * but without any expressions filled in. */
+ * but without any expressions filled in.
+ * Only one Shell is created for all the items in a loop.
+ *
+ * When a NodeGroup is created from a Template's html strings,
+ * the NodeGroup then clones the Shell's fragmentn to be its nodes. */
 class Shell {
 
 	/**
-	 * @type {DocumentFragment} Parent of the shell nodes. */
+	 * @type {DocumentFragment} DOM parent of the shell nodes. */
 	fragment;
 
 	/** @type {ExprPath[]} Paths to where expressions should go. */
 	paths = [];
-
-	/** @type {?Template} Template that created this element. */
-	template;
 
 	// Embeds and ids
 	events = [];
@@ -1441,7 +1479,7 @@ class Shell {
 				// Get or create nodeBefore.
 				let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
 				if (!nodeBefore) {
-					nodeBefore = document.createComment('PathStart:'+this.paths.length);
+					nodeBefore = document.createComment('ExprPath:'+this.paths.length);
 					node.parentNode.insertBefore(nodeBefore, node);
 				}
 				
@@ -1457,13 +1495,14 @@ class Shell {
 				// Re-use existing comment placeholder.
 				else {
 					nodeMarker = node;
-					nodeMarker.textContent = 'PathEnd:'+ this.paths.length;
+					nodeMarker.textContent = 'ExprPathEnd:'+ this.paths.length;
 				}
 				
 
 
 
 				let path = new ExprPath(nodeBefore, nodeMarker, PathType.Content);
+
 				
 				this.paths.push(path);
 			}
@@ -1584,10 +1623,10 @@ class Shell {
 	 * @param htmlStrings {string[]}
 	 * @returns {Shell} */
 	static get(htmlStrings) {
-		let result = shells.get(htmlStrings);
+		let result = Globals.shells.get(htmlStrings);
 		if (!result) {
 			result = new Shell(htmlStrings);
-			shells.set(htmlStrings, result); // cache
+			Globals.shells.set(htmlStrings, result); // cache
 		}
 
 		
@@ -1596,8 +1635,6 @@ class Shell {
 
 	
 }
-
-let shells = new WeakMap();
 
 /**
  * ISC License
@@ -2196,12 +2233,12 @@ class NodeGroup {
 
 		// Update params of placeholder.
 		else if (el.render) {
-			let oldHash = componentHash.get(el);
+			let oldHash = Globals.componentHash.get(el);
 			if (oldHash !== newHash)
 				el.render(props); // Pass new values of props to render so it can decide how it wants to respond.
 		}
 
-		componentHash.set(el, newHash);
+		Globals.componentHash.set(el, newHash);
 	}
 	
 	/**
@@ -2383,19 +2420,6 @@ class NodeGroup {
 	
 }
 
-
-let componentHash = new WeakMap();
-
-/**
- * Tools for watch variables and performing precise renders.
- */
-
-function serializePath(path) {
-	// Convert any array indices to strings, so serialized comparisons work.
-	return JSON.stringify([getObjectId(path[0]), ...path.slice(1).map(item => item+'')])
-
-}
-
 /**
  * @typedef {Object} RenderOptions
  * @property {boolean=} styles - Replace :host in style tags to scope them locally.
@@ -2433,9 +2457,13 @@ class NodeGroupManager {
 	/**
 	 * A map from the html strings and exprs that created a node group, to the NodeGroup.
 	 * Also stores a map from just the html strings to the NodeGroup, so we can still find a similar match if the exprs changed.
-	 *
 	 * @type {MultiValueMap<string, (string|Template)[], NodeGroup>} */
 	nodeGroupsAvailable = new MultiValueMap();
+
+	/**
+	 * Save the NodeGroups that are returned by NodeGroupManager.get()
+	 * Calling reset() at the end of render puts them all back into nodeGroupsAvailable.
+	 * @type {NodeGroup[]} */
 	nodeGroupsInUse = [];
 
 
@@ -2496,9 +2524,10 @@ class NodeGroupManager {
 					if (!ng2.inUse) {
 						ng2.inUse = true;
 						let success = this.nodeGroupsAvailable.delete(ng2.exactKey, ng2);
-						// assert(success);
+						assert(success);
+
 						let success2 = this.nodeGroupsAvailable.delete(ng2.closeKey, ng2);
-						// assert(success);
+						assert(success2);
 						
 
 						// console.log(getHtml(ng2))
@@ -2512,8 +2541,10 @@ class NodeGroupManager {
 			// Recurse to mark all child NodeGroups as in-use.
 			for (let path of ng.paths)
 				for (let childNg of path.nodeGroups) {
-					if (!childNg.inUse)
+					if (!childNg.inUse) {
 						this.findAndDeleteExact(childNg.exactKey, false, childNg);
+					//	this.findAndDeleteClose(childNg.closeKey, childNg.exactKey, false);
+					}
 					childNg.inUse = true;
 				}
 			
@@ -2553,7 +2584,7 @@ class NodeGroupManager {
 						let success = this.nodeGroupsAvailable.delete(ng2.exactKey, ng2);
 						
 
-						// But it can still be a close match, so we don't use this code.
+						// But it can still be a close match, so we remove it there too.
 						
 						success = this.nodeGroupsAvailable.delete(ng2.closeKey, ng2);
 						
@@ -2591,8 +2622,8 @@ class NodeGroupManager {
 	 * @param exact {?boolean} If true, only get a NodeGroup if it matches both the template
 	 * @param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
 	 * @return {?NodeGroup} */
-	getNodeGroup(template, exact=null, replaceMode=null) {
-		let exactKey = getObjectHash(template);
+	getNodeGroup(template, exact=null, replaceMode=null, exactKey=null) {
+		exactKey = exactKey || getObjectHash(template);
 
 		// 1. Try to find an exact match.
 		let ng = this.findAndDeleteExact(exactKey);
@@ -2652,6 +2683,9 @@ class NodeGroupManager {
 		return ng;
 	}
 
+	/**
+	 * Move everything in nodeGroupsInUse to nodeGroupsAvailable.
+	 * This is called after the NodeGroup has finished rendering. */
 	reset() {
 
 		
@@ -2683,36 +2717,6 @@ class NodeGroupManager {
 			deleted: []
 		};
 	}
-
-
-	// deprecated
-	//pathToLoopInfo = new MultiValueMap(); // uses a Set() for each value.
-	clearSubscribers = false;
-
-	
-
-	
-	/**
-	 * @deprecated
-	 * Store the functions used to create items for each loop.
-	 * TODO: Can this be combined with pathToTemplates?
-	 * @type {MultiValueMap<string, Subscriber>} */
-	pathToLoopInfo = new MultiValueMap();
-	
-	/**
-	 * Maps variable paths to the templates used to create NodeGroups
-	 * @type {MultiValueMap<string, Subscriber>} */
-	subscribers = new MultiValueMap();
-
-
-	clearSubscribersIfNeeded() {
-		if (this.clearSubscribers) {
-			this.pathToLoopInfo = new MultiValueMap();
-			this.subscribers = new MultiValueMap();
-			this.clearSubscribers = false;
-		}
-	}
-	
 
 	/**
 	 * Get the NodeGroupManager for a Web Component, given either its root element or its Template.
@@ -2806,7 +2810,7 @@ function r(htmlStrings=undefined, ...exprs) {
 
 			let options = exprs[0];
 			return (htmlStrings, ...exprs) => {
-				rendered.add(parent);
+				Globals.rendered.add(parent);
 				let template = r(htmlStrings, ...exprs);
 				return template.render(parent, options);
 			}
@@ -2844,7 +2848,7 @@ function r(htmlStrings=undefined, ...exprs) {
 	// 7. Create a static element
 	else if (htmlStrings === undefined) {
 		return (htmlStrings, ...exprs) => {
-			//rendered.add(parent)
+			//Globals.rendered.add(parent)
 			let template = r(htmlStrings, ...exprs);
 			return template.render();
 		}
@@ -2861,20 +2865,20 @@ function r(htmlStrings=undefined, ...exprs) {
 		let obj = htmlStrings;
 
 		// Special rebound render path, called by normal path.
-		if (objToEl.has(obj)) {
+		if (Globals.objToEl.has(obj)) {
 			return function(...args) {
 			   let template = r(...args);
 			   let el = template.render();
-				objToEl.set(obj, el);
+				Globals.objToEl.set(obj, el);
 			}.bind(obj);
 		}
 
 		// Normal path
 		else {
-			objToEl.set(obj, null);
+			Globals.objToEl.set(obj, null);
 			obj.render(); // Calls the Special rebound render path above, when the render function calls r(this)
-			let el = objToEl.get(obj);
-			objToEl.delete(obj);
+			let el = Globals.objToEl.get(obj);
+			Globals.objToEl.delete(obj);
 
 			for (let name in obj)
 				if (typeof obj[name] === 'function')
@@ -2889,16 +2893,6 @@ function r(htmlStrings=undefined, ...exprs) {
 	else
 		throw new Error('Unsupported arguments.')
 }
-
-/**
- * Used by r() path 9. */
-let objToEl = new WeakMap();
-
-/**
- * Elements that have been rendered to by r() at least once.
- * This is used by the Solarite class to know when to call onFirstConnect()
- * @type {WeakSet<HTMLElement>} */
-let rendered = new WeakSet();
 
 //import {watchGet, watchSet} from "./watch.js";
 
@@ -2918,14 +2912,9 @@ function defineClass(Class, tagName, extendsTag) {
 	}
 }
 
-/**
- * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
-let elementClasses = {};
 
-/**
- * Store which instances of Solarite have already been added to the DOM. * @type {WeakSet<HTMLElement>}
- */
-let connected = new WeakSet();
+
+
 
 /**
  * Create a version of the Solarite class that extends from the given tag name.
@@ -2952,10 +2941,10 @@ function createSolarite(extendsTag=null) {
 	if (extendsTag && !extendsTag.includes('-')) {
 		extendsTag = extendsTag.toLowerCase();
 
-		BaseClass = elementClasses[extendsTag];
+		BaseClass = Globals.elementClasses[extendsTag];
 		if (!BaseClass) { // TODO: Use Cache
 			BaseClass = document.createElement(extendsTag).constructor;
-			elementClasses[extendsTag] = BaseClass;
+			Globals.elementClasses[extendsTag] = BaseClass;
 		}
 	}
 
@@ -3010,7 +2999,7 @@ function createSolarite(extendsTag=null) {
 			/** @deprecated */
 			Object.defineProperty(this, 'html', {
 				set(html) {
-					rendered.add(this);
+					Globals.rendered.add(this);
 					if (typeof html === 'string') {
 						console.warn("Assigning to this.html without the r template prefix.");
 						this.innerHTML = html;
@@ -3033,7 +3022,7 @@ function createSolarite(extendsTag=null) {
 		/**
 		 * Call render() only if it hasn't already been called.	 */
 		renderFirstTime() {
-			if (!rendered.has(this) && this.render)
+			if (!Globals.rendered.has(this) && this.render)
 				this.render();
 		}
 		
@@ -3041,8 +3030,8 @@ function createSolarite(extendsTag=null) {
 		 * Called automatically by the browser. */
 		connectedCallback() {
 			this.renderFirstTime();
-			if (!connected.has(this)) {
-				connected.add(this);
+			if (!Globals.connected.has(this)) {
+				Globals.connected.add(this);
 				this.onFirstConnect();
 			}
 			this.onConnect();

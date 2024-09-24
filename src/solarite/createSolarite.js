@@ -4,8 +4,9 @@ import delve from "../util/delve.js";
 import {getArg, ArgType} from "./getArg.js";
 import {getObjectHash} from "./hash.js";
 import NodeGroupManager from "./NodeGroupManager.js";
-import r, {rendered} from "./r.js";
+import r from "./r.js";
 import {camelToDashes} from "./Util.js";
+import Globals from "./Globals.js";
 
 
 //import {watchGet, watchSet} from "./watch.js";
@@ -26,14 +27,9 @@ function defineClass(Class, tagName, extendsTag) {
 	}
 }
 
-/**
- * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
-let elementClasses = {};
 
-/**
- * Store which instances of Solarite have already been added to the DOM. * @type {WeakSet<HTMLElement>}
- */
-let connected = new WeakSet();
+
+
 
 /**
  * Create a version of the Solarite class that extends from the given tag name.
@@ -60,10 +56,10 @@ export default function createSolarite(extendsTag=null) {
 	if (extendsTag && !extendsTag.includes('-')) {
 		extendsTag = extendsTag.toLowerCase();
 
-		BaseClass = elementClasses[extendsTag];
+		BaseClass = Globals.elementClasses[extendsTag];
 		if (!BaseClass) { // TODO: Use Cache
 			BaseClass = document.createElement(extendsTag).constructor;
-			elementClasses[extendsTag] = BaseClass
+			Globals.elementClasses[extendsTag] = BaseClass
 		}
 	}
 
@@ -118,7 +114,7 @@ export default function createSolarite(extendsTag=null) {
 			/** @deprecated */
 			Object.defineProperty(this, 'html', {
 				set(html) {
-					rendered.add(this);
+					Globals.rendered.add(this);
 					if (typeof html === 'string') {
 						console.warn("Assigning to this.html without the r template prefix.")
 						this.innerHTML = html;
@@ -141,7 +137,7 @@ export default function createSolarite(extendsTag=null) {
 		/**
 		 * Call render() only if it hasn't already been called.	 */
 		renderFirstTime() {
-			if (!rendered.has(this) && this.render)
+			if (!Globals.rendered.has(this) && this.render)
 				this.render();
 		}
 		
@@ -149,8 +145,8 @@ export default function createSolarite(extendsTag=null) {
 		 * Called automatically by the browser. */
 		connectedCallback() {
 			this.renderFirstTime();
-			if (!connected.has(this)) {
-				connected.add(this);
+			if (!Globals.connected.has(this)) {
+				Globals.connected.add(this);
 				this.onFirstConnect();
 			}
 			this.onConnect();

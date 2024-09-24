@@ -1,13 +1,13 @@
 import {assert} from "../util/Errors.js";
 import delve from "../util/delve.js";
-import {getObjectId} from "./hash.js";
+import {getObjectHash, getObjectId} from "./hash.js";
 import NodeGroup from "./NodeGroup.js";
 import Util, {div, findArrayDiff, setIndent} from "./Util.js";
 import Template from "./Template.js";
 import Globals from "./Globals.js";
 
 /**
- * Path to where an expression should be evaluated within a Shell.
+ * Path to where an expression should be evaluated within a Shell or NodeGroup.
  * Path is only valid until the expressions before it are evaluated.
  * TODO: Make this based on parent and node instead of path? */
 export default class ExprPath {
@@ -70,17 +70,25 @@ export default class ExprPath {
 	 * @type {Node[]} Cached result of getNodes() */
 	nodesCache;
 
-	// What are these?
+	/**
+	 * {int} Index of nodeBefore among its parentNode's children. */
 	nodeBeforeIndex;
+
+
+	/**
+	 * {int[]} Path to the node marker. */
 	nodeMarkerPath;
 
-    // TODO: Keep this cached?
-    expr;
+	// TODO: Keep this cached?
+	expr;
 
-    // for debugging
+	// for debugging
 	//#IFDEV
-    parentIndex;
+	parentIndex;
 	//#ENDIF
+
+	// New as of Sep 2024.
+	lastNodeGroup;
 
 	/**
 	 * @param nodeBefore {Node}
@@ -130,12 +138,20 @@ export default class ExprPath {
 	 * @param newNodes {(Node|Template)[]}
 	 * @param secondPass {Array} Locations within newNodes to evaluate later.  */
 	apply(expr, newNodes, secondPass) {
+		//this.nodeGroups = [];
 
 		if (expr instanceof Template) {
-			expr.nodegroup = this.parentNg; // All tests pass w/o this.
 
-			let ng = this.parentNg.manager.getNodeGroup(expr, true);
+			let exactKey = getObjectHash(expr);
 
+			// if (this.lastNodeGroup?.exactKey === exactKey) {
+			// 	let ng = this.parentNg.manager.findAndDeleteExact(exactKey);
+			// 	this.parentNg.manager.findAndDeleteClose(ng.closeKey, ng.exactKey);
+			// 	return;
+			// }
+
+			let ng = this.parentNg.manager.getNodeGroup(expr, true, null, exactKey);
+			this.lastNodeGroup = ng;
 
 			if (ng) {
 				//#IFDEV
@@ -174,8 +190,6 @@ export default class ExprPath {
 				this.apply(subExpr, newNodes, secondPass)
 
 		else if (typeof expr === 'function') {
-			//expr = watchFunction(expr, this.parentNg.manager); // part of watch2() experiment.
-
 			Globals.currentExprPath = [this, expr]; // Used by watch3()
 			let result = expr();
 			Globals.currentExprPath = null;
@@ -283,8 +297,8 @@ export default class ExprPath {
 			func = expr;
 
 		let eventKey = getObjectId(node) + eventName;
-		let [existing, existingBound] = nodeEvents[eventKey] || [];
-		nodeEventArgs[eventKey] = args; // TODO: Put this in nodeEvents[]
+		let [existing, existingBound] = Globals.nodeEvents[eventKey] || [];
+		//Globals.nodeEventArgs[eventKey] = args; // TODO: Put this in Globals.nodeEvents[]  Where is this ever used?
 
 
 		if (existing !== func) {
@@ -299,7 +313,7 @@ export default class ExprPath {
 			// Save both the original and bound functions.
 			// Original so we can compare it against a newly assigned function.
 			// Bound so we can use it with removeEventListner().
-			nodeEvents[eventKey] = [originalFunc, boundFunc];
+			Globals.nodeEvents[eventKey] = [originalFunc, boundFunc];
 
 			node.addEventListener(eventName, boundFunc);
 
@@ -402,6 +416,11 @@ export default class ExprPath {
 		let result = new ExprPath(nodeBefore, nodeMarker, this.type, this.attrName, this.attrValue);
 
 		//#IFDEV
+		result.nodeMarker.exprPath = result;
+		if (result.nodeBefore)
+			result.nodeBefore.prevExprPath = result;
+
+
 		result.verify();
 		result.parentIndex = this.parentIndex; // used for debugging?
 		//#ENDIF
@@ -656,7 +675,3 @@ export function resolveNodePath(root, path) {
 	return root;
 }
 
-
-// TODO: Memory from this is never freed.  Use a WeakMap<Node, Object<eventName:string, function[]>>
-let nodeEvents = {};
-let nodeEventArgs = {};

@@ -113,7 +113,6 @@ class ProxyHandler {
 		else if (prop === 'map' && Array.isArray(obj)) {
 			
 			let ngm = NodeGroupManager.get(this.root);
-			ngm.clearSubscribersIfNeeded();
 			
 			return callback => {
 				let loopInfo;

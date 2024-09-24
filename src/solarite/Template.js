@@ -14,7 +14,7 @@ export default class Template {
 	/** @type {string[]} */
 	html = [];
 
-	/** Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
+	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
 
 	/**

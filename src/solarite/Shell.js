@@ -1,22 +1,23 @@
 import {assert} from "../util/Errors.js";
 import ExprPath, {PathType, getNodePath} from "./ExprPath.js";
-
 import {div, htmlContext, isEvent} from "./Util.js";
+import Globals from "./Globals.js";
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
- * but without any expressions filled in. */
+ * but without any expressions filled in.
+ * Only one Shell is created for all the items in a loop.
+ *
+ * When a NodeGroup is created from a Template's html strings,
+ * the NodeGroup then clones the Shell's fragmentn to be its nodes. */
 export default class Shell {
 
 	/**
-	 * @type {DocumentFragment} Parent of the shell nodes. */
+	 * @type {DocumentFragment} DOM parent of the shell nodes. */
 	fragment;
 
 	/** @type {ExprPath[]} Paths to where expressions should go. */
 	paths = [];
-
-	/** @type {?Template} Template that created this element. */
-	template;
 
 	// Embeds and ids
 	events = [];
@@ -134,7 +135,7 @@ export default class Shell {
 				// Get or create nodeBefore.
 				let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
 				if (!nodeBefore) {
-					nodeBefore = document.createComment('PathStart:'+this.paths.length);
+					nodeBefore = document.createComment('ExprPath:'+this.paths.length);
 					node.parentNode.insertBefore(nodeBefore, node)
 				}
 				/*#IFDEV*/assert(nodeBefore);/*#ENDIF*/
@@ -150,14 +151,17 @@ export default class Shell {
 				// Re-use existing comment placeholder.
 				else {
 					nodeMarker = node;
-					nodeMarker.textContent = 'PathEnd:'+ this.paths.length;
+					nodeMarker.textContent = 'ExprPathEnd:'+ this.paths.length;
 				}
 				/*#IFDEV*/assert(nodeMarker);/*#ENDIF*/
 
 
 
 				let path = new ExprPath(nodeBefore, nodeMarker, PathType.Content);
+
 				//#IFDEV
+				//nodeBefore.exprPath = path;
+				//nodeMarker.prevExprPath = path;
 				path.parentIndex = this.paths.length; // For debugging.
 				//#ENDIF
 				this.paths.push(path);
@@ -283,10 +287,10 @@ export default class Shell {
 	 * @param htmlStrings {string[]}
 	 * @returns {Shell} */
 	static get(htmlStrings) {
-		let result = shells.get(htmlStrings);
+		let result = Globals.shells.get(htmlStrings);
 		if (!result) {
 			result = new Shell(htmlStrings);
-			shells.set(htmlStrings, result); // cache
+			Globals.shells.set(htmlStrings, result); // cache
 		}
 
 		/*#IFDEV*/result.verify();/*#ENDIF*/
@@ -304,4 +308,3 @@ export default class Shell {
 	//#ENDIF
 }
 
-let shells = new WeakMap();

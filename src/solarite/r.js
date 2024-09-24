@@ -1,5 +1,6 @@
 import Template from "./Template.js";
 import Util from "./Util.js";
+import Globals from "./Globals.js";
 
 /**
  * Convert strings to HTMLNodes.
@@ -61,7 +62,7 @@ export default function r(htmlStrings=undefined, ...exprs) {
 
 			let options = exprs[0];
 			return (htmlStrings, ...exprs) => {
-				rendered.add(parent)
+				Globals.rendered.add(parent)
 				let template = r(htmlStrings, ...exprs);
 				return template.render(parent, options);
 			}
@@ -99,7 +100,7 @@ export default function r(htmlStrings=undefined, ...exprs) {
 	// 7. Create a static element
 	else if (htmlStrings === undefined) {
 		return (htmlStrings, ...exprs) => {
-			//rendered.add(parent)
+			//Globals.rendered.add(parent)
 			let template = r(htmlStrings, ...exprs);
 			return template.render();
 		}
@@ -116,20 +117,20 @@ export default function r(htmlStrings=undefined, ...exprs) {
 		let obj = htmlStrings;
 
 		// Special rebound render path, called by normal path.
-		if (objToEl.has(obj)) {
+		if (Globals.objToEl.has(obj)) {
 			return function(...args) {
 			   let template = r(...args);
 			   let el = template.render();
-				objToEl.set(obj, el);
+				Globals.objToEl.set(obj, el);
 			}.bind(obj);
 		}
 
 		// Normal path
 		else {
-			objToEl.set(obj, null);
+			Globals.objToEl.set(obj, null);
 			obj.render(); // Calls the Special rebound render path above, when the render function calls r(this)
-			let el = objToEl.get(obj);
-			objToEl.delete(obj);
+			let el = Globals.objToEl.get(obj);
+			Globals.objToEl.delete(obj);
 
 			for (let name in obj)
 				if (typeof obj[name] === 'function')
@@ -144,14 +145,3 @@ export default function r(htmlStrings=undefined, ...exprs) {
 	else
 		throw new Error('Unsupported arguments.')
 }
-
-/**
- * Used by r() path 9. */
-let objToEl = new WeakMap();
-
-/**
- * Elements that have been rendered to by r() at least once.
- * This is used by the Solarite class to know when to call onFirstConnect()
- * @type {WeakSet<HTMLElement>} */
-let rendered = new WeakSet();
-export {rendered}

@@ -1,7 +1,6 @@
 import MultiValueMap from "./MultiValueMap.js";
 import NodeGroup from "./NodeGroup.js";
 import {getObjectHash} from "./hash.js";
-import {serializePath} from "./watch.js";
 
 import {assert} from "../util/Errors.js";
 import Globals from "./Globals.js";
@@ -48,9 +47,13 @@ export default class NodeGroupManager {
 	/**
 	 * A map from the html strings and exprs that created a node group, to the NodeGroup.
 	 * Also stores a map from just the html strings to the NodeGroup, so we can still find a similar match if the exprs changed.
-	 *
 	 * @type {MultiValueMap<string, (string|Template)[], NodeGroup>} */
 	nodeGroupsAvailable = new MultiValueMap();
+
+	/**
+	 * Save the NodeGroups that are returned by NodeGroupManager.get()
+	 * Calling reset() at the end of render puts them all back into nodeGroupsAvailable.
+	 * @type {NodeGroup[]} */
 	nodeGroupsInUse = [];
 
 
@@ -71,14 +74,15 @@ export default class NodeGroupManager {
 
 		/*
 		//#IFDEV
-		
+
+		// Use MutationWatcher to check for illegal DOM modifications.
 		function closestCustomElement(node) {
 			do {
 				if (node.tagName && node.tagName.includes('-'))
 					return node;
 			} while (node = node.parentNode);
 		}
-		
+
 		// TODO: Only trigger if we modify nodes inside an ExprPath.
 		// TODO: Enable this even when not in dev mode, because it's so useful for debugging?
 		// But it modifies the top level prototypes.
@@ -150,9 +154,10 @@ export default class NodeGroupManager {
 					if (!ng2.inUse) {
 						ng2.inUse = true;
 						let success = this.nodeGroupsAvailable.delete(ng2.exactKey, ng2);
-						// assert(success);
+						assert(success);
+
 						let success2 = this.nodeGroupsAvailable.delete(ng2.closeKey, ng2);
-						// assert(success);
+						assert(success2);
 						/*#IFDEV*/assert(success === success2)/*#ENDIF*/
 
 						// console.log(getHtml(ng2))
@@ -166,8 +171,10 @@ export default class NodeGroupManager {
 			// Recurse to mark all child NodeGroups as in-use.
 			for (let path of ng.paths)
 				for (let childNg of path.nodeGroups) {
-					if (!childNg.inUse)
+					if (!childNg.inUse) {
 						this.findAndDeleteExact(childNg.exactKey, false, childNg);
+					//	this.findAndDeleteClose(childNg.closeKey, childNg.exactKey, false);
+					}
 					childNg.inUse = true;
 				}
 			
@@ -211,7 +218,7 @@ export default class NodeGroupManager {
 						let success = this.nodeGroupsAvailable.delete(ng2.exactKey, ng2);
 						/*#IFDEV*/assert(success);/*#ENDIF*/
 
-						// But it can still be a close match, so we don't use this code.
+						// But it can still be a close match, so we remove it there too.
 						/*#IFDEV*/assert(ng2.closeKey);/*#ENDIF*/
 						success = this.nodeGroupsAvailable.delete(ng2.closeKey, ng2);
 						/*#IFDEV*/assert(success);/*#ENDIF*/
@@ -253,8 +260,8 @@ export default class NodeGroupManager {
 	 * @param exact {?boolean} If true, only get a NodeGroup if it matches both the template
 	 * @param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
 	 * @return {?NodeGroup} */
-	getNodeGroup(template, exact=null, replaceMode=null) {
-		let exactKey = getObjectHash(template)
+	getNodeGroup(template, exact=null, replaceMode=null, exactKey=null) {
+		exactKey = exactKey || getObjectHash(template);
 
 		/*#IFDEV*/if(logEnabled) this.log(`Looking for ${exact ? 'exact' : 'close'} match: ` + template.debug)/*#ENDIF*/
 
@@ -321,6 +328,9 @@ export default class NodeGroupManager {
 		return ng;
 	}
 
+	/**
+	 * Move everything in nodeGroupsInUse to nodeGroupsAvailable.
+	 * This is called after the NodeGroup has finished rendering. */
 	reset() {
 
 		/*#IFDEV*/this.rootNg.verify();/*#ENDIF*/
@@ -353,48 +363,6 @@ export default class NodeGroupManager {
 		};
 	}
 
-
-	// deprecated
-	//pathToLoopInfo = new MultiValueMap(); // uses a Set() for each value.
-	clearSubscribers = false;
-
-	//#IFDEV
-
-	/**
-	 * @deprecated - part of watch.js (Watch v1)
-	 * One path may be used to loop in more than one place, so we use this to get every anchor from each loop.
-	 * @param path {Array}
-	 * @return {LoopInfo[]} A function that gets the loop anchor NodeGroup */
-	getLoopInfo(path) {
-		let serializedArrayPath = serializePath(path);
-		return [...this.pathToLoopInfo.getAll(serializedArrayPath)]; // This is set inside forEach()
-	}
-
-	//#ENDIF
-
-	
-	/**
-	 * @deprecated
-	 * Store the functions used to create items for each loop.
-	 * TODO: Can this be combined with pathToTemplates?
-	 * @type {MultiValueMap<string, Subscriber>} */
-	pathToLoopInfo = new MultiValueMap();
-	
-	/**
-	 * Maps variable paths to the templates used to create NodeGroups
-	 * @type {MultiValueMap<string, Subscriber>} */
-	subscribers = new MultiValueMap();
-
-
-	clearSubscribersIfNeeded() {
-		if (this.clearSubscribers) {
-			this.pathToLoopInfo = new MultiValueMap();
-			this.subscribers = new MultiValueMap();
-			this.clearSubscribers = false;
-		}
-	}
-	
-
 	/**
 	 * Get the NodeGroupManager for a Web Component, given either its root element or its Template.
 	 * If given a Template, create a new NodeGroup.
@@ -423,7 +391,6 @@ export default class NodeGroupManager {
 
 
 	//#IFDEV
-
 
 	incrementLogDepth(level) {
 		this.logDepth += level;
