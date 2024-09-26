@@ -30,10 +30,19 @@ var Globals = {
 	 * Used by r() path 9. */
 	objToEl: new WeakMap(),
 
+	pendingChildren: [],
+
 	/**
 	 * Elements that are currently rendering via the r() function.
 	 * @type {WeakSet<HTMLElement>} */
 	rendering: new WeakSet(),
+
+
+
+	/**
+	 * Get the root NodeGroup for an element.
+	 * @type {WeakMap<HTMLElement, NodeGroup>} */
+	nodeGroups: new WeakMap(),
 
 
 	/**
@@ -41,6 +50,9 @@ var Globals = {
 	 * @type {WeakMap<HTMLElement, NodeGroupManager>} */
 	nodeGroupManagers: new WeakMap(),
 
+	/**
+	 * Map from array of Html strings to a Shell created from them.
+	 * @type {WeakMap<string[], Shell>} */
 	shells: new WeakMap()
 
 };

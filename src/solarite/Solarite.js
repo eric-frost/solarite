@@ -1,3 +1,10 @@
+/**
+ * Solarite JavasCript UI library.
+ * MIT License
+ * https://vorticode.github.io/solarite/
+ */
+
+
 import createSolarite from "./createSolarite.js";
 
 /**

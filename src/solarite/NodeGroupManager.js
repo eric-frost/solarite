@@ -7,18 +7,6 @@ import Globals from "./Globals.js";
 import Template from "./Template.js";
 
 
-/**
- * @typedef {Object} RenderOptions
- * @property {boolean=} styles - Replace :host in style tags to scope them locally.
- * @property {boolean=} scripts - Execute script tags.
- * @property {boolean=} ids - Create references to elements with id or data-id attributes.
- * @property {?boolean} render - Deprecated.
- * 	 Used only when options are given to a class super constructor inheriting from Solarite.
- *     True to call render() immediately in super constructor.
- *     False to automatically call render() at all.
- *     Undefined (default) to call render() when added to the DOM, unless already rendered.
- */
-
 
 /**
  * Manage all the NodeGroups for a single WebComponent or root HTMLElement
@@ -26,7 +14,7 @@ import Template from "./Template.js";
  * And each NodeGroup manages the one or more nodes created by the expression.
  *
  * An instance of this class exists for each element that r() renders to. */
-export default class NodeGroupManager {
+class NodeGroupManager {
 
 	/** @type {HTMLElement|DocumentFragment} */
 	rootEl;

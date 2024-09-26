@@ -1,5 +1,7 @@
 // noinspection DuplicatedCode
 
+// Broken tests will be annotated with FIXME
+
 import {camelToDashes, htmlContext} from "../src/solarite/Util.js";
 //import {watchGet, watchSet} from "../src/solarite/watch.js";
 
@@ -7,7 +9,7 @@ import {Solarite, r, getArg} from '../src/solarite/Solarite.js';
 //import {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 import {watch} from "../src/solarite/watch2.js";
 import watch3 from "../src/solarite/watch3.js";
-import NodeGroupManager from "../src/solarite/NodeGroupManager.js";
+//import NodeGroupManager from "../src/solarite/NodeGroupManager.js";
 import NodeGroup from "../src/solarite/NodeGroup.js";
 import Template from "../src/solarite/Template.js";
 import Shell from "../src/solarite/Shell.js";
@@ -33,7 +35,7 @@ window.getHtml = (item, includeComments=false) => {
 		if (!includeComments)
 			item = item.filter(n => n.nodeType !==8)
 
-		result = item.map(n => n.nodeType === 8 ? `<!--${n.textContent}-->` : n.outerHTML || n.textContent).join('|')
+		result = item.map(n => n.nodeType === 8 ? `<!--${n.textContent}-->` : n.outerHTML || n.textContent).join('|');
 	}
 	else
 		result = item.outerHTML || item.textContent
@@ -348,13 +350,15 @@ Testimony.test('Solarite.basic.createElement', () => {
 
 // Expr
 Testimony.test('Solarite.expr.staticString', () => {
-	class R40 extends Solarite {
+	class R40 extends HTMLElement {
 		render() {
 			r(this)`Solarite ${'Test'} Component`
 		}
 	}
+	customElements.define('r-40', R40);
 
 	let a = new R40();
+	a.render();
 	document.body.append(a);
 
 	assert.eq(getHtml(a), '<r-40>Solarite Test Component</r-40>');
@@ -380,7 +384,6 @@ Testimony.test('Solarite.expr.htmlString', () => {
 	let a = new A();
 	assert.eq(getHtml(a), '<r-42>This text is <b>Bold</b>!</r-42>');
 });
-
 
 Testimony.test('Solarite.expr.table', () => {
 
@@ -408,7 +411,13 @@ Testimony.test('Solarite.expr.documentFragment', () => {
 		}
 	}
 
-	let a = new R44({render:true}); // auto render on construct.
+	let a = new R44(); // auto render on construct.
+
+	a.render();
+	assert.eq(getHtml(a), '<r-44>This text is <b>Bold</b><i>Italic</i>!</r-44>');
+
+
+	a.render();
 	assert.eq(getHtml(a), '<r-44>This text is <b>Bold</b><i>Italic</i>!</r-44>');
 });
 
@@ -637,7 +646,6 @@ Testimony.test('Solarite.expr.staticElement', () => {
 	assert.eq(getHtml(a), '<r-74>Field: <input></r-74>');
 });
 
-
 Testimony.test('Solarite.expr.varText', () => {
 	class A extends Solarite {
 		value = 'Apple';
@@ -662,8 +670,6 @@ Testimony.test('Solarite.expr.varText', () => {
 	assert.eq(getHtml(a), '<r-90>The fruit is Cherry!</r-90>');
 	assert.eq(a.childNodes.length, 3);
 });
-
-
 
 Testimony.test('Solarite.expr.cyclicRef', () => {
 
@@ -690,11 +696,6 @@ Testimony.test('Solarite.expr.cyclicRef', () => {
 	a.render();
 	assert.eq(getHtml(a), '<r-100>The fruit is Cherry!</r-100>');
 });
-
-
-
-
-
 
 
 
@@ -1032,8 +1033,6 @@ Testimony.test('Solarite.loop.nested3', `Move items from one sublist to another.
 	a.remove();
 });
 
-
-
 // Tried to make a simpler version of nested3, but it works fine:
 Testimony.test('Solarite.loop.nested4', () => {
 	
@@ -1067,14 +1066,6 @@ Testimony.test('Solarite.loop.nested4', () => {
 	window.verify = false;
 	a.remove();
 });
-
-
-
-
-
-
-
-
 
 Testimony.test('Solarite.loop.nested5', () => {
 	
@@ -1125,22 +1116,6 @@ Testimony.test('Solarite.loop.nested5', () => {
 	window.verify = false;
 	a.remove();
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 Testimony.test('Solarite.loop.nestedConditional', () => {
 
@@ -1292,13 +1267,6 @@ Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 	a.remove();
 });
 
-
-
-
-
-
-
-
 Testimony.test('Solarite.embed.styleStatic', () => {
 	let count = 0;
 
@@ -1424,10 +1392,6 @@ Testimony.test('Solarite.embed.styleDynamicTag', () => {
 	a.remove();
 });
 
-
-
-
-
 Testimony.test('Solarite.embed.svg', () => {
 	class R330 extends Solarite {
 		render() {
@@ -1504,7 +1468,6 @@ Testimony.test('Solarite.embed._scriptDynamic', () => {
 
 	delete window.scriptStaticCount;
 });
-
 
 
 Testimony.test('Solarite.attrib.single', () => {
@@ -2649,6 +2612,47 @@ Testimony.test('Solarite.events.onExprChild', () => {
 	assert.eq(e.items.length, 1);
 });
 
+// FIXME
+Testimony.test('Solarite.events._loop', () => {
+
+	let lastButtonId = null;
+
+	class V70 extends Solarite {
+		items = [{id: 1}, {id: 2}];
+
+		log(id) {
+			lastButtonId = id;
+			//console.log(id);
+		}
+
+		render() {
+			r(this)`
+			<v-70>
+				${this.items.map(item => r`
+					<button onclick=${[this.log, item.id]}>${item.id}</button>
+				`)}
+			</v-70>`
+		}
+	}
+
+	let v = new V70();
+	document.body.append(v);
+
+	v.children[1].dispatchEvent(new MouseEvent('click'));
+	assert.eq(lastButtonId, 2);
+
+	// This doesn't update the bound function to use 3.
+	v.items.splice(1, 1);
+	v.items.push({id: 3});
+	v.render();
+
+	assert.eq(lastButtonId, 3);
+
+
+	//v.remove();
+});
+
+
 
 
 // Binding
@@ -2832,6 +2836,34 @@ Testimony.test('Solarite.binding.number', () => {
 });
 
 
+// FIXME
+Testimony.test('Solarite.binding._number2', () => {
+
+	class B40 extends Solarite {
+		count = 1
+
+		render() {
+			r(this)`<input type="number" data-id="input" value=${[this, 'count']}>`
+		}
+	}
+
+	let b = new B40();
+	document.body.append(b);
+	assert.eq(b.input.value, '1')
+
+	b.count = 2;
+	b.render();
+	assert.eq(b.input.value, '2')
+
+	b.input.value = 3;
+	b.input.dispatchEvent(new Event('input', {
+		bubbles: true,
+		cancelable: true,
+	}));
+	assert.eq(b.count, 3)
+
+	b.remove();
+});
 
 /*
 Testimony.test('Solarite.watched.watchSet', () => {

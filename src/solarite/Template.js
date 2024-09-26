@@ -1,6 +1,8 @@
 import {assert} from "../util/Errors.js";
 import {getObjectId} from "./hash.js";
-import NodeGroupManager from "./NodeGroupManager.js";
+import Globals from "./Globals.js";
+import NodeGroup, {RootNodeGroup} from "./NodeGroup.js";
+//import NodeGroupManager from "./NodeGroupManager.js";
 
 /**
  * The html strings and evaluated expressions from an html tagged template.
@@ -65,95 +67,136 @@ export default class Template {
 		return this.hashedFields
 	}
 
+
+	/**
+	 * Get or create a NodeGroup associated with the given element.
+	 * @param el {HTMLElement}
+	 * @param options
+	 * @return {NodeGroup} */
+	getRootNodeGroupForElement(el, options) {
+		let result = Globals.nodeGroups.get(el);
+		if (!result) {
+			result = new RootNodeGroup(this, el, options);
+			Globals.nodeGroups.set(el, result);
+		}
+		return result;
+	}
+
 	/**
 	 * Render the main template, which may indirectly call renderTemplate() to create children.
 	 * @param el {HTMLElement}
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
 	render(el=null, options={}) {
-		let ngm;
+		let ng;
 		let standalone = !el;
+		let firstTime = false;
 
 		// Rendering a standalone element.
+		// TODO: figure out when to not use RootNodeGroup
 		if (standalone) {
-			ngm = NodeGroupManager.get(this);
-			el = ngm.rootNg.getRootNode();
+			ng = new RootNodeGroup(this, null, options);
+			el = ng.getRootNode();
+			firstTime = true;
 		}
-		else
-			ngm = NodeGroupManager.get(el);
+		else {
+			ng = Globals.nodeGroups.get(el);
+			if (!ng) {
+				ng = new RootNodeGroup(this, el, options);
+				Globals.nodeGroups.set(el, ng);
+				firstTime = true;
+			}
+		}
 
-		ngm.options = options;
-		ngm.mutationWatcherEnabled = false;
+		// Creating the root nodegroup also renders it.
+		// If we didn't just create it, we need to render it.
+		if (!firstTime) {
+			if (this.html?.length === 1 && !this.html[0])
+				el.innerHTML = '';
+			else
+				ng.applyExprs(this.exprs);
+		}
+
+
+		//ngm.options = options;
+		//ngm.mutationWatcherEnabled = false;
 
 
 		//#IFDEV
-		ngm.resetModifications();
+		//ngm.resetModifications();
 		//#ENDIF
 
 		// Fast path for empty component.
-		if (this.html?.length === 1 && !this.html[0]) {
-			el.innerHTML = '';
-		}
-		else {
 
-			// Find or create a NodeGroup for the template.
-			// This updates all nodes from the template.
-			let firstTime = !ngm.rootNg;
-			if (!standalone) {
-				ngm.rootNg = ngm.getNodeGroup(this, false);
+
+		if (false) {
+			if (this.html?.length === 1 && !this.html[0]) {
+				el.innerHTML = '';
 			}
+			else {
+				ng.applyExprs(this.exprs);
 
-			// If this is the first time rendering this element.
-			if (firstTime) {
+				// old:
+				// --------
 
-
-				// Save slot children
-				let fragment;
-				if (el.childNodes.length) {
-					fragment = document.createDocumentFragment();
-					fragment.append(...el.childNodes);
+				// Find or create a NodeGroup for the template.
+				// This updates all nodes from the template.
+				let firstTime = false;
+				if (!standalone) {
+					//	ngm.rootNg = ngm.getNodeGroup(this, false);
 				}
 
-				// Reparent NodeGroup
-				// TODO: Move this to NodeGroup?
-				let parent = ngm.rootNg.getParentNode();
+				// If this is the first time rendering this element.
+				if (firstTime) {
 
-				// Add rendered elements.
-				if (parent instanceof DocumentFragment)
-					el.append(parent);
-				else if (parent)
-					el.append(...parent.childNodes)
-
-				// Apply slot children
-				if (fragment) {
-					for (let slot of el.querySelectorAll('slot[name]')) {
-						let name = slot.getAttribute('name')
-						if (name)
-							slot.append(...fragment.querySelectorAll(`[slot='${name}']`))
+					// Save slot children
+					let fragment;
+					if (el.childNodes.length) {
+						fragment = document.createDocumentFragment();
+						fragment.append(...el.childNodes);
 					}
-					let unamedSlot = el.querySelector('slot:not([name])')
-					if (unamedSlot)
-						unamedSlot.append(fragment)
-				}
 
-				// Copy attributes from pseudoroot to root.
-				// this.rootNg was rendered as childrenOnly=true
-				// Apply attributes from a root element to the real root element.
-				if (ngm.rootNg.pseudoRoot && ngm.rootNg.pseudoRoot !== el) {
-					/*#IFDEV*/assert(el)/*#ENDIF*/
+					// Reparent NodeGroup
+					// TODO: Move this to NodeGroup?
+					let parent = ngm.rootNg.getParentNode();
 
-					// Add/set new attributes
-					for (let attrib of ngm.rootNg.pseudoRoot.attributes)
-						if (!el.hasAttribute(attrib.name))
-							el.setAttribute(attrib.name, attrib.value);
+					// Add rendered elements.
+					if (parent instanceof DocumentFragment)
+						el.append(parent);
+					else if (parent)
+						el.append(...parent.childNodes)
+
+					// Apply slot children
+					if (fragment) {
+						for (let slot of el.querySelectorAll('slot[name]')) {
+							let name = slot.getAttribute('name')
+							if (name)
+								slot.append(...fragment.querySelectorAll(`[slot='${name}']`))
+						}
+						let unamedSlot = el.querySelector('slot:not([name])')
+						if (unamedSlot)
+							unamedSlot.append(fragment)
+					}
+
+					// Copy attributes from pseudoroot to root.
+					// this.rootNg was rendered as childrenOnly=true
+					// Apply attributes from a root element to the real root element.
+					if (ng.pseudoRoot && ng.pseudoRoot !== el) {
+						/*#IFDEV*/
+						assert(el)/*#ENDIF*/
+
+						// Add/set new attributes
+						for (let attrib of ng.pseudoRoot.attributes)
+							if (!el.hasAttribute(attrib.name))
+								el.setAttribute(attrib.name, attrib.value);
+					}
 				}
 			}
 
-			ngm.rootEl = el;
-			ngm.reset(); // Mark all NodeGroups as available, for next render.
+
+			//ng.reset(); // Mark all NodeGroups as available, for next render.
 		}
 
-		ngm.mutationWatcherEnabled = true;
 		return el;
 	}
 
@@ -165,3 +208,16 @@ export default class Template {
 		return '@'+this.hashedFields[0];
 	}
 }
+
+
+/**
+ * @typedef {Object} RenderOptions
+ * @property {boolean=} styles - Replace :host in style tags to scope them locally.
+ * @property {boolean=} scripts - Execute script tags.
+ * @property {boolean=} ids - Create references to elements with id or data-id attributes.
+ * @property {?boolean} render - Deprecated.
+ * 	 Used only when options are given to a class super constructor inheriting from Solarite.
+ *     True to call render() immediately in super constructor.
+ *     False to automatically call render() at all.
+ *     Undefined (default) to call render() when added to the DOM, unless already rendered.
+ */

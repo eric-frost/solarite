@@ -3,7 +3,7 @@ import Util from "../util/Util.js";
 import delve from "../util/delve.js";
 import {getArg, ArgType} from "./getArg.js";
 import {getObjectHash} from "./hash.js";
-import NodeGroupManager from "./NodeGroupManager.js";
+//import NodeGroupManager from "./NodeGroupManager.js";
 import r from "./r.js";
 import {camelToDashes} from "./Util.js";
 import Globals from "./Globals.js";
@@ -95,19 +95,17 @@ export default function createSolarite(extendsTag=null) {
 		constructor(options={}) {
 			super();
 
-
-
 			// TODO: Is options.render ever used?
 			if (options.render===true)
 				this.render();
 
 			else if (options.render===false)
-				rendered.add(this); // Don't render on connectedCallback()
+				Globals.rendered.add(this); // Don't render on connectedCallback()
 
 			// Add children before constructor code executes.
 			// PendingChildren is setup in NodeGroup.createNewComponent()
 			// TODO: Match named slots.
-			let ch = NodeGroupManager.pendingChildren.pop();
+			let ch = Globals.pendingChildren.pop();
 			if (ch)
 				(this.querySelector('slot') || this).append(...ch);
 

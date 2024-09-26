@@ -284,7 +284,7 @@ export default class Shell {
 
 	/**
 	 * Get the shell for the html strings.
-	 * @param htmlStrings {string[]}
+	 * @param htmlStrings {string[]} Typically comes from a Template.
 	 * @returns {Shell} */
 	static get(htmlStrings) {
 		let result = Globals.shells.get(htmlStrings);

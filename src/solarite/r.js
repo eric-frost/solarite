@@ -15,10 +15,10 @@ import Globals from "./Globals.js";
  * 5. TODO:  list more
  *
  * Currently supported:
- * 1. r`<b>Hello</b> ${'World'}!`           // Create Template that can later be used to create nodes.
- *
+ * 1. r(el, options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
  * 2. r(el, template, ?options)        // Render the Template created by #1 to element.
- * 3. r(el, options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
+ *
+ * 3. r`<b>Hello</b> ${'World'}!`      // Create Template that can later be used to create nodes.
  *
  * 4. r('Hello');                      // Create single text node.
  * 5. r('<b>Hello</b>');               // Create single HTMLElement
@@ -34,39 +34,39 @@ import Globals from "./Globals.js";
  * @return {Node|HTMLElement|Template} */
 export default function r(htmlStrings=undefined, ...exprs) {
 
-	// 1. Path if used as a template tag.
-	if (Array.isArray(htmlStrings)) {
-		return new Template(htmlStrings, exprs);
-	}
-
-	else if (htmlStrings instanceof Node) {
+	// TODO: Make this a more flat if/else and call other functions for the logic.
+	if (htmlStrings instanceof Node) {
 		let parent = htmlStrings, template = exprs[0];
 
+		// 1
+		if (!(exprs[0] instanceof Template)) {
+			if (parent.shadowRoot)
+				parent.innerHTML = ''; // Remove shadowroot.  TODO: This could mess up paths?
+
+			let options = exprs[0];
+
+			// Return a tagged template function that applies the tagged themplate to parent.
+			return (htmlStrings, ...exprs) => {
+				Globals.rendered.add(parent)
+				let template = new Template(htmlStrings, exprs);
+				return template.render(parent, options);
+			}
+		}
+
 		// 2. Render template created by #4 to element.
-		if (exprs[0] instanceof Template) {
+		else if (exprs[0] instanceof Template) {
 			let options = exprs[1];
 			template.render(parent, options);
 
 			// Append on the first go.
 			if (!parent.childNodes.length && this) {
-				// TODO: Is htis ever executed?
+				// TODO: Is this ever executed?
 				debugger;
 				parent.append(this.rootNg.getParentNode());
 			}
 		}
 
-		// 3
-		else if (!exprs.length || exprs[0]) {
-			if (parent.shadowRoot)
-				parent.innerHTML = ''; // Remove shadowroot.  TODO: This could mess up paths?
 
-			let options = exprs[0];
-			return (htmlStrings, ...exprs) => {
-				Globals.rendered.add(parent)
-				let template = r(htmlStrings, ...exprs);
-				return template.render(parent, options);
-			}
-		}
 
 		// null for expr[0], remove whole element.
 		   // This path never happens?
@@ -75,6 +75,11 @@ export default function r(htmlStrings=undefined, ...exprs) {
 			//let ngm = NodeGroupManager.get(parent);
 			//ngm.render(null, exprs[1])
 		}
+	}
+
+	// 3. Path if used as a template tag.
+	else if (Array.isArray(htmlStrings)) {
+		return new Template(htmlStrings, exprs);
 	}
 
 	else if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {

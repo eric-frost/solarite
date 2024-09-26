@@ -3,8 +3,8 @@ import ExprPath, {PathType, resolveNodePath} from "./ExprPath.js";
 import {getObjectHash} from "./hash.js";
 import Shell from "./Shell.js";
 import udomdiff from "./udomdiff.js";
-import Util, {div, findArrayDiff, flattenAndIndent, isEvent, nodeToArrayTree, setIndent} from "./Util.js";
-import NodeGroupManager from "./NodeGroupManager.js";
+import Util, {findArrayDiff, flattenAndIndent, isEvent, nodeToArrayTree, setIndent} from "./Util.js";
+//import NodeGroupManager from "./NodeGroupManager.js";
 import delve from "../util/delve.js";
 import Globals from "./Globals.js";
 
@@ -22,7 +22,9 @@ import Globals from "./Globals.js";
  * */
 export default class NodeGroup {
 
-	/** @Type {NodeGroupManager} */
+	/**
+	 * @deprecated
+	 * @Type {NodeGroupManager} */
 	manager;
 
 	/** @type {ExprPath} */
@@ -44,9 +46,10 @@ export default class NodeGroup {
 	/** @type {string} Key that only matches the template. */
 	closeKey;
 
-	/** @type {boolean} Used by NodeGroupManager. */
+	/**
+	 * @deprecated
+	 * @type {boolean} Used by NodeGroupManager. */
 	inUse;
-
 
 	/**
 	 * @internal
@@ -58,6 +61,7 @@ export default class NodeGroup {
 	styles;
 
 	/**
+	 * @deprecated
 	 * If rendering a Template with replaceMode=true, pseudoRoot points to the element where the attributes are rendered.
 	 * But pseudoRoot is outside of this.getNodes().
 	 * NodeGroupManager.render() copies the attributes from pseudoRoot to the actual web component root element.
@@ -70,10 +74,10 @@ export default class NodeGroup {
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param manager {?NodeGroupManager}
+	 * @param options {?object}
 	 * @param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
 	 * @returns {NodeGroup} */
-	constructor(template, manager=null, replaceMode=null, exactKey, closeKey) {
+	constructor(template, options=null, replaceMode=null, exactKey, closeKey) {
 		this.exactKey = exactKey;
 		this.closeKey = closeKey;
 
@@ -81,7 +85,7 @@ export default class NodeGroup {
 		this.template = template;
 
 		/** @type {NodeGroupManager} */
-		this.manager = manager;
+		//this.manager = manager;
 		
 		// new!
 		template.nodeGroup = this;
@@ -93,24 +97,26 @@ export default class NodeGroup {
 
 		// Figure out value of replaceMode option if it isn't set,
 		// Assume replaceMode if there's only one child element and its tagname matches the root el.
-		replaceMode = typeof replaceMode === 'boolean'
-			? template.replaceMode
-			: fragment.children.length===1 &&
-				fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '') === manager?.rootEl?.tagName
-		if (replaceMode) {
-			this.pseudoRoot = fragment.firstElementChild;
-			// if (!manager.rootEl)
-			// 	manager.rootEl = this.pseudoRoot;
-			/*#IFDEV*/assert(this.pseudoRoot)/*#ENDIF*/
-		}
+		// replaceMode = typeof replaceMode === 'boolean'
+		// 	? template.replaceMode
+		// 	: fragment.children.length===1 &&
+		// 		fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '') === manager?.rootEl?.tagName
+		// if (replaceMode) {
+		// 	this.pseudoRoot = fragment.firstElementChild;
+		// 	// if (!manager.rootEl)
+		// 	// 	manager.rootEl = this.pseudoRoot;
+		// 	/*#IFDEV*/assert(this.pseudoRoot)/*#ENDIF*/
+		// }
 
-		let childNodes = replaceMode
-			? fragment.firstElementChild.childNodes
-			: fragment.childNodes;
+		// let childNodes = replaceMode
+		// 	? fragment.firstElementChild.childNodes
+		// 	: fragment.childNodes;
+
+		let childNodes = fragment.childNodes;
 
 
-		this.startNode = childNodes[0]
-		this.endNode = childNodes[childNodes.length - 1]
+		this.startNode = childNodes[0];
+		this.endNode = childNodes[childNodes.length - 1];
 
 
 		// Update paths
@@ -141,58 +147,6 @@ export default class NodeGroup {
 		this.applyExprs(template.exprs);
 
 		/*#IFDEV*/this.verify();/*#ENDIF*/
-	}
-
-	activateEmbeds(root, shell) {
-
-		// static components
-		// Must happen before ids.
-		for (let path of shell.staticComponents) {
-			let el = resolveNodePath(root, path)
-
-			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
-			if (el.tagName !== this.pseudoRoot?.tagName)
-				this.createNewComponent(el)
-		}
-
-		let rootEl = this.manager.rootEl || this.getRootNode();
-		if (rootEl) {
-
-			// ids
-			if (this.manager.options.ids !== false)
-				for (let path of shell.ids) {
-					let el = resolveNodePath(root, path);
-					let id = el.getAttribute('data-id') || el.getAttribute('id');
-					if (id) { // If something hasn't removed the id.
-						
-						// Don't allow overwriting existing class properties if they already have a non-Node value.
-						if (rootEl[id] && !(rootEl[id] instanceof Node))
-							throw new Error(`${rootEl.constructor.name}.${id} already has a value.  ` +
-								`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
-						
-						delve(rootEl, id.split(/\./g), el);
-					}
-				}
-
-			// styles
-			if (this.manager.options.styles !== false) {
-				if (shell.styles.length)
-					this.styles = new Map();
-				for (let path of shell.styles) {
-					let style = resolveNodePath(root, path);
-					Util.bindStyles(style, rootEl);
-					this.styles.set(style, style.textContent);
-				}
-
-			}
-			// scripts
-			if (this.manager.options.scripts !== false) {
-				for (let path of shell.scripts) {
-					let script = resolveNodePath(root, path);
-					eval(script.textContent)
-				}
-			}
-		}
 	}
 
 	/**
@@ -470,10 +424,10 @@ export default class NodeGroup {
 		// We pass the childNodes to the constructor so it can know about them,
 		// instead of only afterward when they're appended to the slot below.
 		// This is useful for a custom selectbox, for example.
-		// NodeGroupManager.pendingChildren stores the childen so the super construtor call to Solarite's constructor
+		// Globals.pendingChildren stores the childen so the super construtor call to Solarite's constructor
 		// can add them as children before the rest of the constructor code executes.
 		let ch = [... el.childNodes];
-		NodeGroupManager.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
+		Globals.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
 		let newEl = new Constructor(props, ch);
 
 		if (!isPreHtmlElement)
@@ -605,7 +559,6 @@ export default class NodeGroup {
 			}
 	}
 
-
 	//#IFDEV
 	/**
 	 * @deprecated
@@ -672,4 +625,78 @@ export default class NodeGroup {
 		return true;
 	}
 	//#ENDIF
+}
+
+
+export class RootNodeGroup extends NodeGroup {
+
+	constructor(template, el, options) {
+		super(template);
+
+		this.options = options;
+
+		let fragment = this.startNode.parentNode;
+
+		// TODO: replace mode.
+		if (el) {
+			el.append(fragment);
+			this.startNode = el;
+		}
+
+		let shell = Shell.get(template.html);
+		this.activateEmbeds(this.getRootNode(), shell);
+	}
+
+
+	activateEmbeds(root, shell) {
+
+		// static components.  These are WebComponents not created by an expression.
+		// Must happen before ids.
+		for (let path of shell.staticComponents) {
+			let el = resolveNodePath(root, path)
+
+			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
+			if (el.tagName !== this.pseudoRoot?.tagName)
+				this.createNewComponent(el)
+		}
+
+		let rootEl = this.getRootNode();
+		if (rootEl) {
+
+			// ids
+			if (this.options?.ids !== false)
+				for (let path of shell.ids) {
+					let el = resolveNodePath(root, path);
+					let id = el.getAttribute('data-id') || el.getAttribute('id');
+					if (id) { // If something hasn't removed the id.
+
+						// Don't allow overwriting existing class properties if they already have a non-Node value.
+						if (rootEl[id] && !(rootEl[id] instanceof Node))
+							throw new Error(`${rootEl.constructor.name}.${id} already has a value.  ` +
+								`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
+
+						delve(rootEl, id.split(/\./g), el);
+					}
+				}
+
+			// styles
+			if (this.options?.styles !== false) {
+				if (shell.styles.length)
+					this.styles = new Map();
+				for (let path of shell.styles) {
+					let style = resolveNodePath(root, path);
+					Util.bindStyles(style, rootEl);
+					this.styles.set(style, style.textContent);
+				}
+
+			}
+			// scripts
+			if (this.options?.scripts !== false) {
+				for (let path of shell.scripts) {
+					let script = resolveNodePath(root, path);
+					eval(script.textContent)
+				}
+			}
+		}
+	}
 }

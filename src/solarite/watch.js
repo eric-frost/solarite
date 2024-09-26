@@ -5,7 +5,7 @@ import {assert} from "../util/Errors.js";
 import delve from "../util/delve.js";
 import {getObjectHash, getObjectId} from "./hash.js";
 import MultiValueMap from "./MultiValueMap.js";
-import NodeGroupManager, {LoopInfo} from "./NodeGroupManager.js";
+//import NodeGroupManager, {LoopInfo} from "./NodeGroupManager.js";
 import Template from "./Template.js";
 
 
