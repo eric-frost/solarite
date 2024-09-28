@@ -71,12 +71,12 @@ export default class ExprPath {
 	nodesCache;
 
 	/**
-	 * {int} Index of nodeBefore among its parentNode's children. */
+	 * @type {int} Index of nodeBefore among its parentNode's children. */
 	nodeBeforeIndex;
 
 
 	/**
-	 * {int[]} Path to the node marker. */
+	 * @type {int[]} Path to the node marker. */
 	nodeMarkerPath;
 
 	// TODO: Keep this cached?
@@ -132,8 +132,69 @@ export default class ExprPath {
 			this.attrNames = new Set();
 	}
 
+
+
+	// New!
+
 	/**
+	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
+	 * @type {Object<key:string, NodeGroup>}
+	 */
+	nodeGroupsFree = {};
+
+	/**
+	 * TODO: Use an array of WeakRef so the gc can collect them?
+	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
+	 * @type {NodeGroup[]} */
+	nodeGroupsInUse = [];
+
+	/**
+	 * Get an unused NodeGroup that matches the template's html and expressions (exact=true)
+	 * or at least the html (exact=false).
+	 * Remove it from nodeGroupsFree if it exists, or create it if not.
+	 * Then add it to nodeGroupsInUse.
 	 *
+	 * @param template {Template}
+	 * @param exact {boolean}
+	 * @return {NodeGroup} */
+	getNodeGroup(template, exact=true) {
+
+		let exactKey = template.getExactKey();
+		let closeKey = template.getCloseKey();
+		let result;
+
+		if (exact)
+			result = this.nodeGroupsFree[exactKey];
+		else
+			result = this.nodeGroupsFree[closeKey];
+
+		// Remove both the exactKey and closeKey
+		if (result) {
+			/*#IFDEV*/assert(this.nodeGroupsFree[exactKey]);/*#ENDIF*/
+			delete this.nodeGroupsFree[exactKey];
+			/*#IFDEV*/assert(this.nodeGroupsFree[closeKey]);/*#ENDIF*/
+			delete this.nodeGroupsFree[closeKey];
+		}
+		else
+			result = new NodeGroup(template, exactKey, closeKey);
+
+		this.nodeGroupsInUse.push(result);
+		return result;
+
+	}
+
+	/**
+	 * Move everything from this.nodeGroupsInUse to this.nodeGroupsFree. */
+	freeNodeGroups() {
+		for (let ng of this.nodeGroupsInUse) {
+			this.nodeGroupsFree[ng.exactKey] = ng;
+			this.nodeGroupsFree[ng.closeKey] = ng;
+		}
+		this.nodeGroupsInUse = [];
+	}
+
+	/**
+	 * TODO: Use another function to flatten the expr's so we don't have to use recusion.
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]}
 	 * @param secondPass {Array} Locations within newNodes to evaluate later.  */
@@ -142,15 +203,14 @@ export default class ExprPath {
 
 		if (expr instanceof Template) {
 
-			let exactKey = getObjectHash(expr);
+			//let exactKey = getObjectHash(expr);
 
 			// if (this.lastNodeGroup?.exactKey === exactKey) {
 			// 	let ng = this.parentNg.manager.findAndDeleteExact(exactKey);
 			// 	this.parentNg.manager.findAndDeleteClose(ng.closeKey, ng.exactKey);
 			// 	return;
 			// }
-
-			let ng = this.parentNg.manager.getNodeGroup(expr, true, null, exactKey);
+			let ng = this.getNodeGroup(expr, true); // this.parentNg.manager.getNodeGroup(expr, true, null, exactKey);
 			this.lastNodeGroup = ng;
 
 			if (ng) {
@@ -187,14 +247,14 @@ export default class ExprPath {
 
 		else if (Array.isArray(expr))
 			for (let subExpr of expr)
-				this.apply(subExpr, newNodes, secondPass)
+				this.apply(subExpr, newNodes, secondPass);
 
 		else if (typeof expr === 'function') {
 			Globals.currentExprPath = [this, expr]; // Used by watch3()
 			let result = expr();
 			Globals.currentExprPath = null;
 
-			this.apply(result, newNodes, secondPass)
+			this.apply(result, newNodes, secondPass);
 		}
 
 		// Text
@@ -224,6 +284,11 @@ export default class ExprPath {
 					newNodes.push(this.parentNode.ownerDocument.createTextNode(text));
 			}
 		}
+
+		// If not in one of the recusive calls
+		// Mark all nodes as free, for the next render() call.
+		if (!secondPass)
+			this.freeNodeGroups();
 	}
 
 	applyMultipleAttribs(node, expr) {

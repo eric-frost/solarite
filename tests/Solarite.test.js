@@ -741,12 +741,15 @@ Testimony.test('Solarite.loop.paragraphs', () => {
 		fruits = ['Apple', 'Banana'];
 
 		render() {
+			//debugger;
 			r(this)`${this.fruits.map(fruit => r`<p>${fruit}</p>`)}`
 		}
 	}
 	customElements.define('r-210', A);
 	let a = new A();
-	document.body.append(a);
+
+	//document.body.append(a);
+	a.render();
 
 	assert.eq(getHtml(a), '<r-210><p>Apple</p><p>Banana</p></r-210>');
 
@@ -845,7 +848,7 @@ Testimony.test('Solarite.loop.eventBindings', async () => {
 
 });
 
-
+// TODO: Why is this called pathCache?  What does it test?
 Testimony.test('Solarite.loop.pathCache', () => {
 
 	class R216 extends Solarite {
@@ -862,7 +865,7 @@ Testimony.test('Solarite.loop.pathCache', () => {
 	}
 
 	let a = new R216();
-	document.body.append(a);
+	//document.body.append(a);
 	a.render();
 	assert.eq(getHtml(a), `<r-216><p>Item</p><p>Item</p></r-216>`);
 
@@ -894,44 +897,44 @@ Testimony.test('Solarite.loop.nested', () => {
 	a.render();
 	assert.eq(getHtml(a), `<r-220><p>Cat eats Apple</p><p>Cat eats Banana</p><p>Dog eats Apple</p><p>Dog eats Banana</p></r-220>`);
 
-	// a.fruits.shift();
-	// a.render();
-	// assert.eq(getHtml(a), `<r-220><p>Cat eats Banana</p><p>Dog eats Banana</p></r-220>`);
-	//
-	// a.fruits.unshift('Apricot');
-	// a.render();
-	// assert.eq(getHtml(a), `<r-220><p>Cat eats Apricot</p><p>Cat eats Banana</p><p>Dog eats Apricot</p><p>Dog eats Banana</p></r-220>`);
-	//
-	// a.pets.pop();
-	// a.render();
-	// assert.eq(getHtml(a), `<r-220><p>Cat eats Apricot</p><p>Cat eats Banana</p></r-220>`);
-	//
-	// a.pets.unshift('Bird');
-	// a.render();
-	// assert.eq(getHtml(a), `<r-220><p>Bird eats Apricot</p><p>Bird eats Banana</p><p>Cat eats Apricot</p><p>Cat eats Banana</p></r-220>`);
-	//
-	// a.pets.reverse();
-	// a.render();
-	// assert.eq(getHtml(a), `<r-220><p>Cat eats Apricot</p><p>Cat eats Banana</p><p>Bird eats Apricot</p><p>Bird eats Banana</p></r-220>`);
-	//
-	// a.fruits.reverse();
-	// a.render();
-	// assert.eq(getHtml(a), `<r-220><p>Cat eats Banana</p><p>Cat eats Apricot</p><p>Bird eats Banana</p><p>Bird eats Apricot</p></r-220>`);
-	//
-	// a.pets.reverse();
-	// a.fruits.reverse();
-	// a.render();
-	// assert.eq(getHtml(a), `<r-220><p>Bird eats Apricot</p><p>Bird eats Banana</p><p>Cat eats Apricot</p><p>Cat eats Banana</p></r-220>`);
-	//
-	// a.pets.pop();
-	// a.render();
-	// assert.eq(getHtml(a), `<r-220><p>Bird eats Apricot</p><p>Bird eats Banana</p></r-220>`);
-	//
-	// a.pets.pop();
-	// a.render();
-	// assert.eq(getHtml(a), `<r-220></r-220>`);
-	//
-	// a.remove();
+	a.fruits.shift();
+	a.render();
+	assert.eq(getHtml(a), `<r-220><p>Cat eats Banana</p><p>Dog eats Banana</p></r-220>`);
+
+	a.fruits.unshift('Apricot');
+	a.render();
+	assert.eq(getHtml(a), `<r-220><p>Cat eats Apricot</p><p>Cat eats Banana</p><p>Dog eats Apricot</p><p>Dog eats Banana</p></r-220>`);
+
+	a.pets.pop();
+	a.render();
+	assert.eq(getHtml(a), `<r-220><p>Cat eats Apricot</p><p>Cat eats Banana</p></r-220>`);
+
+	a.pets.unshift('Bird');
+	a.render();
+	assert.eq(getHtml(a), `<r-220><p>Bird eats Apricot</p><p>Bird eats Banana</p><p>Cat eats Apricot</p><p>Cat eats Banana</p></r-220>`);
+
+	a.pets.reverse();
+	a.render();
+	assert.eq(getHtml(a), `<r-220><p>Cat eats Apricot</p><p>Cat eats Banana</p><p>Bird eats Apricot</p><p>Bird eats Banana</p></r-220>`);
+
+	a.fruits.reverse();
+	a.render();
+	assert.eq(getHtml(a), `<r-220><p>Cat eats Banana</p><p>Cat eats Apricot</p><p>Bird eats Banana</p><p>Bird eats Apricot</p></r-220>`);
+
+	a.pets.reverse();
+	a.fruits.reverse();
+	a.render();
+	assert.eq(getHtml(a), `<r-220><p>Bird eats Apricot</p><p>Bird eats Banana</p><p>Cat eats Apricot</p><p>Cat eats Banana</p></r-220>`);
+
+	a.pets.pop();
+	a.render();
+	assert.eq(getHtml(a), `<r-220><p>Bird eats Apricot</p><p>Bird eats Banana</p></r-220>`);
+
+	a.pets.pop();
+	a.render();
+	assert.eq(getHtml(a), `<r-220></r-220>`);
+
+	a.remove();
 });
 
 Testimony.test('Solarite.loop.nested2', () => {
@@ -1017,6 +1020,7 @@ Testimony.test('Solarite.loop.nested3', `Move items from one sublist to another.
 	
 	let a = new A225();
 	document.body.append(a);
+	window.debug = true;
 	a.render();
 	
 	let cherry = a.fruitGroups[1].pop();
@@ -1026,9 +1030,8 @@ Testimony.test('Solarite.loop.nested3', `Move items from one sublist to another.
 	
 	let banana = a.fruitGroups[1].pop();
 	a.fruitGroups[0].push(banana);
-	//window.debug = true;
 	a.render();
-	
+
 	window.verify = false;
 	a.remove();
 });
@@ -1086,7 +1089,7 @@ Testimony.test('Solarite.loop.nested5', () => {
 		]
 		
 		render() {
-			this.html = r`
+			r(this)`
 			<a-227>${this.boxes.map(item =>
 				r`${item.map(item2 =>
 					r`<div title=${v}>${item2}</div>`
@@ -1200,7 +1203,6 @@ Testimony.test('Solarite.loop.conditionalNested', () => {
 
 	a.remove();
 });
-
 
 Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 
@@ -1317,7 +1319,6 @@ Testimony.test('Solarite.embed.optionsNoStyles', () => {
 
 	a.remove();
 });
-
 
 Testimony.test('Solarite.embed.styleDynamic', () => {
 	let style1 = `:host { color: red }`
@@ -1469,7 +1470,6 @@ Testimony.test('Solarite.embed._scriptDynamic', () => {
 	delete window.scriptStaticCount;
 });
 
-
 Testimony.test('Solarite.attrib.single', () => {
 
 	let val = 'one';
@@ -1538,7 +1538,6 @@ Testimony.test('Solarite.attrib.double', () => {
 	a.render();
 	assert.eq(getHtml(a), `<r-420><div class="oneBtwoB">oneB</div></r-420>`)
 });
-
 
 Testimony.test('Solarite.attrib.doubleAndText', () => {
 
@@ -1653,7 +1652,6 @@ Testimony.test('Solarite.attrib.toggle', () => {
 	assert.eq(getHtml(a), `<r-460><div></div></r-460>`)
 });
 
-
 Testimony.test('Solarite.attrib.pseudoRoot', () => {
 	let title = 'Hello'
 	class R470 extends Solarite {
@@ -1675,7 +1673,6 @@ Testimony.test('Solarite.attrib.pseudoRoot', () => {
 	a.render();
 	assert.eq(a.outerHTML, `<r-470>World</r-470>`)
 });
-
 
 Testimony.test('Solarite.attrib.pseudoRoot2', 'Static attribute overrides.', () => {
 	let title = 'Hello'
@@ -1737,8 +1734,6 @@ Testimony.test('Solarite.attrib.multiple', '', () => {
 
 	assert.eq(getHtml(a), `<r-474><button onclick="" class="primary">Hello</button></r-474>`);
 });
-
-
 
 Testimony.test('Solarite.comments', () => {
 	

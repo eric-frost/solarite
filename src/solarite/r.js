@@ -46,11 +46,12 @@ export default function r(htmlStrings=undefined, ...exprs) {
 			let options = exprs[0];
 
 			// Return a tagged template function that applies the tagged themplate to parent.
-			return (htmlStrings, ...exprs) => {
+			let taggedTemplate = (htmlStrings, ...exprs) => {
 				Globals.rendered.add(parent)
 				let template = new Template(htmlStrings, exprs);
 				return template.render(parent, options);
 			}
+			return taggedTemplate;
 		}
 
 		// 2. Render template created by #4 to element.

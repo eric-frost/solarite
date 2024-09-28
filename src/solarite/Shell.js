@@ -238,16 +238,19 @@ export default class Shell {
 			}
 		}
 
-
 		this.findEmbeds();
-
 
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 	} // end constructor
 
 	/**
 	 * We find the path to every embed here once in the Shell, instead of every time a NodeGroup is instantiated.
-	 * When a Nodegroup is created, it calls NodeGroup.activateEmbeds() that uses these paths. */
+	 * When a Nodegroup is created, it calls NodeGroup.activateEmbeds() that uses these paths.
+	 * Populates:
+	 * this.scripts
+	 * this.styles
+	 * this.ids
+	 * this.staticComponents */
 	findEmbeds() {
 		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => getNodePath(el))
 		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => getNodePath(el))
@@ -259,7 +262,7 @@ export default class Shell {
 		for (let el of idEls) {
 			let id = el.getAttribute('data-id') || el.getAttribute('id')
 			if (div.hasOwnProperty(id))
-				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement property.`)
+				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement id property.`)
 		}
 
 

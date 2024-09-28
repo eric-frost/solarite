@@ -313,77 +313,66 @@ function getObjectHashCircular(obj) {
 	});
 }
 
-class MultiValueMap {
 
-	/** @type {Object<string, Set>} */
-	data = {};
 
-	// Set a new value for a key
-	add(key, value) {
-		let data = this.data;
-		let set = data[key];
-		if (!set) {
-			set = new Set();
-			data[key] = set;
-		}
-		set.add(value);
-	}
-
-	// Get all values for a key
-	getAll(key) {
-		return this.data[key] || [];
-	}
+var Globals = {
 
 	/**
-	 * Remove one value from a key, and return it.
-	 * @param key {string}
-	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
-	 * @returns {*} */
-	delete(key, val=undefined) {
-		// if (key === '["Html2",[[["Html3",["F1","A"]],["Html3",["F1","B"]]]]]')
-		// 	debugger;
-			
-		let data = this.data;
-		// The partialUpdate benchmark shows having this check first makes the function slightly faster.
-		// if (!data.hasOwnProperty(key))
-		// 	return undefined;
+	 * Used by NodeGroup.applyComponentExprs() */
+	componentHash: new WeakMap(),
 
-		// Delete a specific value.
-		let result;
-		let set = data[key];
-		if (!set) // slower than pre-check.
-		 	return undefined;
+	/**
+	 * Store which instances of Solarite have already been added to the DOM.
+	 * @type {WeakSet<HTMLElement>} */
+	connected: new WeakSet(),
 
-		if (val !== undefined) {
-			set.delete(val);
-			result = val;
-		}
+	/**
+	 * Elements that have been rendered to by r() at least once.
+	 * This is used by the Solarite class to know when to call onFirstConnect()
+	 * @type {WeakSet<HTMLElement>} */
+	rendered: new WeakSet(),
 
-		// Delete any value.
-		else {
-			result = set.values().next().value;
-			// [result] = set; // Does the same as above. is about the same speed?
-			set.delete(result);
-		}
+	currentExprPath: [],
 
-		// TODO: Will this make it slower?
-		if (set.size === 0)
-			delete data[key];
-		
-		return result;
-	}
+	/**
+	 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
+	elementClasses: {},
 
-	hasValue(val) {
-		let data = this.data;
-		let names = [];
-		for (let name in data)
-			if (data[name].has(val)) // TODO: iterate twice to pre-size array?
-				names.push(name);
-		return names;
-	}
-}
+	/**
+	 * Used by ExprPath.applyEventAttrib.
+	 * TODO: Memory from this is never freed.  Use a WeakMap<Node, Object<eventName:string, function[]>> */
+	nodeEvents: {},
+
+	/**
+	 * Used by r() path 9. */
+	objToEl: new WeakMap(),
+
+	pendingChildren: [],
+
+	/**
+	 * Elements that are currently rendering via the r() function.
+	 * @type {WeakSet<HTMLElement>} */
+	rendering: new WeakSet(),
 
 
+
+	/**
+	 * Get the root NodeGroup for an element.
+	 * @type {WeakMap<HTMLElement, NodeGroup>} */
+	nodeGroups: new WeakMap(),
+
+
+	/**
+	 * Each Element that has Expr children has an associated NodeGroupManager here.
+	 * @type {WeakMap<HTMLElement, NodeGroupManager>} */
+	nodeGroupManagers: new WeakMap(),
+
+	/**
+	 * Map from array of Html strings to a Shell created from them.
+	 * @type {WeakMap<string[], Shell>} */
+	shells: new WeakMap()
+
+};
 
 let Util = {
 
@@ -597,206 +586,6 @@ let state = {...defaultState};
 
 
 /**
- * The html strings and evaluated expressions from an html tagged template.
- * A unique Template is created for each item in a loop.
- * Although the reference to the html strings is shared among templates. */
-class Template {
-
-	/** @type {(Template|string|function)|(Template|string|function)[]} Evaulated expressions.  */
-	exprs = []
-
-	/** @type {string[]} */
-	html = [];
-
-	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
-	hashedFields;
-
-	/**
-    * @deprecated
-    * @type {ExprPath} Used with forEach() from watch.js
-	 * Set in ExprPath.apply() */
-	parentPath;
-
-	/** @type {NodeGroup} */
-	nodeGroup;
-
-	/**
-	 * @type {string[][]} */
-	paths = [];
-
-	/**
-	 *
-	 * @param htmlStrings {string[]}
-	 * @param exprs {*[]} */
-	constructor(htmlStrings, exprs) {
-		this.html = htmlStrings;
-		this.exprs = exprs;
-
-		//this.trace = new Error().stack.split(/\n/g)
-
-		// Multiple templates can share the same htmlStrings array.
-		//this.hashedFields = [getObjectId(htmlStrings), exprs]
-
-		
-	}
-
-	/**
-	 * Called by JSON.serialize when it encounters a Template.
-	 * This prevents the hashed version from being too large. */
-	toJSON() {
-		if (!this.hashedFields)
-			this.hashedFields = [getObjectId(this.html, 'Html'), this.exprs];
-
-		return this.hashedFields
-	}
-
-	/**
-	 * Render the main template, which may indirectly call renderTemplate() to create children.
-	 * @param el {HTMLElement}
-	 * @param options {RenderOptions}
-	 * @return {?DocumentFragment|HTMLElement} */
-	render(el=null, options={}) {
-		let ngm;
-		let standalone = !el;
-
-		// Rendering a standalone element.
-		if (standalone) {
-			ngm = NodeGroupManager.get(this);
-			el = ngm.rootNg.getRootNode();
-		}
-		else
-			ngm = NodeGroupManager.get(el);
-
-		ngm.options = options;
-		ngm.mutationWatcherEnabled = false;
-
-
-		
-
-		// Fast path for empty component.
-		if (this.html?.length === 1 && !this.html[0]) {
-			el.innerHTML = '';
-		}
-		else {
-
-			// Find or create a NodeGroup for the template.
-			// This updates all nodes from the template.
-			let firstTime = !ngm.rootNg;
-			if (!standalone) {
-				ngm.rootNg = ngm.getNodeGroup(this, false);
-			}
-
-			// If this is the first time rendering this element.
-			if (firstTime) {
-
-
-				// Save slot children
-				let fragment;
-				if (el.childNodes.length) {
-					fragment = document.createDocumentFragment();
-					fragment.append(...el.childNodes);
-				}
-
-				// Reparent NodeGroup
-				// TODO: Move this to NodeGroup?
-				let parent = ngm.rootNg.getParentNode();
-
-				// Add rendered elements.
-				if (parent instanceof DocumentFragment)
-					el.append(parent);
-				else if (parent)
-					el.append(...parent.childNodes);
-
-				// Apply slot children
-				if (fragment) {
-					for (let slot of el.querySelectorAll('slot[name]')) {
-						let name = slot.getAttribute('name');
-						if (name)
-							slot.append(...fragment.querySelectorAll(`[slot='${name}']`));
-					}
-					let unamedSlot = el.querySelector('slot:not([name])');
-					if (unamedSlot)
-						unamedSlot.append(fragment);
-				}
-
-				// Copy attributes from pseudoroot to root.
-				// this.rootNg was rendered as childrenOnly=true
-				// Apply attributes from a root element to the real root element.
-				if (ngm.rootNg.pseudoRoot && ngm.rootNg.pseudoRoot !== el) {
-					
-
-					// Add/set new attributes
-					for (let attrib of ngm.rootNg.pseudoRoot.attributes)
-						if (!el.hasAttribute(attrib.name))
-							el.setAttribute(attrib.name, attrib.value);
-				}
-			}
-
-			ngm.rootEl = el;
-			ngm.reset(); // Mark all NodeGroups as available, for next render.
-		}
-
-		ngm.mutationWatcherEnabled = true;
-		return el;
-	}
-
-
-	getCloseKey() {
-		// Use the joined html when debugging?  But it breaks some tests.
-		//return '@'+this.html.join('|')
-
-		return '@'+this.hashedFields[0];
-	}
-}
-
-var Globals = {
-
-	/**
-	 * Used by NodeGroup.applyComponentExprs() */
-	componentHash: new WeakMap(),
-
-	/**
-	 * Store which instances of Solarite have already been added to the DOM.
-	 * @type {WeakSet<HTMLElement>} */
-	connected: new WeakSet(),
-
-	/**
-	 * Elements that have been rendered to by r() at least once.
-	 * This is used by the Solarite class to know when to call onFirstConnect()
-	 * @type {WeakSet<HTMLElement>} */
-	rendered: new WeakSet(),
-
-	currentExprPath: [],
-
-	/**
-	 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
-	elementClasses: {},
-
-	/**
-	 * Used by ExprPath.applyEventAttrib.
-	 * TODO: Memory from this is never freed.  Use a WeakMap<Node, Object<eventName:string, function[]>> */
-	nodeEvents: {},
-
-	/**
-	 * Used by r() path 9. */
-	objToEl: new WeakMap(),
-
-	/**
-	 * Elements that are currently rendering via the r() function.
-	 * @type {WeakSet<HTMLElement>} */
-	rendering: new WeakSet(),
-
-
-	/**
-	 * Each Element that has Expr children has an associated NodeGroupManager here.
-	 * @type {WeakMap<HTMLElement, NodeGroupManager>} */
-	nodeGroupManagers: new WeakMap(),
-
-	shells: new WeakMap()
-
-};
-
-/**
  * Path to where an expression should be evaluated within a Shell or NodeGroup.
  * Path is only valid until the expressions before it are evaluated.
  * TODO: Make this based on parent and node instead of path? */
@@ -861,12 +650,12 @@ class ExprPath {
 	nodesCache;
 
 	/**
-	 * {int} Index of nodeBefore among its parentNode's children. */
+	 * @type {int} Index of nodeBefore among its parentNode's children. */
 	nodeBeforeIndex;
 
 
 	/**
-	 * {int[]} Path to the node marker. */
+	 * @type {int[]} Path to the node marker. */
 	nodeMarkerPath;
 
 	// TODO: Keep this cached?
@@ -898,8 +687,69 @@ class ExprPath {
 			this.attrNames = new Set();
 	}
 
+
+
+	// New!
+
 	/**
+	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
+	 * @type {Object<key:string, NodeGroup>}
+	 */
+	nodeGroupsFree = {};
+
+	/**
+	 * TODO: Use an array of WeakRef so the gc can collect them?
+	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
+	 * @type {NodeGroup[]} */
+	nodeGroupsInUse = [];
+
+	/**
+	 * Get an unused NodeGroup that matches the template's html and expressions (exact=true)
+	 * or at least the html (exact=false).
+	 * Remove it from nodeGroupsFree if it exists, or create it if not.
+	 * Then add it to nodeGroupsInUse.
 	 *
+	 * @param template {Template}
+	 * @param exact {boolean}
+	 * @return {NodeGroup} */
+	getNodeGroup(template, exact=true) {
+
+		let exactKey = template.getExactKey();
+		let closeKey = template.getCloseKey();
+		let result;
+
+		if (exact)
+			result = this.nodeGroupsFree[exactKey];
+		else
+			result = this.nodeGroupsFree[closeKey];
+
+		// Remove both the exactKey and closeKey
+		if (result) {
+			
+			delete this.nodeGroupsFree[exactKey];
+			
+			delete this.nodeGroupsFree[closeKey];
+		}
+		else
+			result = new NodeGroup(template, exactKey, closeKey);
+
+		this.nodeGroupsInUse.push(result);
+		return result;
+
+	}
+
+	/**
+	 * Move everything from this.nodeGroupsInUse to this.nodeGroupsFree. */
+	freeNodeGroups() {
+		for (let ng of this.nodeGroupsInUse) {
+			this.nodeGroupsFree[ng.exactKey] = ng;
+			this.nodeGroupsFree[ng.closeKey] = ng;
+		}
+		this.nodeGroupsInUse = [];
+	}
+
+	/**
+	 * TODO: Use another function to flatten the expr's so we don't have to use recusion.
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]}
 	 * @param secondPass {Array} Locations within newNodes to evaluate later.  */
@@ -908,15 +758,14 @@ class ExprPath {
 
 		if (expr instanceof Template) {
 
-			let exactKey = getObjectHash(expr);
+			//let exactKey = getObjectHash(expr);
 
 			// if (this.lastNodeGroup?.exactKey === exactKey) {
 			// 	let ng = this.parentNg.manager.findAndDeleteExact(exactKey);
 			// 	this.parentNg.manager.findAndDeleteClose(ng.closeKey, ng.exactKey);
 			// 	return;
 			// }
-
-			let ng = this.parentNg.manager.getNodeGroup(expr, true, null, exactKey);
+			let ng = this.getNodeGroup(expr, true); // this.parentNg.manager.getNodeGroup(expr, true, null, exactKey);
 			this.lastNodeGroup = ng;
 
 			if (ng) {
@@ -986,6 +835,11 @@ class ExprPath {
 					newNodes.push(this.parentNode.ownerDocument.createTextNode(text));
 			}
 		}
+
+		// If not in one of the recusive calls
+		// Mark all nodes as free, for the next render() call.
+		if (!secondPass)
+			this.freeNodeGroups();
 	}
 
 	applyMultipleAttribs(node, expr) {
@@ -1620,7 +1474,7 @@ class Shell {
 
 	/**
 	 * Get the shell for the html strings.
-	 * @param htmlStrings {string[]}
+	 * @param htmlStrings {string[]} Typically comes from a Template.
 	 * @returns {Shell} */
 	static get(htmlStrings) {
 		let result = Globals.shells.get(htmlStrings);
@@ -1839,7 +1693,9 @@ const udomdiff = (parentNode, a, b, before) => {
  * */
 class NodeGroup {
 
-	/** @Type {NodeGroupManager} */
+	/**
+	 * @deprecated
+	 * @Type {NodeGroupManager} */
 	manager;
 
 	/** @type {ExprPath} */
@@ -1861,9 +1717,10 @@ class NodeGroup {
 	/** @type {string} Key that only matches the template. */
 	closeKey;
 
-	/** @type {boolean} Used by NodeGroupManager. */
+	/**
+	 * @deprecated
+	 * @type {boolean} Used by NodeGroupManager. */
 	inUse;
-
 
 	/**
 	 * @internal
@@ -1875,6 +1732,7 @@ class NodeGroup {
 	styles;
 
 	/**
+	 * @deprecated
 	 * If rendering a Template with replaceMode=true, pseudoRoot points to the element where the attributes are rendered.
 	 * But pseudoRoot is outside of this.getNodes().
 	 * NodeGroupManager.render() copies the attributes from pseudoRoot to the actual web component root element.
@@ -1887,18 +1745,18 @@ class NodeGroup {
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param manager {?NodeGroupManager}
-	 * @param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
+	 * @param exactKey {string}
+	 * @param closeKey {string}
 	 * @returns {NodeGroup} */
-	constructor(template, manager=null, replaceMode=null, exactKey, closeKey) {
-		this.exactKey = exactKey;
-		this.closeKey = closeKey;
+	constructor(template, exactKey, closeKey) {
+		this.exactKey = exactKey || template.getExactKey();
+		this.closeKey = closeKey || template.getCloseKey();
 
 		/** @type {Template} */
 		this.template = template;
 
 		/** @type {NodeGroupManager} */
-		this.manager = manager;
+		//this.manager = manager;
 		
 		// new!
 		template.nodeGroup = this;
@@ -1910,20 +1768,22 @@ class NodeGroup {
 
 		// Figure out value of replaceMode option if it isn't set,
 		// Assume replaceMode if there's only one child element and its tagname matches the root el.
-		replaceMode = typeof replaceMode === 'boolean'
-			? template.replaceMode
-			: fragment.children.length===1 &&
-				fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '') === manager?.rootEl?.tagName;
-		if (replaceMode) {
-			this.pseudoRoot = fragment.firstElementChild;
-			// if (!manager.rootEl)
-			// 	manager.rootEl = this.pseudoRoot;
-			
-		}
+		// replaceMode = typeof replaceMode === 'boolean'
+		// 	? template.replaceMode
+		// 	: fragment.children.length===1 &&
+		// 		fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '') === manager?.rootEl?.tagName
+		// if (replaceMode) {
+		// 	this.pseudoRoot = fragment.firstElementChild;
+		// 	// if (!manager.rootEl)
+		// 	// 	manager.rootEl = this.pseudoRoot;
+		// 	
+		// }
 
-		let childNodes = replaceMode
-			? fragment.firstElementChild.childNodes
-			: fragment.childNodes;
+		// let childNodes = replaceMode
+		// 	? fragment.firstElementChild.childNodes
+		// 	: fragment.childNodes;
+
+		let childNodes = fragment.childNodes;
 
 
 		this.startNode = childNodes[0];
@@ -1946,7 +1806,7 @@ class NodeGroup {
 
 		
 
-		this.activateEmbeds(fragment, shell);
+		//this.activateEmbeds(fragment, shell);
 		
 		
 
@@ -1954,58 +1814,6 @@ class NodeGroup {
 		this.applyExprs(template.exprs);
 
 		
-	}
-
-	activateEmbeds(root, shell) {
-
-		// static components
-		// Must happen before ids.
-		for (let path of shell.staticComponents) {
-			let el = resolveNodePath(root, path);
-
-			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
-			if (el.tagName !== this.pseudoRoot?.tagName)
-				this.createNewComponent(el);
-		}
-
-		let rootEl = this.manager.rootEl || this.getRootNode();
-		if (rootEl) {
-
-			// ids
-			if (this.manager.options.ids !== false)
-				for (let path of shell.ids) {
-					let el = resolveNodePath(root, path);
-					let id = el.getAttribute('data-id') || el.getAttribute('id');
-					if (id) { // If something hasn't removed the id.
-						
-						// Don't allow overwriting existing class properties if they already have a non-Node value.
-						if (rootEl[id] && !(rootEl[id] instanceof Node))
-							throw new Error(`${rootEl.constructor.name}.${id} already has a value.  ` +
-								`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
-						
-						delve(rootEl, id.split(/\./g), el);
-					}
-				}
-
-			// styles
-			if (this.manager.options.styles !== false) {
-				if (shell.styles.length)
-					this.styles = new Map();
-				for (let path of shell.styles) {
-					let style = resolveNodePath(root, path);
-					Util.bindStyles(style, rootEl);
-					this.styles.set(style, style.textContent);
-				}
-
-			}
-			// scripts
-			if (this.manager.options.scripts !== false) {
-				for (let path of shell.scripts) {
-					let script = resolveNodePath(root, path);
-					eval(script.textContent);
-				}
-			}
-		}
 	}
 
 	/**
@@ -2121,8 +1929,9 @@ class NodeGroup {
 		// First Pass
 		//for (let ng of path.nodeGroups) // TODO: Is this necessary?
 		//	ng.parentPath = null;
-		path.nodeGroups = [];
+		path.nodeGroups = []; // TODO: Is this used?
 		path.apply(expr, newNodes, secondPass);
+
 		this.existingTextNodes = null;
 
 		// TODO: Create an array of old vs Nodes and NodeGroups together.
@@ -2281,10 +2090,10 @@ class NodeGroup {
 		// We pass the childNodes to the constructor so it can know about them,
 		// instead of only afterward when they're appended to the slot below.
 		// This is useful for a custom selectbox, for example.
-		// NodeGroupManager.pendingChildren stores the childen so the super construtor call to Solarite's constructor
+		// Globals.pendingChildren stores the childen so the super construtor call to Solarite's constructor
 		// can add them as children before the rest of the constructor code executes.
 		let ch = [... el.childNodes];
-		NodeGroupManager.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
+		Globals.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
 		let newEl = new Constructor(props, ch);
 
 		if (!isPreHtmlElement)
@@ -2416,9 +2225,220 @@ class NodeGroup {
 			}
 	}
 
-
 	
 }
+
+
+class RootNodeGroup extends NodeGroup {
+
+	/**
+	 *
+	 * @param template
+	 * @param el
+	 * @param options {?object}
+	 * \@param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
+	 */
+	constructor(template, el, options) {
+		super(template);
+
+		this.options = options;
+
+		let fragment = this.startNode.parentNode;
+
+		// TODO: replace mode.
+		if (el) {
+
+			let isReplace = fragment.children.length===1 && fragment.children[0].tagName === el.tagName;
+			if (isReplace) {
+				el.append(...fragment.children[0].childNodes);
+
+				// TODO: Copy attributes
+			}
+			else
+				el.append(fragment);
+			this.startNode = el;
+			this.endNode = el;
+		}
+
+		let shell = Shell.get(template.html);
+		this.activateEmbeds(this.getRootNode(), shell);
+	}
+
+
+	activateEmbeds(root, shell) {
+
+		// static components.  These are WebComponents not created by an expression.
+		// Must happen before ids.
+		for (let path of shell.staticComponents) {
+			let el = resolveNodePath(root, path);
+
+			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
+			if (el.tagName !== this.pseudoRoot?.tagName)
+				this.createNewComponent(el);
+		}
+
+		let rootEl = this.getRootNode();
+		if (rootEl) {
+
+			// ids
+			if (this.options?.ids !== false)
+				for (let path of shell.ids) {
+					let el = resolveNodePath(root, path);
+					let id = el.getAttribute('data-id') || el.getAttribute('id');
+					if (id) { // If something hasn't removed the id.
+
+						// Don't allow overwriting existing class properties if they already have a non-Node value.
+						if (rootEl[id] && !(rootEl[id] instanceof Node))
+							throw new Error(`${rootEl.constructor.name}.${id} already has a value.  ` +
+								`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
+
+						delve(rootEl, id.split(/\./g), el);
+					}
+				}
+
+			// styles
+			if (this.options?.styles !== false) {
+				if (shell.styles.length)
+					this.styles = new Map();
+				for (let path of shell.styles) {
+					let style = resolveNodePath(root, path);
+					Util.bindStyles(style, rootEl);
+					this.styles.set(style, style.textContent);
+				}
+
+			}
+			// scripts
+			if (this.options?.scripts !== false) {
+				for (let path of shell.scripts) {
+					let script = resolveNodePath(root, path);
+					eval(script.textContent);
+				}
+			}
+		}
+	}
+}
+
+//import NodeGroupManager from "./NodeGroupManager.js";
+
+/**
+ * The html strings and evaluated expressions from an html tagged template.
+ * A unique Template is created for each item in a loop.
+ * Although the reference to the html strings is shared among templates. */
+class Template {
+
+	/** @type {(Template|string|function)|(Template|string|function)[]} Evaulated expressions.  */
+	exprs = []
+
+	/** @type {string[]} */
+	html = [];
+
+	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
+	hashedFields;
+
+	/**
+    * @deprecated
+    * @type {ExprPath} Used with forEach() from watch.js
+	 * Set in ExprPath.apply() */
+	parentPath;
+
+	/** @type {NodeGroup} */
+	nodeGroup;
+
+	/**
+	 * @type {string[][]} */
+	paths = [];
+
+	/**
+	 *
+	 * @param htmlStrings {string[]}
+	 * @param exprs {*[]} */
+	constructor(htmlStrings, exprs) {
+		this.html = htmlStrings;
+		this.exprs = exprs;
+
+		//this.trace = new Error().stack.split(/\n/g)
+
+		// Multiple templates can share the same htmlStrings array.
+		//this.hashedFields = [getObjectId(htmlStrings), exprs]
+
+		
+	}
+
+	/**
+	 * Called by JSON.serialize when it encounters a Template.
+	 * This prevents the hashed version from being too large. */
+	toJSON() {
+		if (!this.hashedFields)
+			this.hashedFields = [getObjectId(this.html, 'Html'), this.exprs];
+
+		return this.hashedFields
+	}
+
+
+	/**
+	 * Get or create a NodeGroup associated with the given element.
+	 * @param el {HTMLElement}
+	 * @param options {object}
+	 * @return {NodeGroup} */
+	getRootNodeGroupForElement(el, options) {
+		let result = Globals.nodeGroups.get(el);
+		if (!result) {
+			result = new RootNodeGroup(this, el, options);
+			Globals.nodeGroups.set(el, result);
+		}
+		return result;
+	}
+
+	/**
+	 * Render the main template, which may indirectly call renderTemplate() to create children.
+	 * @param el {HTMLElement}
+	 * @param options {RenderOptions}
+	 * @return {?DocumentFragment|HTMLElement} */
+	render(el=null, options={}) {
+		let ng;
+		let standalone = !el;
+		let firstTime = false;
+
+		// Rendering a standalone element.
+		// TODO: figure out when to not use RootNodeGroup
+		if (standalone) {
+			ng = new RootNodeGroup(this, null, options);
+			el = ng.getRootNode();
+			firstTime = true;
+		}
+		else {
+			ng = Globals.nodeGroups.get(el);
+			if (!ng) {
+				ng = new RootNodeGroup(this, el, options);
+				Globals.nodeGroups.set(el, ng);
+				firstTime = true;
+			}
+		}
+
+		// Creating the root nodegroup also renders it.
+		// If we didn't just create it, we need to render it.
+		if (!firstTime) {
+			if (this.html?.length === 1 && !this.html[0])
+				el.innerHTML = ''; // Fast path for empty component.
+			else
+				ng.applyExprs(this.exprs);
+		}
+
+		return el;
+	}
+
+	getExactKey() {
+		return getObjectHash(this); // calls this.toJSON().
+	}
+
+	getCloseKey() {
+		// Use the joined html when debugging?  But it breaks some tests.
+		//return '@'+this.html.join('|')
+
+		return '@'+this.hashedFields[0];
+	}
+}
+
 
 /**
  * @typedef {Object} RenderOptions
@@ -2431,324 +2451,6 @@ class NodeGroup {
  *     False to automatically call render() at all.
  *     Undefined (default) to call render() when added to the DOM, unless already rendered.
  */
-
-
-/**
- * Manage all the NodeGroups for a single WebComponent or root HTMLElement
- * There's one NodeGroup for the root of the WebComponent, and one for every ${...} expression that creates Node children.
- * And each NodeGroup manages the one or more nodes created by the expression.
- *
- * An instance of this class exists for each element that r() renders to. */
-class NodeGroupManager {
-
-	/** @type {HTMLElement|DocumentFragment} */
-	rootEl;
-
-	/** @type {NodeGroup} */
-	rootNg;
-	
-	/** @type {Change[]} */
-	changes = [];
-	
-	
-
-	
-
-	/**
-	 * A map from the html strings and exprs that created a node group, to the NodeGroup.
-	 * Also stores a map from just the html strings to the NodeGroup, so we can still find a similar match if the exprs changed.
-	 * @type {MultiValueMap<string, (string|Template)[], NodeGroup>} */
-	nodeGroupsAvailable = new MultiValueMap();
-
-	/**
-	 * Save the NodeGroups that are returned by NodeGroupManager.get()
-	 * Calling reset() at the end of render puts them all back into nodeGroupsAvailable.
-	 * @type {NodeGroup[]} */
-	nodeGroupsInUse = [];
-
-
-	/** @type {RenderOptions} TODO: Where is this ever used? */
-	options = {};
-
-	
-	
-
-	/**
-	 * @param rootEl {HTMLElement|DocumentFragment} If not specified, the first element of the html will be the rootEl. */
-	constructor(rootEl=null) {
-		this.rootEl = rootEl;
-		this.resetModifications();
-
-		/*
-		
-		*/
-	}
-
-
-	/**
-	 *
-	 * 1.  Delete a NodeGroup from this.nodeGroupsAvailable that matches this exactKey.
-	 * 2.  Then delete all of that NodeGroup's parents' exactKey entries
-	 *     We don't move them to in-use because we plucked the NodeGroup from them, they no longer match their exactKeys.
-	 * 3.  Then we move all the NodeGroup's exact+close keyed children to inUse because we don't want future calls
-	 *     to getNodeGroup() to borrow the children now that the whole NodeGroup is in-use.
-	 *
-	 * TODO: Have NodeGroups keep track of whether they're inUse.
-	 * That way when we go up or down we don't have to remove those with .inUse===true
-	 *
-	 * @param exactKey
-	 * @param goUp
-	 * @param child
-	 * @returns {?NodeGroup} */
-	findAndDeleteExact(exactKey, goUp=true, child=undefined) {
-
-		let ng = this.nodeGroupsAvailable.delete(exactKey, child);
-		if (ng) {
-			
-			
-			// Mark close-key version as in-use.
-			let closeNg = this.nodeGroupsAvailable.delete(ng.closeKey, ng);
-			
-
-			// Mark our self as in-use.
-			this.nodeGroupsInUse.push(ng);
-
-			ng.inUse = true;
-			closeNg.inUse = true;
-
-			// Mark all parents that have this NodeGroup as a child as in-use.
-			// So that way we don't use this parent again
-			if (goUp) {
-				let ng2 = ng;
-				while (ng2 = ng2?.parentPath?.parentNg) {
-					if (!ng2.inUse) {
-						ng2.inUse = true;
-						let success = this.nodeGroupsAvailable.delete(ng2.exactKey, ng2);
-						assert(success);
-
-						let success2 = this.nodeGroupsAvailable.delete(ng2.closeKey, ng2);
-						assert(success2);
-						
-
-						// console.log(getHtml(ng2))
-						if (success) {
-							this.nodeGroupsInUse.push(ng2);
-						}
-					}
-				}
-			}
-
-			// Recurse to mark all child NodeGroups as in-use.
-			for (let path of ng.paths)
-				for (let childNg of path.nodeGroups) {
-					if (!childNg.inUse) {
-						this.findAndDeleteExact(childNg.exactKey, false, childNg);
-					//	this.findAndDeleteClose(childNg.closeKey, childNg.exactKey, false);
-					}
-					childNg.inUse = true;
-				}
-			
-			if (ng.parentPath) ;
-
-			return ng;
-		}
-		return null;
-	}
-	
-	/**
-	 * @param closeKey {string}
-	 * @param exactKey {string}
-	 * @param goUp {boolean}
-	 * @returns {NodeGroup} */
-	findAndDeleteClose(closeKey, exactKey, goUp=true) {
-		let ng = this.nodeGroupsAvailable.delete(closeKey);
-		if (ng) {
-			
-			// We matched on a new key, so delete the old exactKey.
-			
-			let exactNg = this.nodeGroupsAvailable.delete(ng.exactKey, ng);
-			
-			
-			
-			
-			
-			ng.inUse = true;
-			if (goUp) {
-				let ng2 = ng;
-
-				// We borrowed a node from another node group so make sure its parent isn't still an exact match.
-				while (ng2 = ng2?.parentPath?.parentNg) {
-					if (!ng2.inUse) {
-						ng2.inUse = true; // Might speed it up slightly?
-						
-						let success = this.nodeGroupsAvailable.delete(ng2.exactKey, ng2);
-						
-
-						// But it can still be a close match, so we remove it there too.
-						
-						success = this.nodeGroupsAvailable.delete(ng2.closeKey, ng2);
-						
-
-						this.nodeGroupsInUse.push(ng2);
-					}
-				}
-			}
-
-			// Recursively mark all child NodeGroups as in-use.
-			// We actually DON't want to do this becuse applyExprs is going to swap out the child NodeGroups
-			// and mark them as in-use as it goes.
-			// that's probably why uncommenting this causes tests to fail.
-			// for (let path of ng.paths)
-			// 	for (let childNg of path.nodeGroups)
-			// 		this.findAndDeleteExact(childNg.exactKey, false, childNg);
-
-
-			ng.exactKey = exactKey;
-			ng.closeKey = closeKey;
-			this.nodeGroupsInUse.push(ng);
-			
-			
-			if (ng.parentPath) ;
-		}
-		
-		
-		return ng;
-	}
-
-	/**
-	 * Get an existing or create a new NodeGroup that matches the template,
-	 * but don't reparent it if it's somewhere else.
-	 * @param template {Template}
-	 * @param exact {?boolean} If true, only get a NodeGroup if it matches both the template
-	 * @param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
-	 * @return {?NodeGroup} */
-	getNodeGroup(template, exact=null, replaceMode=null, exactKey=null) {
-		exactKey = exactKey || getObjectHash(template);
-
-		// 1. Try to find an exact match.
-		let ng = this.findAndDeleteExact(exactKey);
-		if (exact && !ng) {
-			
-			return null;
-		}
-
-		// 2.  Try to find a close match.
-		if (!ng) {
-			// We don't need to delete the exact match bc it's already been deleted in the prev pass.
-			let closeKey = template.getCloseKey();
-			ng = this.findAndDeleteClose(closeKey, exactKey);
-
-			// 2. Update expression values if they've changed.
-			if (ng) {
-				
-				
-
-				ng.applyExprs(template.exprs);
-
-				
-				
-			}
-
-			// 3. Or if not found, create a new NodeGroup
-			else {
-				
-
-				ng = new NodeGroup(template, this, replaceMode, exactKey, closeKey);
-
-				
-				
-
-
-				// 4. Mark NodeGroup as being in-use.
-				// TODO: Moving from one group to another thrashes the gc.  Is there a faster way?
-				// Could I have just a single WeakSet of those in use?
-				// Perhaps also result could cache its last exprKey and then we'd use only one map?
-				ng.exactKey = exactKey;
-				ng.closeKey = closeKey;
-				this.nodeGroupsInUse.push(ng);
-			}
-		}
-		
-		// New!
-		// We clear the parent PathExpr's nodesCache when we remove ourselves from it.
-		// Benchmarking shows this doesn't slow down the partialUpdate benchmark.
-		if (ng.parentPath) {
-			// ng.parentPath.clearNodesCache(); // Makes partialUpdate benchmark 10x slower!
-		 	ng.parentPath = null;
-		}
-
-
-		
-		
-		return ng;
-	}
-
-	/**
-	 * Move everything in nodeGroupsInUse to nodeGroupsAvailable.
-	 * This is called after the NodeGroup has finished rendering. */
-	reset() {
-
-		
-
-		//this.changes = [];
-		let available = this.nodeGroupsAvailable;
-		for (let ng of this.nodeGroupsInUse) {
-			ng.inUse = false;
-			available.add(ng.exactKey, ng);
-			available.add(ng.closeKey, ng);
-		}
-		this.nodeGroupsInUse = [];
-
-		// Used for watches
-		this.changes = [];
-
-		
-		// TODO: free the memory from any nodeGroupsAvailable() after render is done, since they weren't used?
-
-
-		
-	}
-
-	resetModifications() {
-		this.modifications = {
-			created: [],
-			updated: [],
-			moved: [],
-			deleted: []
-		};
-	}
-
-	/**
-	 * Get the NodeGroupManager for a Web Component, given either its root element or its Template.
-	 * If given a Template, create a new NodeGroup.
-	 * Using a Template is typically used when creating a standalone component.
-	 * @param rootEl {Solarite|HTMLElement|Template}
-	 * @return {NodeGroupManager} */
-	static get(rootEl=null) {
-		let ngm;
-		if (rootEl instanceof Template) {
-			ngm = new NodeGroupManager();
-			ngm.rootNg = ngm.getNodeGroup(rootEl, false);
-			let el = ngm.rootNg.getRootNode();
-			Globals.nodeGroupManagers.set(el, ngm);
-		}
-		else {
-
-			ngm = Globals.nodeGroupManagers.get(rootEl);
-			if (!ngm) {
-				ngm = new NodeGroupManager(rootEl);
-				Globals.nodeGroupManagers.set(rootEl, ngm);
-			}
-		}
-
-		return ngm;
-	}
-
-
-	
-}
-
-NodeGroupManager.pendingChildren = [];
 
 /**
  * Convert strings to HTMLNodes.
@@ -2763,10 +2465,10 @@ NodeGroupManager.pendingChildren = [];
  * 5. TODO:  list more
  *
  * Currently supported:
- * 1. r`<b>Hello</b> ${'World'}!`           // Create Template that can later be used to create nodes.
- *
+ * 1. r(el, options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
  * 2. r(el, template, ?options)        // Render the Template created by #1 to element.
- * 3. r(el, options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
+ *
+ * 3. r`<b>Hello</b> ${'World'}!`      // Create Template that can later be used to create nodes.
  *
  * 4. r('Hello');                      // Create single text node.
  * 5. r('<b>Hello</b>');               // Create single HTMLElement
@@ -2782,39 +2484,40 @@ NodeGroupManager.pendingChildren = [];
  * @return {Node|HTMLElement|Template} */
 function r(htmlStrings=undefined, ...exprs) {
 
-	// 1. Path if used as a template tag.
-	if (Array.isArray(htmlStrings)) {
-		return new Template(htmlStrings, exprs);
-	}
-
-	else if (htmlStrings instanceof Node) {
+	// TODO: Make this a more flat if/else and call other functions for the logic.
+	if (htmlStrings instanceof Node) {
 		let parent = htmlStrings, template = exprs[0];
 
+		// 1
+		if (!(exprs[0] instanceof Template)) {
+			if (parent.shadowRoot)
+				parent.innerHTML = ''; // Remove shadowroot.  TODO: This could mess up paths?
+
+			let options = exprs[0];
+
+			// Return a tagged template function that applies the tagged themplate to parent.
+			let taggedTemplate = (htmlStrings, ...exprs) => {
+				Globals.rendered.add(parent);
+				let template = new Template(htmlStrings, exprs);
+				return template.render(parent, options);
+			};
+			return taggedTemplate;
+		}
+
 		// 2. Render template created by #4 to element.
-		if (exprs[0] instanceof Template) {
+		else if (exprs[0] instanceof Template) {
 			let options = exprs[1];
 			template.render(parent, options);
 
 			// Append on the first go.
 			if (!parent.childNodes.length && this) {
-				// TODO: Is htis ever executed?
+				// TODO: Is this ever executed?
 				debugger;
 				parent.append(this.rootNg.getParentNode());
 			}
 		}
 
-		// 3
-		else if (!exprs.length || exprs[0]) {
-			if (parent.shadowRoot)
-				parent.innerHTML = ''; // Remove shadowroot.  TODO: This could mess up paths?
 
-			let options = exprs[0];
-			return (htmlStrings, ...exprs) => {
-				Globals.rendered.add(parent);
-				let template = r(htmlStrings, ...exprs);
-				return template.render(parent, options);
-			}
-		}
 
 		// null for expr[0], remove whole element.
 		   // This path never happens?
@@ -2823,6 +2526,11 @@ function r(htmlStrings=undefined, ...exprs) {
 			//let ngm = NodeGroupManager.get(parent);
 			//ngm.render(null, exprs[1])
 		}
+	}
+
+	// 3. Path if used as a template tag.
+	else if (Array.isArray(htmlStrings)) {
+		return new Template(htmlStrings, exprs);
 	}
 
 	else if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {
@@ -2980,19 +2688,17 @@ function createSolarite(extendsTag=null) {
 		constructor(options={}) {
 			super();
 
-
-
 			// TODO: Is options.render ever used?
 			if (options.render===true)
 				this.render();
 
 			else if (options.render===false)
-				rendered.add(this); // Don't render on connectedCallback()
+				Globals.rendered.add(this); // Don't render on connectedCallback()
 
 			// Add children before constructor code executes.
 			// PendingChildren is setup in NodeGroup.createNewComponent()
 			// TODO: Match named slots.
-			let ch = NodeGroupManager.pendingChildren.pop();
+			let ch = Globals.pendingChildren.pop();
 			if (ch)
 				(this.querySelector('slot') || this).append(...ch);
 
@@ -3049,6 +2755,12 @@ function createSolarite(extendsTag=null) {
 		
 	}
 }
+
+/**
+ * Solarite JavasCript UI library.
+ * MIT License
+ * https://vorticode.github.io/solarite/
+ */
 
 /**
  * TODO: The Proxy and the multiple base classes mess up 'instanceof Solarite'

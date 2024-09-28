@@ -74,12 +74,12 @@ export default class NodeGroup {
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param options {?object}
-	 * @param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
+	 * @param exactKey {string}
+	 * @param closeKey {string}
 	 * @returns {NodeGroup} */
-	constructor(template, options=null, replaceMode=null, exactKey, closeKey) {
-		this.exactKey = exactKey;
-		this.closeKey = closeKey;
+	constructor(template, exactKey, closeKey) {
+		this.exactKey = exactKey || template.getExactKey();
+		this.closeKey = closeKey || template.getCloseKey();
 
 		/** @type {Template} */
 		this.template = template;
@@ -135,7 +135,7 @@ export default class NodeGroup {
 
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 
-		this.activateEmbeds(fragment, shell);
+		//this.activateEmbeds(fragment, shell);
 		
 		/*#IFDEV*/
 		assert(this.paths.length <= template.exprs.length);
@@ -264,8 +264,9 @@ export default class NodeGroup {
 		// First Pass
 		//for (let ng of path.nodeGroups) // TODO: Is this necessary?
 		//	ng.parentPath = null;
-		path.nodeGroups = [];
+		path.nodeGroups = []; // TODO: Is this used?
 		path.apply(expr, newNodes, secondPass);
+
 		this.existingTextNodes = null;
 
 		// TODO: Create an array of old vs Nodes and NodeGroups together.
@@ -530,7 +531,7 @@ export default class NodeGroup {
 	}
 
 	/**
-	 * Get the root element of the NodeGroup's most ancestral Nodegroup.
+	 * Get the root element of the NodeGroup's RootNodeGroup
 	 * This function is poorly tested and may be unreliable.
 	 * @returns {Node|DocumentFragment}	 */
 	getRootNode() {
@@ -549,13 +550,22 @@ export default class NodeGroup {
 		return result;
 	}
 
+	getRootNodeGroup() {
+		let ng = this;
+		while (ng.parentPath?.parentNg)
+			ng = ng.parentPath?.parentNg;
+
+		/*#IFDEV*/assert(ng instanceof RootNodeGroup);/*#ENDIF*/
+		return ng;
+	}
+
 
 	updateStyles() {
 		if (this.styles)
 			for (let [style, oldText] of this.styles) {
 				let newText = style.textContent;
 				if (oldText !== newText)
-					Util.bindStyles(style, this.manager.rootEl);
+					Util.bindStyles(style, this.getRootNodeGroup().startNode);
 			}
 	}
 
@@ -630,6 +640,13 @@ export default class NodeGroup {
 
 export class RootNodeGroup extends NodeGroup {
 
+	/**
+	 *
+	 * @param template
+	 * @param el
+	 * @param options {?object}
+	 * \@param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
+	 */
 	constructor(template, el, options) {
 		super(template);
 
@@ -639,12 +656,21 @@ export class RootNodeGroup extends NodeGroup {
 
 		// TODO: replace mode.
 		if (el) {
-			el.append(fragment);
+
+			let isReplace = fragment.children.length===1 && fragment.children[0].tagName === el.tagName;
+			if (isReplace) {
+				el.append(...fragment.children[0].childNodes);
+
+				// TODO: Copy attributes
+			}
+			else
+				el.append(fragment);
 			this.startNode = el;
+			this.endNode = el;
 		}
 
 		let shell = Shell.get(template.html);
-		this.activateEmbeds(this.getRootNode(), shell);
+		this.activateEmbeds(this.startNode, shell);
 	}
 
 
@@ -660,7 +686,7 @@ export class RootNodeGroup extends NodeGroup {
 				this.createNewComponent(el)
 		}
 
-		let rootEl = this.getRootNode();
+		let rootEl = this.startNode;
 		if (rootEl) {
 
 			// ids

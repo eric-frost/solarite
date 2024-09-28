@@ -1,5 +1,5 @@
 import {assert} from "../util/Errors.js";
-import {getObjectId} from "./hash.js";
+import {getObjectHash, getObjectId} from "./hash.js";
 import Globals from "./Globals.js";
 import NodeGroup, {RootNodeGroup} from "./NodeGroup.js";
 //import NodeGroupManager from "./NodeGroupManager.js";
@@ -71,7 +71,7 @@ export default class Template {
 	/**
 	 * Get or create a NodeGroup associated with the given element.
 	 * @param el {HTMLElement}
-	 * @param options
+	 * @param options {object}
 	 * @return {NodeGroup} */
 	getRootNodeGroupForElement(el, options) {
 		let result = Globals.nodeGroups.get(el);
@@ -112,22 +112,17 @@ export default class Template {
 		// If we didn't just create it, we need to render it.
 		if (!firstTime) {
 			if (this.html?.length === 1 && !this.html[0])
-				el.innerHTML = '';
+				el.innerHTML = ''; // Fast path for empty component.
 			else
 				ng.applyExprs(this.exprs);
 		}
 
-
 		//ngm.options = options;
 		//ngm.mutationWatcherEnabled = false;
-
 
 		//#IFDEV
 		//ngm.resetModifications();
 		//#ENDIF
-
-		// Fast path for empty component.
-
 
 		if (false) {
 			if (this.html?.length === 1 && !this.html[0]) {
@@ -200,6 +195,9 @@ export default class Template {
 		return el;
 	}
 
+	getExactKey() {
+		return getObjectHash(this); // calls this.toJSON().
+	}
 
 	getCloseKey() {
 		// Use the joined html when debugging?  But it breaks some tests.
