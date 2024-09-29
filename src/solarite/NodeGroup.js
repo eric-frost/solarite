@@ -23,17 +23,16 @@ import Globals from "./Globals.js";
 export default class NodeGroup {
 
 	/**
-	 * @deprecated
-	 * @Type {NodeGroupManager} */
-	manager;
+	 * @Type {RootNodeGroup} */
+	rootNg;
 
 	/** @type {ExprPath} */
 	parentPath;
 
-	/** @type {Node} First node of NodeGroup. Should never be null. */
+	/** @type {Node|HTMLElement} First node of NodeGroup. Should never be null. */
 	startNode;
 
-	/** @type {Node} A node that never changes that this NodeGroup should always insert its nodes before.
+	/** @type {Node|HTMLElement} A node that never changes that this NodeGroup should always insert its nodes before.
 	 * An empty text node will be created to insertBefore if there's no other NodeMarker and this isn't at the last position.*/
 	endNode;
 
@@ -60,13 +59,6 @@ export default class NodeGroup {
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
 
-	/**
-	 * @deprecated
-	 * If rendering a Template with replaceMode=true, pseudoRoot points to the element where the attributes are rendered.
-	 * But pseudoRoot is outside of this.getNodes().
-	 * NodeGroupManager.render() copies the attributes from pseudoRoot to the actual web component root element.
-	 * @type {?HTMLElement} */
-	pseudoRoot;
 
 	currentComponentProps = {};
 	
@@ -74,50 +66,56 @@ export default class NodeGroup {
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
+	 * @param el {HTMLElement}
+	 * @param parentPath {?ExprPath}
 	 * @param exactKey {string}
 	 * @param closeKey {string}
+	 * @param options
 	 * @returns {NodeGroup} */
-	constructor(template, exactKey, closeKey) {
+	constructor(template, parentPath, exactKey, closeKey, el=null, options=null) {
+		if (!(this instanceof RootNodeGroup)) {
+			this.init(template, parentPath, exactKey, closeKey, el, options);
+		}
+	}
+
+	init(template, parentPath, exactKey, closeKey, el=null, options=null) {
 		this.exactKey = exactKey || template.getExactKey();
 		this.closeKey = closeKey || template.getCloseKey();
+
+		if (options)
+			this.options = options;
+		this.parentPath = parentPath;
+		this.rootNg = parentPath?.parentNg?.rootNg || this;
+
+		assert(this.rootNg);
 
 		/** @type {Template} */
 		this.template = template;
 
-		/** @type {NodeGroupManager} */
-		//this.manager = manager;
-		
-		// new!
+		// new!  Is this needed?
 		template.nodeGroup = this;
 
 		// Get a cached version of the parsed and instantiated html, and ExprPaths.
 		let shell = Shell.get(template.html);
-
 		let fragment = shell.fragment.cloneNode(true);
 
 		// Figure out value of replaceMode option if it isn't set,
 		// Assume replaceMode if there's only one child element and its tagname matches the root el.
-		// replaceMode = typeof replaceMode === 'boolean'
-		// 	? template.replaceMode
-		// 	: fragment.children.length===1 &&
-		// 		fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '') === manager?.rootEl?.tagName
-		// if (replaceMode) {
-		// 	this.pseudoRoot = fragment.firstElementChild;
-		// 	// if (!manager.rootEl)
-		// 	// 	manager.rootEl = this.pseudoRoot;
-		// 	/*#IFDEV*/assert(this.pseudoRoot)/*#ENDIF*/
-		// }
-
-		// let childNodes = replaceMode
-		// 	? fragment.firstElementChild.childNodes
-		// 	: fragment.childNodes;
-
-		let childNodes = fragment.childNodes;
-
+		/*
+		let replaceMode = fragment.children.length===1 &&
+				fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '') === el?.tagName
+		if (replaceMode) {
+			let pseudoRoot = fragment.firstElementChild;
+			// if (!manager.rootEl)
+			// 	manager.rootEl = this.pseudoRoot;
+		}
+		let childNodes = replaceMode
+			? fragment.firstElementChild.childNodes
+			: fragment.childNodes;
 
 		this.startNode = childNodes[0];
 		this.endNode = childNodes[childNodes.length - 1];
-
+		*/
 
 		// Update paths
 		for (let oldPath of shell.paths) {
@@ -125,7 +123,10 @@ export default class NodeGroup {
 			path.parentNg = this;
 			this.paths.push(path);
 		}
-		
+
+		let childNodes = fragment.childNodes;
+		this.startNode = childNodes[0];
+		this.endNode = childNodes[childNodes.length - 1];
 
 		// Update web component placeholders.
 		// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
@@ -133,20 +134,19 @@ export default class NodeGroup {
 		//for (let component of shell.components)
 		//	this.components.push(resolveNodePath(this.startNode.parentNode, getNodePath(component)))
 
-		/*#IFDEV*/this.verify();/*#ENDIF*/
+		// TODO: This needs to know the root el to bind to.
+		this.activateEmbeds(fragment, shell);
 
-		//this.activateEmbeds(fragment, shell);
-		
+		// Apply exprs
+		// TODO: We need the root to be set before calling this, so events can use it for binding "this"
+		this.applyExprs(template.exprs);
+
 		/*#IFDEV*/
+		this.verify()
 		assert(this.paths.length <= template.exprs.length);
 		if (template.exprs.length)
 			assert(this.paths.length);
 		/*#ENDIF*/
-
-		// Apply exprs
-		this.applyExprs(template.exprs);
-
-		/*#IFDEV*/this.verify();/*#ENDIF*/
 	}
 
 	/**
@@ -200,11 +200,7 @@ export default class NodeGroup {
 					// Event attribute value
 					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
 
-						let root = this.manager?.rootEl;
-
-						// For standalone elements:
-						if (!root || root instanceof DocumentFragment)
-							root = this.getRootNode();
+						let root = this.getRootNode();
 
 						path.applyEventAttrib(el, expr, root);
 					}
@@ -535,6 +531,9 @@ export default class NodeGroup {
 	 * This function is poorly tested and may be unreliable.
 	 * @returns {Node|DocumentFragment}	 */
 	getRootNode() {
+		return this.rootNg.root;
+
+		// old:
 		// Find the most ancestral NdoeGroup
 		let ng = this;
 		while (ng.parentPath?.parentNg)
@@ -550,13 +549,10 @@ export default class NodeGroup {
 		return result;
 	}
 
+	/**
+	 * @returns {RootNodeGroup} */
 	getRootNodeGroup() {
-		let ng = this;
-		while (ng.parentPath?.parentNg)
-			ng = ng.parentPath?.parentNg;
-
-		/*#IFDEV*/assert(ng instanceof RootNodeGroup);/*#ENDIF*/
-		return ng;
+		return this.rootNg;
 	}
 
 
@@ -565,7 +561,7 @@ export default class NodeGroup {
 			for (let [style, oldText] of this.styles) {
 				let newText = style.textContent;
 				if (oldText !== newText)
-					Util.bindStyles(style, this.getRootNodeGroup().startNode);
+					Util.bindStyles(style, this.getRootNodeGroup().root);
 			}
 	}
 
@@ -635,45 +631,11 @@ export default class NodeGroup {
 		return true;
 	}
 	//#ENDIF
-}
 
-
-export class RootNodeGroup extends NodeGroup {
 
 	/**
-	 *
-	 * @param template
-	 * @param el
-	 * @param options {?object}
-	 * \@param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
-	 */
-	constructor(template, el, options) {
-		super(template);
-
-		this.options = options;
-
-		let fragment = this.startNode.parentNode;
-
-		// TODO: replace mode.
-		if (el) {
-
-			let isReplace = fragment.children.length===1 && fragment.children[0].tagName === el.tagName;
-			if (isReplace) {
-				el.append(...fragment.children[0].childNodes);
-
-				// TODO: Copy attributes
-			}
-			else
-				el.append(fragment);
-			this.startNode = el;
-			this.endNode = el;
-		}
-
-		let shell = Shell.get(template.html);
-		this.activateEmbeds(this.startNode, shell);
-	}
-
-
+	 * @param root {HTMLElement}
+	 * @param shell {Shell} */
 	activateEmbeds(root, shell) {
 
 		// static components.  These are WebComponents not created by an expression.
@@ -681,12 +643,14 @@ export class RootNodeGroup extends NodeGroup {
 		for (let path of shell.staticComponents) {
 			let el = resolveNodePath(root, path)
 
+			let fragment = this.startNode.parentNode;
+
 			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
-			if (el.tagName !== this.pseudoRoot?.tagName)
+			if (!isReplaceEl(fragment, el))
 				this.createNewComponent(el)
 		}
 
-		let rootEl = this.startNode;
+		let rootEl = this.root;
 		if (rootEl) {
 
 			// ids
@@ -725,4 +689,50 @@ export class RootNodeGroup extends NodeGroup {
 			}
 		}
 	}
+}
+
+
+export class RootNodeGroup extends NodeGroup {
+
+	/**
+	 * Root node at the top of the hierarchy.
+	 * @type {HTMLElement} */
+	root;
+
+	/**
+	 *
+	 * @param template
+	 * @param el
+	 * @param options {?object}
+	 */
+	constructor(template, el, options) {
+		super(template, null, null, null, el, options);
+
+		this.options = options;
+		this.root = el;
+		this.rootNg = this;
+		this.init(template, null, null, null, el, options);
+
+		// If adding NodeGroup to an element.
+		let fragment = this.startNode.parentNode;
+		if (el) {
+
+			// If el should replace the root node of the fragment.
+			// TODO: Check for text node children.
+			if (isReplaceEl(fragment, el)) {
+				el.append(...fragment.children[0].childNodes);
+
+				// TODO: Copy attributes
+			}
+			else
+				el.append(...fragment.childNodes);
+
+			this.startNode = el;
+			this.endNode = el;
+		}
+	}
+}
+
+function isReplaceEl(fragment, el) {
+	return el.tagName.includes('-') && fragment.children.length===1 && fragment.children[0].tagName === el.tagName;
 }

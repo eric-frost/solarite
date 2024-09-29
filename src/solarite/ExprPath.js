@@ -158,7 +158,6 @@ export default class ExprPath {
 	 * @param exact {boolean}
 	 * @return {NodeGroup} */
 	getNodeGroup(template, exact=true) {
-
 		let exactKey = template.getExactKey();
 		let closeKey = template.getCloseKey();
 		let result;
@@ -175,10 +174,12 @@ export default class ExprPath {
 			/*#IFDEV*/assert(this.nodeGroupsFree[closeKey]);/*#ENDIF*/
 			delete this.nodeGroupsFree[closeKey];
 		}
-		else
-			result = new NodeGroup(template, exactKey, closeKey);
+		else {
+			result = new NodeGroup(template, this, exactKey, closeKey);
+		}
 
 		this.nodeGroupsInUse.push(result);
+		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
 		return result;
 
 	}
@@ -467,16 +468,16 @@ export default class ExprPath {
 	clone(newRoot) {
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 
-        // Resolve node paths.
+		// Resolve node paths.
 		let nodeMarker, nodeBefore;
-        let root = newRoot;
-        let path = this.nodeMarkerPath;
-        for (let i=path.length-1; i>0; i--)
-            root = root.childNodes[path[i]];
+		let root = newRoot;
+		let path = this.nodeMarkerPath;
+		for (let i=path.length-1; i>0; i--) // Resolve the path.
+			root = root.childNodes[path[i]];
 		let childNodes = root.childNodes;
-        nodeMarker = childNodes[path[0]]
-        if (this.nodeBefore)
-            nodeBefore = childNodes[this.nodeBeforeIndex];
+		nodeMarker = childNodes[path[0]]
+		if (this.nodeBefore)
+			nodeBefore = childNodes[this.nodeBeforeIndex];
 
 		let result = new ExprPath(nodeBefore, nodeMarker, this.type, this.attrName, this.attrValue);
 
@@ -593,14 +594,6 @@ export default class ExprPath {
 
 	getParentNode() { // Same as this.parentNode
 		return this.nodeMarker.parentNode
-	}
-	
-	removeNodeGroup(ng) {
-		let idx = this.nodeGroups.indexOf(ng);
-		/*#IFDEV*/assert(idx !== -1);/*#ENDIF*/
-		this.nodeGroups.splice(idx);
-		ng.parentPath = null;
-		this.clearNodesCache();
 	}
 
 	//#IFDEV
