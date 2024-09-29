@@ -650,7 +650,7 @@ export default class NodeGroup {
 				this.createNewComponent(el)
 		}
 
-		let rootEl = this.root;
+		let rootEl = this.rootNg.root;
 		if (rootEl) {
 
 			// ids
