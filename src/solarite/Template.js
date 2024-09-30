@@ -1,8 +1,7 @@
 import {assert} from "../util/Errors.js";
 import {getObjectHash, getObjectId} from "./hash.js";
 import Globals from "./Globals.js";
-import NodeGroup, {RootNodeGroup} from "./NodeGroup.js";
-//import NodeGroupManager from "./NodeGroupManager.js";
+import {RootNodeGroup} from "./NodeGroup.js";
 
 /**
  * The html strings and evaluated expressions from an html tagged template.
@@ -67,21 +66,6 @@ export default class Template {
 		return this.hashedFields
 	}
 
-
-	/**
-	 * Get or create a NodeGroup associated with the given element.
-	 * @param el {HTMLElement}
-	 * @param options {object}
-	 * @return {NodeGroup} */
-	getRootNodeGroupForElement(el, options) {
-		let result = Globals.nodeGroups.get(el);
-		if (!result) {
-			result = new RootNodeGroup(this, el, options);
-			Globals.nodeGroups.set(el, result);
-		}
-		return result;
-	}
-
 	/**
 	 * Render the main template, which may indirectly call renderTemplate() to create children.
 	 * @param el {HTMLElement}
@@ -116,81 +100,6 @@ export default class Template {
 				el.innerHTML = ''; // Fast path for empty component.
 			else
 				ng.applyExprs(this.exprs);
-		}
-
-		//ngm.options = options;
-		//ngm.mutationWatcherEnabled = false;
-
-		//#IFDEV
-		//ngm.resetModifications();
-		//#ENDIF
-
-		if (false) {
-			if (this.html?.length === 1 && !this.html[0]) {
-				el.innerHTML = '';
-			}
-			else {
-				ng.applyExprs(this.exprs);
-
-				// old:
-				// --------
-
-				// Find or create a NodeGroup for the template.
-				// This updates all nodes from the template.
-				let firstTime = false;
-				if (!standalone) {
-					//	ngm.rootNg = ngm.getNodeGroup(this, false);
-				}
-
-				// If this is the first time rendering this element.
-				if (firstTime) {
-
-					// Save slot children
-					let fragment;
-					if (el.childNodes.length) {
-						fragment = document.createDocumentFragment();
-						fragment.append(...el.childNodes);
-					}
-
-					// Reparent NodeGroup
-					// TODO: Move this to NodeGroup?
-					let parent = ngm.rootNg.getParentNode();
-
-					// Add rendered elements.
-					if (parent instanceof DocumentFragment)
-						el.append(parent);
-					else if (parent)
-						el.append(...parent.childNodes)
-
-					// Apply slot children
-					if (fragment) {
-						for (let slot of el.querySelectorAll('slot[name]')) {
-							let name = slot.getAttribute('name')
-							if (name)
-								slot.append(...fragment.querySelectorAll(`[slot='${name}']`))
-						}
-						let unamedSlot = el.querySelector('slot:not([name])')
-						if (unamedSlot)
-							unamedSlot.append(fragment)
-					}
-
-					// Copy attributes from pseudoroot to root.
-					// this.rootNg was rendered as childrenOnly=true
-					// Apply attributes from a root element to the real root element.
-					if (ng.pseudoRoot && ng.pseudoRoot !== el) {
-						/*#IFDEV*/
-						assert(el)/*#ENDIF*/
-
-						// Add/set new attributes
-						for (let attrib of ng.pseudoRoot.attributes)
-							if (!el.hasAttribute(attrib.name))
-								el.setAttribute(attrib.name, attrib.value);
-					}
-				}
-			}
-
-
-			//ng.reset(); // Mark all NodeGroups as available, for next render.
 		}
 
 		return el;

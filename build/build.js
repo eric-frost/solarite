@@ -34,7 +34,7 @@ const rollupOptions = {
 const terserOptions = {
 	ecma: 8, // Decreases size.
 	format: {
-		preamble: `// Version ${timestamp()}\r\n// License: MIT\r\n// https://github.com/vorticode/Solarite`,
+		preamble: `// Version ${timestamp()}\r\n// License: MIT\r\n// http://vorticode.github.io/solarite`,
 	},
 	compress: { // https://github.com/terser/terser#compress-options
 		passes: 5,

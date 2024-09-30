@@ -9,7 +9,7 @@ import delve from "../util/delve.js";
 import Globals from "./Globals.js";
 
 
-/** @typedef {boolean|string|number|function|Object|Array|Date|Node} Expr */
+/** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
 /**
  * A group of Nodes instantiated from a Shell, with Expr's filled in.
@@ -23,6 +23,9 @@ import Globals from "./Globals.js";
 export default class NodeGroup {
 
 	get pseudoRoot() {
+		throw new Error('deprecated');
+	}
+	get manager() {
 		throw new Error('deprecated');
 	}
 
@@ -48,11 +51,6 @@ export default class NodeGroup {
 
 	/** @type {string} Key that only matches the template. */
 	closeKey;
-
-	/**
-	 * @deprecated
-	 * @type {boolean} Used by NodeGroupManager. */
-	inUse;
 
 	/**
 	 * @internal
@@ -98,7 +96,7 @@ export default class NodeGroup {
 		this.parentPath = parentPath;
 		this.rootNg = parentPath?.parentNg?.rootNg || this;
 
-		assert(this.rootNg);
+		/*#IFDEV*/assert(this.rootNg);/*#ENDIF*/
 
 		/** @type {Template} */
 		this.template = template;
@@ -110,43 +108,10 @@ export default class NodeGroup {
 		let shell = Shell.get(template.html);
 		let fragment = shell.fragment.cloneNode(true);
 
-		// Figure out value of replaceMode option if it isn't set,
-		// Assume replaceMode if there's only one child element and its tagname matches the root el.
-		/*
-		let replaceMode = fragment.children.length===1 &&
-				fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '') === el?.tagName
-		if (replaceMode) {
-			let pseudoRoot = fragment.firstElementChild;
-			// if (!manager.rootEl)
-			// 	manager.rootEl = this.pseudoRoot;
-		}
-		let childNodes = replaceMode
-			? fragment.firstElementChild.childNodes
-			: fragment.childNodes;
-
-		this.startNode = childNodes[0];
-		this.endNode = childNodes[childNodes.length - 1];
-		*/
-
-
-
 		let childNodes = fragment.childNodes;
 		this.startNode = childNodes[0];
 		this.endNode = childNodes[childNodes.length - 1];
 
-		// Update web component placeholders.
-		// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-		// Is this list needed at all?
-		//for (let component of shell.components)
-		//	this.components.push(resolveNodePath(this.startNode.parentNode, getNodePath(component)))
-
-
-		/*#IFDEV*/
-		// this.verify()
-		// assert(this.paths.length <= template.exprs.length);
-		// if (template.exprs.length)
-		// 	assert(this.paths.length);
-		/*#ENDIF*/
 		return [fragment, shell];
 	}
 
@@ -159,6 +124,7 @@ export default class NodeGroup {
 		paths = paths || this.paths;
 		
 		/*#IFDEV*/this.verify();/*#ENDIF*/
+
 		// Update exprs at paths.
 		let exprIndex = exprs.length-1, expr, lastNode;
 
@@ -258,9 +224,6 @@ export default class NodeGroup {
 		/*#IFDEV*/assert(!oldNodeGroups.includes(null))/*#ENDIF*/
 		let secondPass = []; // indices
 
-		// First Pass
-		//for (let ng of path.nodeGroups) // TODO: Is this necessary?
-		//	ng.parentPath = null;
 		path.nodeGroups = []; // TODO: Is this used?
 		path.apply(expr, newNodes, secondPass);
 
@@ -274,7 +237,7 @@ export default class NodeGroup {
 		let flatten = false;
 		if (secondPass.length) {
 			for (let [nodesIndex, ngIndex] of secondPass) {
-				let ng = this.manager.getNodeGroup(newNodes[nodesIndex], false, false);
+				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
 				
 				ng.parentPath = path;
 				let ngNodes = ng.getNodes();
@@ -319,6 +282,10 @@ export default class NodeGroup {
 
 			this.saveOrphans(oldNodeGroups, oldNodes);
 		}
+
+		// Must happen after second pass.
+		path.freeNodeGroups();
+
 		/*#IFDEV*/path.verify();/*#ENDIF*/
 	}
 	
@@ -431,13 +398,13 @@ export default class NodeGroup {
 		if (!isPreHtmlElement)
 			newEl.setAttribute('is', el.getAttribute('is').toLowerCase())
 		el.replaceWith(newEl);
-		
+
 		// Set children / slot children
 		// TODO: Match named slots.
 		// TODO: This only appends to slot if render() is called in the constructor.
 		//let slot = newEl.querySelector('slot') || newEl;
 		//slot.append(...el.childNodes);
-		
+
 		// Copy over event attributes.
 		for (let propName in props) {
 			let val = props[propName];
@@ -458,7 +425,7 @@ export default class NodeGroup {
 		// If an id pointed at the placeholder, update it to point to the new element.
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
 		if (id)
-			delve(this.manager.rootEl, id.split(/\./g), newEl);
+			delve(this.getRootNode(), id.split(/\./g), newEl);
 		
 		
 		// Update paths to use replaced element.
@@ -532,21 +499,6 @@ export default class NodeGroup {
 	 * @returns {HTMLElement|DocumentFragment} */
 	getRootNode() {
 		return this.rootNg.root;
-
-		// old:
-		// Find the most ancestral NdoeGroup
-		let ng = this;
-		while (ng.parentPath?.parentNg)
-			ng = ng.parentPath?.parentNg;
-
-		// Return single child of the nodes, or a DocumentFragment containing several.
-		let result = this.startNode.parentNode;
-		if (result instanceof DocumentFragment) {
-			let children = Util.trimEmptyNodes(result.childNodes);
-			if (children.length === 1)
-				return children[0];
-		}
-		return result;
 	}
 
 	/**
@@ -744,7 +696,6 @@ export class RootNodeGroup extends NodeGroup {
 			this.root = el;
 
 			// If el should replace the root node of the fragment.
-			// TODO: Check for text node children.
 			if (isReplaceEl(fragment, el)) {
 				el.append(...fragment.children[0].childNodes);
 
@@ -759,8 +710,6 @@ export class RootNodeGroup extends NodeGroup {
 			else
 				el.append(...fragment.childNodes);
 
-
-
 			// Setup slots
 			if (slotFragment) {
 				for (let slot of el.querySelectorAll('slot[name]')) {
@@ -774,10 +723,6 @@ export class RootNodeGroup extends NodeGroup {
 				if (unamedSlot)
 					unamedSlot.append(slotFragment)
 			}
-
-
-
-
 
 			root = el;
 			this.startNode = el;
@@ -813,6 +758,11 @@ function getSingleEl(fragment) {
 	return nonempty[0];
 }
 
+/**
+ * Does the fragment have one child that's an element matching the tagname of el?
+ * @param fragment {DocumentFragment}
+ * @param el {HTMLElement}
+ * @returns {boolean} */
 function isReplaceEl(fragment, el) {
 	return el.tagName.includes('-')
 		&& fragment.children.length===1

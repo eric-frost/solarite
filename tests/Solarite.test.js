@@ -7,7 +7,7 @@ import {camelToDashes, htmlContext} from "../src/solarite/Util.js";
 
 import {Solarite, r, getArg} from '../src/solarite/Solarite.js';
 //import {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
-import {watch} from "../src/solarite/watch2.js";
+//import {watch} from "../src/solarite/watch2.js";
 import watch3 from "../src/solarite/watch3.js";
 //import NodeGroupManager from "../src/solarite/NodeGroupManager.js";
 import NodeGroup from "../src/solarite/NodeGroup.js";
@@ -770,7 +770,6 @@ Testimony.test('Solarite.loop.strings', () => {
 	assert.eq(getHtml(a), '<r-200>Apple</r-200>');
 });
 
-
 Testimony.test('Solarite.loop.paragraphs', () => {
 	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
@@ -791,6 +790,7 @@ Testimony.test('Solarite.loop.paragraphs', () => {
 	assert.eq(getHtml(a), '<r-210><p>Apple</p><p>Banana</p><p>Cherry</p></r-210>');
 
 	a.fruits.pop();
+	window.debug = true;
 	a.render();
 	assert.eq(getHtml(a), '<r-210><p>Apple</p><p>Banana</p></r-210>');
 
@@ -808,7 +808,6 @@ Testimony.test('Solarite.loop.paragraphs', () => {
 
 	a.remove();
 });
-
 
 Testimony.test('Solarite.loop.paragraphsBefore', `Same as above, but with another element afterward.`, () => {
 	class A extends Solarite {
@@ -939,16 +938,13 @@ Testimony.test('Solarite.loop.pathCache', () => {
 	}
 
 	let a = new R216();
-	//document.body.append(a);
 	a.render();
-	console.log(getHtml(a));
 	assert.eq(getHtml(a), `<r-216><p>Item</p><p>Item</p></r-216>`);
 
 	a.fruits.shift();
+	window.debug = true;
 	a.render();
 	assert.eq(getHtml(a), `<r-216><p>Item</p></r-216>`);
-
-	a.remove();
 });
 
 Testimony.test('Solarite.loop.nested', () => {
@@ -998,6 +994,7 @@ Testimony.test('Solarite.loop.nested', () => {
 
 	a.pets.reverse();
 	a.fruits.reverse();
+	window.debug = true;
 	a.render();
 	assert.eq(getHtml(a), `<r-220><p>Bird eats Apricot</p><p>Bird eats Banana</p><p>Cat eats Apricot</p><p>Cat eats Banana</p></r-220>`);
 
@@ -1072,7 +1069,6 @@ Testimony.test('Solarite.loop.nested2', () => {
 
 	a.remove();
 });
-
 
 Testimony.test('Solarite.loop.nested3', `Move items from one sublist to another.`, () => {
 	
@@ -2120,7 +2116,6 @@ Testimony.test('Solarite.r.standaloneChild', () => {
 			item: item,
 			render(attribs = null) {
 				// If attributes passed to constructor have changed.
-				console.log(attribs)
 				if (attribs)
 					this.item = attribs.item;
 				r(this)`
@@ -2369,7 +2364,6 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 		}
 
 		render(props={}) {
-			console.log(props)
 			if (props.user)
 				this.user = props.user;
 			r(this)`<div>Name:</div><div>${this.user.name}</div><div>Email:</div><div>${this.user.email}</div>`;
@@ -3576,6 +3570,47 @@ Testimony.test('Solarite.watch3.nodes', () => {
  * | Full            |
  * └─────────────────╯*/
 
+Testimony.test('Solarite.full.todoList', () => {
+	class ShoppingList extends HTMLElement {
+		constructor(items=[]) {
+			super();
+			this.items = items;
+			this.render();
+		}
+
+		addItem() {
+			this.items.push({name: '', qty: 0});
+			this.render();
+		}
+
+		removeItem(item) {
+			this.items.splice(this.items.indexOf(item), 1);
+			this.render();
+		}
+
+		render() {
+			r(this)`
+			<shopping-list>
+				<style>:host input { width: 80px }</style>
+					
+				<button onclick=${this.addItem}>Add Item</button>
+	
+				${this.items.map(item => r`
+					<div>
+						<input placeholder="Item" value=${item.name} 
+							oninput=${e => { // two-way binding
+								item.name = e.target.value;
+								this.render()
+							}}>
+					</div>		   
+				`)}
+			</shopping-list>`
+		}
+	}
+
+	customElements.define('shopping-list', ShoppingList);
+	document.body.append(new ShoppingList()); // add <shopping-list> element
+});
 
 Testimony.test('Solarite.full.treeItems', () => {
 

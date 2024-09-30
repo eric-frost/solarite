@@ -5,6 +5,7 @@ import NodeGroup from "./NodeGroup.js";
 import Util, {div, findArrayDiff, setIndent} from "./Util.js";
 import Template from "./Template.js";
 import Globals from "./Globals.js";
+import MultiValueMap from "./MultiValueMap.js";
 
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup.
@@ -61,8 +62,6 @@ export default class ExprPath {
 	nodeGroups = [];
 
 
-
-
 	// Caches to make things faster
 
 	/**
@@ -79,16 +78,10 @@ export default class ExprPath {
 	 * @type {int[]} Path to the node marker. */
 	nodeMarkerPath;
 
-	// TODO: Keep this cached?
-	expr;
-
 	// for debugging
 	//#IFDEV
 	parentIndex;
 	//#ENDIF
-
-	// New as of Sep 2024.
-	lastNodeGroup;
 
 	/**
 	 * @param nodeBefore {Node}
@@ -138,9 +131,8 @@ export default class ExprPath {
 
 	/**
 	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
-	 * @type {Object<key:string, NodeGroup>}
-	 */
-	nodeGroupsFree = {};
+	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
+	nodeGroupsFree = new MultiValueMap();
 
 	/**
 	 * TODO: Use an array of WeakRef so the gc can collect them?
@@ -162,26 +154,31 @@ export default class ExprPath {
 		let closeKey = template.getCloseKey();
 		let result;
 
-		if (exact)
-			result = this.nodeGroupsFree[exactKey];
-		else
-			result = this.nodeGroupsFree[closeKey];
-
-		// Remove both the exactKey and closeKey
-		if (result) {
-			/*#IFDEV*/assert(this.nodeGroupsFree[exactKey]);/*#ENDIF*/
-			delete this.nodeGroupsFree[exactKey];
-			///*#IFDEV*/assert(this.nodeGroupsFree[closeKey]);/*#ENDIF*/
-			delete this.nodeGroupsFree[closeKey];
+		if (exact) {
+			result = this.nodeGroupsFree.delete(exactKey);
+			if (result)
+				this.nodeGroupsFree.delete(closeKey, result);
+			else
+				return null;
 		}
 		else {
-			result = new NodeGroup(template, this, exactKey, closeKey);
+			result = this.nodeGroupsFree.delete(closeKey)
+			if (result) {
+				/*#IFDEV*/assert(result.exactKey);/*#ENDIF*/
+				this.nodeGroupsFree.delete(result.exactKey, result);
+
+				// Update this close match with the new expression values.
+				result.applyExprs(template.exprs);
+				result.exactKey = exactKey; // TODO: Should this be set elsewhere?
+			}
 		}
+
+		if (!result)
+			result = new NodeGroup(template, this, exactKey, closeKey);
 
 		this.nodeGroupsInUse.push(result);
 		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
 		return result;
-
 	}
 
 	/**
@@ -189,32 +186,28 @@ export default class ExprPath {
 	freeNodeGroups() {
 		let ngf = this.nodeGroupsFree;
 		for (let ng of this.nodeGroupsInUse) {
-			ngf[ng.exactKey] = ng;
-			ngf[ng.closeKey] = ng; // TODO: This can overwrite!
+			ngf.add(ng.exactKey, ng);
+			ngf.add(ng.closeKey, ng);
 		}
 		this.nodeGroupsInUse = [];
 	}
+
+
+
+
+
 
 	/**
 	 * TODO: Use another function to flatten the expr's so we don't have to use recusion.
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]}
-	 * @param secondPass {Array} Locations within newNodes to evaluate later.  */
-	apply(expr, newNodes, secondPass, recursing) {
-		//this.nodeGroups = [];
+	 * @param secondPass {Array} Locations within newNodes to evaluate later.
+	 * @param recursing {boolean} Used internally only. */
+	apply(expr, newNodes, secondPass, recursing=false) {
 
 		if (expr instanceof Template) {
 
-			//let exactKey = getObjectHash(expr);
-
-			// if (this.lastNodeGroup?.exactKey === exactKey) {
-			// 	let ng = this.parentNg.manager.findAndDeleteExact(exactKey);
-			// 	this.parentNg.manager.findAndDeleteClose(ng.closeKey, ng.exactKey);
-			// 	return;
-			// }
 			let ng = this.getNodeGroup(expr, true); // this.parentNg.manager.getNodeGroup(expr, true, null, exactKey);
-			this.lastNodeGroup = ng;
-
 			if (ng) {
 				//#IFDEV
 				// Make sure the nodeCache of the ExprPath we took it from is sitll valid.
@@ -289,8 +282,9 @@ export default class ExprPath {
 
 		// If not in one of the recusive calls
 		// Mark all nodes as free, for the next render() call.
-		if (!recursing)
-			this.freeNodeGroups();
+		// TODO: This is commented out b/c this needs to happen after the second pass.
+		//if (!recursing)
+		//	this.freeNodeGroups();
 	}
 
 	applyMultipleAttribs(node, expr) {
@@ -465,8 +459,9 @@ export default class ExprPath {
 	/**
 	 *
 	 * @param newRoot {HTMLElement}
+	 * @param pathOffset {int}
 	 * @return {ExprPath} */
-	clone(newRoot, pathOffset) {
+	clone(newRoot, pathOffset=0) {
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 
 		// Resolve node paths.
@@ -476,7 +471,6 @@ export default class ExprPath {
 		for (let i=path.length-1; i>0; i--) // Resolve the path.
 			root = root.childNodes[path[i]];
 		let childNodes = root.childNodes;
-		//assert(childNodes[path[0]]);
 
 		nodeMarker = path.length ? childNodes[path[0]] : newRoot;
 		if (this.nodeBefore)
@@ -488,8 +482,6 @@ export default class ExprPath {
 		result.nodeMarker.exprPath = result;
 		if (result.nodeBefore)
 			result.nodeBefore.prevExprPath = result;
-
-
 		result.verify();
 		result.parentIndex = this.parentIndex; // used for debugging?
 		//#ENDIF
@@ -528,8 +520,9 @@ export default class ExprPath {
 					}
 			}
 		}
-		
-		clearChildNodeCache(this);
+
+		// Commented out on Sep 30, 2024 b/c it was making the benchmark never finish when adding 10k rows.
+		//clearChildNodeCache(this);
 	}
 
 

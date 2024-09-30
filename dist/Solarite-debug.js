@@ -662,6 +662,76 @@ function flattenAndIndent(inputArray, indent = "") {
 }
 //#ENDIF
 
+class MultiValueMap {
+
+	/** @type {Object<string, Set>} */
+	data = {};
+
+	// Set a new value for a key
+	add(key, value) {
+		let data = this.data;
+		let set = data[key];
+		if (!set) {
+			set = new Set();
+			data[key] = set;
+		}
+		set.add(value);
+	}
+
+	// Get all values for a key
+	getAll(key) {
+		return this.data[key] || [];
+	}
+
+	/**
+	 * Remove one value from a key, and return it.
+	 * @param key {string}
+	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
+	 * @returns {*} */
+	delete(key, val=undefined) {
+		// if (key === '["Html2",[[["Html3",["F1","A"]],["Html3",["F1","B"]]]]]')
+		// 	debugger;
+			
+		let data = this.data;
+		// The partialUpdate benchmark shows having this check first makes the function slightly faster.
+		// if (!data.hasOwnProperty(key))
+		// 	return undefined;
+
+		// Delete a specific value.
+		let result;
+		let set = data[key];
+		if (!set) // slower than pre-check.
+		 	return undefined;
+
+		if (val !== undefined) {
+			set.delete(val);
+			result = val;
+		}
+
+		// Delete any value.
+		else {
+			result = set.values().next().value;
+			// [result] = set; // Does the same as above. is about the same speed?
+			set.delete(result);
+		}
+
+		// TODO: Will this make it slower?
+		if (set.size === 0)
+			delete data[key];
+		
+		return result;
+	}
+
+	hasValue(val) {
+		let data = this.data;
+		let names = [];
+		for (let name in data)
+			if (data[name].has(val)) // TODO: iterate twice to pre-size array?
+				names.push(name);
+		return names;
+	}
+}
+
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup.
  * Path is only valid until the expressions before it are evaluated.
@@ -717,8 +787,6 @@ class ExprPath {
 	nodeGroups = [];
 
 
-
-
 	// Caches to make things faster
 
 	/**
@@ -735,16 +803,10 @@ class ExprPath {
 	 * @type {int[]} Path to the node marker. */
 	nodeMarkerPath;
 
-	// TODO: Keep this cached?
-	expr;
-
 	// for debugging
 	//#IFDEV
 	parentIndex;
 	//#ENDIF
-
-	// New as of Sep 2024.
-	lastNodeGroup;
 
 	/**
 	 * @param nodeBefore {Node}
@@ -794,9 +856,8 @@ class ExprPath {
 
 	/**
 	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
-	 * @type {Object<key:string, NodeGroup>}
-	 */
-	nodeGroupsFree = {};
+	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
+	nodeGroupsFree = new MultiValueMap();
 
 	/**
 	 * TODO: Use an array of WeakRef so the gc can collect them?
@@ -814,61 +875,64 @@ class ExprPath {
 	 * @param exact {boolean}
 	 * @return {NodeGroup} */
 	getNodeGroup(template, exact=true) {
-
 		let exactKey = template.getExactKey();
 		let closeKey = template.getCloseKey();
 		let result;
 
-		if (exact)
-			result = this.nodeGroupsFree[exactKey];
-		else
-			result = this.nodeGroupsFree[closeKey];
-
-		// Remove both the exactKey and closeKey
-		if (result) {
-			/*#IFDEV*/assert(this.nodeGroupsFree[exactKey]);/*#ENDIF*/
-			delete this.nodeGroupsFree[exactKey];
-			/*#IFDEV*/assert(this.nodeGroupsFree[closeKey]);/*#ENDIF*/
-			delete this.nodeGroupsFree[closeKey];
+		if (exact) {
+			result = this.nodeGroupsFree.delete(exactKey);
+			if (result)
+				this.nodeGroupsFree.delete(closeKey, result);
+			else
+				return null;
 		}
-		else
-			result = new NodeGroup(template, exactKey, closeKey);
+		else {
+			result = this.nodeGroupsFree.delete(closeKey);
+			if (result) {
+				/*#IFDEV*/assert(result.exactKey);/*#ENDIF*/
+				this.nodeGroupsFree.delete(result.exactKey, result);
+
+				// Update this close match with the new expression values.
+				result.applyExprs(template.exprs);
+				result.exactKey = exactKey; // TODO: Should this be set elsewhere?
+			}
+		}
+
+		if (!result)
+			result = new NodeGroup(template, this, exactKey, closeKey);
 
 		this.nodeGroupsInUse.push(result);
+		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
 		return result;
-
 	}
 
 	/**
 	 * Move everything from this.nodeGroupsInUse to this.nodeGroupsFree. */
 	freeNodeGroups() {
+		let ngf = this.nodeGroupsFree;
 		for (let ng of this.nodeGroupsInUse) {
-			this.nodeGroupsFree[ng.exactKey] = ng;
-			this.nodeGroupsFree[ng.closeKey] = ng;
+			ngf.add(ng.exactKey, ng);
+			ngf.add(ng.closeKey, ng);
 		}
 		this.nodeGroupsInUse = [];
 	}
+
+
+
+
+
 
 	/**
 	 * TODO: Use another function to flatten the expr's so we don't have to use recusion.
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]}
-	 * @param secondPass {Array} Locations within newNodes to evaluate later.  */
-	apply(expr, newNodes, secondPass) {
-		//this.nodeGroups = [];
+	 * @param secondPass {Array} Locations within newNodes to evaluate later.
+	 * @param recursing {boolean} Used internally only. */
+	apply(expr, newNodes, secondPass, recursing=false) {
 
 		if (expr instanceof Template) {
 
-			//let exactKey = getObjectHash(expr);
-
-			// if (this.lastNodeGroup?.exactKey === exactKey) {
-			// 	let ng = this.parentNg.manager.findAndDeleteExact(exactKey);
-			// 	this.parentNg.manager.findAndDeleteClose(ng.closeKey, ng.exactKey);
-			// 	return;
-			// }
 			let ng = this.getNodeGroup(expr, true); // this.parentNg.manager.getNodeGroup(expr, true, null, exactKey);
-			this.lastNodeGroup = ng;
-
 			if (ng) {
 				//#IFDEV
 				// Make sure the nodeCache of the ExprPath we took it from is sitll valid.
@@ -903,14 +967,14 @@ class ExprPath {
 
 		else if (Array.isArray(expr))
 			for (let subExpr of expr)
-				this.apply(subExpr, newNodes, secondPass);
+				this.apply(subExpr, newNodes, secondPass, true);
 
 		else if (typeof expr === 'function') {
 			Globals.currentExprPath = [this, expr]; // Used by watch3()
 			let result = expr();
 			Globals.currentExprPath = null;
 
-			this.apply(result, newNodes, secondPass);
+			this.apply(result, newNodes, secondPass, true);
 		}
 
 		// Text
@@ -943,8 +1007,9 @@ class ExprPath {
 
 		// If not in one of the recusive calls
 		// Mark all nodes as free, for the next render() call.
-		if (!secondPass)
-			this.freeNodeGroups();
+		// TODO: This is commented out b/c this needs to happen after the second pass.
+		//if (!recursing)
+		//	this.freeNodeGroups();
 	}
 
 	applyMultipleAttribs(node, expr) {
@@ -1119,20 +1184,22 @@ class ExprPath {
 	/**
 	 *
 	 * @param newRoot {HTMLElement}
+	 * @param pathOffset {int}
 	 * @return {ExprPath} */
-	clone(newRoot) {
+	clone(newRoot, pathOffset=0) {
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 
-        // Resolve node paths.
+		// Resolve node paths.
 		let nodeMarker, nodeBefore;
-        let root = newRoot;
-        let path = this.nodeMarkerPath;
-        for (let i=path.length-1; i>0; i--)
-            root = root.childNodes[path[i]];
+		let root = newRoot;
+		let path = pathOffset ? this.nodeMarkerPath.slice(0, -pathOffset) : this.nodeMarkerPath;
+		for (let i=path.length-1; i>0; i--) // Resolve the path.
+			root = root.childNodes[path[i]];
 		let childNodes = root.childNodes;
-        nodeMarker = childNodes[path[0]];
-        if (this.nodeBefore)
-            nodeBefore = childNodes[this.nodeBeforeIndex];
+
+		nodeMarker = path.length ? childNodes[path[0]] : newRoot;
+		if (this.nodeBefore)
+			nodeBefore = childNodes[this.nodeBeforeIndex];
 
 		let result = new ExprPath(nodeBefore, nodeMarker, this.type, this.attrName, this.attrValue);
 
@@ -1140,8 +1207,6 @@ class ExprPath {
 		result.nodeMarker.exprPath = result;
 		if (result.nodeBefore)
 			result.nodeBefore.prevExprPath = result;
-
-
 		result.verify();
 		result.parentIndex = this.parentIndex; // used for debugging?
 		//#ENDIF
@@ -1166,22 +1231,9 @@ class ExprPath {
 			// If stuck in an infinite loop here, the problem is likely due to Template hash colisions.
 			// Which cause one path to be the descendant of itself, creating a cycle.
 		}
-		
-		function clearChildNodeCache(path) {
-			
-			// Clear cache of child ExprPaths that have the same parentNode
-			for (let ng of path.nodeGroups) {
-				if (ng) // Can be null from apply()'s push(null) call.
-					for (let path2 of ng.paths) {
-						if (path2.type === PathType.Content && path2.parentNode === parentNode) {
-							path2.nodesCache = null;
-							clearChildNodeCache(path2);
-						}
-					}
-			}
-		}
-		
-		clearChildNodeCache(this);
+
+		// Commented out on Sep 30, 2024 b/c it was making the benchmark never finish when adding 10k rows.
+		//clearChildNodeCache(this);
 	}
 
 
@@ -1249,14 +1301,6 @@ class ExprPath {
 
 	getParentNode() { // Same as this.parentNode
 		return this.nodeMarker.parentNode
-	}
-	
-	removeNodeGroup(ng) {
-		let idx = this.nodeGroups.indexOf(ng);
-		/*#IFDEV*/assert(idx !== -1);/*#ENDIF*/
-		this.nodeGroups.splice(idx);
-		ng.parentPath = null;
-		this.clearNodesCache();
 	}
 
 	//#IFDEV
@@ -1404,6 +1448,7 @@ class Shell {
 	styles = [];
 
 	staticComponents = [];
+
 
 
 	/**
@@ -1614,16 +1659,19 @@ class Shell {
 			}
 		}
 
-
 		this.findEmbeds();
-
 
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 	} // end constructor
 
 	/**
 	 * We find the path to every embed here once in the Shell, instead of every time a NodeGroup is instantiated.
-	 * When a Nodegroup is created, it calls NodeGroup.activateEmbeds() that uses these paths. */
+	 * When a Nodegroup is created, it calls NodeGroup.activateEmbeds() that uses these paths.
+	 * Populates:
+	 * this.scripts
+	 * this.styles
+	 * this.ids
+	 * this.staticComponents */
 	findEmbeds() {
 		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => getNodePath(el));
 		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => getNodePath(el));
@@ -1635,7 +1683,7 @@ class Shell {
 		for (let el of idEls) {
 			let id = el.getAttribute('data-id') || el.getAttribute('id');
 			if (div.hasOwnProperty(id))
-				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement property.`)
+				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement id property.`)
 		}
 
 
@@ -1914,7 +1962,7 @@ const udomdiff = (parentNode, a, b, before) => {
 	return b;
 };
 
-/** @typedef {boolean|string|number|function|Object|Array|Date|Node} Expr */
+/** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
 /**
  * A group of Nodes instantiated from a Shell, with Expr's filled in.
@@ -1927,18 +1975,24 @@ const udomdiff = (parentNode, a, b, before) => {
  * */
 class NodeGroup {
 
+	get pseudoRoot() {
+		throw new Error('deprecated');
+	}
+	get manager() {
+		throw new Error('deprecated');
+	}
+
 	/**
-	 * @deprecated
-	 * @Type {NodeGroupManager} */
-	manager;
+	 * @Type {RootNodeGroup} */
+	rootNg;
 
 	/** @type {ExprPath} */
 	parentPath;
 
-	/** @type {Node} First node of NodeGroup. Should never be null. */
+	/** @type {Node|HTMLElement} First node of NodeGroup. Should never be null. */
 	startNode;
 
-	/** @type {Node} A node that never changes that this NodeGroup should always insert its nodes before.
+	/** @type {Node|HTMLElement} A node that never changes that this NodeGroup should always insert its nodes before.
 	 * An empty text node will be created to insertBefore if there's no other NodeMarker and this isn't at the last position.*/
 	endNode;
 
@@ -1952,11 +2006,6 @@ class NodeGroup {
 	closeKey;
 
 	/**
-	 * @deprecated
-	 * @type {boolean} Used by NodeGroupManager. */
-	inUse;
-
-	/**
 	 * @internal
 	 * @type {Node[]} Cached result of getNodes() used only for improving performance.*/
 	nodesCache;
@@ -1965,13 +2014,6 @@ class NodeGroup {
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
 
-	/**
-	 * @deprecated
-	 * If rendering a Template with replaceMode=true, pseudoRoot points to the element where the attributes are rendered.
-	 * But pseudoRoot is outside of this.getNodes().
-	 * NodeGroupManager.render() copies the attributes from pseudoRoot to the actual web component root element.
-	 * @type {?HTMLElement} */
-	pseudoRoot;
 
 	currentComponentProps = {};
 	
@@ -1979,79 +2021,51 @@ class NodeGroup {
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
+	 * @param el {HTMLElement}
+	 * @param parentPath {?ExprPath}
 	 * @param exactKey {string}
 	 * @param closeKey {string}
+	 * @param options
 	 * @returns {NodeGroup} */
-	constructor(template, exactKey, closeKey) {
+	constructor(template, parentPath, exactKey, closeKey, el=null, options=null) {
+		if (!(this instanceof RootNodeGroup)) {
+			let [fragment, shell] = this.init(template, parentPath, exactKey, closeKey, el, options);
+
+			this.updatePaths(fragment, shell.paths);
+
+			this.activateEmbeds(fragment, shell);
+
+			// Apply exprs
+			this.applyExprs(template.exprs);
+		}
+	}
+
+	init(template, parentPath, exactKey, closeKey, el=null, options=null) {
 		this.exactKey = exactKey || template.getExactKey();
 		this.closeKey = closeKey || template.getCloseKey();
+
+		if (options)
+			this.options = options;
+		this.parentPath = parentPath;
+		this.rootNg = parentPath?.parentNg?.rootNg || this;
+
+		/*#IFDEV*/assert(this.rootNg);/*#ENDIF*/
 
 		/** @type {Template} */
 		this.template = template;
 
-		/** @type {NodeGroupManager} */
-		//this.manager = manager;
-		
-		// new!
+		// new!  Is this needed?
 		template.nodeGroup = this;
 
 		// Get a cached version of the parsed and instantiated html, and ExprPaths.
 		let shell = Shell.get(template.html);
-
 		let fragment = shell.fragment.cloneNode(true);
 
-		// Figure out value of replaceMode option if it isn't set,
-		// Assume replaceMode if there's only one child element and its tagname matches the root el.
-		// replaceMode = typeof replaceMode === 'boolean'
-		// 	? template.replaceMode
-		// 	: fragment.children.length===1 &&
-		// 		fragment.firstElementChild?.tagName.replace(/-SOLARITE-PLACEHOLDER$/, '') === manager?.rootEl?.tagName
-		// if (replaceMode) {
-		// 	this.pseudoRoot = fragment.firstElementChild;
-		// 	// if (!manager.rootEl)
-		// 	// 	manager.rootEl = this.pseudoRoot;
-		// 	/*#IFDEV*/assert(this.pseudoRoot)/*#ENDIF*/
-		// }
-
-		// let childNodes = replaceMode
-		// 	? fragment.firstElementChild.childNodes
-		// 	: fragment.childNodes;
-
 		let childNodes = fragment.childNodes;
-
-
 		this.startNode = childNodes[0];
 		this.endNode = childNodes[childNodes.length - 1];
 
-
-		// Update paths
-		for (let oldPath of shell.paths) {
-			let path = oldPath.clone(fragment);
-			path.parentNg = this;
-			this.paths.push(path);
-		}
-		
-
-		// Update web component placeholders.
-		// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-		// Is this list needed at all?
-		//for (let component of shell.components)
-		//	this.components.push(resolveNodePath(this.startNode.parentNode, getNodePath(component)))
-
-		/*#IFDEV*/this.verify();/*#ENDIF*/
-
-		//this.activateEmbeds(fragment, shell);
-		
-		/*#IFDEV*/
-		assert(this.paths.length <= template.exprs.length);
-		if (template.exprs.length)
-			assert(this.paths.length);
-		/*#ENDIF*/
-
-		// Apply exprs
-		this.applyExprs(template.exprs);
-
-		/*#IFDEV*/this.verify();/*#ENDIF*/
+		return [fragment, shell];
 	}
 
 	/**
@@ -2063,6 +2077,7 @@ class NodeGroup {
 		paths = paths || this.paths;
 		
 		/*#IFDEV*/this.verify();/*#ENDIF*/
+
 		// Update exprs at paths.
 		let exprIndex = exprs.length-1, expr, lastNode;
 
@@ -2080,11 +2095,11 @@ class NodeGroup {
 			// Attributes
 			else {
 				let node = path.nodeMarker;
-				let el = (this.manager?.rootEl && node === this.pseudoRoot) ? this.manager.rootEl : node;
+				let el = node; //(this.manager?.rootEl && node === this.pseudoRoot) ? this.manager.rootEl : node;
 				/*#IFDEV*/assert(node);/*#ENDIF*/
 
 				// This is necessary both here and below.
-				if (lastNode && lastNode !== this.pseudoRoot && lastNode !== node && Object.keys(this.currentComponentProps).length) {
+				if (lastNode && lastNode !== this.rootNg.root && lastNode !== node && Object.keys(this.currentComponentProps).length) {
 					this.applyComponentExprs(lastNode, this.currentComponentProps);
 					this.currentComponentProps = {};
 				}
@@ -2094,7 +2109,7 @@ class NodeGroup {
 
 				// Capture attribute expressions to later send to the constructor of a web component.
 				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-				else if (path.nodeMarker !== this.pseudoRoot && path.type === PathType.Component)
+				else if (path.nodeMarker !== this.rootNg.root && path.type === PathType.Component)
 					this.currentComponentProps[path.attrName] = expr;
 				
 				else if (path.type === PathType.Comment) ;
@@ -2103,11 +2118,7 @@ class NodeGroup {
 					// Event attribute value
 					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
 
-						let root = this.manager?.rootEl;
-
-						// For standalone elements:
-						if (!root || root instanceof DocumentFragment)
-							root = this.getRootNode();
+						let root = this.getRootNode();
 
 						path.applyEventAttrib(el, expr, root);
 					}
@@ -2125,7 +2136,7 @@ class NodeGroup {
 
 
 		// Check again after we iterate through all paths to apply to a component.
-		if (lastNode && lastNode !== this.pseudoRoot && Object.keys(this.currentComponentProps).length) {
+		if (lastNode && lastNode !== this.rootNg.root && Object.keys(this.currentComponentProps).length) {
 			this.applyComponentExprs(lastNode, this.currentComponentProps);
 			this.currentComponentProps = {};
 		}
@@ -2164,9 +2175,6 @@ class NodeGroup {
 		/*#IFDEV*/assert(!oldNodeGroups.includes(null));/*#ENDIF*/
 		let secondPass = []; // indices
 
-		// First Pass
-		//for (let ng of path.nodeGroups) // TODO: Is this necessary?
-		//	ng.parentPath = null;
 		path.nodeGroups = []; // TODO: Is this used?
 		path.apply(expr, newNodes, secondPass);
 
@@ -2180,7 +2188,7 @@ class NodeGroup {
 		let flatten = false;
 		if (secondPass.length) {
 			for (let [nodesIndex, ngIndex] of secondPass) {
-				let ng = this.manager.getNodeGroup(newNodes[nodesIndex], false, false);
+				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
 				
 				ng.parentPath = path;
 				let ngNodes = ng.getNodes();
@@ -2225,6 +2233,10 @@ class NodeGroup {
 
 			this.saveOrphans(oldNodeGroups, oldNodes);
 		}
+
+		// Must happen after second pass.
+		path.freeNodeGroups();
+
 		/*#IFDEV*/path.verify();/*#ENDIF*/
 	}
 	
@@ -2337,13 +2349,13 @@ class NodeGroup {
 		if (!isPreHtmlElement)
 			newEl.setAttribute('is', el.getAttribute('is').toLowerCase());
 		el.replaceWith(newEl);
-		
+
 		// Set children / slot children
 		// TODO: Match named slots.
 		// TODO: This only appends to slot if render() is called in the constructor.
 		//let slot = newEl.querySelector('slot') || newEl;
 		//slot.append(...el.childNodes);
-		
+
 		// Copy over event attributes.
 		for (let propName in props) {
 			let val = props[propName];
@@ -2364,7 +2376,7 @@ class NodeGroup {
 		// If an id pointed at the placeholder, update it to point to the new element.
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
 		if (id)
-			delve(this.manager.rootEl, id.split(/\./g), newEl);
+			delve(this.getRootNode(), id.split(/\./g), newEl);
 		
 		
 		// Update paths to use replaced element.
@@ -2434,32 +2446,35 @@ class NodeGroup {
 	}
 
 	/**
-	 * Get the root element of the NodeGroup's most ancestral Nodegroup.
-	 * This function is poorly tested and may be unreliable.
-	 * @returns {Node|DocumentFragment}	 */
+	 * Get the root element of the NodeGroup's RootNodeGroup.
+	 * @returns {HTMLElement|DocumentFragment} */
 	getRootNode() {
-		// Find the most ancestral NdoeGroup
-		let ng = this;
-		while (ng.parentPath?.parentNg)
-			ng = ng.parentPath?.parentNg;
-
-		// Return single child of the nodes, or a DocumentFragment containing several.
-		let result = this.startNode.parentNode;
-		if (result instanceof DocumentFragment) {
-			let children = Util.trimEmptyNodes(result.childNodes);
-			if (children.length === 1)
-				return children[0];
-		}
-		return result;
+		return this.rootNg.root;
 	}
 
+	/**
+	 * @returns {RootNodeGroup} */
+	getRootNodeGroup() {
+		return this.rootNg;
+	}
+
+
+	updatePaths(fragment, paths, offset) {
+		// Update paths to point to the fragment.
+		for (let oldPath of paths) {
+
+			let path = oldPath.clone(fragment, offset);
+			path.parentNg = this;
+			this.paths.push(path);
+		}
+	}
 
 	updateStyles() {
 		if (this.styles)
 			for (let [style, oldText] of this.styles) {
 				let newText = style.textContent;
 				if (oldText !== newText)
-					Util.bindStyles(style, this.manager.rootEl);
+					Util.bindStyles(style, this.getRootNodeGroup().root);
 			}
 	}
 
@@ -2529,63 +2544,33 @@ class NodeGroup {
 		return true;
 	}
 	//#ENDIF
-}
 
-
-class RootNodeGroup extends NodeGroup {
 
 	/**
-	 *
-	 * @param template
-	 * @param el
-	 * @param options {?object}
-	 * \@param replaceMode {?boolean} If true, use the template to replace an existing element, instead of appending children to it.
-	 */
-	constructor(template, el, options) {
-		super(template);
-
-		this.options = options;
-
-		let fragment = this.startNode.parentNode;
-
-		// TODO: replace mode.
-		if (el) {
-
-			let isReplace = fragment.children.length===1 && fragment.children[0].tagName === el.tagName;
-			if (isReplace) {
-				el.append(...fragment.children[0].childNodes);
-
-				// TODO: Copy attributes
-			}
-			else
-				el.append(fragment);
-			this.startNode = el;
-			this.endNode = el;
-		}
-
-		let shell = Shell.get(template.html);
-		this.activateEmbeds(this.getRootNode(), shell);
-	}
-
-
-	activateEmbeds(root, shell) {
+	 * @param root {HTMLElement}
+	 * @param shell {Shell} */
+	activateEmbeds(root, shell, pathOffset=0) {
 
 		// static components.  These are WebComponents not created by an expression.
 		// Must happen before ids.
 		for (let path of shell.staticComponents) {
+			if (pathOffset)
+				path = path.slice(0, -pathOffset);
 			let el = resolveNodePath(root, path);
 
 			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
-			if (el.tagName !== this.pseudoRoot?.tagName)
+			if (root !== el/* && !isReplaceEl(root, el)*/) // TODO: is isReplaceEl necessary?
 				this.createNewComponent(el);
 		}
 
-		let rootEl = this.getRootNode();
+		let rootEl = this.rootNg.root;
 		if (rootEl) {
 
 			// ids
 			if (this.options?.ids !== false)
 				for (let path of shell.ids) {
+					if (pathOffset)
+						path = path.slice(0, -pathOffset);
 					let el = resolveNodePath(root, path);
 					let id = el.getAttribute('data-id') || el.getAttribute('id');
 					if (id) { // If something hasn't removed the id.
@@ -2604,6 +2589,8 @@ class RootNodeGroup extends NodeGroup {
 				if (shell.styles.length)
 					this.styles = new Map();
 				for (let path of shell.styles) {
+					if (pathOffset)
+						path = path.slice(0, -pathOffset);
 					let style = resolveNodePath(root, path);
 					Util.bindStyles(style, rootEl);
 					this.styles.set(style, style.textContent);
@@ -2613,6 +2600,8 @@ class RootNodeGroup extends NodeGroup {
 			// scripts
 			if (this.options?.scripts !== false) {
 				for (let path of shell.scripts) {
+					if (pathOffset)
+						path = path.slice(0, -pathOffset);
 					let script = resolveNodePath(root, path);
 					eval(script.textContent);
 				}
@@ -2621,7 +2610,115 @@ class RootNodeGroup extends NodeGroup {
 	}
 }
 
-//import NodeGroupManager from "./NodeGroupManager.js";
+
+class RootNodeGroup extends NodeGroup {
+
+	/**
+	 * Root node at the top of the hierarchy.
+	 * @type {HTMLElement} */
+	root;
+
+	/**
+	 *
+	 * @param template
+	 * @param el
+	 * @param options {?object}
+	 */
+	constructor(template, el, options) {
+		super(template, null, null, null, el, options);
+
+		this.options = options;
+
+		this.rootNg = this;
+		let [fragment, shell] = this.init(template, null, null, null, el, options);
+
+		// If adding NodeGroup to an element.
+		let offset = 0;
+		let root = fragment; // TODO: Rename so it's not confused with this.root.
+		if (el) {
+
+			// Save slot children
+			let slotFragment;
+			if (el.childNodes.length) {
+				slotFragment = document.createDocumentFragment();
+				slotFragment.append(...el.childNodes);
+			}
+
+			this.root = el;
+
+			// If el should replace the root node of the fragment.
+			if (isReplaceEl(fragment, el)) {
+				el.append(...fragment.children[0].childNodes);
+
+				// Copy attributes
+				for (let attrib of fragment.children[0].attributes)
+					if (!el.hasAttribute(attrib.name))
+						el.setAttribute(attrib.name, attrib.value);
+
+				// Go one level deeper into all of shell's paths.
+				offset = 1;
+			}
+			else
+				el.append(...fragment.childNodes);
+
+			// Setup slots
+			if (slotFragment) {
+				for (let slot of el.querySelectorAll('slot[name]')) {
+					let name = slot.getAttribute('name');
+					if (name) {
+						let slotChildren = slotFragment.querySelectorAll(`[slot='${name}']`);
+						slot.append(...slotChildren);
+					}
+				}
+				let unamedSlot = el.querySelector('slot:not([name])');
+				if (unamedSlot)
+					unamedSlot.append(slotFragment);
+			}
+
+			root = el;
+			this.startNode = el;
+			this.endNode = el;
+		}
+		else {
+			let singleEl = getSingleEl(fragment);
+			this.root = singleEl || fragment; // We return the whole fragment when calling r() with a collection of nodes.
+			if (singleEl) {
+				root = singleEl;
+				offset = 1;
+			}
+		}
+
+		this.updatePaths(root, shell.paths, offset);
+
+		this.activateEmbeds(root, shell, offset);
+
+		// Apply exprs
+		this.applyExprs(template.exprs);
+	}
+}
+
+function getSingleEl(fragment) {
+	let nonempty = [];
+	for (let n of fragment.childNodes) {
+		if (n.nodeType === 1 || n.nodeType === 3 && n.textContent.trim().length) {
+			if (nonempty.length)
+				return null;
+			nonempty.push(n);
+		}
+	}
+	return nonempty[0];
+}
+
+/**
+ * Does the fragment have one child that's an element matching the tagname of el?
+ * @param fragment {DocumentFragment}
+ * @param el {HTMLElement}
+ * @returns {boolean} */
+function isReplaceEl(fragment, el) {
+	return el.tagName.includes('-')
+		&& fragment.children.length===1
+		&& fragment.children[0].tagName.replace('-SOLARITE-PLACEHOLDER', '') === el.tagName;
+}
 
 /**
  * The html strings and evaluated expressions from an html tagged template.
@@ -2686,21 +2783,6 @@ class Template {
 		return this.hashedFields
 	}
 
-
-	/**
-	 * Get or create a NodeGroup associated with the given element.
-	 * @param el {HTMLElement}
-	 * @param options {object}
-	 * @return {NodeGroup} */
-	getRootNodeGroupForElement(el, options) {
-		let result = Globals.nodeGroups.get(el);
-		if (!result) {
-			result = new RootNodeGroup(this, el, options);
-			Globals.nodeGroups.set(el, result);
-		}
-		return result;
-	}
-
 	/**
 	 * Render the main template, which may indirectly call renderTemplate() to create children.
 	 * @param el {HTMLElement}
@@ -2716,6 +2798,7 @@ class Template {
 		if (standalone) {
 			ng = new RootNodeGroup(this, null, options);
 			el = ng.getRootNode();
+			Globals.nodeGroups.set(el, ng);
 			firstTime = true;
 		}
 		else {
