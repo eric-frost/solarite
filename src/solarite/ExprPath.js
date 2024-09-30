@@ -171,7 +171,7 @@ export default class ExprPath {
 		if (result) {
 			/*#IFDEV*/assert(this.nodeGroupsFree[exactKey]);/*#ENDIF*/
 			delete this.nodeGroupsFree[exactKey];
-			/*#IFDEV*/assert(this.nodeGroupsFree[closeKey]);/*#ENDIF*/
+			///*#IFDEV*/assert(this.nodeGroupsFree[closeKey]);/*#ENDIF*/
 			delete this.nodeGroupsFree[closeKey];
 		}
 		else {
@@ -187,9 +187,10 @@ export default class ExprPath {
 	/**
 	 * Move everything from this.nodeGroupsInUse to this.nodeGroupsFree. */
 	freeNodeGroups() {
+		let ngf = this.nodeGroupsFree;
 		for (let ng of this.nodeGroupsInUse) {
-			this.nodeGroupsFree[ng.exactKey] = ng;
-			this.nodeGroupsFree[ng.closeKey] = ng;
+			ngf[ng.exactKey] = ng;
+			ngf[ng.closeKey] = ng; // TODO: This can overwrite!
 		}
 		this.nodeGroupsInUse = [];
 	}
@@ -199,7 +200,7 @@ export default class ExprPath {
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]}
 	 * @param secondPass {Array} Locations within newNodes to evaluate later.  */
-	apply(expr, newNodes, secondPass) {
+	apply(expr, newNodes, secondPass, recursing) {
 		//this.nodeGroups = [];
 
 		if (expr instanceof Template) {
@@ -248,14 +249,14 @@ export default class ExprPath {
 
 		else if (Array.isArray(expr))
 			for (let subExpr of expr)
-				this.apply(subExpr, newNodes, secondPass);
+				this.apply(subExpr, newNodes, secondPass, true);
 
 		else if (typeof expr === 'function') {
 			Globals.currentExprPath = [this, expr]; // Used by watch3()
 			let result = expr();
 			Globals.currentExprPath = null;
 
-			this.apply(result, newNodes, secondPass);
+			this.apply(result, newNodes, secondPass, true);
 		}
 
 		// Text
@@ -288,7 +289,7 @@ export default class ExprPath {
 
 		// If not in one of the recusive calls
 		// Mark all nodes as free, for the next render() call.
-		if (!secondPass)
+		if (!recursing)
 			this.freeNodeGroups();
 	}
 

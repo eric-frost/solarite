@@ -16,7 +16,6 @@ import Shell from "../src/solarite/Shell.js";
 
 import Testimony, {assert} from './Testimony.js';
 
-
 // This function is used by the various tests.
 window.getHtml = (item, includeComments=false) => {
 	if (!item)
@@ -48,6 +47,11 @@ window.getHtml = (item, includeComments=false) => {
 }
 
 
+
+//<editor-fold desc="shell">
+/* ┌─────────────────╮
+ * | Shell           |
+ * └─────────────────╯*/
 Testimony.test('Solarite.Shell.empty', () => {
 	let shell = new Shell(['', ''])
 	assert.eq(getHtml(shell, true), '<!--ExprPath:0-->|<!--ExprPathEnd:0-->')
@@ -107,6 +111,14 @@ Testimony.test('Solarite.Shell.nodesAroundPathsNested', () => {
 
 
 
+//</editor-fold>
+
+
+
+//<editor-fold desc="nodegroup">
+/* ┌─────────────────╮
+ * | NodeGroup       |
+ * └─────────────────╯*/
 Testimony.test('Solarite.NodeGroup.empty', () => {
 	let ngm = new NodeGroupManager(document.body);
 
@@ -202,7 +214,14 @@ Testimony.test('Solarite.NodeGroup.arrayReverse', () => {
 	ng.applyExprs([list])
 	assert(getHtml(ng), '<div>ba</div')
 });
+//</editor-fold>
 
+
+
+//<editor-fold desc="util">
+/* ┌─────────────────╮
+ * | Util            |
+ * └─────────────────╯*/
 
 Testimony.test('Solarite.Util.htmlContext', () => {
 	assert.eq(htmlContext('<div class="test'), htmlContext.Attribute)
@@ -224,7 +243,14 @@ Testimony.test('Solarite.Util.camelToDashes', () => {
 	assert.eq(camelToDashes('UIForm'), 'ui-form');
 	assert.eq(camelToDashes('A100'), 'a-100');
 });
+//</editor-fold>
 
+
+
+//<editor-fold desc="basic">
+/* ┌─────────────────╮
+ * | Basic           |
+ * └─────────────────╯*/
 Testimony.test('Solarite.basic.empty', () => {
 	class A extends HTMLElement {
 		constructor() {
@@ -346,9 +372,14 @@ Testimony.test('Solarite.basic.createElement', () => {
 	a.render();
 	assert.eq(getHtml(a), `<r-35><div>Hello!</div></r-35>`);
 });
+//</editor-fold>
 
 
-// Expr
+
+//<editor-fold desc="expr">
+/* ┌─────────────────╮
+ * | Expr            |
+ * └─────────────────╯*/
 Testimony.test('Solarite.expr.staticString', () => {
 	class R40 extends HTMLElement {
 		render() {
@@ -696,10 +727,14 @@ Testimony.test('Solarite.expr.cyclicRef', () => {
 	a.render();
 	assert.eq(getHtml(a), '<r-100>The fruit is Cherry!</r-100>');
 });
+//</editor-fold>
 
 
 
-// Loop:
+//<editor-fold desc="loop">
+/* ┌─────────────────╮
+ * | Loop            |
+ * └─────────────────╯*/
 Testimony.test('Solarite.loop.strings', () => {
 	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
@@ -741,14 +776,12 @@ Testimony.test('Solarite.loop.paragraphs', () => {
 		fruits = ['Apple', 'Banana'];
 
 		render() {
-			//debugger;
 			r(this)`${this.fruits.map(fruit => r`<p>${fruit}</p>`)}`
 		}
 	}
 	customElements.define('r-210', A);
 	let a = new A();
 
-	//document.body.append(a);
 	a.render();
 
 	assert.eq(getHtml(a), '<r-210><p>Apple</p><p>Banana</p></r-210>');
@@ -777,7 +810,7 @@ Testimony.test('Solarite.loop.paragraphs', () => {
 });
 
 
-Testimony.test('Solarite.loop.paragraphsBefore', () => {
+Testimony.test('Solarite.loop.paragraphsBefore', `Same as above, but with another element afterward.`, () => {
 	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
 
@@ -810,6 +843,47 @@ Testimony.test('Solarite.loop.paragraphsBefore', () => {
 	a.fruits.push('Apple');
 	a.render();
 	assert.eq(getHtml(a), '<r-212><p>Apple</p><hr></r-212>');
+
+	a.remove();
+});
+
+Testimony.test('Solarite.loop.consistency', `Make sure elements are reused in a consistent way.`, () => {
+	class A extends Solarite {
+		fruits = ['Apple', 'Banana'];
+
+		render() {
+			r(this)`${this.fruits.map(fruit => r`<p>${fruit}</p>`)}`
+		}
+	}
+	customElements.define('a-213', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	assert.eq(getHtml(a), '<a-213><p>Apple</p><p>Banana</p></a-213>');
+
+	let apple = a.children[0];
+	let banana = a.children[1];
+	a.fruits.shift();
+	a.render();
+	assert.eq(getHtml(a), '<a-213><p>Banana</p></a-213>');
+	assert.eq(a.children[0], banana);
+
+	a.fruits.pop();
+	a.render();
+	assert.eq(getHtml(a), '<a-213></a-213>');
+
+	// We get back the same element.
+	a.fruits.push('Apple');
+	a.render();
+	assert.eq(getHtml(a), '<a-213><p>Apple</p></a-213>');
+	assert.eq(a.children[0], apple);
+
+
+	a.fruits.push('Banana');
+	a.render();
+	assert.eq(getHtml(a), '<a-213><p>Apple</p><p>Banana</p></a-213>');
+	assert.eq(a.children[0], apple);
+	assert.eq(a.children[1], banana);
 
 	a.remove();
 });
@@ -867,6 +941,7 @@ Testimony.test('Solarite.loop.pathCache', () => {
 	let a = new R216();
 	//document.body.append(a);
 	a.render();
+	console.log(getHtml(a));
 	assert.eq(getHtml(a), `<r-216><p>Item</p><p>Item</p></r-216>`);
 
 	a.fruits.shift();
@@ -1269,6 +1344,16 @@ Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 	a.remove();
 });
 
+//</editor-fold>
+
+
+
+
+//<editor-fold desc="embed">
+/* ┌─────────────────╮
+ * | Embed            |
+ * └─────────────────╯*/
+
 Testimony.test('Solarite.embed.styleStatic', () => {
 	let count = 0;
 
@@ -1469,6 +1554,16 @@ Testimony.test('Solarite.embed._scriptDynamic', () => {
 
 	delete window.scriptStaticCount;
 });
+
+//</editor-fold>
+
+
+
+
+//<editor-fold desc="attrib">
+/* ┌─────────────────╮
+ * | Attrib          |
+ * └─────────────────╯*/
 
 Testimony.test('Solarite.attrib.single', () => {
 
@@ -1735,39 +1830,7 @@ Testimony.test('Solarite.attrib.multiple', '', () => {
 	assert.eq(getHtml(a), `<r-474><button onclick="" class="primary">Hello</button></r-474>`);
 });
 
-Testimony.test('Solarite.comments', () => {
-	
-	class A480 extends Solarite {
-		render() {
-			this.html = r`
-				<!--a-->
-				<div></div>`
-		}
-	}
-	let a = new A480();
-	document.body.append(a);
-	assert.eq(getHtml(a), `<a-480><div></div></a-480>`);
-	a.remove();
-});
-
-Testimony.test('Solarite.comments2', () => {
-	
-	class A482 extends Solarite {
-		render() {
-			this.html = r`<div><!--${1} ${2}-->${3}</div>`
-		}
-	}
-	let a = new A482();
-	
-	a.render();
-	assert.eq(getHtml(a), `<a-482><div>3</div></a-482>`)
-	a.remove();
-});
-
-
-
-
-Testimony.test('Solarite.ids.one', () => {
+Testimony.test('Solarite.attrib.ids1', () => {
 	class R500 extends Solarite {
 		one;
 		render() {
@@ -1781,7 +1844,7 @@ Testimony.test('Solarite.ids.one', () => {
 	assert(a.one.tagName === 'DIV')
 });
 
-Testimony.test('Solarite.ids.two', () => {
+Testimony.test('Solarite.attrib.ids2', () => {
 	class R510 extends Solarite {
 		one;
 		render() {
@@ -1796,7 +1859,7 @@ Testimony.test('Solarite.ids.two', () => {
 	assert(a.two.tagName === 'P')
 });
 
-Testimony.test('Solarite.ids.delve', () => {
+Testimony.test('Solarite.attrib.idsDelve', () => {
 	class R520 extends Solarite {
 		one;
 		render() {
@@ -1810,9 +1873,52 @@ Testimony.test('Solarite.ids.delve', () => {
 	assert(a.one.tagName === 'DIV')
 	assert(a.path.to.p.tagName === 'P')
 });
+//</editor-fold>
 
 
 
+
+//<editor-fold desc="comments">
+/* ┌─────────────────╮
+ * | comments        |
+ * └─────────────────╯*/
+Testimony.test('Solarite.comments.one', () => {
+	
+	class A480 extends Solarite {
+		render() {
+			this.html = r`
+				<!--a-->
+				<div></div>`
+		}
+	}
+	let a = new A480();
+	document.body.append(a);
+	assert.eq(getHtml(a), `<a-480><div></div></a-480>`);
+	a.remove();
+});
+
+Testimony.test('Solarite.comments.two', () => {
+	
+	class A482 extends Solarite {
+		render() {
+			this.html = r`<div><!--${1} ${2}-->${3}</div>`
+		}
+	}
+	let a = new A482();
+	
+	a.render();
+	assert.eq(getHtml(a), `<a-482><div>3</div></a-482>`)
+	a.remove();
+});
+//</editor-fold>
+
+
+
+
+//<editor-fold desc="r">
+/* ┌─────────────────╮
+ * | r               |
+ * └─────────────────╯*/
 Testimony.test('Solarite.r.staticElement', () => {
 	let button = r(`<button>hi</button>`);
 	assert(button instanceof HTMLElement); // Not a DocumentFragment
@@ -2057,7 +2163,15 @@ Testimony.test('Solarite.r.standaloneChild', () => {
 
 	assert.eq(getHtml(list), `<div><div><b>PhysEd</b> - See spot run.<br></div><div><b>Science</b> - Snails are mollusks.<br></div></div>`);
 });
+//</editor-fold>
 
+
+
+
+//<editor-fold desc="component">
+/* ┌─────────────────╮
+ * | Component       |
+ * └─────────────────╯*/
 Testimony.test('Solarite.component.tr', () => {
 
 	class TR510 extends Solarite('tr') {
@@ -2159,9 +2273,6 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 	
 });
 
-
-
-
 Testimony.test('Solarite.component.nested', () => {
 
 	let bRenderCount = 0;
@@ -2189,7 +2300,6 @@ Testimony.test('Solarite.component.nested', () => {
    assert(a.firstChild instanceof B515);
 	assert.eq(getHtml(a), `<a-515><b-515><div>B</div></b-515></a-515>`);
 })
-
 
 // Pass an object to the child.
 Testimony.test('Solarite.component.nested2', () => {
@@ -2245,7 +2355,6 @@ Testimony.test('Solarite.component.nested2', () => {
 
 	a.remove();
 });
-
 
 // Pass an object to the child.
 Testimony.test('Solarite.component.nestedNonSolarite', () => {
@@ -2348,7 +2457,6 @@ Testimony.test('Solarite.component.nestedTrLoop', () => {
 	table.remove();
 });
 
-
 Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
 	class TR540 extends Solarite('tr') {
@@ -2392,11 +2500,15 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
 	table.remove();
 });
+//</editor-fold>
 
 
 
-// Slots
 
+//<editor-fold desc="slots">
+/* ┌─────────────────╮
+ * | Slots           |
+ * └─────────────────╯*/
 Testimony.test('Solarite.slots.basic', () => {
 
 	class S10 extends Solarite {
@@ -2430,11 +2542,15 @@ Testimony.test('Solarite.slots.named', () => {
 
 	div.remove();
 });
+//</editor-fold>
 
 
-// Events
 
-// TODO:
+
+//<editor-fold desc="events">
+/* ┌─────────────────╮
+ * | Events          |
+ * └─────────────────╯*/
 Testimony.test('Solarite.events.classic', () => {
 
 	class Ev10 extends Solarite {
@@ -2560,8 +2676,6 @@ Testimony.test('Solarite.events.onChild', () => {
 	assert.eq(e.items.length, 1);
 });
 
-
-
 Testimony.test('Solarite.events.onExprChild', () => {
 
 	class E60 extends HTMLElement {
@@ -2629,12 +2743,15 @@ Testimony.test('Solarite.events._loop', () => {
 
 	//v.remove();
 });
+//</editor-fold>
 
 
 
 
-// Binding
-
+//<editor-fold desc="binding">
+/* ┌─────────────────╮
+ * | Binding         |
+ * └─────────────────╯*/
 Testimony.test('Solarite.binding.input', () => {
 
 	class B10 extends Solarite {
@@ -2783,8 +2900,6 @@ Testimony.test('Solarite.binding.selectDynamic', () => {
 	b.remove();
 });
 
-
-
 Testimony.test('Solarite.binding.number', () => {
 
 	class B40 extends Solarite {
@@ -2812,7 +2927,6 @@ Testimony.test('Solarite.binding.number', () => {
 
 	b.remove();
 });
-
 
 // FIXME
 Testimony.test('Solarite.binding._number2', () => {
@@ -2843,6 +2957,16 @@ Testimony.test('Solarite.binding._number2', () => {
 	b.remove();
 });
 
+
+//</editor-fold>
+
+
+
+
+//<editor-fold desc="watch">
+/* ┌─────────────────╮
+ * | Watch           |
+ * └─────────────────╯*/
 /*
 Testimony.test('Solarite.watched.watchSet', () => {
 	
@@ -3442,10 +3566,15 @@ Testimony.test('Solarite.watch3.nodes', () => {
 
 	a.remove();
 });
+//</editor-fold>
 
 
 
 
+//<editor-fold desc="full">
+/* ┌─────────────────╮
+ * | Full            |
+ * └─────────────────╯*/
 
 
 Testimony.test('Solarite.full.treeItems', () => {
@@ -3556,7 +3685,7 @@ Testimony.test('Solarite.full._isc2', () => {
 
 
 
-Testimony.test('Solarite.full._misc', () => {
+Testimony.test('Solarite.full.misc', () => {
 
 	class Misc1 extends HTMLElement {
 
@@ -3649,4 +3778,5 @@ Testimony.test('Solarite.full._misc', () => {
 });
 
 
+//<editor-fold desc="full">
 

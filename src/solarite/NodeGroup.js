@@ -150,16 +150,6 @@ export default class NodeGroup {
 		return [fragment, shell];
 	}
 
-	updatePaths(fragment, paths, offset) {
-		// Update paths to point to the fragment.
-		for (let oldPath of paths) {
-
-			let path = oldPath.clone(fragment, offset)
-			path.parentNg = this;
-			this.paths.push(path);
-		}
-	}
-
 	/**
 	 * Use the paths to insert the given expressions.
 	 * Dispatches expression handling to other functions depending on the path type.
@@ -565,6 +555,16 @@ export default class NodeGroup {
 		return this.rootNg;
 	}
 
+
+	updatePaths(fragment, paths, offset) {
+		// Update paths to point to the fragment.
+		for (let oldPath of paths) {
+
+			let path = oldPath.clone(fragment, offset)
+			path.parentNg = this;
+			this.paths.push(path);
+		}
+	}
 
 	updateStyles() {
 		if (this.styles)
