@@ -733,6 +733,14 @@ export class RootNodeGroup extends NodeGroup {
 		let offset = 0;
 		let root = fragment; // TODO: Rename so it's not confused with this.root.
 		if (el) {
+
+			// Save slot children
+			let slotFragment;
+			if (el.childNodes.length) {
+				slotFragment = document.createDocumentFragment();
+				slotFragment.append(...el.childNodes);
+			}
+
 			this.root = el;
 
 			// If el should replace the root node of the fragment.
@@ -750,6 +758,26 @@ export class RootNodeGroup extends NodeGroup {
 			}
 			else
 				el.append(...fragment.childNodes);
+
+
+
+			// Setup slots
+			if (slotFragment) {
+				for (let slot of el.querySelectorAll('slot[name]')) {
+					let name = slot.getAttribute('name')
+					if (name) {
+						let slotChildren = slotFragment.querySelectorAll(`[slot='${name}']`);
+						slot.append(...slotChildren);
+					}
+				}
+				let unamedSlot = el.querySelector('slot:not([name])')
+				if (unamedSlot)
+					unamedSlot.append(slotFragment)
+			}
+
+
+
+
 
 			root = el;
 			this.startNode = el;

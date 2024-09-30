@@ -2401,7 +2401,7 @@ Testimony.test('Solarite.slots.basic', () => {
 
 	class S10 extends Solarite {
 		render() {
-			this.html = r`<div>slot content:<slot></slot></div>`
+			r(this)`<div>slot content:<slot></slot></div>`
 		}
 	}
 	S10.define();
