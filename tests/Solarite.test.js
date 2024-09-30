@@ -1861,7 +1861,7 @@ Testimony.test('Solarite.r.staticElement3', () => {
 	let button = r()`<button>hi</button>`;
 	assert(button instanceof HTMLElement);
 	assert.eq(getHtml(button), `<button>hi</button>`)
-})
+});
 
 Testimony.test('Solarite.r.staticElement4', () => {
 	// with line return

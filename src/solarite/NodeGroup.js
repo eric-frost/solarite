@@ -755,8 +755,14 @@ export class RootNodeGroup extends NodeGroup {
 			this.startNode = el;
 			this.endNode = el;
 		}
-		else
-			this.root = this.startNode;
+		else {
+			let singleEl = getSingleEl(fragment);
+			this.root = singleEl || fragment; // We return the whole fragment when calling r() with a collection of nodes.
+			if (singleEl) {
+				root = singleEl;
+				offset = 1;
+			}
+		}
 
 		this.updatePaths(root, shell.paths, offset);
 
@@ -765,6 +771,18 @@ export class RootNodeGroup extends NodeGroup {
 		// Apply exprs
 		this.applyExprs(template.exprs);
 	}
+}
+
+function getSingleEl(fragment) {
+	let nonempty = [];
+	for (let n of fragment.childNodes) {
+		if (n.nodeType === 1 || n.nodeType === 3 && n.textContent.trim().length) {
+			if (nonempty.length)
+				return null;
+			nonempty.push(n);
+		}
+	}
+	return nonempty[0];
 }
 
 function isReplaceEl(fragment, el) {

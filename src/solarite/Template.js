@@ -97,6 +97,7 @@ export default class Template {
 		if (standalone) {
 			ng = new RootNodeGroup(this, null, options);
 			el = ng.getRootNode();
+			Globals.nodeGroups.set(el, ng);
 			firstTime = true;
 		}
 		else {
