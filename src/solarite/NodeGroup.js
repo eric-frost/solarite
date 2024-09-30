@@ -538,9 +538,8 @@ export default class NodeGroup {
 	}
 
 	/**
-	 * Get the root element of the NodeGroup's RootNodeGroup
-	 * This function is poorly tested and may be unreliable.
-	 * @returns {Node|DocumentFragment}	 */
+	 * Get the root element of the NodeGroup's RootNodeGroup.
+	 * @returns {HTMLElement|DocumentFragment} */
 	getRootNode() {
 		return this.rootNg.root;
 
@@ -726,14 +725,15 @@ export class RootNodeGroup extends NodeGroup {
 		super(template, null, null, null, el, options);
 
 		this.options = options;
-		this.root = el;
+
 		this.rootNg = this;
 		let [fragment, shell] = this.init(template, null, null, null, el, options);
 
 		// If adding NodeGroup to an element.
 		let offset = 0;
-		let root = fragment;
+		let root = fragment; // TODO: Rename so it's not confused with this.root.
 		if (el) {
+			this.root = el;
 
 			// If el should replace the root node of the fragment.
 			// TODO: Check for text node children.
@@ -745,6 +745,7 @@ export class RootNodeGroup extends NodeGroup {
 					if (!el.hasAttribute(attrib.name))
 						el.setAttribute(attrib.name, attrib.value);
 
+				// Go one level deeper into all of shell's paths.
 				offset = 1;
 			}
 			else
@@ -754,6 +755,8 @@ export class RootNodeGroup extends NodeGroup {
 			this.startNode = el;
 			this.endNode = el;
 		}
+		else
+			this.root = this.startNode;
 
 		this.updatePaths(root, shell.paths, offset);
 
