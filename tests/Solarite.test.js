@@ -2186,7 +2186,7 @@ Testimony.test('Solarite.component.nested', () => {
 	assert(!(a.firstChild instanceof B515))
 
 	a.render();
-    assert(a.firstChild instanceof B515);
+   assert(a.firstChild instanceof B515);
 	assert.eq(getHtml(a), `<a-515><b-515><div>B</div></b-515></a-515>`);
 })
 

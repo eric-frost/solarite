@@ -656,7 +656,7 @@ export default class NodeGroup {
 			let el = resolveNodePath(root, path);
 
 			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
-			if (root !== el && !isReplaceEl(root, el)) // TODO: is isReplaceEl necessary?
+			if (root !== el/* && !isReplaceEl(root, el)*/) // TODO: is isReplaceEl necessary?
 				this.createNewComponent(el)
 		}
 
