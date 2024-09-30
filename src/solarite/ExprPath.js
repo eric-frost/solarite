@@ -465,17 +465,19 @@ export default class ExprPath {
 	 *
 	 * @param newRoot {HTMLElement}
 	 * @return {ExprPath} */
-	clone(newRoot) {
+	clone(newRoot, offset) {
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 
 		// Resolve node paths.
 		let nodeMarker, nodeBefore;
 		let root = newRoot;
-		let path = this.nodeMarkerPath;
+		let path = this.nodeMarkerPath.slice(offset);
 		for (let i=path.length-1; i>0; i--) // Resolve the path.
 			root = root.childNodes[path[i]];
 		let childNodes = root.childNodes;
-		nodeMarker = childNodes[path[0]]
+		//assert(childNodes[path[0]]);
+
+		nodeMarker = path.length ? childNodes[path[0]] : newRoot;
 		if (this.nodeBefore)
 			nodeBefore = childNodes[this.nodeBeforeIndex];
 

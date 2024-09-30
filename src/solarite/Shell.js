@@ -30,6 +30,7 @@ export default class Shell {
 	staticComponents = [];
 
 
+
 	/**
 	 * Create the nodes but without filling in the expressions.
 	 * This is useful because the expression-less nodes created by a template can be cached.

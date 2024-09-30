@@ -1656,7 +1656,7 @@ Testimony.test('Solarite.attrib.pseudoRoot', () => {
 	let title = 'Hello'
 	class R470 extends Solarite {
 		render() {
-			this.html = r`<r-470 title="${title}">World</r-470>`
+			r(this)`<r-470 title="${title}">World</r-470>`
 		}
 	}
 
@@ -1767,7 +1767,6 @@ Testimony.test('Solarite.comments2', () => {
 
 
 
-
 Testimony.test('Solarite.ids.one', () => {
 	class R500 extends Solarite {
 		one;
@@ -1781,7 +1780,6 @@ Testimony.test('Solarite.ids.one', () => {
 
 	assert(a.one.tagName === 'DIV')
 });
-
 
 Testimony.test('Solarite.ids.two', () => {
 	class R510 extends Solarite {
@@ -1815,13 +1813,12 @@ Testimony.test('Solarite.ids.delve', () => {
 
 
 
-
-
 Testimony.test('Solarite.r.staticElement', () => {
 	let button = r(`<button>hi</button>`);
 	assert(button instanceof HTMLElement); // Not a DocumentFragment
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
+
 Testimony.test('Solarite.r.staticElement2', () => {
 	let button = r(`
 		<button>hi</button>`);
@@ -1829,14 +1826,12 @@ Testimony.test('Solarite.r.staticElement2', () => {
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
 
-
 Testimony.test('Solarite.r.staticElement3', () => {
 	let button = r(` <!-- comment -->
 		<button>hi</button>`);
 	assert(button instanceof HTMLElement); // Not a DocumentFragment
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
-
 
 Testimony.test('Solarite.r.staticElement4', () => {
 	let button = r(` Hello`);
@@ -1856,13 +1851,11 @@ Testimony.test('Solarite.r.fragment', () => {
 	assert.eq(getHtml(fragment), `Hello |<button>hi</button>`)
 });
 
-
 Testimony.test('Solarite.r.fragment2', () => {
 	let fragment = r()`Hello <button>hi</button>`;
 	assert(fragment instanceof DocumentFragment);
 	assert.eq(getHtml(fragment), `Hello |<button>hi</button>`)
 });
-
 
 Testimony.test('Solarite.r.staticElement3', () => {
 	let button = r()`<button>hi</button>`;
@@ -1886,7 +1879,6 @@ Testimony.test('Solarite.r.element', () => {
 	
 	assert.eq(getHtml(button), `<button>I'm a <b>better</b> button</button>`)
 })
-
 
 Testimony.test('Solarite.r.standalone1', () => {
 	let button = r({
@@ -1913,7 +1905,6 @@ Testimony.test('Solarite.r.standalone1', () => {
 
 	//button.remove();
 });
-
 
 Testimony.test('Solarite.r.standalone2', () => {
 	let list = r({
@@ -1956,7 +1947,6 @@ Testimony.test('Solarite.r.standalone2', () => {
 	//button.remove();
 });
 
-
 Testimony.test('Solarite.r.standaloneId', "Test id's on standalone elmenets.", () => {
 	let list = r({
 		items: [],
@@ -1977,7 +1967,6 @@ Testimony.test('Solarite.r.standaloneId', "Test id's on standalone elmenets.", (
 	assert.eq(list.button.tagName, 'BUTTON');
 });
 
-
 Testimony.test('Solarite.r.standaloneStyle', "Test id's on standalone elmenets.", () => {
 	let box = r({
 		render() {
@@ -1991,7 +1980,6 @@ Testimony.test('Solarite.r.standaloneStyle', "Test id's on standalone elmenets."
 	let styleId = box.getAttribute('data-style');
 	assert.eq(box.firstElementChild.textContent, `div[data-style="${styleId}"] { display: block; background: red; width: 20px; height: 20px }`);
 });
-
 
 Testimony.test('Solarite.r.standalone3', () => {
 
@@ -2018,7 +2006,6 @@ Testimony.test('Solarite.r.standalone3', () => {
 
 	assert.eq(getHtml(list), `<div><div><input placeholder="Name" value="name"><input type="number" value="2"><button onclick="">x</button></div></div>`);
 });
-
 
 Testimony.test('Solarite.r.standaloneChild', () => {
 
@@ -2071,7 +2058,6 @@ Testimony.test('Solarite.r.standaloneChild', () => {
 	assert.eq(getHtml(list), `<div><div><b>PhysEd</b> - See spot run.<br></div><div><b>Science</b> - Snails are mollusks.<br></div></div>`);
 });
 
-
 Testimony.test('Solarite.component.tr', () => {
 
 	class TR510 extends Solarite('tr') {
@@ -2090,7 +2076,6 @@ Testimony.test('Solarite.component.tr', () => {
 	table.remove();
 
 });
-
 
 Testimony.test('Solarite.component.staticAttribs', () => {
 	// Note that all attribs become lowercase.
@@ -2120,8 +2105,6 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 	
 	assert.eq(a.outerHTML, `<a-512><div><b-512 name="User" userid="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-512></div></a-512>`);
 });
-
-
 
 Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...}', () => {
 	
