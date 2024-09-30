@@ -652,7 +652,9 @@ export default class NodeGroup {
 		// static components.  These are WebComponents not created by an expression.
 		// Must happen before ids.
 		for (let path of shell.staticComponents) {
-			let el = resolveNodePath(root, path.slice(pathOffset))
+			if (pathOffset)
+				path = path.slice(0, -pathOffset);
+			let el = resolveNodePath(root, path);
 
 			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
 			if (root !== el && !isReplaceEl(root, el)) // TODO: is isReplaceEl necessary?
@@ -665,7 +667,9 @@ export default class NodeGroup {
 			// ids
 			if (this.options?.ids !== false)
 				for (let path of shell.ids) {
-					let el = resolveNodePath(root, path.slice(pathOffset));
+					if (pathOffset)
+						path = path.slice(0, -pathOffset);
+					let el = resolveNodePath(root, path);
 					let id = el.getAttribute('data-id') || el.getAttribute('id');
 					if (id) { // If something hasn't removed the id.
 
@@ -683,7 +687,9 @@ export default class NodeGroup {
 				if (shell.styles.length)
 					this.styles = new Map();
 				for (let path of shell.styles) {
-					let style = resolveNodePath(root, path.slice(pathOffset));
+					if (pathOffset)
+						path = path.slice(0, -pathOffset);
+					let style = resolveNodePath(root, path);
 					Util.bindStyles(style, rootEl);
 					this.styles.set(style, style.textContent);
 				}
@@ -692,7 +698,9 @@ export default class NodeGroup {
 			// scripts
 			if (this.options?.scripts !== false) {
 				for (let path of shell.scripts) {
-					let script = resolveNodePath(root, path.slice(pathOffset));
+					if (pathOffset)
+						path = path.slice(0, -pathOffset);
+					let script = resolveNodePath(root, path);
 					eval(script.textContent)
 				}
 			}
@@ -732,7 +740,10 @@ export class RootNodeGroup extends NodeGroup {
 			if (isReplaceEl(fragment, el)) {
 				el.append(...fragment.children[0].childNodes);
 
-				// TODO: Copy attributes
+				// Copy attributes
+				for (let attrib of fragment.children[0].attributes)
+					if (!el.hasAttribute(attrib.name))
+						el.setAttribute(attrib.name, attrib.value);
 
 				offset = 1;
 			}
