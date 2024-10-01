@@ -160,11 +160,6 @@ export default class Shell {
 
 				let path = new ExprPath(nodeBefore, nodeMarker, PathType.Content);
 
-				//#IFDEV
-				//nodeBefore.exprPath = path;
-				//nodeMarker.prevExprPath = path;
-				path.parentIndex = this.paths.length; // For debugging.
-				//#ENDIF
 				this.paths.push(path);
 			}
 			
@@ -178,9 +173,6 @@ export default class Shell {
 				for (let i=0; i<parts.length-1; i++) {
 					let path = new ExprPath(node.previousSibling, node)
 					path.type = PathType.Comment;
-					//#IFDEV
-					path.parentIndex = i; // For debugging.
-					//#ENDIF
 					this.paths.push(path);
 				}
 			}
@@ -199,10 +191,7 @@ export default class Shell {
 					}
 
 					for (let i=0, node; node=placeholders[i]; i++) {
-						let path = new ExprPath(node.previousSibling, node, PathType.Content)
-						//#IFDEV
-						path.parentIndex = i; // For debugging.
-						//#ENDIF
+						let path = new ExprPath(node.previousSibling, node, PathType.Content);
 						this.paths.push(path);
 
 						/*#IFDEV*/path.verify();/*#ENDIF*/

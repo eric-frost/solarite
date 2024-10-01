@@ -22,13 +22,6 @@ import Globals from "./Globals.js";
  * */
 export default class NodeGroup {
 
-	get pseudoRoot() {
-		throw new Error('deprecated');
-	}
-	get manager() {
-		throw new Error('deprecated');
-	}
-
 	/**
 	 * @Type {RootNodeGroup} */
 	rootNg;
@@ -60,7 +53,6 @@ export default class NodeGroup {
 	/**
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
-
 
 	currentComponentProps = {};
 	
@@ -137,7 +129,6 @@ export default class NodeGroup {
 			// Attributes
 			else {
 				let node = path.nodeMarker;
-				let el = node; //(this.manager?.rootEl && node === this.pseudoRoot) ? this.manager.rootEl : node;
 				/*#IFDEV*/assert(node);/*#ENDIF*/
 
 				// This is necessary both here and below.
@@ -147,7 +138,7 @@ export default class NodeGroup {
 				}
 
 				if (path.type === PathType.Multiple)
-					path.applyMultipleAttribs(el, expr)
+					path.applyMultipleAttribs(node, expr)
 
 				// Capture attribute expressions to later send to the constructor of a web component.
 				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
@@ -164,12 +155,12 @@ export default class NodeGroup {
 
 						let root = this.getRootNode();
 
-						path.applyEventAttrib(el, expr, root);
+						path.applyEventAttrib(node, expr, root);
 					}
 
 					// Regular attribute value.
 					else // One node value may have multiple expressions.  Here we apply them all at once.
-						exprIndex = path.applyValueAttrib(el, exprs, exprIndex);
+						exprIndex = path.applyValueAttrib(node, exprs, exprIndex);
 				}
 
 				lastNode = path.nodeMarker;
@@ -540,7 +531,7 @@ export default class NodeGroup {
 						
 						let path = this.paths.find(path=>path.type === PathType.Content && path.getNodes().includes(nextNode));
 						if (path)
-							return [`Path[${path.parentIndex}].nodes:`]
+							return [`Path.nodes:`]
 						
 						return [];
 					})

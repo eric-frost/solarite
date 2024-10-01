@@ -2,3 +2,7 @@
 /_internal
 /benchmarks
 /css
+/tests/.run
+/deno.lock
+/editor.html
+/editor2.html

@@ -798,15 +798,9 @@ class ExprPath {
 	 * @type {int} Index of nodeBefore among its parentNode's children. */
 	nodeBeforeIndex;
 
-
 	/**
 	 * @type {int[]} Path to the node marker. */
 	nodeMarkerPath;
-
-	// for debugging
-	//#IFDEV
-	parentIndex;
-	//#ENDIF
 
 	/**
 	 * @param nodeBefore {Node}
@@ -931,7 +925,7 @@ class ExprPath {
 
 		if (expr instanceof Template) {
 
-			let ng = this.getNodeGroup(expr, true); // this.parentNg.manager.getNodeGroup(expr, true, null, exactKey);
+			let ng = this.getNodeGroup(expr, true);
 			if (ng) {
 				//#IFDEV
 				// Make sure the nodeCache of the ExprPath we took it from is sitll valid.
@@ -1207,7 +1201,6 @@ class ExprPath {
 		if (result.nodeBefore)
 			result.nodeBefore.prevExprPath = result;
 		result.verify();
-		result.parentIndex = this.parentIndex; // used for debugging?
 		//#ENDIF
 
 		return result;
@@ -1579,11 +1572,6 @@ class Shell {
 
 				let path = new ExprPath(nodeBefore, nodeMarker, PathType.Content);
 
-				//#IFDEV
-				//nodeBefore.exprPath = path;
-				//nodeMarker.prevExprPath = path;
-				path.parentIndex = this.paths.length; // For debugging.
-				//#ENDIF
 				this.paths.push(path);
 			}
 			
@@ -1597,9 +1585,6 @@ class Shell {
 				for (let i=0; i<parts.length-1; i++) {
 					let path = new ExprPath(node.previousSibling, node);
 					path.type = PathType.Comment;
-					//#IFDEV
-					path.parentIndex = i; // For debugging.
-					//#ENDIF
 					this.paths.push(path);
 				}
 			}
@@ -1619,9 +1604,6 @@ class Shell {
 
 					for (let i=0, node; node=placeholders[i]; i++) {
 						let path = new ExprPath(node.previousSibling, node, PathType.Content);
-						//#IFDEV
-						path.parentIndex = i; // For debugging.
-						//#ENDIF
 						this.paths.push(path);
 
 						/*#IFDEV*/path.verify();/*#ENDIF*/
@@ -1974,13 +1956,6 @@ const udomdiff = (parentNode, a, b, before) => {
  * */
 class NodeGroup {
 
-	get pseudoRoot() {
-		throw new Error('deprecated');
-	}
-	get manager() {
-		throw new Error('deprecated');
-	}
-
 	/**
 	 * @Type {RootNodeGroup} */
 	rootNg;
@@ -2012,7 +1987,6 @@ class NodeGroup {
 	/**
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
-
 
 	currentComponentProps = {};
 	
@@ -2089,7 +2063,6 @@ class NodeGroup {
 			// Attributes
 			else {
 				let node = path.nodeMarker;
-				let el = node; //(this.manager?.rootEl && node === this.pseudoRoot) ? this.manager.rootEl : node;
 				/*#IFDEV*/assert(node);/*#ENDIF*/
 
 				// This is necessary both here and below.
@@ -2099,7 +2072,7 @@ class NodeGroup {
 				}
 
 				if (path.type === PathType.Multiple)
-					path.applyMultipleAttribs(el, expr);
+					path.applyMultipleAttribs(node, expr);
 
 				// Capture attribute expressions to later send to the constructor of a web component.
 				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
@@ -2114,12 +2087,12 @@ class NodeGroup {
 
 						let root = this.getRootNode();
 
-						path.applyEventAttrib(el, expr, root);
+						path.applyEventAttrib(node, expr, root);
 					}
 
 					// Regular attribute value.
 					else // One node value may have multiple expressions.  Here we apply them all at once.
-						exprIndex = path.applyValueAttrib(el, exprs, exprIndex);
+						exprIndex = path.applyValueAttrib(node, exprs, exprIndex);
 				}
 
 				lastNode = path.nodeMarker;
@@ -2490,7 +2463,7 @@ class NodeGroup {
 						
 						let path = this.paths.find(path=>path.type === PathType.Content && path.getNodes().includes(nextNode));
 						if (path)
-							return [`Path[${path.parentIndex}].nodes:`]
+							return [`Path.nodes:`]
 						
 						return [];
 					});

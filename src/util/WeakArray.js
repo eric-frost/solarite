@@ -3,11 +3,13 @@ export default class WeakArray {
 		this.items = [];
 	}
 
-	add(item) {
-		if (typeof item === 'object' && item)
-			this.items.push(new WeakRef(item));
-		else
-			throw new TypeError("Only objects can be added to a WeakArray");
+	push(...items) {
+		for (let item of items) {
+			if (typeof item === 'object' && item)
+				this.items.push(new WeakRef(item));
+			else
+				throw new TypeError("Only objects can be added to a WeakArray");
+		}
 	}
 
 	get(index) {

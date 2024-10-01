@@ -5,7 +5,7 @@ import NodeGroup from "./NodeGroup.js";
 import Util, {div, findArrayDiff, setIndent} from "./Util.js";
 import Template from "./Template.js";
 import Globals from "./Globals.js";
-import MultiValueMap from "./MultiValueMap.js";
+import MultiValueMap from "../util/MultiValueMap.js";
 
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup.
@@ -73,15 +73,9 @@ export default class ExprPath {
 	 * @type {int} Index of nodeBefore among its parentNode's children. */
 	nodeBeforeIndex;
 
-
 	/**
 	 * @type {int[]} Path to the node marker. */
 	nodeMarkerPath;
-
-	// for debugging
-	//#IFDEV
-	parentIndex;
-	//#ENDIF
 
 	/**
 	 * @param nodeBefore {Node}
@@ -206,7 +200,7 @@ export default class ExprPath {
 
 		if (expr instanceof Template) {
 
-			let ng = this.getNodeGroup(expr, true); // this.parentNg.manager.getNodeGroup(expr, true, null, exactKey);
+			let ng = this.getNodeGroup(expr, true);
 			if (ng) {
 				//#IFDEV
 				// Make sure the nodeCache of the ExprPath we took it from is sitll valid.
@@ -482,7 +476,6 @@ export default class ExprPath {
 		if (result.nodeBefore)
 			result.nodeBefore.prevExprPath = result;
 		result.verify();
-		result.parentIndex = this.parentIndex; // used for debugging?
 		//#ENDIF
 
 		return result;
