@@ -721,7 +721,9 @@ export class RootNodeGroup extends NodeGroup {
 				}
 				let unamedSlot = el.querySelector('slot:not([name])')
 				if (unamedSlot)
-					unamedSlot.append(slotFragment)
+					unamedSlot.append(slotFragment);
+				else
+					el.append(slotFragment);
 			}
 
 			root = el;

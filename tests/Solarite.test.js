@@ -2536,6 +2536,24 @@ Testimony.test('Solarite.slots.named', () => {
 
 	div.remove();
 });
+
+
+Testimony.test('Solarite.slots.slotless', `Add children even when no slots present.`, () => {
+
+	class S10 extends Solarite {
+		render() {
+			r(this)`<div>child1</div>`
+		}
+	}
+	S10.define();
+
+	let div = r('<div><s-10>child2<br>child4</s-10></div>')
+	document.body.append(div);
+
+	assert.eq(div.outerHTML, `<div><s-10><div>child1</div>child2<br>child4</s-10></div>`)
+
+	div.remove();
+});
 //</editor-fold>
 
 
