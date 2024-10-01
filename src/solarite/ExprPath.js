@@ -6,6 +6,7 @@ import Util, {findArrayDiff, setIndent} from "./Util.js";
 import Template from "./Template.js";
 import Globals from "./Globals.js";
 import MultiValueMap from "../util/MultiValueMap.js";
+import udomdiff from "./udomdiff.js";
 
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup.
@@ -127,6 +128,8 @@ export default class ExprPath {
 			this.attrNames = new Set();
 	}
 
+
+
 	/**
 	 * TODO: Use another function to flatten the expr's so we don't have to use recusion.
 	 * @param expr {Template|Node|Array|function|*}
@@ -214,6 +217,89 @@ export default class ExprPath {
 		// TODO: This is commented out b/c this needs to happen after the second pass.
 		//if (!recursing)
 		//	this.freeNodeGroups();
+	}
+
+
+	/**
+	 * Insert/replace the nodes created by a single expression.
+	 * Called by applyExprs()
+	 * This function is recursive, as the functions it calls also call it.
+	 * @param expr {Expr}
+	 * @return {Node[]} New Nodes created. */
+	applyNodes(expr) {
+		let path = this;
+
+		/*#IFDEV*/path.verify();/*#ENDIF*/
+
+		/** @type {(Node|NodeGroup|Expr)[]} */
+		let newNodes = [];
+		let oldNodeGroups = path.nodeGroups;
+		/*#IFDEV*/assert(!oldNodeGroups.includes(null))/*#ENDIF*/
+		let secondPass = []; // indices
+
+		path.nodeGroups = []; // TODO: Is this used?
+		path.apply(expr, newNodes, secondPass);
+
+		this.existingTextNodes = null;
+
+		// TODO: Create an array of old vs Nodes and NodeGroups together.
+		// If they're all the same, skip the next steps.
+		// Or calculate it in the loop above as we go?  Have a path.lastNodeGroups property?
+
+		// Second pass to find close-match NodeGroups.
+		let flatten = false;
+		if (secondPass.length) {
+			for (let [nodesIndex, ngIndex] of secondPass) {
+				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
+
+				ng.parentPath = path;
+				let ngNodes = ng.getNodes();
+
+				/*#IFDEV*/assert(!(newNodes[nodesIndex] instanceof NodeGroup))/*#ENDIF*/
+
+				if (ngNodes.length === 1)
+					newNodes[nodesIndex] = ngNodes[0];
+
+				else {
+					newNodes[nodesIndex] = ngNodes;
+					flatten = true;
+				}
+				path.nodeGroups[ngIndex] = ng;
+			}
+
+			if (flatten)
+				newNodes = newNodes.flat(); // TODO: Only if second pass happens?
+		}
+
+		/*#IFDEV*/assert(!path.nodeGroups.includes(null))/*#ENDIF*/
+
+
+
+		let oldNodes = path.getNodes();
+		path.nodesCache = newNodes; // Replaces value set by path.getNodes()
+
+
+		// This pre-check makes it a few percent faster?
+		let diff = findArrayDiff(oldNodes, newNodes);
+		if (diff !== false) {
+
+			if (this.parentNg.parentPath)
+				this.parentNg.parentPath.clearNodesCache();
+
+			// Fast clear method
+			let isNowEmpty = oldNodes.length && !newNodes.length;
+			if (!isNowEmpty || !path.fastClear())
+
+				// Rearrange nodes.
+				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker)
+
+			this.parentNg.saveOrphans(oldNodeGroups, oldNodes);
+		}
+
+		// Must happen after second pass.
+		path.freeNodeGroups();
+
+		/*#IFDEV*/path.verify();/*#ENDIF*/
 	}
 
 	applyMultipleAttribs(node, expr) {

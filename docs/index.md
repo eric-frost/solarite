@@ -465,7 +465,7 @@ class FancyText extends HTMLElement {
             <p>I have a red border and shadow!</p>
         </fancy-text>`
         
-        /* This is rewritten as:
+        /* The code above is rewritten as:
         <fancy-text data-style="1">
             <style>
                 fancy-text[data-style="1"] { display: block; border: 10px dashed red } 
@@ -499,10 +499,10 @@ class NotesItem extends HTMLElement {
 		this.render();
 	}
 	
-	render(attribs=null) {
-        // If attributes passed to constructor have changed.
-        if (attribs)
-	        this.item = attribs.item;        
+	render({item}={}) {
+        // If item passed to the constructor has changed.
+        if (item)
+	        this.item = item;
 		r(this)`
 		<notes-item>
 		   <b>${this.item.name}</b> - ${this.item.description}<br>
@@ -540,14 +540,14 @@ document.body.append(list);
 
 list.items[0].name = 'PhysEd';
 
-// list.items[0[] has changed, 
+// list.items[0] has changed, 
 // so this will call render() on the first NotesItem, 
 // passing the new item object to its render() function.
 list.render();
 
 ```
 
-Calling `render()` on a parent component will call `render()` on child components if the attributes passed to the child component have changed.  The new attributes will be passed as an object to the child component's `render()` function.
+Calling `render()` on a parent component will call `render()` on child components if the attributes passed to the child component have changed.  The new attributes will be passed as an object as the first argument to the child component's `render()` function.  The `render()` function can then decide what to do with that data, and if it should re-render itself by calling `r(this)`, which will in turn call `render()` on its own child web components.
 
 In the above code, we alternatively could've created the `<notes-item>` element via the `new` keyword, but doing so would cause all `NotesItem` components to be recreated on every render.
 
@@ -761,8 +761,8 @@ class MyTasks extends HTMLElement {
 		<div>
 			 ${this.tasks.map((task, index) =>  r`
 				<div>
-					 ${task.text}
-					 <button onClick=${() => this.deleteTask(index)}>Delete</button>
+					 ${task}
+					 <button onclick=${() => this.deleteTask(index)}>Delete</button>
 				 </div>`
 			 )}
 		</div>`;
@@ -772,18 +772,15 @@ customElements.define('my-tasks', MyTasks);
 
 let myTasks = new MyTasks();
 for (let i=0; i<10; i++)
-	myTasks.tasks.push({
-		text: 'Item ' + i,
-		completed: false
-	});
+	myTasks.tasks.push('Item ' + i);
 myTasks.render();
 document.body.append(myTasks);
 ```
 
 When `render()` is called:
 
-1. Solarite's `r()` function gets the array of raw strings created by tasks.map() using a template literal function.  
-2. It then creates a hash of the values of each item in the array.  
+1. Solarite's `r()` function gets the array of raw strings created by `tasks.map()` using a template literal function.  
+2. It then creates a hash of the value of every `${...}` expression given to the `r()` function.
 3. Then it compares those hashes with the hashes from the last time rendering happened, and only update elements and attributes given values that have changed.
 
 Solarite uses [WebReflection/udomdiff](https://github.com/WebReflection/udomdiff) to compare DOM nodes to update.

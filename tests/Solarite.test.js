@@ -839,7 +839,7 @@ Testimony.test('Solarite.loop.paragraphsBefore', `Same as above, but with anothe
 	a.remove();
 });
 
-Testimony.test('Solarite.loop.consistency', `Make sure elements are reused in a consistent way.`, () => {
+Testimony.test('Solarite.loop.continuity', `Make sure elements are reused in a consistent way.`, () => {
 	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
 
@@ -876,6 +876,13 @@ Testimony.test('Solarite.loop.consistency', `Make sure elements are reused in a 
 	assert.eq(getHtml(a), '<a-213><p>Apple</p><p>Banana</p></a-213>');
 	assert.eq(a.children[0], apple);
 	assert.eq(a.children[1], banana);
+
+	// Make sure we maintain continuity after adding to the beginning.
+	a.fruits.unshift('Cherry');
+	a.render();
+	assert.eq(getHtml(a), '<a-213><p>Cherry</p><p>Apple</p><p>Banana</p></a-213>');
+	assert.eq(a.children[1], apple);
+	assert.eq(a.children[2], banana);
 
 	a.remove();
 });

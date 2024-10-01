@@ -733,6 +733,236 @@ class MultiValueMap {
 }
 
 /**
+ * ISC License
+ *
+ * Copyright (c) 2020, Andrea Giammarchi, @WebReflection
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+ * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+ * AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+ * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+ * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
+ * OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+/**
+ * @param {Node} parentNode The container where children live
+ * @param {Node[]} a The list of current/live children
+ * @param {Node[]} b The list of future children
+ * @param {(entry: Node, action: number) => Node} get
+ * The callback invoked per each entry related DOM operation.
+ * @param {Node} [before] The optional node used as anchor to insert before.
+ * @returns {Node[]} The same list of future children.
+ */
+const udomdiff = (parentNode, a, b, before) => {
+	//#IFDEV
+	// if (parentNode instanceof ExprPath)
+	// 	parentNode.verify();
+	//#ENDIF
+
+	const bLength = b.length;
+	let aEnd = a.length;
+	let bEnd = bLength;
+	let aStart = 0;
+	let bStart = 0;
+	let map = null;
+	while (aStart < aEnd || bStart < bEnd) {
+		// append head, tail, or nodes in between: fast path
+		if (aEnd === aStart) {
+			// we could be in a situation where the rest of nodes that
+			// need to be added are not at the end, and in such case
+			// the node to `insertBefore`, if the index is more than 0
+			// must be retrieved, otherwise it's gonna be the first item.
+			const node = bEnd < bLength
+				? (bStart
+					? (b[bStart - 1].nextSibling)
+					: b[bEnd - bStart])
+				: before;
+			while (bStart < bEnd) {
+				let bNode = b[bStart++];
+				parentNode.insertBefore(bNode, node);
+
+				//#IFDEV
+				if (bNode instanceof NodeGroup)
+					bNode.verify();
+				// if (parentNode instanceof ExprPath)
+				// 	parentNode.verify();
+				//#ENDIF
+			}
+		}
+		// remove head or tail: fast path
+		else if (bEnd === bStart) {
+			while (aStart < aEnd) {
+				// remove the node only if it's unknown or not live
+				let aNode = a[aStart];
+				if (!map || !map.has(aNode)) {
+					parentNode.removeChild(aNode);
+
+					//#IFDEV
+					if (aNode instanceof NodeGroup)
+						aNode.verify();
+					// if (parentNode instanceof ExprPath)
+					// 	parentNode.verify();
+					//#ENDIF
+				}
+				aStart++;
+			}
+		}
+		// same node: fast path
+		else if (a[aStart] === b[bStart]) {
+			aStart++;
+			bStart++;
+		}
+		// same tail: fast path
+		else if (a[aEnd - 1] === b[bEnd - 1]) {
+			aEnd--;
+			bEnd--;
+		}
+			// The once here single last swap "fast path" has been removed in v1.1.0
+			// https://github.com/WebReflection/udomdiff/blob/single-final-swap/esm/index.js#L69-L85
+		// reverse swap: also fast path
+		else if (
+			a[aStart] === b[bEnd - 1] &&
+			b[bStart] === a[aEnd - 1]
+		) {
+			// this is a "shrink" operation that could happen in these cases:
+			// [1, 2, 3, 4, 5]
+			// [1, 4, 3, 2, 5]
+			// or asymmetric too
+			// [1, 2, 3, 4, 5]
+			// [1, 2, 3, 5, 6, 4]
+			const node = a[--aEnd].nextSibling;
+
+
+			let a2 = b[bStart++];
+			let b2 = a[aStart++];
+			parentNode.insertBefore(
+				a2,
+				b2.nextSibling
+			);
+			//#IFDEV
+			if (a2 instanceof NodeGroup)
+				a2.verify();
+			// if (parentNode instanceof ExprPath)
+			// 	parentNode.verify();
+			//#ENDIF
+
+			let bNode = b[--bEnd];
+			parentNode.insertBefore(bNode, node);
+
+			//#IFDEV
+			if (bNode instanceof NodeGroup)
+				bNode.verify();
+			// if (parentNode instanceof ExprPath)
+			// 	parentNode.verify();
+
+			//#ENDIF
+
+			// mark the future index as identical (yeah, it's dirty, but cheap 👍)
+			// The main reason to do this, is that when a[aEnd] will be reached,
+			// the loop will likely be on the fast path, as identical to b[bEnd].
+			// In the best case scenario, the next loop will skip the tail,
+			// but in the worst one, this node will be considered as already
+			// processed, bailing out pretty quickly from the map index check
+			a[aEnd] = b[bEnd];
+		}
+		// map based fallback, "slow" path
+		else {
+			// the map requires an O(bEnd - bStart) operation once
+			// to store all future nodes indexes for later purposes.
+			// In the worst case scenario, this is a full O(N) cost,
+			// and such scenario happens at least when all nodes are different,
+			// but also if both first and last items of the lists are different
+			if (!map) {
+				map = new Map;
+				let i = bStart;
+				while (i < bEnd)
+					map.set(b[i], i++);
+			}
+			// if it's a future node, hence it needs some handling
+			if (map.has(a[aStart])) {
+				// grab the index of such node, 'cause it might have been processed
+				const index = map.get(a[aStart]);
+				// if it's not already processed, look on demand for the next LCS
+				if (bStart < index && index < bEnd) {
+					let i = aStart;
+					// counts the amount of nodes that are the same in the future
+					let sequence = 1;
+					while (++i < aEnd && i < bEnd && map.get(a[i]) === (index + sequence))
+						sequence++;
+					// effort decision here: if the sequence is longer than replaces
+					// needed to reach such sequence, which would brings again this loop
+					// to the fast path, prepend the difference before a sequence,
+					// and move only the future list index forward, so that aStart
+					// and bStart will be aligned again, hence on the fast path.
+					// An example considering aStart and bStart are both 0:
+					// a: [1, 2, 3, 4]
+					// b: [7, 1, 2, 3, 6]
+					// this would place 7 before 1 and, from that time on, 1, 2, and 3
+					// will be processed at zero cost
+					if (sequence > (index - bStart)) {
+						const node = a[aStart];
+						while (bStart < index) {
+							let bNode = b[bStart++];
+							parentNode.insertBefore(bNode, node);
+
+							//#IFDEV
+							if (bNode instanceof NodeGroup)
+								bNode.verify();
+							// if (parentNode instanceof ExprPath)
+							// 	parentNode.verify();
+
+							//#ENDIF
+						}
+					}
+						// if the effort wasn't good enough, fallback to a replace,
+						// moving both source and target indexes forward, hoping that some
+					// similar node will be found later on, to go back to the fast path
+					else {
+						let aNode = a[aStart++];
+						let bNode = b[bStart++];
+						parentNode.replaceChild(
+							bNode,
+							aNode
+						);
+
+						//#IFDEV
+						if (aNode instanceof NodeGroup)
+							aNode.verify();
+						// if (parentNode instanceof ExprPath)
+						// 	parentNode.verify();
+						//#ENDIF
+					}
+				}
+				// otherwise move the source forward, 'cause there's nothing to do
+				else
+					aStart++;
+			}
+				// this node has no meaning in the future list, so it's more than safe
+				// to remove it, and check the next live node out instead, meaning
+			// that only the live list index should be forwarded
+			else {
+				let aNode = a[aStart++];
+				parentNode.removeChild(aNode);
+
+				//#IFDEV
+				if (aNode instanceof NodeGroup)
+					aNode.verify();
+				// if (parentNode instanceof ExprPath)
+				// 	parentNode.verify();
+				//#ENDIF
+			}
+		}
+	}
+	return b;
+};
+
+/**
  * Path to where an expression should be evaluated within a Shell or NodeGroup.
  * Path is only valid until the expressions before it are evaluated.
  * TODO: Make this based on parent and node instead of path? */
@@ -852,6 +1082,8 @@ class ExprPath {
 			this.attrNames = new Set();
 	}
 
+
+
 	/**
 	 * TODO: Use another function to flatten the expr's so we don't have to use recusion.
 	 * @param expr {Template|Node|Array|function|*}
@@ -939,6 +1171,89 @@ class ExprPath {
 		// TODO: This is commented out b/c this needs to happen after the second pass.
 		//if (!recursing)
 		//	this.freeNodeGroups();
+	}
+
+
+	/**
+	 * Insert/replace the nodes created by a single expression.
+	 * Called by applyExprs()
+	 * This function is recursive, as the functions it calls also call it.
+	 * @param expr {Expr}
+	 * @return {Node[]} New Nodes created. */
+	applyNodes(expr) {
+		let path = this;
+
+		/*#IFDEV*/path.verify();/*#ENDIF*/
+
+		/** @type {(Node|NodeGroup|Expr)[]} */
+		let newNodes = [];
+		let oldNodeGroups = path.nodeGroups;
+		/*#IFDEV*/assert(!oldNodeGroups.includes(null));/*#ENDIF*/
+		let secondPass = []; // indices
+
+		path.nodeGroups = []; // TODO: Is this used?
+		path.apply(expr, newNodes, secondPass);
+
+		this.existingTextNodes = null;
+
+		// TODO: Create an array of old vs Nodes and NodeGroups together.
+		// If they're all the same, skip the next steps.
+		// Or calculate it in the loop above as we go?  Have a path.lastNodeGroups property?
+
+		// Second pass to find close-match NodeGroups.
+		let flatten = false;
+		if (secondPass.length) {
+			for (let [nodesIndex, ngIndex] of secondPass) {
+				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
+
+				ng.parentPath = path;
+				let ngNodes = ng.getNodes();
+
+				/*#IFDEV*/assert(!(newNodes[nodesIndex] instanceof NodeGroup));/*#ENDIF*/
+
+				if (ngNodes.length === 1)
+					newNodes[nodesIndex] = ngNodes[0];
+
+				else {
+					newNodes[nodesIndex] = ngNodes;
+					flatten = true;
+				}
+				path.nodeGroups[ngIndex] = ng;
+			}
+
+			if (flatten)
+				newNodes = newNodes.flat(); // TODO: Only if second pass happens?
+		}
+
+		/*#IFDEV*/assert(!path.nodeGroups.includes(null));/*#ENDIF*/
+
+
+
+		let oldNodes = path.getNodes();
+		path.nodesCache = newNodes; // Replaces value set by path.getNodes()
+
+
+		// This pre-check makes it a few percent faster?
+		let diff = findArrayDiff(oldNodes, newNodes);
+		if (diff !== false) {
+
+			if (this.parentNg.parentPath)
+				this.parentNg.parentPath.clearNodesCache();
+
+			// Fast clear method
+			let isNowEmpty = oldNodes.length && !newNodes.length;
+			if (!isNowEmpty || !path.fastClear())
+
+				// Rearrange nodes.
+				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker);
+
+			this.parentNg.saveOrphans(oldNodeGroups, oldNodes);
+		}
+
+		// Must happen after second pass.
+		path.freeNodeGroups();
+
+		/*#IFDEV*/path.verify();/*#ENDIF*/
 	}
 
 	applyMultipleAttribs(node, expr) {
@@ -1707,236 +2022,6 @@ class Shell {
 	//#ENDIF
 }
 
-/**
- * ISC License
- *
- * Copyright (c) 2020, Andrea Giammarchi, @WebReflection
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
- * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
- * AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
- * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
- * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
- * OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
- * PERFORMANCE OF THIS SOFTWARE.
- */
-
-/**
- * @param {Node} parentNode The container where children live
- * @param {Node[]} a The list of current/live children
- * @param {Node[]} b The list of future children
- * @param {(entry: Node, action: number) => Node} get
- * The callback invoked per each entry related DOM operation.
- * @param {Node} [before] The optional node used as anchor to insert before.
- * @returns {Node[]} The same list of future children.
- */
-const udomdiff = (parentNode, a, b, before) => {
-	//#IFDEV
-	// if (parentNode instanceof ExprPath)
-	// 	parentNode.verify();
-	//#ENDIF
-
-	const bLength = b.length;
-	let aEnd = a.length;
-	let bEnd = bLength;
-	let aStart = 0;
-	let bStart = 0;
-	let map = null;
-	while (aStart < aEnd || bStart < bEnd) {
-		// append head, tail, or nodes in between: fast path
-		if (aEnd === aStart) {
-			// we could be in a situation where the rest of nodes that
-			// need to be added are not at the end, and in such case
-			// the node to `insertBefore`, if the index is more than 0
-			// must be retrieved, otherwise it's gonna be the first item.
-			const node = bEnd < bLength
-				? (bStart
-					? (b[bStart - 1].nextSibling)
-					: b[bEnd - bStart])
-				: before;
-			while (bStart < bEnd) {
-				let bNode = b[bStart++];
-				parentNode.insertBefore(bNode, node);
-
-				//#IFDEV
-				if (bNode instanceof NodeGroup)
-					bNode.verify();
-				// if (parentNode instanceof ExprPath)
-				// 	parentNode.verify();
-				//#ENDIF
-			}
-		}
-		// remove head or tail: fast path
-		else if (bEnd === bStart) {
-			while (aStart < aEnd) {
-				// remove the node only if it's unknown or not live
-				let aNode = a[aStart];
-				if (!map || !map.has(aNode)) {
-					parentNode.removeChild(aNode);
-
-					//#IFDEV
-					if (aNode instanceof NodeGroup)
-						aNode.verify();
-					// if (parentNode instanceof ExprPath)
-					// 	parentNode.verify();
-					//#ENDIF
-				}
-				aStart++;
-			}
-		}
-		// same node: fast path
-		else if (a[aStart] === b[bStart]) {
-			aStart++;
-			bStart++;
-		}
-		// same tail: fast path
-		else if (a[aEnd - 1] === b[bEnd - 1]) {
-			aEnd--;
-			bEnd--;
-		}
-			// The once here single last swap "fast path" has been removed in v1.1.0
-			// https://github.com/WebReflection/udomdiff/blob/single-final-swap/esm/index.js#L69-L85
-		// reverse swap: also fast path
-		else if (
-			a[aStart] === b[bEnd - 1] &&
-			b[bStart] === a[aEnd - 1]
-		) {
-			// this is a "shrink" operation that could happen in these cases:
-			// [1, 2, 3, 4, 5]
-			// [1, 4, 3, 2, 5]
-			// or asymmetric too
-			// [1, 2, 3, 4, 5]
-			// [1, 2, 3, 5, 6, 4]
-			const node = a[--aEnd].nextSibling;
-
-
-			let a2 = b[bStart++];
-			let b2 = a[aStart++];
-			parentNode.insertBefore(
-				a2,
-				b2.nextSibling
-			);
-			//#IFDEV
-			if (a2 instanceof NodeGroup)
-				a2.verify();
-			// if (parentNode instanceof ExprPath)
-			// 	parentNode.verify();
-			//#ENDIF
-
-			let bNode = b[--bEnd];
-			parentNode.insertBefore(bNode, node);
-
-			//#IFDEV
-			if (bNode instanceof NodeGroup)
-				bNode.verify();
-			// if (parentNode instanceof ExprPath)
-			// 	parentNode.verify();
-
-			//#ENDIF
-
-			// mark the future index as identical (yeah, it's dirty, but cheap 👍)
-			// The main reason to do this, is that when a[aEnd] will be reached,
-			// the loop will likely be on the fast path, as identical to b[bEnd].
-			// In the best case scenario, the next loop will skip the tail,
-			// but in the worst one, this node will be considered as already
-			// processed, bailing out pretty quickly from the map index check
-			a[aEnd] = b[bEnd];
-		}
-		// map based fallback, "slow" path
-		else {
-			// the map requires an O(bEnd - bStart) operation once
-			// to store all future nodes indexes for later purposes.
-			// In the worst case scenario, this is a full O(N) cost,
-			// and such scenario happens at least when all nodes are different,
-			// but also if both first and last items of the lists are different
-			if (!map) {
-				map = new Map;
-				let i = bStart;
-				while (i < bEnd)
-					map.set(b[i], i++);
-			}
-			// if it's a future node, hence it needs some handling
-			if (map.has(a[aStart])) {
-				// grab the index of such node, 'cause it might have been processed
-				const index = map.get(a[aStart]);
-				// if it's not already processed, look on demand for the next LCS
-				if (bStart < index && index < bEnd) {
-					let i = aStart;
-					// counts the amount of nodes that are the same in the future
-					let sequence = 1;
-					while (++i < aEnd && i < bEnd && map.get(a[i]) === (index + sequence))
-						sequence++;
-					// effort decision here: if the sequence is longer than replaces
-					// needed to reach such sequence, which would brings again this loop
-					// to the fast path, prepend the difference before a sequence,
-					// and move only the future list index forward, so that aStart
-					// and bStart will be aligned again, hence on the fast path.
-					// An example considering aStart and bStart are both 0:
-					// a: [1, 2, 3, 4]
-					// b: [7, 1, 2, 3, 6]
-					// this would place 7 before 1 and, from that time on, 1, 2, and 3
-					// will be processed at zero cost
-					if (sequence > (index - bStart)) {
-						const node = a[aStart];
-						while (bStart < index) {
-							let bNode = b[bStart++];
-							parentNode.insertBefore(bNode, node);
-
-							//#IFDEV
-							if (bNode instanceof NodeGroup)
-								bNode.verify();
-							// if (parentNode instanceof ExprPath)
-							// 	parentNode.verify();
-
-							//#ENDIF
-						}
-					}
-						// if the effort wasn't good enough, fallback to a replace,
-						// moving both source and target indexes forward, hoping that some
-					// similar node will be found later on, to go back to the fast path
-					else {
-						let aNode = a[aStart++];
-						let bNode = b[bStart++];
-						parentNode.replaceChild(
-							bNode,
-							aNode
-						);
-
-						//#IFDEV
-						if (aNode instanceof NodeGroup)
-							aNode.verify();
-						// if (parentNode instanceof ExprPath)
-						// 	parentNode.verify();
-						//#ENDIF
-					}
-				}
-				// otherwise move the source forward, 'cause there's nothing to do
-				else
-					aStart++;
-			}
-				// this node has no meaning in the future list, so it's more than safe
-				// to remove it, and check the next live node out instead, meaning
-			// that only the live list index should be forwarded
-			else {
-				let aNode = a[aStart++];
-				parentNode.removeChild(aNode);
-
-				//#IFDEV
-				if (aNode instanceof NodeGroup)
-					aNode.verify();
-				// if (parentNode instanceof ExprPath)
-				// 	parentNode.verify();
-				//#ENDIF
-			}
-		}
-	}
-	return b;
-};
-
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
 /**
@@ -2037,7 +2122,7 @@ class NodeGroup {
 	 * @param paths {?ExprPath[]} Optional.  */
 	applyExprs(exprs, paths=null) {
 		paths = paths || this.paths;
-		
+
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 
 		// Update exprs at paths.
@@ -2050,7 +2135,7 @@ class NodeGroup {
 
 			// Nodes
 			if (path.type === PathType.Content) {
-				this.applyNodeExpr(path, expr);
+				path.applyNodes(expr);
 				/*#IFDEV*/path.verify();/*#ENDIF*/
 			}
 
@@ -2072,7 +2157,7 @@ class NodeGroup {
 				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 				else if (path.nodeMarker !== this.rootNg.root && path.type === PathType.Component)
 					this.currentComponentProps[path.attrName] = expr;
-				
+
 				else if (path.type === PathType.Comment) ;
 				else {
 
@@ -2118,93 +2203,11 @@ class NodeGroup {
 	applyExpr(path, expr) {
 		// TODO: Use this if I can figure out how to adapt applyValueAttrib() to it.
 	}
-
-	/**
-	 * Insert/replace the nodes created by a single expression.
-	 * Called by applyExprs()
-	 * This function is recursive, as the functions it calls also call it.
-	 * TODO: Move this to ExprPath?
-	 * @param path {ExprPath}
-	 * @param expr {Expr}
-	 * @return {Node[]} New Nodes created. */
-	applyNodeExpr(path, expr) {
-		/*#IFDEV*/path.verify();/*#ENDIF*/
-
-		/** @type {(Node|NodeGroup|Expr)[]} */
-		let newNodes = [];
-		let oldNodeGroups = path.nodeGroups;
-		/*#IFDEV*/assert(!oldNodeGroups.includes(null));/*#ENDIF*/
-		let secondPass = []; // indices
-
-		path.nodeGroups = []; // TODO: Is this used?
-		path.apply(expr, newNodes, secondPass);
-
-		this.existingTextNodes = null;
-
-		// TODO: Create an array of old vs Nodes and NodeGroups together.
-		// If they're all the same, skip the next steps.
-		// Or calculate it in the loop above as we go?  Have a path.lastNodeGroups property?
-
-		// Second pass to find close-match NodeGroups.
-		let flatten = false;
-		if (secondPass.length) {
-			for (let [nodesIndex, ngIndex] of secondPass) {
-				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
-				
-				ng.parentPath = path;
-				let ngNodes = ng.getNodes();
-
-				/*#IFDEV*/assert(!(newNodes[nodesIndex] instanceof NodeGroup));/*#ENDIF*/
-				
-				if (ngNodes.length === 1)
-					newNodes[nodesIndex] = ngNodes[0];
-				
-				else {
-					newNodes[nodesIndex] = ngNodes;
-					flatten = true;
-				}
-				path.nodeGroups[ngIndex] = ng;
-			}
-
-			if (flatten)
-				newNodes = newNodes.flat(); // TODO: Only if second pass happens?
-		}
-
-		/*#IFDEV*/assert(!path.nodeGroups.includes(null));/*#ENDIF*/
-
-
-	
-		let oldNodes = path.getNodes();
-		path.nodesCache = newNodes; // Replaces value set by path.getNodes()
-
-
-		// This pre-check makes it a few percent faster?
-		let diff = findArrayDiff(oldNodes, newNodes);
-		if (diff !== false) {
-
-			if (this.parentPath)
-				this.parentPath.clearNodesCache();
-
-			// Fast clear method
-			let isNowEmpty = oldNodes.length && !newNodes.length;
-			if (!isNowEmpty || !path.fastClear(oldNodes, newNodes))
-
-				// Rearrange nodes.
-				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker);
-
-			this.saveOrphans(oldNodeGroups, oldNodes);
-		}
-
-		// Must happen after second pass.
-		path.freeNodeGroups();
-
-		/*#IFDEV*/path.verify();/*#ENDIF*/
-	}
 	
 	/**
 	 * Find NodeGroups that had their nodes removed and add those nodes to a Fragment so
 	 * they're not lost forever and the NodeGroup's internal structure is still consistent.
-	 * Called from NodeGroup.applyNodeExpr().
+	 * Called from ExprPath.applyNodes().
 	 * @param oldNodeGroups {NodeGroup[]}
 	 * @param oldNodes {Node[]} */
 	saveOrphans(oldNodeGroups, oldNodes) {
@@ -2251,7 +2254,7 @@ class NodeGroup {
 		if (isPreHtmlElement || isPreIsElement)
 			el = this.createNewComponent(el, isPreHtmlElement, props);
 
-		// Update params of placeholder.
+		// Call render() with the same params that would've been passed to the constructor.
 		else if (el.render) {
 			let oldHash = Globals.componentHash.get(el);
 			if (oldHash !== newHash)

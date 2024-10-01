@@ -109,7 +109,7 @@ export default class NodeGroup {
 	 * @param paths {?ExprPath[]} Optional.  */
 	applyExprs(exprs, paths=null) {
 		paths = paths || this.paths;
-		
+
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 
 		// Update exprs at paths.
@@ -122,7 +122,7 @@ export default class NodeGroup {
 
 			// Nodes
 			if (path.type === PathType.Content) {
-				this.applyNodeExpr(path, expr);
+				path.applyNodes(expr);
 				/*#IFDEV*/path.verify()/*#ENDIF*/
 			}
 
@@ -144,7 +144,7 @@ export default class NodeGroup {
 				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 				else if (path.nodeMarker !== this.rootNg.root && path.type === PathType.Component)
 					this.currentComponentProps[path.attrName] = expr;
-				
+
 				else if (path.type === PathType.Comment) {
 					// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
 				}
@@ -192,93 +192,11 @@ export default class NodeGroup {
 	applyExpr(path, expr) {
 		// TODO: Use this if I can figure out how to adapt applyValueAttrib() to it.
 	}
-
-	/**
-	 * Insert/replace the nodes created by a single expression.
-	 * Called by applyExprs()
-	 * This function is recursive, as the functions it calls also call it.
-	 * TODO: Move this to ExprPath?
-	 * @param path {ExprPath}
-	 * @param expr {Expr}
-	 * @return {Node[]} New Nodes created. */
-	applyNodeExpr(path, expr) {
-		/*#IFDEV*/path.verify();/*#ENDIF*/
-
-		/** @type {(Node|NodeGroup|Expr)[]} */
-		let newNodes = [];
-		let oldNodeGroups = path.nodeGroups;
-		/*#IFDEV*/assert(!oldNodeGroups.includes(null))/*#ENDIF*/
-		let secondPass = []; // indices
-
-		path.nodeGroups = []; // TODO: Is this used?
-		path.apply(expr, newNodes, secondPass);
-
-		this.existingTextNodes = null;
-
-		// TODO: Create an array of old vs Nodes and NodeGroups together.
-		// If they're all the same, skip the next steps.
-		// Or calculate it in the loop above as we go?  Have a path.lastNodeGroups property?
-
-		// Second pass to find close-match NodeGroups.
-		let flatten = false;
-		if (secondPass.length) {
-			for (let [nodesIndex, ngIndex] of secondPass) {
-				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
-				
-				ng.parentPath = path;
-				let ngNodes = ng.getNodes();
-
-				/*#IFDEV*/assert(!(newNodes[nodesIndex] instanceof NodeGroup))/*#ENDIF*/
-				
-				if (ngNodes.length === 1)
-					newNodes[nodesIndex] = ngNodes[0];
-				
-				else {
-					newNodes[nodesIndex] = ngNodes;
-					flatten = true;
-				}
-				path.nodeGroups[ngIndex] = ng;
-			}
-
-			if (flatten)
-				newNodes = newNodes.flat(); // TODO: Only if second pass happens?
-		}
-
-		/*#IFDEV*/assert(!path.nodeGroups.includes(null))/*#ENDIF*/
-
-
-	
-		let oldNodes = path.getNodes();
-		path.nodesCache = newNodes; // Replaces value set by path.getNodes()
-
-
-		// This pre-check makes it a few percent faster?
-		let diff = findArrayDiff(oldNodes, newNodes);
-		if (diff !== false) {
-
-			if (this.parentPath)
-				this.parentPath.clearNodesCache();
-
-			// Fast clear method
-			let isNowEmpty = oldNodes.length && !newNodes.length;
-			if (!isNowEmpty || !path.fastClear(oldNodes, newNodes))
-
-				// Rearrange nodes.
-				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker)
-
-			this.saveOrphans(oldNodeGroups, oldNodes);
-		}
-
-		// Must happen after second pass.
-		path.freeNodeGroups();
-
-		/*#IFDEV*/path.verify();/*#ENDIF*/
-	}
 	
 	/**
 	 * Find NodeGroups that had their nodes removed and add those nodes to a Fragment so
 	 * they're not lost forever and the NodeGroup's internal structure is still consistent.
-	 * Called from NodeGroup.applyNodeExpr().
+	 * Called from ExprPath.applyNodes().
 	 * @param oldNodeGroups {NodeGroup[]}
 	 * @param oldNodes {Node[]} */
 	saveOrphans(oldNodeGroups, oldNodes) {
@@ -325,7 +243,7 @@ export default class NodeGroup {
 		if (isPreHtmlElement || isPreIsElement)
 			el = this.createNewComponent(el, isPreHtmlElement, props);
 
-		// Update params of placeholder.
+		// Call render() with the same params that would've been passed to the constructor.
 		else if (el.render) {
 			let oldHash = Globals.componentHash.get(el);
 			if (oldHash !== newHash)
