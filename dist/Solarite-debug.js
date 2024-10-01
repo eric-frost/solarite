@@ -794,8 +794,21 @@ class ExprPath {
 	nodeBeforeIndex;
 
 	/**
-	 * @type {int[]} Path to the node marker. */
+	 * @type {int[]} Path to the node marker, in reverse for performance reasons. */
 	nodeMarkerPath;
+
+	/**
+	 * Used with getNodeGroup() and freeNodeGroups().
+	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
+	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
+	nodeGroupsFree = new MultiValueMap();
+
+	/**
+	 * Used with getNodeGroup() and freeNodeGroups().
+	 * TODO: Use an array of WeakRef so the gc can collect them?
+	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
+	 * @type {NodeGroup[]} */
+	nodeGroupsInUse = [];
 
 	/**
 	 * @param nodeBefore {Node}
@@ -838,78 +851,6 @@ class ExprPath {
 		if (type === PathType.Multiple)
 			this.attrNames = new Set();
 	}
-
-
-
-	// New!
-
-	/**
-	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
-	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
-	nodeGroupsFree = new MultiValueMap();
-
-	/**
-	 * TODO: Use an array of WeakRef so the gc can collect them?
-	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
-	 * @type {NodeGroup[]} */
-	nodeGroupsInUse = [];
-
-	/**
-	 * Get an unused NodeGroup that matches the template's html and expressions (exact=true)
-	 * or at least the html (exact=false).
-	 * Remove it from nodeGroupsFree if it exists, or create it if not.
-	 * Then add it to nodeGroupsInUse.
-	 *
-	 * @param template {Template}
-	 * @param exact {boolean}
-	 * @return {NodeGroup} */
-	getNodeGroup(template, exact=true) {
-		let exactKey = template.getExactKey();
-		let closeKey = template.getCloseKey();
-		let result;
-
-		if (exact) {
-			result = this.nodeGroupsFree.delete(exactKey);
-			if (result)
-				this.nodeGroupsFree.delete(closeKey, result);
-			else
-				return null;
-		}
-		else {
-			result = this.nodeGroupsFree.delete(closeKey);
-			if (result) {
-				/*#IFDEV*/assert(result.exactKey);/*#ENDIF*/
-				this.nodeGroupsFree.delete(result.exactKey, result);
-
-				// Update this close match with the new expression values.
-				result.applyExprs(template.exprs);
-				result.exactKey = exactKey; // TODO: Should this be set elsewhere?
-			}
-		}
-
-		if (!result)
-			result = new NodeGroup(template, this, exactKey, closeKey);
-
-		this.nodeGroupsInUse.push(result);
-		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
-		return result;
-	}
-
-	/**
-	 * Move everything from this.nodeGroupsInUse to this.nodeGroupsFree. */
-	freeNodeGroups() {
-		let ngf = this.nodeGroupsFree;
-		for (let ng of this.nodeGroupsInUse) {
-			ngf.add(ng.exactKey, ng);
-			ngf.add(ng.closeKey, ng);
-		}
-		this.nodeGroupsInUse = [];
-	}
-
-
-
-
-
 
 	/**
 	 * TODO: Use another function to flatten the expr's so we don't have to use recusion.
@@ -1044,23 +985,23 @@ class ExprPath {
 		assert(root instanceof HTMLElement);
 		/*#ENDIF*/
 
-		let eventName = this.attrName.slice(2);
+		let eventName = this.attrName.slice(2); // remove "on-" prefix.
 		let func;
 
 		// Convert array to function.
-		// TODO: This doesn't work for [this, 'doSomething', 'meow']
 		let args = [];
 		if (Array.isArray(expr)) {
-			for (let i=0; i<expr.length; i++)
-				if (typeof expr[i] === 'function') {
-					func = expr[i];
-					args = expr.slice(i+1);
-					break;
-				}
+
+			// oninput=${[this.doSomething, 'meow']}
+			if (typeof expr[0] === 'function') {
+				func = expr[0];
+				expr.shift();
+				args = expr;
+			}
 
 			// Undocumented.
 			// oninput=${[this, 'value']}
-			if (!func) {
+			else {
 				func = setValue;
 				args = [expr[0], expr.slice(1), node];
 				node.value = delve(expr[0], expr.slice(1));
@@ -1071,10 +1012,10 @@ class ExprPath {
 			func = expr;
 
 		let eventKey = getObjectId(node) + eventName;
-		let [existing, existingBound] = Globals.nodeEvents[eventKey] || [];
-		//Globals.nodeEventArgs[eventKey] = args; // TODO: Put this in Globals.nodeEvents[]  Where is this ever used?
+		let [existing, existingBound, _] = Globals.nodeEvents[eventKey] || [];
 
 
+		// If function has changed, remove and rebind the event.
 		if (existing !== func) {
 			if (existing)
 				node.removeEventListener(eventName, existingBound);
@@ -1082,19 +1023,26 @@ class ExprPath {
 			let originalFunc = func;
 
 			// BoundFunc sets the "this" variable to be the current Solarite component.
-			let boundFunc = event => originalFunc.call(root, ...args, event, node);
+			let boundFunc = (event) => {
+				let args = Globals.nodeEvents[eventKey][2];
+				return originalFunc.call(root, ...args, event, node);
+			};
 
 			// Save both the original and bound functions.
 			// Original so we can compare it against a newly assigned function.
 			// Bound so we can use it with removeEventListner().
-			Globals.nodeEvents[eventKey] = [originalFunc, boundFunc];
+			Globals.nodeEvents[eventKey] = [originalFunc, boundFunc, args];
 
 			node.addEventListener(eventName, boundFunc);
 
-			// TODO: classic event attribs:
+			// TODO: classic event attribs?
 			//el[attr.name] = e => // e.g. el.onclick = ...
 			//	(new Function('event', 'el', attr.value)).bind(this.manager.rootEl)(e, el) // put "event", "el", and "this" in scope for the event code.
 		}
+
+		//  Otherwise just update the args to the function.
+		else
+			Globals.nodeEvents[eventKey][2] = args;
 	}
 
 	applyValueAttrib(node, exprs, exprIndex) {
@@ -1288,6 +1236,58 @@ class ExprPath {
 
 	getParentNode() { // Same as this.parentNode
 		return this.nodeMarker.parentNode
+	}
+
+	/**
+	 * Get an unused NodeGroup that matches the template's html and expressions (exact=true)
+	 * or at least the html (exact=false).
+	 * Remove it from nodeGroupsFree if it exists, or create it if not.
+	 * Then add it to nodeGroupsInUse.
+	 *
+	 * @param template {Template}
+	 * @param exact {boolean}
+	 * @return {NodeGroup} */
+	getNodeGroup(template, exact=true) {
+		let exactKey = template.getExactKey();
+		let closeKey = template.getCloseKey();
+		let result;
+
+		if (exact) {
+			result = this.nodeGroupsFree.delete(exactKey);
+			if (result)
+				this.nodeGroupsFree.delete(closeKey, result);
+			else
+				return null;
+		}
+		else {
+			result = this.nodeGroupsFree.delete(closeKey);
+			if (result) {
+				/*#IFDEV*/assert(result.exactKey);/*#ENDIF*/
+				this.nodeGroupsFree.delete(result.exactKey, result);
+
+				// Update this close match with the new expression values.
+				result.applyExprs(template.exprs);
+				result.exactKey = exactKey; // TODO: Should this be set elsewhere?
+			}
+		}
+
+		if (!result)
+			result = new NodeGroup(template, this, exactKey, closeKey);
+
+		this.nodeGroupsInUse.push(result);
+		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
+		return result;
+	}
+
+	/**
+	 * Move everything from this.nodeGroupsInUse to this.nodeGroupsFree. */
+	freeNodeGroups() {
+		let ngf = this.nodeGroupsFree;
+		for (let ng of this.nodeGroupsInUse) {
+			ngf.add(ng.exactKey, ng);
+			ngf.add(ng.closeKey, ng);
+		}
+		this.nodeGroupsInUse = [];
 	}
 
 	//#IFDEV

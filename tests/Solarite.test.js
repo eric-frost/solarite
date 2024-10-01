@@ -2711,8 +2711,7 @@ Testimony.test('Solarite.events.onExprChild', () => {
 	assert.eq(e.items.length, 1);
 });
 
-// FIXME
-Testimony.test('Solarite.events._loop', () => {
+Testimony.test('Solarite.events.loop', () => {
 
 	let lastButtonId = null;
 
@@ -2741,10 +2740,11 @@ Testimony.test('Solarite.events._loop', () => {
 	assert.eq(lastButtonId, 2);
 
 	// This doesn't update the bound function to use 3.
-	v.items.splice(1, 1);
+	v.items.splice(1, 1); // remove 2.
 	v.items.push({id: 3});
+	window.debug = true;
 	v.render();
-
+	v.children[1].dispatchEvent(new MouseEvent('click'));
 	assert.eq(lastButtonId, 3);
 
 
