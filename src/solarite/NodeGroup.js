@@ -264,7 +264,7 @@ export default class NodeGroup {
 			if (!isNowEmpty || !path.fastClear(oldNodes, newNodes))
 
 				// Rearrange nodes.
-				udomdiff(path.parentNode, oldNodes, newNodes, path.nodeMarker)
+				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker)
 
 			this.saveOrphans(oldNodeGroups, oldNodes);
 		}

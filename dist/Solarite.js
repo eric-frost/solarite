@@ -695,13 +695,8 @@ class ExprPath {
 	 * @type {Node|HTMLElement} */
 	nodeMarker;
 
-	/** @deprecated */
-	get parentNode() {
-		return this.nodeMarker.parentNode;
-	}
 
 	// These are set after an expression is assigned:
-
 
 	/** @type {NodeGroup} */
 	parentNg;
@@ -891,7 +886,7 @@ class ExprPath {
 				if (idx !== -1)
 					newNodes.push(...this.existingTextNodes.splice(idx, 1));
 				else
-					newNodes.push(this.parentNode.ownerDocument.createTextNode(text));
+					newNodes.push(this.nodeMarker.ownerDocument.createTextNode(text));
 			}
 		}
 
@@ -1104,8 +1099,8 @@ class ExprPath {
 		let path = this;
 		
 		// Clear cache parent ExprPaths that have the same parentNode
-		let parentNode = this.parentNode;
-		while (path && path.parentNode === parentNode) {
+		let parentNode = this.nodeMarker.parentNode;
+		while (path && path.nodeMarker.parentNode === parentNode) {
 			path.nodesCache = null;
 			path = path.parentNg?.parentPath;
 			
@@ -1975,7 +1970,7 @@ class NodeGroup {
 			if (!isNowEmpty || !path.fastClear(oldNodes, newNodes))
 
 				// Rearrange nodes.
-				udomdiff(path.parentNode, oldNodes, newNodes, path.nodeMarker);
+				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker);
 
 			this.saveOrphans(oldNodeGroups, oldNodes);
 		}
