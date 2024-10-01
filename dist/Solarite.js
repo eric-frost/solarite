@@ -1795,7 +1795,7 @@ class NodeGroup {
 	 * @param closeKey {string}
 	 * @param options
 	 * @returns {NodeGroup} */
-	constructor(template, parentPath, exactKey, closeKey, el=null, options=null) {
+	constructor(template, parentPath, exactKey=null, closeKey=null, el=null, options=null) {
 		if (!(this instanceof RootNodeGroup)) {
 			let [fragment, shell] = this.init(template, parentPath, exactKey, closeKey, el, options);
 
@@ -1808,7 +1808,7 @@ class NodeGroup {
 		}
 	}
 
-	init(template, parentPath, exactKey, closeKey, el=null, options=null) {
+	init(template, parentPath, exactKey=null, closeKey=null, el=null, options=null) {
 		this.exactKey = exactKey || template.getExactKey();
 		this.closeKey = closeKey || template.getCloseKey();
 
@@ -2361,8 +2361,11 @@ class RootNodeGroup extends NodeGroup {
 				// Go one level deeper into all of shell's paths.
 				offset = 1;
 			}
-			else
-				el.append(...fragment.childNodes);
+			else {
+				let isEmpty = fragment.childNodes.length === 1 && fragment.childNodes[0].nodeType === 3 && fragment.childNodes[0].textContent === '';
+				if (!isEmpty)
+					el.append(...fragment.childNodes);
+			}
 
 			// Setup slots
 			if (slotFragment) {
@@ -2376,6 +2379,8 @@ class RootNodeGroup extends NodeGroup {
 				let unamedSlot = el.querySelector('slot:not([name])');
 				if (unamedSlot)
 					unamedSlot.append(slotFragment);
+				else
+					el.append(slotFragment);
 			}
 
 			root = el;

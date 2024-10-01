@@ -120,9 +120,8 @@ Testimony.test('Solarite.Shell.nodesAroundPathsNested', () => {
  * | NodeGroup       |
  * └─────────────────╯*/
 Testimony.test('Solarite.NodeGroup.empty', () => {
-	let ngm = new NodeGroupManager(document.body);
 
-	let ng = new NodeGroup(new Template([``], []), ngm)
+	let ng = new NodeGroup(new Template([``], []))
 	assert.eq(getHtml(ng), '')
 
 	ng.applyExprs([])
@@ -131,9 +130,8 @@ Testimony.test('Solarite.NodeGroup.empty', () => {
 
 
 Testimony.test('Solarite.NodeGroup.oneExpr', () => {
-	let ngm = new NodeGroupManager(document.body);
 
-	let ng = new NodeGroup(new Template([``, ``], ['1']), ngm)
+	let ng = new NodeGroup(new Template([``, ``], ['1']))
 	assert.eq(getHtml(ng), '1')
 
 	ng.applyExprs([2])
@@ -144,8 +142,7 @@ Testimony.test('Solarite.NodeGroup.oneExpr', () => {
 });
 
 Testimony.test('Solarite.NodeGroup.emptyAdjacent', () => {
-	let ngm = new NodeGroupManager(document.body);
-	let ng = new NodeGroup(new Template([``, ``, ``], ['1', '2']), ngm)
+	let ng = new NodeGroup(new Template([``, ``, ``], ['1', '2']))
 	ng.verify();
 
 	assert.eq(getHtml(ng), '1|2')
@@ -159,8 +156,7 @@ Testimony.test('Solarite.NodeGroup.emptyAdjacent', () => {
 
 
 Testimony.test('Solarite.NodeGroup.paragraph', () => {
-	let ngm = new NodeGroupManager(document.body);
-	let ng = new NodeGroup(new Template(['<p>', '</p>'], ['1']), ngm)
+	let ng = new NodeGroup(new Template(['<p>', '</p>'], ['1']))
 	assert.eq(getHtml(ng), '<p>1</p>')
 
 	ng.applyExprs([2])
@@ -171,10 +167,9 @@ Testimony.test('Solarite.NodeGroup.paragraph', () => {
 });
 
 Testimony.test('Solarite.NodeGroup.node', () => {
-	let ngm = new NodeGroupManager(document.body);
 	let a = r('<p>a</p>')
 	let b = r('<p>b</p>')
-	let ng = new NodeGroup(new Template(['<div>', '</div>'], [a]), ngm)
+	let ng = new NodeGroup(new Template(['<div>', '</div>'], [a]))
 
 	assert.eq(getHtml(ng), '<div><p>a</p></div>')
 
@@ -189,10 +184,9 @@ Testimony.test('Solarite.NodeGroup.node', () => {
 });
 
 Testimony.test('Solarite.NodeGroup._nodeSwap', () => {
-	let ngm = new NodeGroupManager(document.body);
 	let a = r('<p>a</p>')
 	let b = r('<p>b</p>')
-	let ng = new NodeGroup(new Template(['<div>', '', '</div>'], [a, b]), ngm)
+	let ng = new NodeGroup(new Template(['<div>', '', '</div>'], [a, b]))
 	document.body.append(ng.startNode)
 
 	assert.eq(getHtml(ng), '<div><p>a</p><p>b</p></div>')
@@ -203,10 +197,9 @@ Testimony.test('Solarite.NodeGroup._nodeSwap', () => {
 
 
 Testimony.test('Solarite.NodeGroup.arrayReverse', () => {
-	let ngm = new NodeGroupManager(document.body);
 	let list = [r('a'), r('b')];
 
-	let ng = new NodeGroup(new Template(['<div>', '</div>'], [list]), ngm)
+	let ng = new NodeGroup(new Template(['<div>', '</div>'], [list]))
 	ng.verify();
 	assert(getHtml(ng), '<div>ab</div')
 
@@ -2157,6 +2150,8 @@ Testimony.test('Solarite.r.standaloneChild', () => {
 	list.render(); // calls NotesItem.render() with the new item.
 
 	assert.eq(getHtml(list), `<div><div><b>PhysEd</b> - See spot run.<br></div><div><b>Science</b> - Snails are mollusks.<br></div></div>`);
+
+	list.remove();
 });
 //</editor-fold>
 
@@ -2540,17 +2535,17 @@ Testimony.test('Solarite.slots.named', () => {
 
 Testimony.test('Solarite.slots.slotless', `Add children even when no slots present.`, () => {
 
-	class S10 extends Solarite {
+	class S30 extends Solarite {
 		render() {
 			r(this)`<div>child1</div>`
 		}
 	}
-	S10.define();
+	S30.define();
 
-	let div = r('<div><s-10>child2<br>child4</s-10></div>')
+	let div = r('<div><s-30>child2<br>child4</s-30></div>')
 	document.body.append(div);
 
-	assert.eq(div.outerHTML, `<div><s-10><div>child1</div>child2<br>child4</s-10></div>`)
+	assert.eq(div.outerHTML, `<div><s-30><div>child1</div>child2<br>child4</s-30></div>`)
 
 	div.remove();
 });
@@ -3519,7 +3514,7 @@ Testimony.test('Solarite.watch2._forEachSpliceInsert', () => {
 
 
 
-Testimony.test('Solarite.watch3.primitive', () => {
+Testimony.test('Solarite.watch3._primitive', () => {
 
 	class W100 extends HTMLElement {
 		name = 'Fred';
@@ -3547,7 +3542,7 @@ Testimony.test('Solarite.watch3.primitive', () => {
 });
 
 
-Testimony.test('Solarite.watch3.nodes', () => {
+Testimony.test('Solarite.watch3._nodes', () => {
 
 	class W110 extends HTMLElement {
 		name = 'Fred';
@@ -3588,7 +3583,7 @@ Testimony.test('Solarite.watch3.nodes', () => {
  * | Full            |
  * └─────────────────╯*/
 
-Testimony.test('Solarite.full.todoList', () => {
+Testimony.test('Solarite.full._todoList', () => {
 	class ShoppingList extends HTMLElement {
 		constructor(items=[]) {
 			super();
@@ -3630,7 +3625,7 @@ Testimony.test('Solarite.full.todoList', () => {
 	document.body.append(new ShoppingList()); // add <shopping-list> element
 });
 
-Testimony.test('Solarite.full.treeItems', () => {
+Testimony.test('Solarite.full._treeItems', () => {
 
 	//import '../src/RedComponent.js'
 
@@ -3738,7 +3733,7 @@ Testimony.test('Solarite.full._isc2', () => {
 
 
 
-Testimony.test('Solarite.full.misc', () => {
+Testimony.test('Solarite.full._misc', () => {
 
 	class Misc1 extends HTMLElement {
 
