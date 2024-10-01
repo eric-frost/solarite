@@ -201,9 +201,8 @@ export default class ExprPath {
 	 * TODO: Use another function to flatten the expr's so we don't have to use recusion.
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]}
-	 * @param secondPass {Array} Locations within newNodes to evaluate later.
-	 * @param recursing {boolean} Used internally only. */
-	apply(expr, newNodes, secondPass, recursing=false) {
+	 * @param secondPass {Array} Locations within newNodes to evaluate later. */
+	apply(expr, newNodes, secondPass) {
 
 		if (expr instanceof Template) {
 
@@ -242,14 +241,14 @@ export default class ExprPath {
 
 		else if (Array.isArray(expr))
 			for (let subExpr of expr)
-				this.apply(subExpr, newNodes, secondPass, true);
+				this.apply(subExpr, newNodes, secondPass);
 
 		else if (typeof expr === 'function') {
 			Globals.currentExprPath = [this, expr]; // Used by watch3()
 			let result = expr();
 			Globals.currentExprPath = null;
 
-			this.apply(result, newNodes, secondPass, true);
+			this.apply(result, newNodes, secondPass);
 		}
 
 		// Text

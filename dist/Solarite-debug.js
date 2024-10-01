@@ -926,9 +926,8 @@ class ExprPath {
 	 * TODO: Use another function to flatten the expr's so we don't have to use recusion.
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]}
-	 * @param secondPass {Array} Locations within newNodes to evaluate later.
-	 * @param recursing {boolean} Used internally only. */
-	apply(expr, newNodes, secondPass, recursing=false) {
+	 * @param secondPass {Array} Locations within newNodes to evaluate later. */
+	apply(expr, newNodes, secondPass) {
 
 		if (expr instanceof Template) {
 
@@ -967,14 +966,14 @@ class ExprPath {
 
 		else if (Array.isArray(expr))
 			for (let subExpr of expr)
-				this.apply(subExpr, newNodes, secondPass, true);
+				this.apply(subExpr, newNodes, secondPass);
 
 		else if (typeof expr === 'function') {
 			Globals.currentExprPath = [this, expr]; // Used by watch3()
 			let result = expr();
 			Globals.currentExprPath = null;
 
-			this.apply(result, newNodes, secondPass, true);
+			this.apply(result, newNodes, secondPass);
 		}
 
 		// Text
@@ -2021,15 +2020,12 @@ class NodeGroup {
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param el {HTMLElement}
 	 * @param parentPath {?ExprPath}
-	 * @param exactKey {string}
-	 * @param closeKey {string}
-	 * @param options
-	 * @returns {NodeGroup} */
-	constructor(template, parentPath, exactKey=null, closeKey=null, el=null, options=null) {
+	 * @param exactKey {?string}
+	 * @param closeKey {?string} */
+	constructor(template, parentPath=null, exactKey=null, closeKey=null) {
 		if (!(this instanceof RootNodeGroup)) {
-			let [fragment, shell] = this.init(template, parentPath, exactKey, closeKey, el, options);
+			let [fragment, shell] = this.init(template, parentPath, exactKey, closeKey);
 
 			this.updatePaths(fragment, shell.paths);
 
@@ -2040,12 +2036,10 @@ class NodeGroup {
 		}
 	}
 
-	init(template, parentPath, exactKey=null, closeKey=null, el=null, options=null) {
+	init(template, parentPath=null, exactKey=null, closeKey=null) {
 		this.exactKey = exactKey || template.getExactKey();
 		this.closeKey = closeKey || template.getCloseKey();
 
-		if (options)
-			this.options = options;
 		this.parentPath = parentPath;
 		this.rootNg = parentPath?.parentNg?.rootNg || this;
 
@@ -2625,12 +2619,12 @@ class RootNodeGroup extends NodeGroup {
 	 * @param options {?object}
 	 */
 	constructor(template, el, options) {
-		super(template, null, null, null, el, options);
+		super(template);
 
 		this.options = options;
 
 		this.rootNg = this;
-		let [fragment, shell] = this.init(template, null, null, null, el, options);
+		let [fragment, shell] = this.init(template);
 
 		// If adding NodeGroup to an element.
 		let offset = 0;

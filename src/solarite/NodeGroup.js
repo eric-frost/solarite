@@ -68,15 +68,12 @@ export default class NodeGroup {
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param el {HTMLElement}
 	 * @param parentPath {?ExprPath}
-	 * @param exactKey {string}
-	 * @param closeKey {string}
-	 * @param options
-	 * @returns {NodeGroup} */
-	constructor(template, parentPath, exactKey=null, closeKey=null, el=null, options=null) {
+	 * @param exactKey {?string}
+	 * @param closeKey {?string} */
+	constructor(template, parentPath=null, exactKey=null, closeKey=null) {
 		if (!(this instanceof RootNodeGroup)) {
-			let [fragment, shell] = this.init(template, parentPath, exactKey, closeKey, el, options);
+			let [fragment, shell] = this.init(template, parentPath, exactKey, closeKey);
 
 			this.updatePaths(fragment, shell.paths);
 
@@ -87,12 +84,10 @@ export default class NodeGroup {
 		}
 	}
 
-	init(template, parentPath, exactKey=null, closeKey=null, el=null, options=null) {
+	init(template, parentPath=null, exactKey=null, closeKey=null) {
 		this.exactKey = exactKey || template.getExactKey();
 		this.closeKey = closeKey || template.getCloseKey();
 
-		if (options)
-			this.options = options;
 		this.parentPath = parentPath;
 		this.rootNg = parentPath?.parentNg?.rootNg || this;
 
@@ -674,12 +669,12 @@ export class RootNodeGroup extends NodeGroup {
 	 * @param options {?object}
 	 */
 	constructor(template, el, options) {
-		super(template, null, null, null, el, options);
+		super(template);
 
 		this.options = options;
 
 		this.rootNg = this;
-		let [fragment, shell] = this.init(template, null, null, null, el, options);
+		let [fragment, shell] = this.init(template);
 
 		// If adding NodeGroup to an element.
 		let offset = 0;
