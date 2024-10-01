@@ -55,16 +55,10 @@ class ShoppingList extends HTMLElement {
 
             ${this.items.map(item => r`
                 <div>
-                    <input placeholder="Item" value=${item.name} 
-                        oninput=${e => { // two-way binding
-                            item.name = e.target.value; 
-                            this.render()
-                        }}>
-                    <input type="number" value=${item.qty}
-                        oninput=${e => {
-                            item.qty = e.target.value; 
-                            this.render()
-                        }}>
+                    <input placeholder="Item" oninput=${e => this.render()}
+                        value=${[item, 'name']}> <!-- 2-way binding -->
+                    <input type="number" oninput=${e => this.render()}
+                        value=${[item, 'qty']}>
                     <button onclick=${()=>this.removeItem(item)}>x</button>
                 </div>			 
             `)}
@@ -80,7 +74,7 @@ document.body.append(new ShoppingList()); // add <shopping-list> element
 
 To use, import one of these pre-bundled es6 modules into your project:
 
-- [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 87KB
+- [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 85KB
 - [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) - 24KB / 8KB gzipped
 
 Or get Solarite from GitHub or NPM:
@@ -89,7 +83,7 @@ Or get Solarite from GitHub or NPM:
 - `git clone https://github.com/Vorticode/solarite.git`
 - `npm install solarite`
 
-This project is currently in BETA stage and not yet recommended for production code.  Tip:  A JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [PhpStorm](https://www.jetbrains.com/phpstorm/), or [IDEA](https://www.jetbrains.com/idea/) will syntax highlight the html template strings.
+This project is currently in BETA stage.  Tip:  A JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [PhpStorm](https://www.jetbrains.com/phpstorm/), or [IDEA](https://www.jetbrains.com/idea/) will syntax highlight the html template strings.
 
 ## Concepts
 
@@ -379,6 +373,39 @@ document.body.append(new BindingDemo());
 ```
 
 In addition to `<input>`,  `<select>` and `<textarea>` can also use the `value` attribute to set their value on render.  Likewise so can any custom web component that defines a `value` property.
+
+A shorthand way to do two-way binding is to pass a property path as the value expression.  Here with `value=${[this, 'count']}`.  When a user types in the input, Solarite listens to the `oninput` listener and updates `this.count`.  Note that we still need a second `oninput` attribute if we want to trigger rendering.
+
+```javascript
+import {r} from './dist/Solarite.js';
+
+class BindingDemo extends HTMLElement {
+   
+	constructor() {
+        super();
+        this.count = 0;
+        this.render();
+    }
+    
+	render() { 
+		r(this)`
+        <binding-demo>
+            <input type="number" value=${[this, 'count']}
+                oninput=${() => this.render()}>
+            <pre>count is ${this.count}</pre>
+            <button onclick=${()=> { 
+                this.count = 0;
+                this.render();
+            }}>Reset</button>
+        </binding-demo>`
+	}
+}
+customElements.define('binding-demo', BindingDemo);
+
+document.body.append(new BindingDemo());
+```
+
+
 
 ### Loops
 
@@ -758,6 +785,8 @@ When `render()` is called:
 1. Solarite's `r()` function gets the array of raw strings created by tasks.map() using a template literal function.  
 2. It then creates a hash of the values of each item in the array.  
 3. Then it compares those hashes with the hashes from the last time rendering happened, and only update elements and attributes given values that have changed.
+
+Solarite uses [WebReflection/udomdiff](https://github.com/WebReflection/udomdiff) to compare DOM nodes to update.
 
 ## Upcoming Features
 

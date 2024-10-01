@@ -270,14 +270,13 @@ export default class ExprPath {
 			// oninput=${[this.doSomething, 'meow']}
 			if (typeof expr[0] === 'function') {
 				func = expr[0];
-				expr.shift();
-				args = expr;
+				args = expr.slice(1);
 			}
 
 			// Undocumented.
 			// oninput=${[this, 'value']}
 			else {
-				func = setValue
+				func = setValue;
 				args = [expr[0], expr.slice(1), node]
 				node.value = delve(expr[0], expr.slice(1));
 				// root.render(); // TODO: This causes infinite recursion.

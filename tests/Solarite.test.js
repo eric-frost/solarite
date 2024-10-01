@@ -2936,9 +2936,9 @@ Testimony.test('Solarite.binding.number', () => {
 });
 
 // FIXME
-Testimony.test('Solarite.binding._number2', () => {
+Testimony.test('Solarite.binding.number2', () => {
 
-	class B40 extends Solarite {
+	class B50 extends Solarite {
 		count = 1
 
 		render() {
@@ -2946,7 +2946,7 @@ Testimony.test('Solarite.binding._number2', () => {
 		}
 	}
 
-	let b = new B40();
+	let b = new B50();
 	document.body.append(b);
 	assert.eq(b.input.value, '1')
 

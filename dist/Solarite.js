@@ -889,8 +889,7 @@ class ExprPath {
 			// oninput=${[this.doSomething, 'meow']}
 			if (typeof expr[0] === 'function') {
 				func = expr[0];
-				expr.shift();
-				args = expr;
+				args = expr.slice(1);
 			}
 
 			// Undocumented.
