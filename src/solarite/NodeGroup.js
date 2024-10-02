@@ -420,11 +420,11 @@ export default class NodeGroup {
 
 	updatePaths(fragment, paths, offset) {
 		// Update paths to point to the fragment.
-		for (let oldPath of paths) {
-
-			let path = oldPath.clone(fragment, offset)
+		this.paths.length = paths.length;
+		for (let i=0; i<paths.length; i++) {
+			let path = paths[i].clone(fragment, offset)
 			path.parentNg = this;
-			this.paths.push(path);
+			this.paths[i] = path;
 		}
 	}
 
@@ -507,7 +507,8 @@ export default class NodeGroup {
 
 	/**
 	 * @param root {HTMLElement}
-	 * @param shell {Shell} */
+	 * @param shell {Shell}
+	 * @param pathOffset {int} */
 	activateEmbeds(root, shell, pathOffset=0) {
 
 		// static components.  These are WebComponents not created by an expression.

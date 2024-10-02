@@ -371,14 +371,13 @@ export default class ExprPath {
 		else
 			func = expr;
 
-		let eventKey = getObjectId(node) + eventName;
 		let nodeEvents = Globals.nodeEvents.get(node);
 		if (!nodeEvents) {
 			nodeEvents = {};
 			Globals.nodeEvents.set(node, nodeEvents);
 		}
 
-		let [existing, existingBound, _] = nodeEvents[eventKey] || [];
+		let [existing, existingBound, _] = nodeEvents[eventName] || [];
 
 
 		// If function has changed, remove and rebind the event.
@@ -390,14 +389,14 @@ export default class ExprPath {
 
 			// BoundFunc sets the "this" variable to be the current Solarite component.
 			let boundFunc = (event) => {
-				let args = nodeEvents[eventKey][2];
+				let args = nodeEvents[eventName][2];
 				return originalFunc.call(root, ...args, event, node);
 			}
 
 			// Save both the original and bound functions.
 			// Original so we can compare it against a newly assigned function.
 			// Bound so we can use it with removeEventListner().
-			nodeEvents[eventKey] = [originalFunc, boundFunc, args];
+			nodeEvents[eventName] = [originalFunc, boundFunc, args];
 
 			node.addEventListener(eventName, boundFunc);
 
@@ -408,7 +407,7 @@ export default class ExprPath {
 
 		//  Otherwise just update the args to the function.
 		else
-			nodeEvents[eventKey][2] = args;
+			nodeEvents[eventName][2] = args;
 	}
 
 	applyValueAttrib(node, exprs, exprIndex) {
