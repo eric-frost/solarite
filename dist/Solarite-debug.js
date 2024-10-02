@@ -357,9 +357,14 @@ var Globals = {
 	elementClasses: {},
 
 	/**
-	 * Used by ExprPath.applyEventAttrib.
-	 * TODO: Memory from this is never freed.  Use a WeakMap<Node, Object<eventName:string, function[]>> */
-	nodeEvents: {},
+	 * Used by ExprPath.applyEventAttrib()
+	 * @type {WeakMap<Node, Object<eventName:string, [original:function, bound:function, args:*[]]>>} */
+	nodeEvents: new WeakMap(),
+
+	/**
+	 * Get the RootNodeGroup for an element.
+	 * @type {WeakMap<HTMLElement, RootNodeGroup>} */
+	nodeGroups: new WeakMap(),
 
 	/**
 	 * Used by r() path 9. */
@@ -372,24 +377,10 @@ var Globals = {
 	 * @type {WeakSet<HTMLElement>} */
 	rendering: new WeakSet(),
 
-
-
-	/**
-	 * Get the root NodeGroup for an element.
-	 * @type {WeakMap<HTMLElement, NodeGroup>} */
-	nodeGroups: new WeakMap(),
-
-
-	/**
-	 * Each Element that has Expr children has an associated NodeGroupManager here.
-	 * @type {WeakMap<HTMLElement, NodeGroupManager>} */
-	nodeGroupManagers: new WeakMap(),
-
 	/**
 	 * Map from array of Html strings to a Shell created from them.
 	 * @type {WeakMap<string[], Shell>} */
 	shells: new WeakMap()
-
 };
 
 let Util = {
@@ -1326,7 +1317,13 @@ class ExprPath {
 			func = expr;
 
 		let eventKey = getObjectId(node) + eventName;
-		let [existing, existingBound, _] = Globals.nodeEvents[eventKey] || [];
+		let nodeEvents = Globals.nodeEvents.get(node);
+		if (!nodeEvents) {
+			nodeEvents = {};
+			Globals.nodeEvents.set(node, nodeEvents);
+		}
+
+		let [existing, existingBound, _] = nodeEvents[eventKey] || [];
 
 
 		// If function has changed, remove and rebind the event.
@@ -1338,14 +1335,14 @@ class ExprPath {
 
 			// BoundFunc sets the "this" variable to be the current Solarite component.
 			let boundFunc = (event) => {
-				let args = Globals.nodeEvents[eventKey][2];
+				let args = nodeEvents[eventKey][2];
 				return originalFunc.call(root, ...args, event, node);
 			};
 
 			// Save both the original and bound functions.
 			// Original so we can compare it against a newly assigned function.
 			// Bound so we can use it with removeEventListner().
-			Globals.nodeEvents[eventKey] = [originalFunc, boundFunc, args];
+			nodeEvents[eventKey] = [originalFunc, boundFunc, args];
 
 			node.addEventListener(eventName, boundFunc);
 
@@ -1356,7 +1353,7 @@ class ExprPath {
 
 		//  Otherwise just update the args to the function.
 		else
-			Globals.nodeEvents[eventKey][2] = args;
+			nodeEvents[eventKey][2] = args;
 	}
 
 	applyValueAttrib(node, exprs, exprIndex) {
@@ -2074,7 +2071,7 @@ class NodeGroup {
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
 	 * @param parentPath {?ExprPath}
-	 * @param exactKey {?string}
+	 * @param exactKey {?string} Optional, if already calculated.
 	 * @param closeKey {?string} */
 	constructor(template, parentPath=null, exactKey=null, closeKey=null) {
 		if (!(this instanceof RootNodeGroup)) {
@@ -2089,6 +2086,14 @@ class NodeGroup {
 		}
 	}
 
+	/**
+	 * Common init shared by RootNodeGroup and NodeGroup constructors.
+	 * But in a separate function because they need to do this at a different step.
+	 * @param template {Template}  Create it from the html strings and expressions in this template.
+	 * @param parentPath {?ExprPath}
+	 * @param exactKey {?string} Optional, if already calculated.
+	 * @param closeKey {?string}
+	 * @returns {[DocumentFragment, Shell]} */
 	init(template, parentPath=null, exactKey=null, closeKey=null) {
 		this.exactKey = exactKey || template.getExactKey();
 		this.closeKey = closeKey || template.getCloseKey();
@@ -2163,9 +2168,7 @@ class NodeGroup {
 
 					// Event attribute value
 					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
-
 						let root = this.getRootNode();
-
 						path.applyEventAttrib(node, expr, root);
 					}
 

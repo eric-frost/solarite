@@ -61,7 +61,7 @@ export default class NodeGroup {
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
 	 * @param parentPath {?ExprPath}
-	 * @param exactKey {?string}
+	 * @param exactKey {?string} Optional, if already calculated.
 	 * @param closeKey {?string} */
 	constructor(template, parentPath=null, exactKey=null, closeKey=null) {
 		if (!(this instanceof RootNodeGroup)) {
@@ -76,6 +76,14 @@ export default class NodeGroup {
 		}
 	}
 
+	/**
+	 * Common init shared by RootNodeGroup and NodeGroup constructors.
+	 * But in a separate function because they need to do this at a different step.
+	 * @param template {Template}  Create it from the html strings and expressions in this template.
+	 * @param parentPath {?ExprPath}
+	 * @param exactKey {?string} Optional, if already calculated.
+	 * @param closeKey {?string}
+	 * @returns {[DocumentFragment, Shell]} */
 	init(template, parentPath=null, exactKey=null, closeKey=null) {
 		this.exactKey = exactKey || template.getExactKey();
 		this.closeKey = closeKey || template.getCloseKey();
@@ -152,9 +160,7 @@ export default class NodeGroup {
 
 					// Event attribute value
 					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
-
 						let root = this.getRootNode();
-
 						path.applyEventAttrib(node, expr, root);
 					}
 

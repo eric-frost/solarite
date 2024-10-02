@@ -22,9 +22,14 @@ var Globals = {
 	elementClasses: {},
 
 	/**
-	 * Used by ExprPath.applyEventAttrib.
-	 * TODO: Memory from this is never freed.  Use a WeakMap<Node, Object<eventName:string, function[]>> */
-	nodeEvents: {},
+	 * Used by ExprPath.applyEventAttrib()
+	 * @type {WeakMap<Node, Object<eventName:string, [original:function, bound:function, args:*[]]>>} */
+	nodeEvents: new WeakMap(),
+
+	/**
+	 * Get the RootNodeGroup for an element.
+	 * @type {WeakMap<HTMLElement, RootNodeGroup>} */
+	nodeGroups: new WeakMap(),
 
 	/**
 	 * Used by r() path 9. */
@@ -37,24 +42,10 @@ var Globals = {
 	 * @type {WeakSet<HTMLElement>} */
 	rendering: new WeakSet(),
 
-
-
-	/**
-	 * Get the root NodeGroup for an element.
-	 * @type {WeakMap<HTMLElement, NodeGroup>} */
-	nodeGroups: new WeakMap(),
-
-
-	/**
-	 * Each Element that has Expr children has an associated NodeGroupManager here.
-	 * @type {WeakMap<HTMLElement, NodeGroupManager>} */
-	nodeGroupManagers: new WeakMap(),
-
 	/**
 	 * Map from array of Html strings to a Shell created from them.
 	 * @type {WeakMap<string[], Shell>} */
 	shells: new WeakMap()
-
 };
 
 export default Globals;
