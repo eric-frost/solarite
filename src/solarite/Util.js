@@ -122,15 +122,15 @@ export function camelToDashes(str) {
  * Returns false if they're the same.  Or the first index where they differ.
  * @param a
  * @param b
- * @returns {int|false} */
-export function findArrayDiff(a, b) {
-	if (a.length !== b.length)
-		return -1;
+ * @returns {boolean} */
+export function arraySame(a, b) {
 	let aLength = a.length;
+	if (aLength !== b.length)
+		return false;
 	for (let i=0; i<aLength; i++)
 		if (a[i] !== b[i])
-			return i;
-	return false; // the same.
+			return false;
+	return true; // the same.
 }
 
 

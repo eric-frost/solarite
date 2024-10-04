@@ -230,8 +230,8 @@ let objectIds = new WeakMap();
  * @returns {string} */
 function getObjectId(obj, prefix=null) {
 	
-	
-	
+
+
 	//#IFDEV
 	// Slower but useful for debugging:
 	if (!prefix) {
@@ -503,15 +503,15 @@ function camelToDashes(str) {
  * Returns false if they're the same.  Or the first index where they differ.
  * @param a
  * @param b
- * @returns {int|false} */
-function findArrayDiff(a, b) {
-	if (a.length !== b.length)
-		return -1;
+ * @returns {boolean} */
+function arraySame(a, b) {
 	let aLength = a.length;
+	if (aLength !== b.length)
+		return false;
 	for (let i=0; i<aLength; i++)
 		if (a[i] !== b[i])
-			return i;
-	return false; // the same.
+			return false;
+	return true; // the same.
 }
 
 
@@ -682,7 +682,7 @@ class MultiValueMap {
 	delete(key, val=undefined) {
 		// if (key === '["Html2",[[["Html3",["F1","A"]],["Html3",["F1","B"]]]]]')
 		// 	debugger;
-			
+
 		let data = this.data;
 		// The partialUpdate benchmark shows having this check first makes the function slightly faster.
 		// if (!data.hasOwnProperty(key))
@@ -692,7 +692,7 @@ class MultiValueMap {
 		let result;
 		let set = data[key];
 		if (!set) // slower than pre-check.
-		 	return undefined;
+			return undefined;
 
 		if (val !== undefined) {
 			set.delete(val);
@@ -709,7 +709,7 @@ class MultiValueMap {
 		// TODO: Will this make it slower?
 		if (set.size === 0)
 			delete data[key];
-		
+
 		return result;
 	}
 
@@ -1018,18 +1018,6 @@ class ExprPath {
 	 * @type {int[]} Path to the node marker, in reverse for performance reasons. */
 	nodeMarkerPath;
 
-	/**
-	 * Used with getNodeGroup() and freeNodeGroups().
-	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
-	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
-	nodeGroupsFree = new MultiValueMap();
-
-	/**
-	 * Used with getNodeGroup() and freeNodeGroups().
-	 * TODO: Use an array of WeakRef so the gc can collect them?
-	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
-	 * @type {NodeGroup[]} */
-	nodeGroupsInUse = [];
 
 	/**
 	 * @param nodeBefore {Node}
@@ -1088,8 +1076,8 @@ class ExprPath {
 			if (ng) {
 				//#IFDEV
 				// Make sure the nodeCache of the ExprPath we took it from is sitll valid.
-				if (ng.parentPath)
-					ng.parentPath.verify();
+				//if (ng.parentPath)
+				//	ng.parentPath.verify();
 				//#ENDIF
 
 
@@ -1197,7 +1185,7 @@ class ExprPath {
 			for (let [nodesIndex, ngIndex] of secondPass) {
 				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
 
-				ng.parentPath = path;
+				ng.parentPath = path; // TODO: All benchmarks pass without this line.
 				let ngNodes = ng.getNodes();
 
 				/*#IFDEV*/assert(!(newNodes[nodesIndex] instanceof NodeGroup));/*#ENDIF*/
@@ -1225,8 +1213,8 @@ class ExprPath {
 
 
 		// This pre-check makes it a few percent faster?
-		let diff = findArrayDiff(oldNodes, newNodes);
-		if (diff !== false) {
+		let same = arraySame(oldNodes, newNodes);
+		if (!same) {
 
 			if (this.parentNg.parentPath)
 				this.parentNg.parentPath.clearNodesCache();
@@ -1318,15 +1306,16 @@ class ExprPath {
 
 		let nodeEvents = Globals.nodeEvents.get(node);
 		if (!nodeEvents) {
-			nodeEvents = {};
+			nodeEvents = {[eventName]: new Array(3)};
 			Globals.nodeEvents.set(node, nodeEvents);
 		}
+		let nodeEvent = nodeEvents[eventName];
 
-		let [existing, existingBound, _] = nodeEvents[eventName] || [];
 
 
 		// If function has changed, remove and rebind the event.
-		if (existing !== func) {
+		if (nodeEvent[0] !== func) {
+			let [existing, existingBound, _] = nodeEvent;
 			if (existing)
 				node.removeEventListener(eventName, existingBound);
 
@@ -1334,14 +1323,15 @@ class ExprPath {
 
 			// BoundFunc sets the "this" variable to be the current Solarite component.
 			let boundFunc = (event) => {
-				let args = nodeEvents[eventName][2];
+				let args = nodeEvent[2];
 				return originalFunc.call(root, ...args, event, node);
 			};
 
 			// Save both the original and bound functions.
 			// Original so we can compare it against a newly assigned function.
 			// Bound so we can use it with removeEventListner().
-			nodeEvents[eventName] = [originalFunc, boundFunc, args];
+			nodeEvent[0] = originalFunc;
+			nodeEvent[1] = boundFunc;
 
 			node.addEventListener(eventName, boundFunc);
 
@@ -1351,13 +1341,12 @@ class ExprPath {
 		}
 
 		//  Otherwise just update the args to the function.
-		else
-			nodeEvents[eventName][2] = args;
+		nodeEvents[eventName][2] = args;
 	}
 
 	applyValueAttrib(node, exprs, exprIndex) {
 		let expr = exprs[exprIndex];
-		
+
 		// Array for form element data binding.
 		// TODO: This never worked, and was moved to applyEventAttrib.
 		// let isArrayValue = Array.isArray(expr);
@@ -1371,7 +1360,7 @@ class ExprPath {
 		// Values to toggle an attribute
 		if (!this.attrValue && (expr === false || expr === null || expr === undefined))
 			node.removeAttribute(this.attrName);
-		
+
 		else if (!this.attrValue && expr === true)
 			node.setAttribute(this.attrName, '');
 
@@ -1458,7 +1447,7 @@ class ExprPath {
 
 		return result;
 	}
-	
+
 	/**
 	 * Clear the nodeCache of this ExprPath, as well as all parent and child ExprPaths that
 	 * share the same DOM parent node.
@@ -1466,13 +1455,13 @@ class ExprPath {
 	 * TODO: Is recursive clearing ever necessary? */
 	clearNodesCache() {
 		let path = this;
-		
+
 		// Clear cache parent ExprPaths that have the same parentNode
 		let parentNode = this.nodeMarker.parentNode;
 		while (path && path.nodeMarker.parentNode === parentNode) {
 			path.nodesCache = null;
 			path = path.parentNg?.parentPath;
-			
+
 			// If stuck in an infinite loop here, the problem is likely due to Template hash colisions.
 			// Which cause one path to be the descendant of itself, creating a cycle.
 		}
@@ -1491,46 +1480,48 @@ class ExprPath {
 
 			// If parent is the only child of the grandparent, replace the whole parent.
 			// And if it has no siblings, it's not created by a NodeGroup/path.
-			let grandparent = parent.parentNode;
-			if (grandparent && parent === grandparent.firstChild && parent === grandparent.lastChild && !parent.hasAttribute('id')) {
-				let replacement = document.createElement(parent.tagName);
-				replacement.append(this.nodeBefore, this.nodeMarker);
-				for (let attrib of parent.attributes)
-					replacement.setAttribute(attrib.name, attrib.value);
-				parent.replaceWith(replacement);
-			}
-			else {
+			// Commented out because this will break any references.
+			// And because I don't see much performance difference.
+			// let grandparent = parent.parentNode
+			// if (grandparent && parent === grandparent.firstChild && parent === grandparent.lastChild && !parent.hasAttribute('id')) {
+			// 	let replacement = document.createElement(parent.tagName)
+			// 	replacement.append(this.nodeBefore, this.nodeMarker)
+			// 	for (let attrib of parent.attributes)
+			// 		replacement.setAttribute(attrib.name, attrib.value)
+			// 	parent.replaceWith(replacement)
+			// }
+			// else {
 				parent.innerHTML = ''; // Faster than calling .removeChild() a thousand times.
 				parent.append(this.nodeBefore, this.nodeMarker);
-			}
+			//}
 			return true;
 		}
 		return false;
 	}
-	
+
 	/**
 	 * @return {(Node|HTMLElement)[]} */
 	getNodes() {
-		
+
 		// Why doesn't this work?
 		// let result2 = [];
 		// for (let ng of this.nodeGroups)
 		// 	result2.push(...ng.getNodes())
 		// return result2;
-		
-		
+
+
 		let result;
 
 		// This shaves about 5ms off the partialUpdate benchmark.
-		/*result = this.nodesCache;
+		result = this.nodesCache;
 		if (result) {
-			
+
 			//#IFDEV
 			this.checkNodesCache();
 			//#ENDIF
-			
+
 			return result
-		}*/
+		}
 
 		result = [];
 		let current = this.nodeBefore.nextSibling;
@@ -1564,11 +1555,15 @@ class ExprPath {
 
 		if (exact) {
 			result = this.nodeGroupsFree.delete(exactKey);
-			if (result)
+			if (result) // also delete the matching close key.
 				this.nodeGroupsFree.delete(closeKey, result);
 			else
 				return null;
 		}
+
+		// Find a close match.
+		// This is a match that has matching html, but different expressions applied.
+		// We can then apply the expressions to make it an exact match.
 		else {
 			result = this.nodeGroupsFree.delete(closeKey);
 			if (result) {
@@ -1584,20 +1579,55 @@ class ExprPath {
 		if (!result)
 			result = new NodeGroup(template, this, exactKey, closeKey);
 
+		// old:
 		this.nodeGroupsInUse.push(result);
+
+		// new:
+		// let ngiu = this.nodeGroupsInUse;
+		// ngiu.add(result.exactKey, result);
+		// ngiu.add(result.closeKey, result);
+
 		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
 		return result;
 	}
 
+
 	/**
-	 * Move everything from this.nodeGroupsInUse to this.nodeGroupsFree. */
+	 * Used with getNodeGroup() and freeNodeGroups().
+	 * TODO: Use an array of WeakRef so the gc can collect them?
+	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
+	 * @type {NodeGroup[]} */
+	nodeGroupsInUse = [];
+
+	/** @type {MultiValueMap<key:string, value:NodeGroup>} */
+	//nodeGroupsInUse = new MultiValueMap();
+
+	/**
+	 * Used with getNodeGroup() and freeNodeGroups().
+	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
+	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
+	nodeGroupsFree = new MultiValueMap();
+
+
+	/**
+	 * Move everything from this.nodeGroupsInUse to this.nodeGroupsFree.
+	 * TODO: this could run as needed in getNodeGroup? */
 	freeNodeGroups() {
+		// old:
 		let ngf = this.nodeGroupsFree;
 		for (let ng of this.nodeGroupsInUse) {
 			ngf.add(ng.exactKey, ng);
 			ngf.add(ng.closeKey, ng);
 		}
 		this.nodeGroupsInUse = [];
+
+		// new:
+		// for (let key in this.nodeGroupsFree.data)
+		// 	for (let item of this.nodeGroupsFree.data[key])
+		// 		this.nodeGroupsInUse.add(key, item);
+		//
+		// this.nodeGroupsFree = this.nodeGroupsInUse;
+		// this.nodeGroupsInUse = new MultiValueMap();
 	}
 
 	//#IFDEV

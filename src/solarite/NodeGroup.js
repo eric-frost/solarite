@@ -3,7 +3,7 @@ import ExprPath, {PathType, resolveNodePath} from "./ExprPath.js";
 import {getObjectHash} from "./hash.js";
 import Shell from "./Shell.js";
 import udomdiff from "./udomdiff.js";
-import Util, {findArrayDiff, flattenAndIndent, isEvent, nodeToArrayTree, setIndent} from "./Util.js";
+import Util, {arraySame, flattenAndIndent, isEvent, nodeToArrayTree, setIndent} from "./Util.js";
 //import NodeGroupManager from "./NodeGroupManager.js";
 import delve from "../util/delve.js";
 import Globals from "./Globals.js";

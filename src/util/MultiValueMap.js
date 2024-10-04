@@ -27,7 +27,7 @@ export default class MultiValueMap {
 	delete(key, val=undefined) {
 		// if (key === '["Html2",[[["Html3",["F1","A"]],["Html3",["F1","B"]]]]]')
 		// 	debugger;
-			
+
 		let data = this.data;
 		// The partialUpdate benchmark shows having this check first makes the function slightly faster.
 		// if (!data.hasOwnProperty(key))
@@ -37,7 +37,7 @@ export default class MultiValueMap {
 		let result;
 		let set = data[key];
 		if (!set) // slower than pre-check.
-		 	return undefined;
+			return undefined;
 
 		if (val !== undefined) {
 			set.delete(val);
@@ -54,7 +54,7 @@ export default class MultiValueMap {
 		// TODO: Will this make it slower?
 		if (set.size === 0)
 			delete data[key];
-		
+
 		return result;
 	}
 

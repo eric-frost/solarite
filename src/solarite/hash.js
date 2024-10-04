@@ -7,8 +7,8 @@ let objectIds = new WeakMap();
  * @returns {string} */
 export function getObjectId(obj, prefix=null) {
 	
-	
-	
+
+
 	//#IFDEV
 	// Slower but useful for debugging:
 	if (!prefix) {
