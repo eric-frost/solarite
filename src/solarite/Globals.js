@@ -15,6 +15,8 @@ var Globals = {
 	 * @type {WeakSet<HTMLElement>} */
 	rendered: new WeakSet(),
 
+	/**
+	 * Used by watch3 to see which expressions are being accessed. */
 	currentExprPath: [],
 
 	/**

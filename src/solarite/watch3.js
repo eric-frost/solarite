@@ -47,10 +47,17 @@ a.items.push({name: 'Fred'});
 
 
 import Globals from "./Globals.js";
+import delve from "../util/delve.js";
 //import NodeGroupManager from "./NodeGroupManager.js";
 
+let unusedArg = Symbol('unusedArg');
 
-export default function watch3(root, path) {
+/**
+ *
+ * @param root {Object}
+ * @param path {string}
+ * @param value {string|Symbol} */
+export default function watch3(root, path, value=unusedArg) {
 
 	/** @type {ExprPath} The ExprPath that's using this variable.*/
 	let exprPath;
@@ -58,10 +65,12 @@ export default function watch3(root, path) {
 	/** @type {function} Function evaluated by the ExprPath. */
 	let exprFunction;
 
-	// Store internal value used by get/set.
-	let value = root[path];
+	if (value !== unusedArg)
+		root[path] = value;
 
-	let ngm = NodeGroupManager.get(root);
+	// Store internal value used by get/set.
+	else
+		value = root[path];
 
 	Object.defineProperty(root, path, {
 		get() {
@@ -76,14 +85,12 @@ export default function watch3(root, path) {
 			value = val;
 
 			if (exprFunction) {
-				let ng = exprPath.parentNg;
 
-				ng.applyExprs([exprFunction], [exprPath]);  // TODO: Will fail for attribute w/ a value having multiple ExprPaths.
+				// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
+				// TODO: This won't update a component's expressions.
+				exprPath.apply(exprFunction);
 
-				// TODO: This doesn't cascade upward.
-				//ng.exactKey = getObjectHash(ng.template);
-
-				ngm.reset(); // TODO: This could be skipped if applyExprs() never marked them as in-use.
+				exprPath.freeNodeGroups(); // TODO: This could be skipped if applyExprs() never marked them as in-use.
 
 			}
 		}

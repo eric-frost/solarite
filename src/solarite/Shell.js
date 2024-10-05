@@ -124,7 +124,9 @@ export default class Shell {
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
-							this.paths.push(new ExprPath(null, node, PathType.Value, attr.name, nonEmptyParts));
+							let type = isEvent(attr.name) ? PathType.Event : PathType.Value;
+
+							this.paths.push(new ExprPath(null, node, type, attr.name, nonEmptyParts));
 							node.setAttribute(attr.name, parts.join(''));
 						}
 					}
@@ -222,7 +224,7 @@ export default class Shell {
 			path.nodeMarkerPath = getNodePath(path.nodeMarker)
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
-			if (path.type === PathType.Value && path.nodeMarker.nodeType === 1 &&
+			if (path.type === PathType.Value && path.nodeMarker.nodeType === 1 && /*path.nodeMarker !== template.content.children[0] &&*/
 				(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
 				path.type = PathType.Component;
 			}

@@ -128,7 +128,7 @@ let delveDontCreate = {};
 /**
  * There are three ways to create an instance of a Solarite Component:
  * 1.  new ComponentName();                                         // direct class instantiation
- * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another RedComponent.
+ * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another Component.
  * 3.  <body><component-name></component-name></body>               // in the Document html.
  *
  * When created via #3, Solarite has no way to pass attributes as arguments to the constructor.  So to make
@@ -332,6 +332,8 @@ var Globals = {
 	 * @type {WeakSet<HTMLElement>} */
 	rendered: new WeakSet(),
 
+	/**
+	 * Used by watch3 to see which expressions are being accessed. */
 	currentExprPath: [],
 
 	/**
@@ -391,6 +393,44 @@ let Util = {
 	},
 
 	/**
+	 * A generator function that recursively traverses and flattens a value.
+	 *
+	 * - If the input is an array, it recursively traverses and flattens the array.
+	 * - If the input is a function, it calls the function, replaces the function
+	 *   with its result, and flattens the result if necessary. It will recursively
+	 *   call functions that return other functions.
+	 * - Otherwise it yields the value as is.
+	 *
+	 * This function does not create a new array for the flattened values. Instead,
+	 * it lazily yields each item as it is encountered. This can be more memory-efficient
+	 * for large or deeply nested structures.
+	 *
+	 * @param {any} value - The value to flatten. Can be an array, object, function, or primitive.
+	 * @yields {any} - The next item in the flattened structure.
+	 *
+	 * @example
+	 * const complexArray = [
+	 *     1,
+	 *     [2, () => 3, [4, () => [5, 6]], { a: 'object' }],
+	 *     () => () => 7,
+	 *     () => [() => 8, 9],
+	 * ];	 *
+	 * for (const item of flatten(complexArray))
+	 *     console.log(item);  // Outputs: 1, 2, 3, 4, 5, 6, { a: 'object' }, 7, 8, 9
+	 */
+	*flatten(value) {
+		if (Array.isArray(value)) {
+			for (const item of value) {
+				yield* Util.flatten(item);  // Recursively flatten arrays
+			}
+		} else if (typeof value === 'function') {
+			const result = value();
+			yield* Util.flatten(result);  // Recursively flatten the result of a function
+		} else
+			yield value;  // Yield primitive values as is
+	},
+
+	/**
 	 * Get the value of an input as the most appropriate JavaScript type.
 	 * @param node {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|HTMLDivElement}
 	 * @return {string|string[]|number|[]|File[]|Date|boolean} */
@@ -415,6 +455,42 @@ let Util = {
 	 * @returns {boolean} */
 	isPath(arr) {
 		return Array.isArray(arr) && typeof arr[0] === 'object' && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
+	},
+
+	/**
+	 * Find NodeGroups that had their nodes removed and add those nodes to a Fragment so
+	 * they're not lost forever and the NodeGroup's internal structure is still consistent.
+	 * This saves all of a NodeGroup's nodes in order, so that nextChildNode still works.
+	 * This is necessary because a NodeGroup normally only stores the first and last node.
+	 * Called from ExprPath.apply().
+	 * @param oldNodeGroups {NodeGroup[]}
+	 * @param oldNodes {Node[]} */
+	saveOrphans(oldNodeGroups, oldNodes) {
+		let oldNgMap = new Map();
+		for (let ng of oldNodeGroups) {
+			oldNgMap.set(ng.startNode, ng);
+
+			// TODO: Is this necessary?
+			// if (ng.parentPath)
+			// 	ng.parentPath.clearNodesCache();
+		}
+
+		for (let i=0, node; node = oldNodes[i]; i++) {
+			let ng;
+			if (!node.parentNode && (ng = oldNgMap.get(node))) {
+				//ng.nodesCache = [];
+				let fragment = document.createDocumentFragment();
+				let endNode = ng.endNode;
+				while (node !== endNode) {
+					fragment.append(node);
+					//ng.nodesCache.push(node);
+					i++;
+					node = oldNodes[i];
+				}
+				fragment.append(endNode);
+				//ng.nodesCache.push(endNode);
+			}
+		}
 	},
 
 	/**
@@ -905,12 +981,10 @@ class ExprPath {
 	/**
 	 * @param nodeBefore {Node}
 	 * @param nodeMarker {?Node}
-	 * @param type {string}
+	 * @param type {PathType}
 	 * @param attrName {?string}
 	 * @param attrValue {string[]} */
 	constructor(nodeBefore, nodeMarker, type=PathType.Content, attrName=null, attrValue=null) {
-
-		
 
 		// If path is a node.
 		this.nodeBefore = nodeBefore;
@@ -922,21 +996,143 @@ class ExprPath {
 			this.attrNames = new Set();
 	}
 
+	/**
+	 * Apply any type of expression.
+	 * This calls other apply functions.
+	 *
+	 * One very messy part of this function is that it may apply multiple expressions if they're all part
+	 * of the same attribute value.
+	 *
+	 * We should modify path.applyValueAttrib so it stores the procssed parts and then only calls
+	 * setAttribute() once all the pieces are in place.
+	 *
+	 * @param expr {Expr}
+	 * @param exprs {Expr[]}
+	 * @param exprIndex {int}
+	 * @param componentExprs {object}
+	 * @returns {int} */
+	apply(expr, exprs=null, exprIndex=0, componentExprs={}) {
+		switch (this.type) {
+			case 1: // PathType.Content:
+				this.applyNodes(expr);
+				break;
+			case 2: // PathType.Multiple:
+				this.applyMultipleAttribs(this.nodeMarker, expr);
+				break;
+			case 5: // PathType.Comment:
+				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
+				break;
+			case 6: // PathType.Event:
+				this.applyEventAttrib(this.nodeMarker, expr, this.parentNg.rootNg.root);
+				break;
+			default:
+				if (this.type === 4 /*PathType.Component*/ && this.nodeMarker !== this.parentNg.rootNg.root)
+					componentExprs[this.attrName] = expr;
+				else {
+					// One attribute value may have multiple expressions.  Here we apply them all at once.
+					exprIndex = this.applyValueAttrib(this.nodeMarker, exprs || [expr], exprIndex);
+				}
+				break;
+		}
+
+		return exprIndex;
+	}
+
+	/**
+	 * Insert/replace the nodes created by a single expression.
+	 * Called by applyExprs()
+	 * This function is recursive, as the functions it calls also call it.
+	 * @param expr {Expr}
+	 * @return {Node[]} New Nodes created. */
+	applyNodes(expr) {
+		let path = this;
+
+		
+
+		/** @type {(Node|NodeGroup|Expr)[]} */
+		let newNodes = [];
+		let oldNodeGroups = path.nodeGroups;
+		
+		let secondPass = []; // indices
+
+		path.nodeGroups = []; // Reset before applyExact and the code below rebuilds it.
+		path.applyExact(expr, newNodes, secondPass);
+
+		this.existingTextNodes = null;
+
+		// TODO: Create an array of old vs Nodes and NodeGroups together.
+		// If they're all the same, skip the next steps.
+		// Or calculate it in the loop above as we go?  Have a path.lastNodeGroups property?
+
+		// Second pass to find close-match NodeGroups.
+		let flatten = false;
+		if (secondPass.length) {
+			for (let [nodesIndex, ngIndex] of secondPass) {
+				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
+
+				let ngNodes = ng.getNodes();
+
+				
+
+				if (ngNodes.length === 1) // flatten manually so we can skip flattening below.
+					newNodes[nodesIndex] = ngNodes[0];
+
+				else {
+					newNodes[nodesIndex] = ngNodes;
+					flatten = true;
+				}
+				path.nodeGroups[ngIndex] = ng;
+			}
+
+			if (flatten)
+				newNodes = newNodes.flat(); // Only if second pass happens.
+		}
+
+		
+
+
+
+		let oldNodes = path.getNodes();
+
+
+		// This pre-check makes it a few percent faster?
+		let same = arraySame(oldNodes, newNodes);
+		if (!same) {
+
+			path.nodesCache = newNodes; // Replaces value set by path.getNodes()
+
+			if (this.parentNg.parentPath)
+				this.parentNg.parentPath.clearNodesCache();
+
+			// Fast clear method
+			let isNowEmpty = oldNodes.length && !newNodes.length;
+			if (!isNowEmpty || !path.fastClear())
+
+				// Rearrange nodes.
+				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker);
+
+			Util.saveOrphans(oldNodeGroups, oldNodes);
+		}
+
+		// Must happen after second pass.
+		path.freeNodeGroups();
+
+		
+	}
+
 
 
 	/**
-	 * TODO: Use another function to flatten the expr's so we don't have to use recusion.
+	 * Apply Nodes that are an exact match.
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]}
 	 * @param secondPass {Array} Locations within newNodes to evaluate later. */
-	apply(expr, newNodes, secondPass) {
+	applyExact(expr, newNodes, secondPass) {
 
 		if (expr instanceof Template) {
 
 			let ng = this.getNodeGroup(expr, true);
 			if (ng) {
-				
-
 
 				// TODO: Track ranges of changed nodes and only pass those to udomdiff?
 				// But will that break the swap benchmark?
@@ -944,7 +1140,7 @@ class ExprPath {
 				this.nodeGroups.push(ng);
 			}
 
-			// If expression, evaluate later to find partial match.
+			// If expression, mark it to be evaluated later in ExprPath.apply() to find partial match.
 			else {
 				secondPass.push([newNodes.length, this.nodeGroups.length]);
 				newNodes.push(expr);
@@ -962,23 +1158,26 @@ class ExprPath {
 				newNodes.push(expr);
 		}
 
+		// Arrays and functions.
+		// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
+		// but that consistently made the js-framework-benchmarks a few percentage points slower.
 		else if (Array.isArray(expr))
 			for (let subExpr of expr)
-				this.apply(subExpr, newNodes, secondPass);
+				this.applyExact(subExpr, newNodes, secondPass);
 
 		else if (typeof expr === 'function') {
 			Globals.currentExprPath = [this, expr]; // Used by watch3()
 			let result = expr();
 			Globals.currentExprPath = null;
 
-			this.apply(result, newNodes, secondPass);
+			this.applyExact(result, newNodes, secondPass);
 		}
 
 		// Text
 		else {
 			// Convert falsy values (but not 0) to empty string.
 			// Convert numbers to string so they compare the same.
-			let text = (expr === undefined || expr === false || expr === null) ? '' : expr + '';
+			let text = (expr === undefined || expr === false || expr === null) ? '' : (expr + '');
 
 			// Fast path for updating the text of a single text node.
 			let first = this.nodeBefore.nextSibling;
@@ -1001,95 +1200,6 @@ class ExprPath {
 					newNodes.push(this.nodeMarker.ownerDocument.createTextNode(text));
 			}
 		}
-
-		// If not in one of the recusive calls
-		// Mark all nodes as free, for the next render() call.
-		// TODO: This is commented out b/c this needs to happen after the second pass.
-		//if (!recursing)
-		//	this.freeNodeGroups();
-	}
-
-
-	/**
-	 * Insert/replace the nodes created by a single expression.
-	 * Called by applyExprs()
-	 * This function is recursive, as the functions it calls also call it.
-	 * @param expr {Expr}
-	 * @return {Node[]} New Nodes created. */
-	applyNodes(expr) {
-		let path = this;
-
-		
-
-		/** @type {(Node|NodeGroup|Expr)[]} */
-		let newNodes = [];
-		let oldNodeGroups = path.nodeGroups;
-		
-		let secondPass = []; // indices
-
-		path.nodeGroups = []; // TODO: Is this used?
-		path.apply(expr, newNodes, secondPass);
-
-		this.existingTextNodes = null;
-
-		// TODO: Create an array of old vs Nodes and NodeGroups together.
-		// If they're all the same, skip the next steps.
-		// Or calculate it in the loop above as we go?  Have a path.lastNodeGroups property?
-
-		// Second pass to find close-match NodeGroups.
-		let flatten = false;
-		if (secondPass.length) {
-			for (let [nodesIndex, ngIndex] of secondPass) {
-				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
-
-				ng.parentPath = path; // TODO: All benchmarks pass without this line.
-				let ngNodes = ng.getNodes();
-
-				
-
-				if (ngNodes.length === 1)
-					newNodes[nodesIndex] = ngNodes[0];
-
-				else {
-					newNodes[nodesIndex] = ngNodes;
-					flatten = true;
-				}
-				path.nodeGroups[ngIndex] = ng;
-			}
-
-			if (flatten)
-				newNodes = newNodes.flat(); // TODO: Only if second pass happens?
-		}
-
-		
-
-
-
-		let oldNodes = path.getNodes();
-		path.nodesCache = newNodes; // Replaces value set by path.getNodes()
-
-
-		// This pre-check makes it a few percent faster?
-		let same = arraySame(oldNodes, newNodes);
-		if (!same) {
-
-			if (this.parentNg.parentPath)
-				this.parentNg.parentPath.clearNodesCache();
-
-			// Fast clear method
-			let isNowEmpty = oldNodes.length && !newNodes.length;
-			if (!isNowEmpty || !path.fastClear())
-
-				// Rearrange nodes.
-				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker);
-
-			this.parentNg.saveOrphans(oldNodeGroups, oldNodes);
-		}
-
-		// Must happen after second pass.
-		path.freeNodeGroups();
-
-		
 	}
 
 	applyMultipleAttribs(node, expr) {
@@ -1201,16 +1311,6 @@ class ExprPath {
 	applyValueAttrib(node, exprs, exprIndex) {
 		let expr = exprs[exprIndex];
 
-		// Array for form element data binding.
-		// TODO: This never worked, and was moved to applyEventAttrib.
-		// let isArrayValue = Array.isArray(expr);
-		// if (isArrayValue && expr.length >= 2 && !expr.slice(1).find(v => !['string', 'number'].includes(typeof v))) {
-		// 	node.value = delve(expr[0], expr.slice(1));
-		// 	node.addEventListener('input', e => {
-		// 		delve(expr[0], expr.slice(1), node.value) // TODO: support other properties like checked
-		// 	});
-		// }
-
 		// Values to toggle an attribute
 		if (!this.attrValue && (expr === false || expr === null || expr === undefined))
 			node.removeAttribute(this.attrName);
@@ -1243,7 +1343,6 @@ class ExprPath {
 						exprIndex--;
 					}
 				}
-
 				exprIndex ++;
 			}
 			else
@@ -1263,7 +1362,6 @@ class ExprPath {
 			// TODO: How to tell which is which?
 			if (this.attrName in node)
 				node[this.attrName] = joinedValue;
-
 		}
 
 		return exprIndex;
@@ -1496,22 +1594,25 @@ function setValue(root, path, node) {
 	delve(root, path, val);
 }
 
-/** @enum {string} */
+/** @enum {int} */
 const PathType = {
 	/** Child of a node */
-	Content: 'content',
+	Content: 1,
 	
 	/** One or more whole attributes */
-	Multiple: 'attrName',
+	Multiple: 2,
 	
 	/** Value of an attribute. */
-	Value: 'attrValue',
+	Value: 3,
 	
 	/** Value of an attribute being passed to a component. */
-	Component: 'component',
+	Component: 4,
 	
 	/** Expressions inside Html comments. */
-	Comment: 'comment',
+	Comment: 5,
+
+	/** Value of an attribute. */
+	Event: 6,
 };
 
 
@@ -1658,7 +1759,9 @@ class Shell {
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
-							this.paths.push(new ExprPath(null, node, PathType.Value, attr.name, nonEmptyParts));
+							let type = isEvent(attr.name) ? PathType.Event : PathType.Value;
+
+							this.paths.push(new ExprPath(null, node, type, attr.name, nonEmptyParts));
 							node.setAttribute(attr.name, parts.join(''));
 						}
 					}
@@ -1756,7 +1859,7 @@ class Shell {
 			path.nodeMarkerPath = getNodePath(path.nodeMarker);
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
-			if (path.type === PathType.Value && path.nodeMarker.nodeType === 1 &&
+			if (path.type === PathType.Value && path.nodeMarker.nodeType === 1 && /*path.nodeMarker !== template.content.children[0] &&*/
 				(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
 				path.type = PathType.Component;
 			}
@@ -1947,46 +2050,17 @@ class NodeGroup {
 			expr = exprs[exprIndex];
 
 			// Nodes
-			if (path.type === PathType.Content) {
-				path.applyNodes(expr);
-				
+
+			// This is necessary both here and below.
+			if (lastNode && lastNode !== this.rootNg.root && lastNode !== path.nodeMarker && Object.keys(this.currentComponentProps).length) {
+				this.applyComponentExprs(lastNode, this.currentComponentProps);
+				this.currentComponentProps = {};
 			}
 
-			// Attributes
-			else {
-				let node = path.nodeMarker;
-				
+			exprIndex = path.apply(expr, exprs, exprIndex, this.currentComponentProps);
 
-				// This is necessary both here and below.
-				if (lastNode && lastNode !== this.rootNg.root && lastNode !== node && Object.keys(this.currentComponentProps).length) {
-					this.applyComponentExprs(lastNode, this.currentComponentProps);
-					this.currentComponentProps = {};
-				}
+			lastNode = path.nodeMarker;
 
-				if (path.type === PathType.Multiple)
-					path.applyMultipleAttribs(node, expr);
-
-				// Capture attribute expressions to later send to the constructor of a web component.
-				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-				else if (path.nodeMarker !== this.rootNg.root && path.type === PathType.Component)
-					this.currentComponentProps[path.attrName] = expr;
-
-				else if (path.type === PathType.Comment) ;
-				else {
-
-					// Event attribute value
-					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
-						let root = this.getRootNode();
-						path.applyEventAttrib(node, expr, root);
-					}
-
-					// Regular attribute value.
-					else // One node value may have multiple expressions.  Here we apply them all at once.
-						exprIndex = path.applyValueAttrib(node, exprs, exprIndex);
-				}
-
-				lastNode = path.nodeMarker;
-			}
 
 			exprIndex--;
 		} // end for(path of this.paths)
@@ -2011,43 +2085,8 @@ class NodeGroup {
 		
 	}
 
-	applyExpr(path, expr) {
-		// TODO: Use this if I can figure out how to adapt applyValueAttrib() to it.
-	}
-	
 	/**
-	 * Find NodeGroups that had their nodes removed and add those nodes to a Fragment so
-	 * they're not lost forever and the NodeGroup's internal structure is still consistent.
-	 * Called from ExprPath.applyNodes().
-	 * @param oldNodeGroups {NodeGroup[]}
-	 * @param oldNodes {Node[]} */
-	saveOrphans(oldNodeGroups, oldNodes) {
-		let oldNgMap = new Map();
-		for (let ng of oldNodeGroups) {
-			oldNgMap.set(ng.startNode, ng);
-			
-			// TODO: Is this necessary?
-			// if (ng.parentPath)
-			// 	ng.parentPath.clearNodesCache();
-		}
-
-		for (let i=0, node; node = oldNodes[i]; i++) {
-			let ng;
-			if (!node.parentNode && (ng = oldNgMap.get(node))) {
-				let fragment = document.createDocumentFragment();
-				let endNode = ng.endNode;
-				while (node !== endNode) {
-					fragment.append(node);
-					i++;
-					node = oldNodes[i];
-				}
-				fragment.append(endNode);
-			}
-		}
-	}
-
-	/**
-	 * Create a nested RedComponent or call render with the new props.
+	 * Create a nested Component or call render with the new props.
 	 * @param el {Solarite:HTMLElement}
 	 * @param props {Object} */
 	applyComponentExprs(el, props) {

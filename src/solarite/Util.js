@@ -24,6 +24,44 @@ let Util = {
 	},
 
 	/**
+	 * A generator function that recursively traverses and flattens a value.
+	 *
+	 * - If the input is an array, it recursively traverses and flattens the array.
+	 * - If the input is a function, it calls the function, replaces the function
+	 *   with its result, and flattens the result if necessary. It will recursively
+	 *   call functions that return other functions.
+	 * - Otherwise it yields the value as is.
+	 *
+	 * This function does not create a new array for the flattened values. Instead,
+	 * it lazily yields each item as it is encountered. This can be more memory-efficient
+	 * for large or deeply nested structures.
+	 *
+	 * @param {any} value - The value to flatten. Can be an array, object, function, or primitive.
+	 * @yields {any} - The next item in the flattened structure.
+	 *
+	 * @example
+	 * const complexArray = [
+	 *     1,
+	 *     [2, () => 3, [4, () => [5, 6]], { a: 'object' }],
+	 *     () => () => 7,
+	 *     () => [() => 8, 9],
+	 * ];	 *
+	 * for (const item of flatten(complexArray))
+	 *     console.log(item);  // Outputs: 1, 2, 3, 4, 5, 6, { a: 'object' }, 7, 8, 9
+	 */
+	*flatten(value) {
+		if (Array.isArray(value)) {
+			for (const item of value) {
+				yield* Util.flatten(item);  // Recursively flatten arrays
+			}
+		} else if (typeof value === 'function') {
+			const result = value();
+			yield* Util.flatten(result);  // Recursively flatten the result of a function
+		} else
+			yield value;  // Yield primitive values as is
+	},
+
+	/**
 	 * Get the value of an input as the most appropriate JavaScript type.
 	 * @param node {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|HTMLDivElement}
 	 * @return {string|string[]|number|[]|File[]|Date|boolean} */
@@ -48,6 +86,42 @@ let Util = {
 	 * @returns {boolean} */
 	isPath(arr) {
 		return Array.isArray(arr) && typeof arr[0] === 'object' && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
+	},
+
+	/**
+	 * Find NodeGroups that had their nodes removed and add those nodes to a Fragment so
+	 * they're not lost forever and the NodeGroup's internal structure is still consistent.
+	 * This saves all of a NodeGroup's nodes in order, so that nextChildNode still works.
+	 * This is necessary because a NodeGroup normally only stores the first and last node.
+	 * Called from ExprPath.apply().
+	 * @param oldNodeGroups {NodeGroup[]}
+	 * @param oldNodes {Node[]} */
+	saveOrphans(oldNodeGroups, oldNodes) {
+		let oldNgMap = new Map();
+		for (let ng of oldNodeGroups) {
+			oldNgMap.set(ng.startNode, ng)
+
+			// TODO: Is this necessary?
+			// if (ng.parentPath)
+			// 	ng.parentPath.clearNodesCache();
+		}
+
+		for (let i=0, node; node = oldNodes[i]; i++) {
+			let ng;
+			if (!node.parentNode && (ng = oldNgMap.get(node))) {
+				//ng.nodesCache = [];
+				let fragment = document.createDocumentFragment();
+				let endNode = ng.endNode;
+				while (node !== endNode) {
+					fragment.append(node);
+					//ng.nodesCache.push(node);
+					i++;
+					node = oldNodes[i];
+				}
+				fragment.append(endNode);
+				//ng.nodesCache.push(endNode);
+			}
+		}
 	},
 
 	/**

@@ -1,6 +1,5 @@
 import {assert} from "../util/Errors.js";
 import delve from "../util/delve.js";
-import {getObjectId} from "./hash.js";
 import NodeGroup from "./NodeGroup.js";
 import Util, {arraySame, setIndent} from "./Util.js";
 import Template from "./Template.js";
@@ -77,34 +76,10 @@ export default class ExprPath {
 	/**
 	 * @param nodeBefore {Node}
 	 * @param nodeMarker {?Node}
-	 * @param type {string}
+	 * @param type {PathType}
 	 * @param attrName {?string}
 	 * @param attrValue {string[]} */
 	constructor(nodeBefore, nodeMarker, type=PathType.Content, attrName=null, attrValue=null) {
-
-		//#IFDEV
-		/*
-		Object.defineProperty(this, 'debug', {
-			get() {
-				return [
-					`parentNode: ${this.nodeBefore.parentNode?.tagName?.toLowerCase()}`,
-					'nodes:',
-					...setIndent(this.getNodes().map(item => {
-						if (item instanceof Node)
-							return item.outerHTML || item.textContent
-						else if (item instanceof NodeGroup)
-							return item.debug
-					}), 1).flat()
-				]
-			}
-		})
-
-		Object.defineProperty(this, 'debugNodes', {
-			get: () =>
-				this.getNodes()
-		})
-		*/
-		//#ENDIF
 
 		// If path is a node.
 		this.nodeBefore = nodeBefore;
@@ -116,25 +91,143 @@ export default class ExprPath {
 			this.attrNames = new Set();
 	}
 
+	/**
+	 * Apply any type of expression.
+	 * This calls other apply functions.
+	 *
+	 * One very messy part of this function is that it may apply multiple expressions if they're all part
+	 * of the same attribute value.
+	 *
+	 * We should modify path.applyValueAttrib so it stores the procssed parts and then only calls
+	 * setAttribute() once all the pieces are in place.
+	 *
+	 * @param expr {Expr}
+	 * @param exprs {Expr[]}
+	 * @param exprIndex {int}
+	 * @param componentExprs {object}
+	 * @returns {int} */
+	apply(expr, exprs=null, exprIndex=0, componentExprs={}) {
+		switch (this.type) {
+			case 1: // PathType.Content:
+				this.applyNodes(expr);
+				break;
+			case 2: // PathType.Multiple:
+				this.applyMultipleAttribs(this.nodeMarker, expr);
+				break;
+			case 5: // PathType.Comment:
+				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
+				break;
+			case 6: // PathType.Event:
+				this.applyEventAttrib(this.nodeMarker, expr, this.parentNg.rootNg.root);
+				break;
+			default:
+				if (this.type === 4 /*PathType.Component*/ && this.nodeMarker !== this.parentNg.rootNg.root)
+					componentExprs[this.attrName] = expr;
+				else {
+					// One attribute value may have multiple expressions.  Here we apply them all at once.
+					exprIndex = this.applyValueAttrib(this.nodeMarker, exprs || [expr], exprIndex);
+				}
+				break;
+		}
+
+		return exprIndex;
+	}
+
+	/**
+	 * Insert/replace the nodes created by a single expression.
+	 * Called by applyExprs()
+	 * This function is recursive, as the functions it calls also call it.
+	 * @param expr {Expr}
+	 * @return {Node[]} New Nodes created. */
+	applyNodes(expr) {
+		let path = this;
+
+		/*#IFDEV*/path.verify();/*#ENDIF*/
+
+		/** @type {(Node|NodeGroup|Expr)[]} */
+		let newNodes = [];
+		let oldNodeGroups = path.nodeGroups;
+		/*#IFDEV*/assert(!oldNodeGroups.includes(null))/*#ENDIF*/
+		let secondPass = []; // indices
+
+		path.nodeGroups = []; // Reset before applyExact and the code below rebuilds it.
+		path.applyExact(expr, newNodes, secondPass);
+
+		this.existingTextNodes = null;
+
+		// TODO: Create an array of old vs Nodes and NodeGroups together.
+		// If they're all the same, skip the next steps.
+		// Or calculate it in the loop above as we go?  Have a path.lastNodeGroups property?
+
+		// Second pass to find close-match NodeGroups.
+		let flatten = false;
+		if (secondPass.length) {
+			for (let [nodesIndex, ngIndex] of secondPass) {
+				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
+
+				let ngNodes = ng.getNodes();
+
+				/*#IFDEV*/assert(!(newNodes[nodesIndex] instanceof NodeGroup))/*#ENDIF*/
+
+				if (ngNodes.length === 1) // flatten manually so we can skip flattening below.
+					newNodes[nodesIndex] = ngNodes[0];
+
+				else {
+					newNodes[nodesIndex] = ngNodes;
+					flatten = true;
+				}
+				path.nodeGroups[ngIndex] = ng;
+			}
+
+			if (flatten)
+				newNodes = newNodes.flat(); // Only if second pass happens.
+		}
+
+		/*#IFDEV*/assert(!path.nodeGroups.includes(null))/*#ENDIF*/
+
+
+
+		let oldNodes = path.getNodes();
+
+
+		// This pre-check makes it a few percent faster?
+		let same = arraySame(oldNodes, newNodes);
+		if (!same) {
+
+			path.nodesCache = newNodes; // Replaces value set by path.getNodes()
+
+			if (this.parentNg.parentPath)
+				this.parentNg.parentPath.clearNodesCache();
+
+			// Fast clear method
+			let isNowEmpty = oldNodes.length && !newNodes.length;
+			if (!isNowEmpty || !path.fastClear())
+
+				// Rearrange nodes.
+				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker)
+
+			Util.saveOrphans(oldNodeGroups, oldNodes);
+		}
+
+		// Must happen after second pass.
+		path.freeNodeGroups();
+
+		/*#IFDEV*/path.verify();/*#ENDIF*/
+	}
+
 
 
 	/**
-	 * TODO: Use another function to flatten the expr's so we don't have to use recusion.
+	 * Apply Nodes that are an exact match.
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]}
 	 * @param secondPass {Array} Locations within newNodes to evaluate later. */
-	apply(expr, newNodes, secondPass) {
+	applyExact(expr, newNodes, secondPass) {
 
 		if (expr instanceof Template) {
 
 			let ng = this.getNodeGroup(expr, true);
 			if (ng) {
-				//#IFDEV
-				// Make sure the nodeCache of the ExprPath we took it from is sitll valid.
-				//if (ng.parentPath)
-				//	ng.parentPath.verify();
-				//#ENDIF
-
 
 				// TODO: Track ranges of changed nodes and only pass those to udomdiff?
 				// But will that break the swap benchmark?
@@ -142,7 +235,7 @@ export default class ExprPath {
 				this.nodeGroups.push(ng);
 			}
 
-			// If expression, evaluate later to find partial match.
+			// If expression, mark it to be evaluated later in ExprPath.apply() to find partial match.
 			else {
 				secondPass.push([newNodes.length, this.nodeGroups.length])
 				newNodes.push(expr)
@@ -160,23 +253,26 @@ export default class ExprPath {
 				newNodes.push(expr);
 		}
 
+		// Arrays and functions.
+		// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
+		// but that consistently made the js-framework-benchmarks a few percentage points slower.
 		else if (Array.isArray(expr))
 			for (let subExpr of expr)
-				this.apply(subExpr, newNodes, secondPass);
+				this.applyExact(subExpr, newNodes, secondPass);
 
 		else if (typeof expr === 'function') {
 			Globals.currentExprPath = [this, expr]; // Used by watch3()
 			let result = expr();
 			Globals.currentExprPath = null;
 
-			this.apply(result, newNodes, secondPass);
+			this.applyExact(result, newNodes, secondPass);
 		}
 
 		// Text
 		else {
 			// Convert falsy values (but not 0) to empty string.
 			// Convert numbers to string so they compare the same.
-			let text = (expr === undefined || expr === false || expr === null) ? '' : expr + '';
+			let text = (expr === undefined || expr === false || expr === null) ? '' : (expr + '');
 
 			// Fast path for updating the text of a single text node.
 			let first = this.nodeBefore.nextSibling;
@@ -199,95 +295,6 @@ export default class ExprPath {
 					newNodes.push(this.nodeMarker.ownerDocument.createTextNode(text));
 			}
 		}
-
-		// If not in one of the recusive calls
-		// Mark all nodes as free, for the next render() call.
-		// TODO: This is commented out b/c this needs to happen after the second pass.
-		//if (!recursing)
-		//	this.freeNodeGroups();
-	}
-
-
-	/**
-	 * Insert/replace the nodes created by a single expression.
-	 * Called by applyExprs()
-	 * This function is recursive, as the functions it calls also call it.
-	 * @param expr {Expr}
-	 * @return {Node[]} New Nodes created. */
-	applyNodes(expr) {
-		let path = this;
-
-		/*#IFDEV*/path.verify();/*#ENDIF*/
-
-		/** @type {(Node|NodeGroup|Expr)[]} */
-		let newNodes = [];
-		let oldNodeGroups = path.nodeGroups;
-		/*#IFDEV*/assert(!oldNodeGroups.includes(null))/*#ENDIF*/
-		let secondPass = []; // indices
-
-		path.nodeGroups = []; // TODO: Is this used?
-		path.apply(expr, newNodes, secondPass);
-
-		this.existingTextNodes = null;
-
-		// TODO: Create an array of old vs Nodes and NodeGroups together.
-		// If they're all the same, skip the next steps.
-		// Or calculate it in the loop above as we go?  Have a path.lastNodeGroups property?
-
-		// Second pass to find close-match NodeGroups.
-		let flatten = false;
-		if (secondPass.length) {
-			for (let [nodesIndex, ngIndex] of secondPass) {
-				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
-
-				ng.parentPath = path; // TODO: All benchmarks pass without this line.
-				let ngNodes = ng.getNodes();
-
-				/*#IFDEV*/assert(!(newNodes[nodesIndex] instanceof NodeGroup))/*#ENDIF*/
-
-				if (ngNodes.length === 1)
-					newNodes[nodesIndex] = ngNodes[0];
-
-				else {
-					newNodes[nodesIndex] = ngNodes;
-					flatten = true;
-				}
-				path.nodeGroups[ngIndex] = ng;
-			}
-
-			if (flatten)
-				newNodes = newNodes.flat(); // TODO: Only if second pass happens?
-		}
-
-		/*#IFDEV*/assert(!path.nodeGroups.includes(null))/*#ENDIF*/
-
-
-
-		let oldNodes = path.getNodes();
-		path.nodesCache = newNodes; // Replaces value set by path.getNodes()
-
-
-		// This pre-check makes it a few percent faster?
-		let same = arraySame(oldNodes, newNodes);
-		if (!same) {
-
-			if (this.parentNg.parentPath)
-				this.parentNg.parentPath.clearNodesCache();
-
-			// Fast clear method
-			let isNowEmpty = oldNodes.length && !newNodes.length;
-			if (!isNowEmpty || !path.fastClear())
-
-				// Rearrange nodes.
-				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker)
-
-			this.parentNg.saveOrphans(oldNodeGroups, oldNodes);
-		}
-
-		// Must happen after second pass.
-		path.freeNodeGroups();
-
-		/*#IFDEV*/path.verify();/*#ENDIF*/
 	}
 
 	applyMultipleAttribs(node, expr) {
@@ -330,7 +337,7 @@ export default class ExprPath {
 	 * @param root */
 	applyEventAttrib(node, expr, root) {
 		/*#IFDEV*/
-		assert(this.type === PathType.Value || this.type === PathType.Component);
+		assert(this.type === PathType.Event/* || this.type === PathType.Component*/);
 		assert(root instanceof HTMLElement);
 		/*#ENDIF*/
 
@@ -402,16 +409,6 @@ export default class ExprPath {
 	applyValueAttrib(node, exprs, exprIndex) {
 		let expr = exprs[exprIndex];
 
-		// Array for form element data binding.
-		// TODO: This never worked, and was moved to applyEventAttrib.
-		// let isArrayValue = Array.isArray(expr);
-		// if (isArrayValue && expr.length >= 2 && !expr.slice(1).find(v => !['string', 'number'].includes(typeof v))) {
-		// 	node.value = delve(expr[0], expr.slice(1));
-		// 	node.addEventListener('input', e => {
-		// 		delve(expr[0], expr.slice(1), node.value) // TODO: support other properties like checked
-		// 	});
-		// }
-
 		// Values to toggle an attribute
 		if (!this.attrValue && (expr === false || expr === null || expr === undefined))
 			node.removeAttribute(this.attrName);
@@ -444,7 +441,6 @@ export default class ExprPath {
 						exprIndex--;
 					}
 				}
-
 				exprIndex ++;
 			}
 			else
@@ -464,7 +460,6 @@ export default class ExprPath {
 			// TODO: How to tell which is which?
 			if (this.attrName in node)
 				node[this.attrName] = joinedValue;
-
 		}
 
 		return exprIndex;
@@ -793,22 +788,25 @@ function setValue(root, path, node) {
 	delve(root, path, val);
 }
 
-/** @enum {string} */
+/** @enum {int} */
 export const PathType = {
 	/** Child of a node */
-	Content: 'content',
+	Content: 1,
 	
 	/** One or more whole attributes */
-	Multiple: 'attrName',
+	Multiple: 2,
 	
 	/** Value of an attribute. */
-	Value: 'attrValue',
+	Value: 3,
 	
 	/** Value of an attribute being passed to a component. */
-	Component: 'component',
+	Component: 4,
 	
 	/** Expressions inside Html comments. */
-	Comment: 'comment',
+	Comment: 5,
+
+	/** Value of an attribute. */
+	Event: 6,
 }
 
 

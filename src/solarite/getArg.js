@@ -4,7 +4,7 @@
 /**
  * There are three ways to create an instance of a Solarite Component:
  * 1.  new ComponentName();                                         // direct class instantiation
- * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another RedComponent.
+ * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another Component.
  * 3.  <body><component-name></component-name></body>               // in the Document html.
  *
  * When created via #3, Solarite has no way to pass attributes as arguments to the constructor.  So to make

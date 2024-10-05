@@ -3521,19 +3521,20 @@ Testimony.test('Solarite.watch2._forEachSpliceInsert', () => {
 
 
 
-Testimony.test('Solarite.watch3._primitive', () => {
+Testimony.test('Solarite.watch3.primitive', () => {
 
 	class W100 extends HTMLElement {
-		name = 'Fred';
 
 		constructor() {
 			super();
-			watch3(this, 'name');
+			watch3(this, 'name', 'Fred');
+
+
 			this.render();
 		}
 
 		render() {
-			r(this)`<w-100>${() => this.name + '!'}</w-100>`;
+			r(this)`<w-100>${this.name + '!'}</w-100>`;
 		}
 	}
 	customElements.define('w-100', W100);
@@ -3634,7 +3635,7 @@ Testimony.test('Solarite.full._todoList', () => {
 
 Testimony.test('Solarite.full._treeItems', () => {
 
-	//import '../src/RedComponent.js'
+	//import '../src/Solarite.js'
 
 	class TreeItem extends Solarite {
 

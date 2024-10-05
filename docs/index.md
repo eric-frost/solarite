@@ -785,6 +785,94 @@ When `render()` is called:
 
 Solarite uses [WebReflection/udomdiff](https://github.com/WebReflection/udomdiff) to compare DOM nodes to update.
 
+## Examples
+
+This is the time example from Lit.js implemented with Solarite:
+
+```html
+<script type="module">
+import {r, getArg} from './dist/Solarite.js';
+
+const replay = r`<svg enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"><title>Replay</title><g><rect fill="none" height="24" width="24"/><rect fill="none" height="24" width="24"/><rect fill="none" height="24" width="24"/></g><g><g/><path d="M12,5V1L7,6l5,5V7c3.31,0,6,2.69,6,6s-2.69,6-6,6s-6-2.69-6-6H4c0,4.42,3.58,8,8,8s8-3.58,8-8S16.42,5,12,5z"/></g></svg>`;
+const pause = r`<svg height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"><title>Pause</title><path d="M0 0h24v24H0V0z" fill="none"/><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
+const play = r`<svg height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"><title>Play</title><path d="M0 0h24v24H0V0z" fill="none"/><path d="M10 8.64L15.27 12 10 15.36V8.64M8 5v14l11-7L8 5z"/></svg>`;
+
+class MyTimer extends HTMLElement {
+  
+    constructor({duration}={}) {
+        super();
+        this.duration = getArg(this, 'duration', duration)*1;
+        this.end = null;
+        this.remaining = this.duration * 1000;
+        this.render();
+    }
+
+    render() {
+        const min = Math.floor(this.remaining / 60000);
+        const sec = pad(min, Math.floor((this.remaining / 1000) % 60));
+        const hun = pad(true, Math.floor((this.remaining % 1000) / 10));
+        r(this)`
+        <my-timer>
+          ${min ? `${min}:${sec}` : `${sec}.${hun}`}
+          <footer>
+            <style>
+            :host { display: inline-block; min-width: 90px; font-size: 30px; text-align: center; padding: 0.2em; margin: 0.2em 0.1em;
+                footer { user-select: none }        
+            }
+            </style>
+            ${
+              this.remaining === 0
+                ? ''
+                : this.running
+                ? r`<span onclick=${this.pause}>${pause}</span>`
+                : r`<span onclick=${this.start}>${play}</span>`
+            }
+            <span onclick=${this.reset}>${replay}</span>
+          </footer>
+        </my-timer>`;
+    }
+
+    start() {
+        this.end = Date.now() + this.remaining;
+        this.tick();
+    }
+
+    pause() {
+        this.end = null;
+        this.render();
+    }
+
+    reset() {
+        this.remaining = this.duration * 1000;
+        this.end = this.running ? Date.now() + this.remaining : null;
+        this.render();
+    }
+
+    tick() {
+        if (this.running) {
+            this.remaining = Math.max(0, this.end - Date.now());
+            this.render();
+            requestAnimationFrame(() => this.tick());
+        }
+    }
+
+    get running() {
+        return this.end && this.remaining;
+    }
+}
+customElements.define('my-timer', MyTimer);
+
+function pad(pad, val) {
+    return pad ? String(val).padStart(2, '0') : val;
+}
+</script>
+<my-timer duration="7"></my-timer>
+<my-timer duration="60"></my-timer>
+<my-timer duration="300"></my-timer>
+```
+
+
+
 ## Upcoming Features
 
 These are possible features to come:

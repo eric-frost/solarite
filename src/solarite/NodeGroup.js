@@ -129,48 +129,17 @@ export default class NodeGroup {
 			expr = exprs[exprIndex];
 
 			// Nodes
-			if (path.type === PathType.Content) {
-				path.applyNodes(expr);
-				/*#IFDEV*/path.verify()/*#ENDIF*/
+
+			// This is necessary both here and below.
+			if (lastNode && lastNode !== this.rootNg.root && lastNode !== path.nodeMarker && Object.keys(this.currentComponentProps).length) {
+				this.applyComponentExprs(lastNode, this.currentComponentProps);
+				this.currentComponentProps = {};
 			}
 
-			// Attributes
-			else {
-				let node = path.nodeMarker;
-				/*#IFDEV*/assert(node);/*#ENDIF*/
+			exprIndex = path.apply(expr, exprs, exprIndex, this.currentComponentProps);
 
-				// This is necessary both here and below.
-				if (lastNode && lastNode !== this.rootNg.root && lastNode !== node && Object.keys(this.currentComponentProps).length) {
-					this.applyComponentExprs(lastNode, this.currentComponentProps);
-					this.currentComponentProps = {};
-				}
+			lastNode = path.nodeMarker;
 
-				if (path.type === PathType.Multiple)
-					path.applyMultipleAttribs(node, expr)
-
-				// Capture attribute expressions to later send to the constructor of a web component.
-				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-				else if (path.nodeMarker !== this.rootNg.root && path.type === PathType.Component)
-					this.currentComponentProps[path.attrName] = expr;
-
-				else if (path.type === PathType.Comment) {
-					// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
-				}
-				else {
-
-					// Event attribute value
-					if (path.attrValue===null && (typeof expr === 'function' || Array.isArray(expr)) && isEvent(path.attrName)) {
-						let root = this.getRootNode();
-						path.applyEventAttrib(node, expr, root);
-					}
-
-					// Regular attribute value.
-					else // One node value may have multiple expressions.  Here we apply them all at once.
-						exprIndex = path.applyValueAttrib(node, exprs, exprIndex);
-				}
-
-				lastNode = path.nodeMarker;
-			}
 
 			exprIndex--;
 		} // end for(path of this.paths)
@@ -195,43 +164,8 @@ export default class NodeGroup {
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 	}
 
-	applyExpr(path, expr) {
-		// TODO: Use this if I can figure out how to adapt applyValueAttrib() to it.
-	}
-	
 	/**
-	 * Find NodeGroups that had their nodes removed and add those nodes to a Fragment so
-	 * they're not lost forever and the NodeGroup's internal structure is still consistent.
-	 * Called from ExprPath.applyNodes().
-	 * @param oldNodeGroups {NodeGroup[]}
-	 * @param oldNodes {Node[]} */
-	saveOrphans(oldNodeGroups, oldNodes) {
-		let oldNgMap = new Map();
-		for (let ng of oldNodeGroups) {
-			oldNgMap.set(ng.startNode, ng)
-			
-			// TODO: Is this necessary?
-			// if (ng.parentPath)
-			// 	ng.parentPath.clearNodesCache();
-		}
-
-		for (let i=0, node; node = oldNodes[i]; i++) {
-			let ng;
-			if (!node.parentNode && (ng = oldNgMap.get(node))) {
-				let fragment = document.createDocumentFragment();
-				let endNode = ng.endNode;
-				while (node !== endNode) {
-					fragment.append(node)
-					i++;
-					node = oldNodes[i];
-				}
-				fragment.append(endNode);
-			}
-		}
-	}
-
-	/**
-	 * Create a nested RedComponent or call render with the new props.
+	 * Create a nested Component or call render with the new props.
 	 * @param el {Solarite:HTMLElement}
 	 * @param props {Object} */
 	applyComponentExprs(el, props) {
