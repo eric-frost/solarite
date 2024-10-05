@@ -1,6 +1,8 @@
 /.idea
 /_internal
-/benchmarks
+/benchmarks/results
+/benchmarks/vanilla3
+/benchmarks/watch
 /css
 /tests/.run
 /deno.lock
