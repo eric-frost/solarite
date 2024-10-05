@@ -60,12 +60,10 @@ export default class NodeGroup {
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param parentPath {?ExprPath}
-	 * @param exactKey {?string} Optional, if already calculated.
-	 * @param closeKey {?string} */
-	constructor(template, parentPath=null, exactKey=null, closeKey=null) {
+	 * @param parentPath {?ExprPath} */
+	constructor(template, parentPath=null) {
 		if (!(this instanceof RootNodeGroup)) {
-			let [fragment, shell] = this.init(template, parentPath, exactKey, closeKey);
+			let [fragment, shell] = this.init(template, parentPath);
 
 			this.updatePaths(fragment, shell.paths);
 

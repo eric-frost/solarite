@@ -226,22 +226,14 @@ let objectIds = new WeakMap();
 
 /**
  * @param obj {Object|string|Node}
- * @param prefix
  * @returns {string} */
-function getObjectId(obj, prefix=null) {
-	
-
-
-	
-	
-	prefix = prefix || '~\f';
-	
+function getObjectId(obj) {
 	// if (typeof obj === 'function')
-	// 	return obj.toString();
+	// 	return obj.toString(); // This fails to detect when a function's bound variables changes.
 	
 	let result = objectIds.get(obj);
 	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
-		result = prefix+(lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ strings not from getObjectId()
+		result = (lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ strings not from getObjectId()
 		objectIds.set(obj, result);
 	}
 	return result;
@@ -254,12 +246,20 @@ function getObjectId(obj, prefix=null) {
  * Adding a toJSON method globally on these object prototypes doesn't incur that performance penalty. */
 let isHashing = true;
 function toJSON() {
-	//return (isHashing && !Array.isArray(this)) ? getObjectId(this) : this
 	return isHashing ? getObjectId(this) : this
 }
+
+
 // Node.prototype.toJSON = toJSON;
 // Function.prototype.toJSON = toJSON;
-
+// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
+// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
+// So we check the assignments on every run of getObjectHash()
+if (Node.prototype.toJSON !== toJSON) {
+	Node.prototype.toJSON = toJSON;
+	if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
+		Function.prototype.toJSON = toJSON;
+}
 
 /**
  * Get a string that uniquely maps to the values of the given object.
@@ -268,25 +268,18 @@ function toJSON() {
  *
  * Relies on the Node and Function prototypes being overridden above.
  *
+ * Note that passing an integer may collide with the number we get from hashing an object.
+ * But we don't handle that case because we need max performance and Solarite never passes integers to this function.
+ *
  * @param obj {*}
  * @returns {string} */
 function getObjectHash(obj) {
-	
-	// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
-	// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
-	// So we check the assignments on every run of getObjectHash()
-	if (Node.prototype.toJSON !== toJSON) {
-		Node.prototype.toJSON = toJSON;
-		if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
-			Function.prototype.toJSON = toJSON;
-	}
-	
 	let result;
 	isHashing = true;
 	try {
 		result = JSON.stringify(obj);
 	}
-	catch(e){
+	catch(e) {
 		result = getObjectHashCircular(obj);
 	}
 	isHashing = false;
@@ -294,7 +287,7 @@ function getObjectHash(obj) {
 }
 
 /**
- * Having this separate might help the optimzer for getObjectHash() ?
+ * Slower hashing method that supports.
  * @param obj
  * @returns {string} */
 function getObjectHashCircular(obj) {
@@ -668,6 +661,12 @@ class MultiValueMap {
 		set.add(value);
 	}
 
+	isEmpty() {
+		for (let key in this.data)
+			return true;
+		return false;
+	}
+
 	// Get all values for a key
 	getAll(key) {
 		return this.data[key] || [];
@@ -683,7 +682,7 @@ class MultiValueMap {
 		// 	debugger;
 
 		let data = this.data;
-		// The partialUpdate benchmark shows having this check first makes the function slightly faster.
+
 		// if (!data.hasOwnProperty(key))
 		// 	return undefined;
 
@@ -693,16 +692,17 @@ class MultiValueMap {
 		if (!set) // slower than pre-check.
 			return undefined;
 
-		if (val !== undefined) {
-			set.delete(val);
-			result = val;
+		// Delete any value.
+		if (val === undefined) {
+			//result = set.values().next().value; // get first item from set.
+			[result] = set; // Does the same as above and seems to be about the same speed.
+			set.delete(result);
 		}
 
-		// Delete any value.
+		// Delete a specific value.
 		else {
-			result = set.values().next().value;
-			// [result] = set; // Does the same as above. is about the same speed?
-			set.delete(result);
+			set.delete(val);
+			result = val;
 		}
 
 		// TODO: Will this make it slower?
@@ -1492,16 +1492,20 @@ class ExprPath {
 	 *
 	 * @param template {Template}
 	 * @param exact {boolean}
+	 *     If true, return an exact match, or null.
+	 *     If false, either find a match for the template's html and then apply the template's expressions,
+	 *         or createa  new NodeGroup from the template.
 	 * @return {NodeGroup} */
 	getNodeGroup(template, exact=true) {
-		let exactKey = template.getExactKey();
-		let closeKey = template.getCloseKey();
+		//if (exact && this.nodeGroupsFree.isEmpty())
+		//	return null;
+
 		let result;
 
 		if (exact) {
-			result = this.nodeGroupsFree.delete(exactKey);
+			result = this.nodeGroupsFree.delete(template.getExactKey());
 			if (result) // also delete the matching close key.
-				this.nodeGroupsFree.delete(closeKey, result);
+				this.nodeGroupsFree.delete(template.getCloseKey(), result);
 			else
 				return null;
 		}
@@ -1510,19 +1514,19 @@ class ExprPath {
 		// This is a match that has matching html, but different expressions applied.
 		// We can then apply the expressions to make it an exact match.
 		else {
-			result = this.nodeGroupsFree.delete(closeKey);
+			result = this.nodeGroupsFree.delete(template.getCloseKey());
 			if (result) {
 				
 				this.nodeGroupsFree.delete(result.exactKey, result);
 
 				// Update this close match with the new expression values.
 				result.applyExprs(template.exprs);
-				result.exactKey = exactKey; // TODO: Should this be set elsewhere?
+				result.exactKey = template.getExactKey(); // TODO: Should this be set elsewhere?
 			}
 		}
 
 		if (!result)
-			result = new NodeGroup(template, this, exactKey, closeKey);
+			result = new NodeGroup(template, this);
 
 		// old:
 		this.nodeGroupsInUse.push(result);
@@ -1981,12 +1985,10 @@ class NodeGroup {
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param parentPath {?ExprPath}
-	 * @param exactKey {?string} Optional, if already calculated.
-	 * @param closeKey {?string} */
-	constructor(template, parentPath=null, exactKey=null, closeKey=null) {
+	 * @param parentPath {?ExprPath} */
+	constructor(template, parentPath=null) {
 		if (!(this instanceof RootNodeGroup)) {
-			let [fragment, shell] = this.init(template, parentPath, exactKey, closeKey);
+			let [fragment, shell] = this.init(template, parentPath);
 
 			this.updatePaths(fragment, shell.paths);
 
@@ -2524,7 +2526,7 @@ class Template {
 	 * This prevents the hashed version from being too large. */
 	toJSON() {
 		if (!this.hashedFields)
-			this.hashedFields = [getObjectId(this.html, 'Html'), this.exprs];
+			this.hashedFields = [getObjectId(this.html), this.exprs];
 
 		return this.hashedFields
 	}
@@ -2569,14 +2571,18 @@ class Template {
 	}
 
 	getExactKey() {
-		return getObjectHash(this); // calls this.toJSON().
+		if (!this.exactKey)
+			this.exactKey = getObjectHash(this); // calls this.toJSON().
+		return this.exactKey;
 	}
 
 	getCloseKey() {
+		if (!this.closeKey)
+			this.closeKey = '@'+this.toJSON()[0];
 		// Use the joined html when debugging?  But it breaks some tests.
 		//return '@'+this.html.join('|')
 
-		return '@'+this.hashedFields[0];
+		return this.closeKey;
 	}
 }
 

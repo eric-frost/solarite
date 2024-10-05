@@ -3,32 +3,14 @@ let objectIds = new WeakMap();
 
 /**
  * @param obj {Object|string|Node}
- * @param prefix
  * @returns {string} */
-export function getObjectId(obj, prefix=null) {
-	
-
-
-	//#IFDEV
-	// Slower but useful for debugging:
-	if (!prefix) {
-		if (Array.isArray(obj))
-			prefix = 'Array';
-		else if (typeof obj === 'function')
-			prefix = 'Func';
-		else if (typeof obj === 'object')
-			prefix = 'Obj'
-	}
-	//#ENDIF
-	
-	prefix = prefix || '~\f';
-	
+export function getObjectId(obj) {
 	// if (typeof obj === 'function')
-	// 	return obj.toString();
+	// 	return obj.toString(); // This fails to detect when a function's bound variables changes.
 	
 	let result = objectIds.get(obj);
 	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
-		result = prefix+(lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ strings not from getObjectId()
+		result = (lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ strings not from getObjectId()
 		objectIds.set(obj, result)
 	}
 	return result;
@@ -41,12 +23,20 @@ export function getObjectId(obj, prefix=null) {
  * Adding a toJSON method globally on these object prototypes doesn't incur that performance penalty. */
 let isHashing = true;
 function toJSON() {
-	//return (isHashing && !Array.isArray(this)) ? getObjectId(this) : this
 	return isHashing ? getObjectId(this) : this
 }
+
+
 // Node.prototype.toJSON = toJSON;
 // Function.prototype.toJSON = toJSON;
-
+// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
+// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
+// So we check the assignments on every run of getObjectHash()
+if (Node.prototype.toJSON !== toJSON) {
+	Node.prototype.toJSON = toJSON;
+	if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
+		Function.prototype.toJSON = toJSON;
+}
 
 /**
  * Get a string that uniquely maps to the values of the given object.
@@ -55,25 +45,18 @@ function toJSON() {
  *
  * Relies on the Node and Function prototypes being overridden above.
  *
+ * Note that passing an integer may collide with the number we get from hashing an object.
+ * But we don't handle that case because we need max performance and Solarite never passes integers to this function.
+ *
  * @param obj {*}
  * @returns {string} */
 export function getObjectHash(obj) {
-	
-	// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
-	// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
-	// So we check the assignments on every run of getObjectHash()
-	if (Node.prototype.toJSON !== toJSON) {
-		Node.prototype.toJSON = toJSON;
-		if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
-			Function.prototype.toJSON = toJSON;
-	}
-	
 	let result;
 	isHashing = true;
 	try {
 		result = JSON.stringify(obj);
 	}
-	catch(e){
+	catch(e) {
 		result = getObjectHashCircular(obj);
 	}
 	isHashing = false;
@@ -81,7 +64,7 @@ export function getObjectHash(obj) {
 }
 
 /**
- * Having this separate might help the optimzer for getObjectHash() ?
+ * Slower hashing method that supports.
  * @param obj
  * @returns {string} */
 function getObjectHashCircular(obj) {

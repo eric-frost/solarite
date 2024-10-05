@@ -611,16 +611,20 @@ export default class ExprPath {
 	 *
 	 * @param template {Template}
 	 * @param exact {boolean}
+	 *     If true, return an exact match, or null.
+	 *     If false, either find a match for the template's html and then apply the template's expressions,
+	 *         or createa  new NodeGroup from the template.
 	 * @return {NodeGroup} */
 	getNodeGroup(template, exact=true) {
-		let exactKey = template.getExactKey();
-		let closeKey = template.getCloseKey();
+		//if (exact && this.nodeGroupsFree.isEmpty())
+		//	return null;
+
 		let result;
 
 		if (exact) {
-			result = this.nodeGroupsFree.delete(exactKey);
+			result = this.nodeGroupsFree.delete(template.getExactKey());
 			if (result) // also delete the matching close key.
-				this.nodeGroupsFree.delete(closeKey, result);
+				this.nodeGroupsFree.delete(template.getCloseKey(), result);
 			else
 				return null;
 		}
@@ -629,19 +633,19 @@ export default class ExprPath {
 		// This is a match that has matching html, but different expressions applied.
 		// We can then apply the expressions to make it an exact match.
 		else {
-			result = this.nodeGroupsFree.delete(closeKey)
+			result = this.nodeGroupsFree.delete(template.getCloseKey())
 			if (result) {
 				/*#IFDEV*/assert(result.exactKey);/*#ENDIF*/
 				this.nodeGroupsFree.delete(result.exactKey, result);
 
 				// Update this close match with the new expression values.
 				result.applyExprs(template.exprs);
-				result.exactKey = exactKey; // TODO: Should this be set elsewhere?
+				result.exactKey = template.getExactKey(); // TODO: Should this be set elsewhere?
 			}
 		}
 
 		if (!result)
-			result = new NodeGroup(template, this, exactKey, closeKey);
+			result = new NodeGroup(template, this);
 
 		// old:
 		this.nodeGroupsInUse.push(result);

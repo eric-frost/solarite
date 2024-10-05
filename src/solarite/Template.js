@@ -61,7 +61,7 @@ export default class Template {
 	 * This prevents the hashed version from being too large. */
 	toJSON() {
 		if (!this.hashedFields)
-			this.hashedFields = [getObjectId(this.html, 'Html'), this.exprs];
+			this.hashedFields = [getObjectId(this.html), this.exprs];
 
 		return this.hashedFields
 	}
@@ -106,14 +106,18 @@ export default class Template {
 	}
 
 	getExactKey() {
-		return getObjectHash(this); // calls this.toJSON().
+		if (!this.exactKey)
+			this.exactKey = getObjectHash(this); // calls this.toJSON().
+		return this.exactKey;
 	}
 
 	getCloseKey() {
+		if (!this.closeKey)
+			this.closeKey = '@'+this.toJSON()[0];
 		// Use the joined html when debugging?  But it breaks some tests.
 		//return '@'+this.html.join('|')
 
-		return '@'+this.hashedFields[0];
+		return this.closeKey;
 	}
 }
 

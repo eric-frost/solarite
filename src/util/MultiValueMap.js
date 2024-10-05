@@ -14,6 +14,12 @@ export default class MultiValueMap {
 		set.add(value);
 	}
 
+	isEmpty() {
+		for (let key in this.data)
+			return true;
+		return false;
+	}
+
 	// Get all values for a key
 	getAll(key) {
 		return this.data[key] || [];
@@ -29,7 +35,7 @@ export default class MultiValueMap {
 		// 	debugger;
 
 		let data = this.data;
-		// The partialUpdate benchmark shows having this check first makes the function slightly faster.
+
 		// if (!data.hasOwnProperty(key))
 		// 	return undefined;
 
@@ -39,16 +45,17 @@ export default class MultiValueMap {
 		if (!set) // slower than pre-check.
 			return undefined;
 
-		if (val !== undefined) {
-			set.delete(val);
-			result = val;
+		// Delete any value.
+		if (val === undefined) {
+			//result = set.values().next().value; // get first item from set.
+			[result] = set; // Does the same as above and seems to be about the same speed.
+			set.delete(result);
 		}
 
-		// Delete any value.
+		// Delete a specific value.
 		else {
-			result = set.values().next().value;
-			// [result] = set; // Does the same as above. is about the same speed?
-			set.delete(result);
+			set.delete(val);
+			result = val;
 		}
 
 		// TODO: Will this make it slower?
