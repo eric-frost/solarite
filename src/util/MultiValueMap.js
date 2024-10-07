@@ -20,7 +20,10 @@ export default class MultiValueMap {
 		return false;
 	}
 
-	// Get all values for a key
+	/**
+	 * Get all values for a key.
+	 * @param key
+	 * @returns {Set|*[]} */
 	getAll(key) {
 		return this.data[key] || [];
 	}

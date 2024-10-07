@@ -73,12 +73,16 @@ Object.assign(assert, {
 
 /**
  * https://stackoverflow.com/a/6713782/
+ * Modified to also compare Nodes.
  * @param x
  * @param y
  * @return {boolean} */
 function isSame( x, y ) {
 	if (x === y)
 		return true; // if both x and y are null or undefined and exactly the same
+
+	if (x instanceof Node || y instanceof Node)
+		return x === y;
 
 	// if they are not strictly equal, they both need to be Objects
 	// they must have the exact same prototype chain, the closest we can do is

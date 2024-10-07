@@ -80,6 +80,23 @@ var Util = {
 		return result;
 	},
 
+	/**
+	 * @param map {Map|WeakMap|Object}
+	 * @param key
+	 * @param value */
+	mapAdd(map, key, value) {
+		let isMap = map instanceof Map || map instanceof WeakMap;
+		let result = isMap ? map.get(key) : map[key];
+		if (!result) {
+			result = [value];
+			if (isMap)
+				map.set(key, result);
+			else
+				map[key] = result;
+		}
+		else
+			result.push(value);
+	},
 
 	weakMemoize(obj, callback) {
 		let result = weakMemoizeInputs.get(obj);

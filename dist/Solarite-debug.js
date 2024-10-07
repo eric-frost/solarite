@@ -77,6 +77,23 @@ var Util$1 = {
 		return result;
 	},
 
+	/**
+	 * @param map {Map|WeakMap|Object}
+	 * @param key
+	 * @param value */
+	mapAdd(map, key, value) {
+		let isMap = map instanceof Map || map instanceof WeakMap;
+		let result = isMap ? map.get(key) : map[key];
+		if (!result) {
+			result = [value];
+			if (isMap)
+				map.set(key, result);
+			else
+				map[key] = result;
+		}
+		else
+			result.push(value);
+	},
 
 	weakMemoize(obj, callback) {
 		let result = weakMemoizeInputs.get(obj);
@@ -744,7 +761,10 @@ class MultiValueMap {
 		return false;
 	}
 
-	// Get all values for a key
+	/**
+	 * Get all values for a key.
+	 * @param key
+	 * @returns {Set|*[]} */
 	getAll(key) {
 		return this.data[key] || [];
 	}
@@ -1095,6 +1115,9 @@ class ExprPath {
 	nodeMarkerPath;
 
 
+	/** @type {?function} */
+	watchFunction
+
 	/**
 	 * @param nodeBefore {Node}
 	 * @param nodeMarker {?Node}
@@ -1325,7 +1348,11 @@ class ExprPath {
 				this.applyExact(subExpr, newNodes, secondPass);
 
 		else if (typeof expr === 'function') {
+			// TODO: One ExprPath can have multiple expr functions.
+			// But if using it as a watch, it should only have one at the top level.
+			// So maybe this is ok.
 			Globals.currentExprPath = [this, expr]; // Used by watch3()
+			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
 			let result = expr();
 			Globals.currentExprPath = null;
 
@@ -2683,6 +2710,23 @@ class RootNodeGroup extends NodeGroup {
 	root;
 
 	/**
+	 * Store the expressions that use this watched variable,
+	 * along with the functions used to get their values.
+	 * @type {Object<field:string, Set<ExprPath>>} */
+	watchedExprPaths = {};
+
+	/**
+	 * Map from arrays where .map is called and their callback functions.
+	 * TODO: One array might be called with two different map functions in different places!
+	 * @type {Map<Array, function>} */
+	mapCallbacks = new Map();
+
+	/**
+	 *
+	 * @type {Map<ExprPath, boolean|Array>} */
+	exprsToRender = new Map();
+
+	/**
 	 *
 	 * @param template
 	 * @param el
@@ -2700,6 +2744,7 @@ class RootNodeGroup extends NodeGroup {
 		let offset = 0;
 		let root = fragment; // TODO: Rename so it's not confused with this.root.
 		if (el) {
+			Globals.nodeGroups.set(el, this);
 
 			// Save slot children
 			let slotFragment;
@@ -2745,12 +2790,15 @@ class RootNodeGroup extends NodeGroup {
 			}
 
 			root = el;
+
 			this.startNode = el;
 			this.endNode = el;
 		}
 		else {
 			let singleEl = getSingleEl(fragment);
 			this.root = singleEl || fragment; // We return the whole fragment when calling r() with a collection of nodes.
+
+			Globals.nodeGroups.set(this.root, this);
 			if (singleEl) {
 				root = singleEl;
 				offset = 1;
@@ -2763,6 +2811,11 @@ class RootNodeGroup extends NodeGroup {
 
 		// Apply exprs
 		this.applyExprs(template.exprs);
+	}
+
+	clearRenderWatched() {
+		this.watchedExprPaths = {};
+		this.mapCallbacks = new Map();
 	}
 }
 
@@ -2867,14 +2920,14 @@ class Template {
 		if (standalone) {
 			ng = new RootNodeGroup(this, null, options);
 			el = ng.getRootNode();
-			Globals.nodeGroups.set(el, ng);
+			//Globals.nodeGroups.set(el, ng);
 			firstTime = true;
 		}
 		else {
 			ng = Globals.nodeGroups.get(el);
 			if (!ng) {
 				ng = new RootNodeGroup(this, el, options);
-				Globals.nodeGroups.set(el, ng);
+				//Globals.nodeGroups.set(el, ng);
 				firstTime = true;
 			}
 		}
@@ -2884,8 +2937,10 @@ class Template {
 		if (!firstTime) {
 			if (this.html?.length === 1 && !this.html[0])
 				el.innerHTML = ''; // Fast path for empty component.
-			else
+			else {
+				ng.clearRenderWatched();
 				ng.applyExprs(this.exprs);
+			}
 		}
 
 		return el;
@@ -3333,6 +3388,164 @@ function createSolarite(extendsTag=null) {
 }
 
 /**
+ * Trying to be able to automatically watch primitive values.
+ * TODO:
+ * 1.  Have get() return Proxies for nested updates.
+ * 2.  Override .map() for loops to capture changes.
+ */
+
+let unusedArg = Symbol('unusedArg');
+
+/**
+ * Custom map function triggers the get() Proxy.
+ * @param array {Array}
+ * @param callback {function}
+ * @returns {*[]} */
+function map(array, callback) {
+	let result = [];
+	for (let i=0; i<array.length; i++)
+		result.push(callback(array[i], i, array));
+	return result;
+}
+
+
+/**
+ *
+ * @param root {HTMLElement}
+ * @param field {string}
+ * @param value {string|Symbol} */
+function watch3(root, field, value=unusedArg) {
+	// Store internal value used by get/set.
+	if (value !== unusedArg)
+		root[field] = value;
+	else
+		value = root[field];
+
+
+	// use a single object for both defineProperty and new Proxy's handler.
+	const handler = {
+		get(obj, prop, receiver) {
+
+			let result = (obj === receiver && field === prop)
+				? value // top-level value.
+				: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
+
+			if (prop === 'map')
+
+				// Double function so the ExprPath calls it as a function,
+				// instead of it being evaluated immediately when the Templat eis created.
+				return (callback) => () => {
+					let rootNg = Globals.nodeGroups.get(root);
+					rootNg.mapCallbacks.set(obj, callback);
+					return map(new Proxy(obj, handler), callback);
+				}
+
+			// Track which ExprPath is using this variable.
+			if (Globals.currentExprPath) {
+				let [exprPath, exprFunction] = Globals.currentExprPath; // Set in ExprPath.applyExact()
+
+				let rootNg = Globals.nodeGroups.get(root);
+
+				// Init for field.
+				rootNg.watchedExprPaths[field] = rootNg.watchedExprPaths[field] || new Set();
+				rootNg.watchedExprPaths[field].add(exprPath);
+
+
+				//rootNg.watchedExprPaths.add(field, [exprPath, exprFunction]);
+			}
+
+			if (isObj(result))
+				return new Proxy(result, handler);
+
+			return result;
+		},
+
+
+		// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
+		// TODO: This won't update a component's expressions.
+		// TODO: freeNodeGroups() could be skipped if applyExprs() never marked them as in-use.
+		set(obj, prop, val, receiver) {
+
+			// 1. Set the value.
+			if (obj === receiver && field === prop)
+				value = val; // top-level value.
+			else // avoid infinite recursion.
+				Reflect.set(obj, prop, val, receiver);
+
+
+
+			// 2. Add to the list of ExprPaths to re-render.
+			let rootNg = Globals.nodeGroups.get(root);
+			for (let exprPath of rootNg.watchedExprPaths[field]) {
+
+				// Update a single NodeGroup created by array.map()
+				if (Array.isArray(obj) && parseInt(prop) == prop) {
+					let exprsToRender = rootNg.exprsToRender.get(exprPath);
+
+					// If we're not re-rendering the whole thing.
+					if (exprsToRender !== true)
+						Util$1.mapAdd(rootNg.exprsToRender, exprPath, [obj, prop, val]);
+				}
+
+				// Reapply the whole expression.
+				else {
+					rootNg.exprsToRender.set(exprPath, true);
+				}
+			}
+			return true;
+		}
+	};
+
+	Object.defineProperty(root, field, {
+		get: () => handler.get(root, field, root),
+		set: (val) => handler.set(root, field, val, root)
+	});
+}
+
+function isObj(o) {
+	return o && (typeof o === 'object');
+}
+
+/**
+ * TODO: Rename so we have watch.add() and watch.render() ?
+ * @param root
+ * @returns {*[]}
+ */
+function renderWatched(root) {
+	let rootNg = Globals.nodeGroups.get(root);
+	let modified = [];
+
+	for (let [exprPath, val] of rootNg.exprsToRender) {
+
+		// Reapply the whole expression.
+		if (val === true) {
+			exprPath.apply(exprPath.watchFunction);
+			exprPath.freeNodeGroups(); // TODO: free only the used Nodegroup!
+
+			modified.push(...exprPath.getNodes());
+		}
+
+		// Update a single NodeGroup created by array.map()
+		else {
+			for (let row of val) {
+				let [obj, prop, value] = row;
+
+				let callback = rootNg.mapCallbacks.get(obj);
+				let template = callback(value);
+				exprPath.applyLoopItemUpdate(prop, template);
+
+				modified.push(...exprPath.nodeGroups[prop].getNodes());
+			}
+		}
+	}
+
+	rootNg.exprsToRender = new Map(); // clear
+	//rootNg.clearRenderWatched();
+
+	return modified;
+}
+
+/**
  * Solarite JavasCript UI library.
  * MIT License
  * https://vorticode.github.io/solarite/
@@ -3347,9 +3560,6 @@ let Solarite = new Proxy(createSolarite(), {
 	}
 });
 let getInputValue = Util.getInputValue;
+ // unfinished
 
-//Experimental:
-//export {forEach, watchGet, watchSet} from './watch.js' // old, unfinished
-//export {watch} from './watch2.js'; // unfinished
-
-export { ArgType, Globals, Solarite, Template, delve, getArg, getInputValue, r };
+export { ArgType, Globals, Solarite, Template, delve, getArg, getInputValue, r, renderWatched, watch3 as watch };

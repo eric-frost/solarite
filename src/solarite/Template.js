@@ -81,14 +81,14 @@ export default class Template {
 		if (standalone) {
 			ng = new RootNodeGroup(this, null, options);
 			el = ng.getRootNode();
-			Globals.nodeGroups.set(el, ng);
+			//Globals.nodeGroups.set(el, ng);
 			firstTime = true;
 		}
 		else {
 			ng = Globals.nodeGroups.get(el);
 			if (!ng) {
 				ng = new RootNodeGroup(this, el, options);
-				Globals.nodeGroups.set(el, ng);
+				//Globals.nodeGroups.set(el, ng);
 				firstTime = true;
 			}
 		}
@@ -98,8 +98,10 @@ export default class Template {
 		if (!firstTime) {
 			if (this.html?.length === 1 && !this.html[0])
 				el.innerHTML = ''; // Fast path for empty component.
-			else
+			else {
+				ng.clearRenderWatched();
 				ng.applyExprs(this.exprs);
+			}
 		}
 
 		return el;

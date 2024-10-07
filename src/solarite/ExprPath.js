@@ -73,6 +73,9 @@ export default class ExprPath {
 	nodeMarkerPath;
 
 
+	/** @type {?function} */
+	watchFunction
+
 	/**
 	 * @param nodeBefore {Node}
 	 * @param nodeMarker {?Node}
@@ -303,7 +306,11 @@ export default class ExprPath {
 				this.applyExact(subExpr, newNodes, secondPass);
 
 		else if (typeof expr === 'function') {
+			// TODO: One ExprPath can have multiple expr functions.
+			// But if using it as a watch, it should only have one at the top level.
+			// So maybe this is ok.
 			Globals.currentExprPath = [this, expr]; // Used by watch3()
+			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
 			let result = expr();
 			Globals.currentExprPath = null;
 

@@ -5,10 +5,10 @@
 import {camelToDashes, htmlContext} from "../src/solarite/Util.js";
 //import {watchGet, watchSet} from "../src/solarite/watch.js";
 
-import {Solarite, r, getArg} from '../src/solarite/Solarite.js';
+import {Solarite, r, getArg, renderWatched} from '../src/solarite/Solarite.js';
 //import {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 //import {watch} from "../src/solarite/watch2.js";
-import watch3 from "../src/solarite/watch3.js";
+import watch from "../src/solarite/watch3.js";
 //import NodeGroupManager from "../src/solarite/NodeGroupManager.js";
 import NodeGroup from "../src/solarite/NodeGroup.js";
 import Template from "../src/solarite/Template.js";
@@ -3527,7 +3527,7 @@ Testimony.test('Solarite.watch3.primitive', () => {
 
 		constructor() {
 			super();
-			watch3(this, 'name', 'Fred');
+			watch(this, 'name', 'Fred');
 			this.render();
 		}
 
@@ -3542,6 +3542,8 @@ Testimony.test('Solarite.watch3.primitive', () => {
 	assert.eq(getHtml(a), `<w-10>Fred!</w-10>`);
 
 	a.name = 'Jim';
+	let modified = renderWatched(a);
+	console.log(modified);
 	assert.eq(getHtml(a), `<w-10>Jim!</w-10>`);
 
 	a.remove();
@@ -3556,7 +3558,7 @@ Testimony.test('Solarite.watch3.primitive2', `One primitive variable used twice.
 		constructor() {
 			super();
 			this.name = 'Fred';
-			watch3(this, 'name');
+			watch(this, 'name');
 			this.render();
 		}
 
@@ -3569,6 +3571,8 @@ Testimony.test('Solarite.watch3.primitive2', `One primitive variable used twice.
 	assert.eq(getHtml(a), `<w-20>Fred.<br>Fred!</w-20>`);
 
 	a.name = 'Jim';
+	let modified = renderWatched(a);
+	console.log(modified);
 	assert.eq(getHtml(a), `<w-20>Jim.<br>Jim!</w-20>`);
 });
 
@@ -3582,7 +3586,7 @@ Testimony.test('Solarite.watch3.object', () => {
 
 		constructor() {
 			super();
-			watch3(this, 'user');
+			watch(this, 'user');
 			this.render();
 		}
 
@@ -3597,9 +3601,13 @@ Testimony.test('Solarite.watch3.object', () => {
 	assert.eq(getHtml(a), `<w-30>Fred!</w-30>`);
 
 	a.user.name = 'Jim';
+	let modified = renderWatched(a);
+	console.log(modified);
 	assert.eq(getHtml(a), `<w-30>Jim!</w-30>`);
 
 	a.user = {name: 'Bob'};
+	modified = renderWatched(a);
+	console.log(modified);
 	assert.eq(getHtml(a), `<w-30>Bob!</w-30>`);
 
 	a.remove();
@@ -3614,7 +3622,7 @@ Testimony.test('Solarite.watch3.array', () => {
 
 		constructor() {
 			super();
-			watch3(this, 'items');
+			watch(this, 'items');
 			this.render();
 		}
 
@@ -3629,10 +3637,27 @@ Testimony.test('Solarite.watch3.array', () => {
 
 	//debugger;
 	a.items[1] = 'banana2';
+	let modified = renderWatched(a);
+	console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana2</div><div>cherry</div></w-50>`);
 
 	a.items[1] = 'banana3';
+	modified = renderWatched(a);
+	console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry</div></w-50>`);
+
+	a.items[2] = 'cherry2';
+	modified = renderWatched(a);
+	console.log(modified);
+	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry2</div></w-50>`);
+
+
+	a.items[0] = 'apple3';
+	a.items[2] = 'cherry3';
+	modified = renderWatched(a);
+	console.log(modified);
+	assert.eq(getHtml(a), `<w-50><div>apple3</div><div>banana3</div><div>cherry3</div></w-50>`);
+	assert.eq(modified, [a.children[0], a.children[2]]);
 
 	//a.remove();
 });
@@ -3647,7 +3672,7 @@ Testimony.test('Solarite.watch3._nodes', () => {
 
 		constructor() {
 			super();
-			watch3(this, 'name');
+			watch(this, 'name');
 			this.render();
 		}
 

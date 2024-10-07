@@ -7,6 +7,7 @@ import Util, {arraySame, flattenAndIndent, isEvent, nodeToArrayTree, setIndent} 
 //import NodeGroupManager from "./NodeGroupManager.js";
 import delve from "../util/delve.js";
 import Globals from "./Globals.js";
+import MultiValueMap from "../util/MultiValueMap.js";
 
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
@@ -521,6 +522,23 @@ export class RootNodeGroup extends NodeGroup {
 	root;
 
 	/**
+	 * Store the expressions that use this watched variable,
+	 * along with the functions used to get their values.
+	 * @type {Object<field:string, Set<ExprPath>>} */
+	watchedExprPaths = {};
+
+	/**
+	 * Map from arrays where .map is called and their callback functions.
+	 * TODO: One array might be called with two different map functions in different places!
+	 * @type {Map<Array, function>} */
+	mapCallbacks = new Map();
+
+	/**
+	 *
+	 * @type {Map<ExprPath, boolean|Array>} */
+	exprsToRender = new Map();
+
+	/**
 	 *
 	 * @param template
 	 * @param el
@@ -538,6 +556,7 @@ export class RootNodeGroup extends NodeGroup {
 		let offset = 0;
 		let root = fragment; // TODO: Rename so it's not confused with this.root.
 		if (el) {
+			Globals.nodeGroups.set(el, this);
 
 			// Save slot children
 			let slotFragment;
@@ -583,12 +602,15 @@ export class RootNodeGroup extends NodeGroup {
 			}
 
 			root = el;
+
 			this.startNode = el;
 			this.endNode = el;
 		}
 		else {
 			let singleEl = getSingleEl(fragment);
 			this.root = singleEl || fragment; // We return the whole fragment when calling r() with a collection of nodes.
+
+			Globals.nodeGroups.set(this.root, this);
 			if (singleEl) {
 				root = singleEl;
 				offset = 1;
@@ -601,6 +623,11 @@ export class RootNodeGroup extends NodeGroup {
 
 		// Apply exprs
 		this.applyExprs(template.exprs);
+	}
+
+	clearRenderWatched() {
+		this.watchedExprPaths = {};
+		this.mapCallbacks = new Map();
 	}
 }
 

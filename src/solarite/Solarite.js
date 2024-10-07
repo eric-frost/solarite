@@ -31,4 +31,4 @@ export {default as delve} from '../util/delve.js';
 
 //Experimental:
 //export {forEach, watchGet, watchSet} from './watch.js' // old, unfinished
-//export {watch} from './watch2.js'; // unfinished
+export {default as watch, renderWatched} from './watch3.js'; // unfinished
