@@ -1164,6 +1164,11 @@ class ExprPath {
 	applyNodes(expr) {
 		let path = this;
 
+		// This can be done at the beginning or the end of this function.
+		// If at the end, we may get rendering done faster.
+		// But when at the beginning, it leaves all the nodes in-use so we can do a renderWatched().
+		path.freeNodeGroups();
+
 		/*#IFDEV*/path.verify();/*#ENDIF*/
 
 		/** @type {(Node|NodeGroup|Expr)[]} */
@@ -1228,15 +1233,52 @@ class ExprPath {
 				// Rearrange nodes.
 				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker);
 
-			Util.saveOrphans(oldNodeGroups, oldNodes);
+			// TODO: Put this in a remove() function of NodeGroup.
+			// Then only run it on the old nodeGroups that were actually removed.
+			//Util.saveOrphans(oldNodeGroups, oldNodes);
+
+			for (let ng of oldNodeGroups)
+				if (!ng.startNode.parentNode)
+					ng.saveOrphans();
 		}
 
-		// Must happen after second pass.
-		path.freeNodeGroups();
 
 		/*#IFDEV*/path.verify();/*#ENDIF*/
 	}
 
+	/**
+	 * Used by watch for replacing individual loop items. */
+	applyLoopItemUpdate(index, template) {
+		// At this point none of the nodes being used will be in nodeGroupsFree.
+		let oldNg = this.nodeGroups[index];
+		this.nodeGroupsFree.add(oldNg.exactKey, oldNg);
+		this.nodeGroupsFree.add(oldNg.closeKey, oldNg);
+
+		let ng = this.getNodeGroup(template, true);
+		if (ng) {
+			return; // It's an exactl match, so replace nothing.
+		}
+
+
+
+		ng = this.getNodeGroup(template, false);
+
+		this.nodeGroups[index] = ng;
+
+		// Splice in the new nodes.
+		for (let node of ng.getNodes()) {
+			oldNg.startNode.parentNode.insertBefore(node, oldNg.startNode);
+		}
+
+		if (oldNg !== ng) {
+			for (let node of oldNg.getNodes())
+				node.remove();
+			oldNg.saveOrphans();
+		}
+
+		// TODO: update or invalidate the nodes cache?
+		this.nodesCache = null;
+	}
 
 
 	/**
@@ -2467,6 +2509,16 @@ class NodeGroup {
 	 * @returns {RootNodeGroup} */
 	getRootNodeGroup() {
 		return this.rootNg;
+	}
+
+	/**
+	 * Requires the nodeCache to be present. */
+	saveOrphans() {
+		/*#IFDEV*/assert(!this.startNode.parentNode);/*#ENDIF*/
+		/*#IFDEV*/assert(this.nodesCache);/*#ENDIF*/
+		let fragment = document.createDocumentFragment();
+		for (let node of this.getNodes())
+			fragment.append(node);
 	}
 
 

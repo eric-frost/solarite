@@ -51,72 +51,17 @@ import Globals from "./Globals.js";
 let unusedArg = Symbol('unusedArg');
 
 
-class TrackedArray extends Array {
-	constructor(...args) {
-		super(...args);
-		this.ops = [];
-	}
 
-	// Intercepting 'push' as 'insert'
-	push(...items) {
-		const startIdx = this.length;
-		super.push(...items);
-		this.ops.push({ op: 'insert', index: startIdx, values: items });
-		return this.length;
-	}
-
-	// Intercepting 'pop' as 'remove'
-	pop() {
-		const removedIndex = this.length - 1;
-		const removedItem = super.pop();
-		this.ops.push({ op: 'remove', index: removedIndex, length: 1 });
-		return removedItem;
-	}
-
-	// Intercepting 'shift' as 'remove'
-	shift() {
-		const removedItem = super.shift();
-		this.ops.push({ op: 'remove', index: 0, length: 1 });
-		return removedItem;
-	}
-
-	// Intercepting 'unshift' as 'insert'
-	unshift(...items) {
-		super.unshift(...items);
-		this.ops.push({ op: 'insert', index: 0, values: items });
-		return this.length;
-	}
-
-	// Intercepting 'splice' for insert, update, or remove
-	splice(start, deleteCount, ...items) {
-		const removedItems = super.splice(start, deleteCount, ...items);
-
-		if (deleteCount > 0) {
-			this.ops.push({ op: 'remove', index: start, length: deleteCount });
-		}
-		if (items.length > 0) {
-			const operation = deleteCount > 0 ? 'update' : 'insert';
-			this.ops.push({ op, index: start, values: items });
-		}
-
-		return removedItems;
-	}
-
-	// TODO: reverse, sorty, copyWithin, fill
-}
-
-function map(array, callback, exprFunctions) {
-	for (let i=0; i<array.length; i++) {
-		if (Globals.currentExprPath) {
-			let [exprPath, exprFunction] = Globals.currentExprPath;
-			exprFunctions.set(exprPath, exprFunction);
-		}
-	}
-
-
-	return array.map((item, i, array) => {
-		return callback(item, i, array);
-	});
+/**
+ * Custom map function triggers the get() Proxy.
+ * @param array {Array}
+ * @param callback {function}
+ * @returns {*[]} */
+function map(array, callback) {
+	let result = [];
+	for (let i=0; i<array.length; i++)
+		result.push(callback(array[i], i, array));
+	return result;
 }
 
 
@@ -135,10 +80,11 @@ export default function watch3(root, path, value=unusedArg) {
 	/**
 	 * Store the expressions that use this watched variable,
 	 * along with the functions used to get theri values.
-	 * TODO: Should the function be stored on the ExprPath?
+	 * TODO: Should these be stored on the RootNodeGroup?
 	 * TODO: We should clear this every time render() is called.
 	 * @type {Map<ExprPath, function>} */
 	let exprFunctions = new Map();
+	let arrayCallbacks = new Map();
 
 
 
@@ -150,18 +96,31 @@ export default function watch3(root, path, value=unusedArg) {
 				? value // top-level value.
 				: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
 
+			if (prop === 'map')
+
+				// Double function so the ExprPath calls it as a function,
+				// instead of it being evaluated immediately when the Templat eis created.
+				return (callback) => () => {
+					arrayCallbacks.set(obj, callback);
+					return map(new Proxy(obj, handler), callback);
+				}
+
 			// Track which ExprPath is using this variable.
 			if (Globals.currentExprPath) {
-				let [exprPath, exprFunction] = Globals.currentExprPath;
+				let [exprPath, exprFunction] = Globals.currentExprPath; // Set in ExprPath.applyExact()
 				exprFunctions.set(exprPath, exprFunction);
 			}
-
 
 			if (isObj(result))
 				return new Proxy(result, handler);
 
 			return result;
 		},
+
+
+		// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
+		// TODO: This won't update a component's expressions.
+		// TODO: freeNodeGroups() could be skipped if applyExprs() never marked them as in-use.
 		set(obj, prop, val, receiver) {
 			if (obj === receiver && path === prop)
 				value = val; // top-level value.
@@ -169,14 +128,22 @@ export default function watch3(root, path, value=unusedArg) {
 				Reflect.set(obj, prop, val, receiver);
 
 			for (let [exprPath, exprFunction] of exprFunctions)
-				if (exprFunction) {
 
-					// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
-					// TODO: This won't update a component's expressions.
-					exprPath.apply(exprFunction);
+				//debugger;
 
-					exprPath.freeNodeGroups(); // TODO: This could be skipped if applyExprs() never marked them as in-use.
+				// Update a single NodeGroup created by array.map()
+				if (Array.isArray(obj) && parseInt(prop) == prop) {
+					let callback = arrayCallbacks.get(obj);
+					let template = callback(val);
+					exprPath.applyLoopItemUpdate(prop, template);
 				}
+
+				// Reapply the whole expression.
+				else {
+					exprPath.apply(exprFunction);
+					exprPath.freeNodeGroups();
+				}
+
 			return true;
 		}
 	}

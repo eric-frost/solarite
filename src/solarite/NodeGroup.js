@@ -349,6 +349,16 @@ export default class NodeGroup {
 		return this.rootNg;
 	}
 
+	/**
+	 * Requires the nodeCache to be present. */
+	saveOrphans() {
+		/*#IFDEV*/assert(!this.startNode.parentNode);/*#ENDIF*/
+		/*#IFDEV*/assert(this.nodesCache);/*#ENDIF*/
+		let fragment = document.createDocumentFragment();
+		for (let node of this.getNodes())
+			fragment.append(node);
+	}
+
 
 	updatePaths(fragment, paths, offset) {
 		// Update paths to point to the fragment.

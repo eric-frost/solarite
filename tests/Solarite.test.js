@@ -3629,7 +3629,10 @@ Testimony.test('Solarite.watch3.array', () => {
 
 	//debugger;
 	a.items[1] = 'banana2';
+	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana2</div><div>cherry</div></w-50>`);
 
+	a.items[1] = 'banana3';
+	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry</div></w-50>`);
 
 	//a.remove();
 });
