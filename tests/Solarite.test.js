@@ -3523,31 +3523,117 @@ Testimony.test('Solarite.watch2._forEachSpliceInsert', () => {
 
 Testimony.test('Solarite.watch3.primitive', () => {
 
-	class W100 extends HTMLElement {
+	class W10 extends HTMLElement {
 
 		constructor() {
 			super();
 			watch3(this, 'name', 'Fred');
-
-
 			this.render();
 		}
 
 		render() {
-			r(this)`<w-100>${this.name + '!'}</w-100>`;
+			r(this)`<w-10>${() => this.name + '!'}</w-10>`;
 		}
 	}
-	customElements.define('w-100', W100);
+	customElements.define('w-10', W10);
 
-	let a = new W100();
+	let a = new W10();
 	document.body.append(a);
-	assert(a.outerHTML, `<w-100>Fred!</w-100>`);
+	assert.eq(getHtml(a), `<w-10>Fred!</w-10>`);
 
 	a.name = 'Jim';
-	assert(a.outerHTML, `<w-100>Jim!</w-100>`);
+	assert.eq(getHtml(a), `<w-10>Jim!</w-10>`);
 
 	a.remove();
 });
+
+
+
+Testimony.test('Solarite.watch3.primitive2', `One primitive variable used twice.`, () => {
+
+	class W20 extends Solarite {
+
+		constructor() {
+			super();
+			this.name = 'Fred';
+			watch3(this, 'name');
+			this.render();
+		}
+
+		render() {
+			r(this)`<w-20>${() => this.name + '.'}<br>${() => this.name + '!'}</w-20>`;
+		}
+	}
+
+	let a = new W20();
+	assert.eq(getHtml(a), `<w-20>Fred.<br>Fred!</w-20>`);
+
+	a.name = 'Jim';
+	assert.eq(getHtml(a), `<w-20>Jim.<br>Jim!</w-20>`);
+});
+
+
+
+Testimony.test('Solarite.watch3.object', () => {
+
+	class W30 extends HTMLElement {
+
+		user = {name: 'Fred'}
+
+		constructor() {
+			super();
+			watch3(this, 'user');
+			this.render();
+		}
+
+		render() {
+			r(this)`<w-30>${() => this.user.name + '!'}</w-30>`;
+		}
+	}
+	customElements.define('w-30', W30);
+
+	let a = new W30();
+	document.body.append(a);
+	assert.eq(getHtml(a), `<w-30>Fred!</w-30>`);
+
+	a.user.name = 'Jim';
+	assert.eq(getHtml(a), `<w-30>Jim!</w-30>`);
+
+	a.user = {name: 'Bob'};
+	assert.eq(getHtml(a), `<w-30>Bob!</w-30>`);
+
+	a.remove();
+});
+
+
+Testimony.test('Solarite.watch3.array', () => {
+
+	class W50 extends HTMLElement {
+
+		items = ['apple', 'banana', 'cherry'];
+
+		constructor() {
+			super();
+			watch3(this, 'items');
+			this.render();
+		}
+
+		render() {
+			r(this)`<w-50>${this.items.map(item => r`<div>${item}</div>`)}</w-50>`;
+		}
+	}
+	customElements.define('w-50', W50);
+
+	let a = new W50();
+	document.body.append(a);
+
+	//debugger;
+	a.items[1] = 'banana2';
+
+
+	//a.remove();
+});
+
 
 
 Testimony.test('Solarite.watch3._nodes', () => {

@@ -55,9 +55,9 @@ class ShoppingList extends HTMLElement {
 
             ${this.items.map(item => r`
                 <div>
-                    <input placeholder="Item" oninput=${e => this.render()}
+                    <input placeholder="Item" oninput=${this.render}
                         value=${[item, 'name']}> <!-- 2-way binding -->
-                    <input type="number" oninput=${e => this.render()}
+                    <input type="number" oninput=${this.render}
                         value=${[item, 'qty']}>
                     <button onclick=${()=>this.removeItem(item)}>x</button>
                 </div>			 

@@ -1,12 +1,14 @@
 {
   "name": "solarite",
-  "version": "0.1.1",
+  "version": "0.2.3",
   "description": "Solarite is a small, fast, compilation-free JavaScript web component library that closely follows modern web standards.",
   "main": "dist/Solarite.js",
-  "directories": {
-    "doc": "docs",
-    "test": "tests"
-  },
+  "files": [
+    "readme.md",
+    "dist",
+    "src/solarite",    
+    "src/util"    
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

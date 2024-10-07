@@ -16,8 +16,9 @@ var Globals = {
 	rendered: new WeakSet(),
 
 	/**
-	 * Used by watch3 to see which expressions are being accessed. */
-	currentExprPath: [],
+	 * Used by watch3 to see which expressions are being accessed.
+	 * @type {[]}*/
+	currentExprPath: null,
 
 	/**
 	 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */

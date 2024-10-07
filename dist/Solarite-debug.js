@@ -76,10 +76,19 @@ var Util$1 = {
 
 		return result;
 	},
-	
 
 
+	weakMemoize(obj, callback) {
+		let result = weakMemoizeInputs.get(obj);
+		if (!result) {
+			result = callback(obj);
+			weakMemoizeInputs.set(obj, result);
+		}
+		return result;
+	}
 };
+
+let weakMemoizeInputs = new WeakMap();
 
 /**
  * Follow a path into an object.
@@ -334,8 +343,9 @@ var Globals = {
 	rendered: new WeakSet(),
 
 	/**
-	 * Used by watch3 to see which expressions are being accessed. */
-	currentExprPath: [],
+	 * Used by watch3 to see which expressions are being accessed.
+	 * @type {[]}*/
+	currentExprPath: null,
 
 	/**
 	 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
