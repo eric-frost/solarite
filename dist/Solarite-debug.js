@@ -154,7 +154,7 @@ let delveDontCreate = {};
 /**
  * There are three ways to create an instance of a Solarite Component:
  * 1.  new ComponentName();                                         // direct class instantiation
- * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another Component.
+ * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another RedComponent.
  * 3.  <body><component-name></component-name></body>               // in the Document html.
  *
  * When created via #3, Solarite has no way to pass attributes as arguments to the constructor.  So to make
@@ -179,14 +179,15 @@ let delveDontCreate = {};
  * @param type {ArgType|function|*[]}
  *     If an array, use the value if it's in the array, otherwise return undefined.
  *     If it's a function, pass the value to the function and return the result.
- * @return {*} */
-function getArg(el, name, val=null, type=ArgType.String) {
+ * @param fallback {*} If the type can't be parsed as the given type, use this value.
+ * @return {*} Undefined if attribute isn't set.  */
+function getArg(el, name, val=undefined, type=ArgType.String, fallback=undefined) {
 	let attrVal = el.getAttribute(name);
 	if (attrVal !== null) // If attribute doesn't exist.
 		val = attrVal;
 		
 	if (Array.isArray(type))
-		return type.includes(val) ? val : undefined;
+		return type.includes(val) ? val : fallback;
 	
 	if (typeof type === 'function')
 		return type(val);
@@ -194,15 +195,22 @@ function getArg(el, name, val=null, type=ArgType.String) {
 	// If bool, it's true as long as it exists and its value isn't falsey.
 	if (type===ArgType.Bool) {
 		let lAttrVal = typeof val === 'string' ? val.toLowerCase() : val;
-		return !['false', '0', false, 0, null, undefined].includes(lAttrVal);
+		if (['false', '0', false, 0, null, undefined, NaN].includes(lAttrVal))
+			return false;
+		if (['true', true].includes(lAttrVal) || parseFloat(lAttrVal) !== 0)
+			return true;
+		return fallback;
 	}
 	
 	// Attribute doesn't exist
+	let result;
 	switch (type) {
 		case ArgType.Int:
-			return parseInt(val);
+			result = parseInt(val);
+			return isNaN(result) ? fallback : result;
 		case ArgType.Float:
-			return parseFloat(val);
+			result = parseFloat(val);
+			return isNaN(result) ? fallback : result;
 		case ArgType.String:
 			return [undefined, null, false].includes(val) ? '' : val+'';
 		case ArgType.JSON:
@@ -216,7 +224,9 @@ function getArg(el, name, val=null, type=ArgType.String) {
 				} catch (e) {
 					return val;
 				}
-			else return val;
+			else return fallback;
+
+		// type not provided
 		default:
 			return val;
 	}
@@ -3449,12 +3459,9 @@ function watch3(root, field, value=unusedArg) {
 				// Init for field.
 				rootNg.watchedExprPaths[field] = rootNg.watchedExprPaths[field] || new Set();
 				rootNg.watchedExprPaths[field].add(exprPath);
-
-
-				//rootNg.watchedExprPaths.add(field, [exprPath, exprFunction]);
 			}
 
-			if (isObj(result))
+			if (result && typeof result === 'object')
 				return new Proxy(result, handler);
 
 			return result;
@@ -3463,7 +3470,6 @@ function watch3(root, field, value=unusedArg) {
 
 		// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
 		// TODO: This won't update a component's expressions.
-		// TODO: freeNodeGroups() could be skipped if applyExprs() never marked them as in-use.
 		set(obj, prop, val, receiver) {
 
 			// 1. Set the value.
@@ -3471,8 +3477,6 @@ function watch3(root, field, value=unusedArg) {
 				value = val; // top-level value.
 			else // avoid infinite recursion.
 				Reflect.set(obj, prop, val, receiver);
-
-
 
 			// 2. Add to the list of ExprPaths to re-render.
 			let rootNg = Globals.nodeGroups.get(root);
@@ -3488,9 +3492,8 @@ function watch3(root, field, value=unusedArg) {
 				}
 
 				// Reapply the whole expression.
-				else {
+				else
 					rootNg.exprsToRender.set(exprPath, true);
-				}
 			}
 			return true;
 		}
@@ -3502,34 +3505,30 @@ function watch3(root, field, value=unusedArg) {
 	});
 }
 
-function isObj(o) {
-	return o && (typeof o === 'object');
-}
-
 /**
  * TODO: Rename so we have watch.add() and watch.render() ?
  * @param root
- * @returns {*[]}
- */
+ * @returns {*[]} */
 function renderWatched(root) {
 	let rootNg = Globals.nodeGroups.get(root);
 	let modified = [];
 
-	for (let [exprPath, val] of rootNg.exprsToRender) {
+	for (let [exprPath, params] of rootNg.exprsToRender) {
 
 		// Reapply the whole expression.
-		if (val === true) {
+		if (params === true) {
 			exprPath.apply(exprPath.watchFunction);
-			exprPath.freeNodeGroups(); // TODO: free only the used Nodegroup!
+
+			// TODO: freeNodeGroups() could be skipped if applyExprs() never marked them as in-use.
+			exprPath.freeNodeGroups();
 
 			modified.push(...exprPath.getNodes());
 		}
 
 		// Update a single NodeGroup created by array.map()
 		else {
-			for (let row of val) {
+			for (let row of params) {
 				let [obj, prop, value] = row;
-
 				let callback = rootNg.mapCallbacks.get(obj);
 				let template = callback(value);
 				exprPath.applyLoopItemUpdate(prop, template);
@@ -3540,7 +3539,6 @@ function renderWatched(root) {
 	}
 
 	rootNg.exprsToRender = new Map(); // clear
-	//rootNg.clearRenderWatched();
 
 	return modified;
 }

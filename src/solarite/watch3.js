@@ -104,12 +104,9 @@ export default function watch3(root, field, value=unusedArg) {
 				// Init for field.
 				rootNg.watchedExprPaths[field] = rootNg.watchedExprPaths[field] || new Set();
 				rootNg.watchedExprPaths[field].add(exprPath);
-
-
-				//rootNg.watchedExprPaths.add(field, [exprPath, exprFunction]);
 			}
 
-			if (isObj(result))
+			if (result && typeof result === 'object')
 				return new Proxy(result, handler);
 
 			return result;
@@ -118,7 +115,6 @@ export default function watch3(root, field, value=unusedArg) {
 
 		// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
 		// TODO: This won't update a component's expressions.
-		// TODO: freeNodeGroups() could be skipped if applyExprs() never marked them as in-use.
 		set(obj, prop, val, receiver) {
 
 			// 1. Set the value.
@@ -126,8 +122,6 @@ export default function watch3(root, field, value=unusedArg) {
 				value = val; // top-level value.
 			else // avoid infinite recursion.
 				Reflect.set(obj, prop, val, receiver);
-
-
 
 			// 2. Add to the list of ExprPaths to re-render.
 			let rootNg = Globals.nodeGroups.get(root);
@@ -143,9 +137,8 @@ export default function watch3(root, field, value=unusedArg) {
 				}
 
 				// Reapply the whole expression.
-				else {
+				else
 					rootNg.exprsToRender.set(exprPath, true);
-				}
 			}
 			return true;
 		}
@@ -157,34 +150,30 @@ export default function watch3(root, field, value=unusedArg) {
 	});
 }
 
-function isObj(o) {
-	return o && (typeof o === 'object');
-}
-
 /**
  * TODO: Rename so we have watch.add() and watch.render() ?
  * @param root
- * @returns {*[]}
- */
+ * @returns {*[]} */
 export function renderWatched(root) {
 	let rootNg = Globals.nodeGroups.get(root);
 	let modified = [];
 
-	for (let [exprPath, val] of rootNg.exprsToRender) {
+	for (let [exprPath, params] of rootNg.exprsToRender) {
 
 		// Reapply the whole expression.
-		if (val === true) {
+		if (params === true) {
 			exprPath.apply(exprPath.watchFunction);
-			exprPath.freeNodeGroups(); // TODO: free only the used Nodegroup!
+
+			// TODO: freeNodeGroups() could be skipped if applyExprs() never marked them as in-use.
+			exprPath.freeNodeGroups();
 
 			modified.push(...exprPath.getNodes());
 		}
 
 		// Update a single NodeGroup created by array.map()
 		else {
-			for (let row of val) {
+			for (let row of params) {
 				let [obj, prop, value] = row;
-
 				let callback = rootNg.mapCallbacks.get(obj);
 				let template = callback(value);
 				exprPath.applyLoopItemUpdate(prop, template);
@@ -195,7 +184,6 @@ export function renderWatched(root) {
 	}
 
 	rootNg.exprsToRender = new Map(); // clear
-	//rootNg.clearRenderWatched();
 
 	return modified;
 }

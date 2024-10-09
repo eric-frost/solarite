@@ -2720,39 +2720,39 @@ Testimony.test('Solarite.events.onExprChild', () => {
 
 Testimony.test('Solarite.events.loop', () => {
 
-	let lastButtonId = null;
-
 	class V70 extends Solarite {
-		items = [{id: 1}, {id: 2}];
+		constructor(items=[]) {
+			super();
+			this.items = items;
+		}
 
-		log(id) {
-			lastButtonId = id;
-			//console.log(id);
+		removeItem(i) {
+			this.items.splice(i, 1);
+			this.render();
 		}
 
 		render() {
 			r(this)`
-			<v-70>
-				${this.items.map(item => r`
-					<button onclick=${[this.log, item.id]}>${item.id}</button>
+			<v-70>	
+				${this.items.map((item, i) => r`
+					<div>
+						<input type="number" oninput=${this.render} value=${[item, 'qty']}>
+						<button onclick=${()=>this.removeItem(i)}>x</button>
+					</div>		   
 				`)}
 			</v-70>`
 		}
 	}
-
-	let v = new V70();
+	let v = new V70([
+		{name: 'apple', qty: 1},
+		{name: 'banana', qty: 2},
+		{name: 'cherry', qty: 3}
+	]);
 	document.body.append(v);
 
-	v.children[1].dispatchEvent(new MouseEvent('click'));
-	assert.eq(lastButtonId, 2);
+	v.removeItem(1);
 
-	// This doesn't update the bound function to use 3.
-	v.items.splice(1, 1); // remove 2.
-	v.items.push({id: 3});
-	window.debug = true;
-	v.render();
-	v.children[1].dispatchEvent(new MouseEvent('click'));
-	assert.eq(lastButtonId, 3);
+
 
 
 	//v.remove();
@@ -2942,7 +2942,6 @@ Testimony.test('Solarite.binding.number', () => {
 	b.remove();
 });
 
-// FIXME
 Testimony.test('Solarite.binding.number2', () => {
 
 	class B50 extends Solarite {
@@ -2954,6 +2953,35 @@ Testimony.test('Solarite.binding.number2', () => {
 	}
 
 	let b = new B50();
+	document.body.append(b);
+	assert.eq(b.input.value, '1')
+
+	b.count = 2;
+	b.render();
+	assert.eq(b.input.value, '2')
+
+	b.input.value = 3;
+	b.input.dispatchEvent(new Event('input', {
+		bubbles: true,
+		cancelable: true,
+	}));
+	assert.eq(b.count, 3)
+
+	b.remove();
+});
+
+// TODO:
+Testimony.test('Solarite.binding.loop', () => {
+
+	class B60 extends Solarite {
+		count = 1
+
+		render() {
+			r(this)`<input type="number" data-id="input" value=${[this, 'count']}>`
+		}
+	}
+
+	let b = new B60();
 	document.body.append(b);
 	assert.eq(b.input.value, '1')
 

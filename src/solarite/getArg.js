@@ -4,7 +4,7 @@
 /**
  * There are three ways to create an instance of a Solarite Component:
  * 1.  new ComponentName();                                         // direct class instantiation
- * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another Component.
+ * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another RedComponent.
  * 3.  <body><component-name></component-name></body>               // in the Document html.
  *
  * When created via #3, Solarite has no way to pass attributes as arguments to the constructor.  So to make
@@ -29,14 +29,15 @@
  * @param type {ArgType|function|*[]}
  *     If an array, use the value if it's in the array, otherwise return undefined.
  *     If it's a function, pass the value to the function and return the result.
- * @return {*} */
-export function getArg(el, name, val=null, type=ArgType.String) {
+ * @param fallback {*} If the type can't be parsed as the given type, use this value.
+ * @return {*} Undefined if attribute isn't set.  */
+export function getArg(el, name, val=undefined, type=ArgType.String, fallback=undefined) {
 	let attrVal = el.getAttribute(name);
 	if (attrVal !== null) // If attribute doesn't exist.
 		val = attrVal;
 		
 	if (Array.isArray(type))
-		return type.includes(val) ? val : undefined;
+		return type.includes(val) ? val : fallback;
 	
 	if (typeof type === 'function')
 		return type(val);
@@ -44,15 +45,22 @@ export function getArg(el, name, val=null, type=ArgType.String) {
 	// If bool, it's true as long as it exists and its value isn't falsey.
 	if (type===ArgType.Bool) {
 		let lAttrVal = typeof val === 'string' ? val.toLowerCase() : val;
-		return !['false', '0', false, 0, null, undefined].includes(lAttrVal);
+		if (['false', '0', false, 0, null, undefined, NaN].includes(lAttrVal))
+			return false;
+		if (['true', true].includes(lAttrVal) || parseFloat(lAttrVal) !== 0)
+			return true;
+		return fallback;
 	}
 	
 	// Attribute doesn't exist
+	let result;
 	switch (type) {
 		case ArgType.Int:
-			return parseInt(val);
+			result = parseInt(val);
+			return isNaN(result) ? fallback : result;
 		case ArgType.Float:
-			return parseFloat(val);
+			result = parseFloat(val);
+			return isNaN(result) ? fallback : result;
 		case ArgType.String:
 			return [undefined, null, false].includes(val) ? '' : val+'';
 		case ArgType.JSON:
@@ -66,7 +74,9 @@ export function getArg(el, name, val=null, type=ArgType.String) {
 				} catch (e) {
 					return val;
 				}
-			else return val;
+			else return fallback;
+
+		// type not provided
 		default:
 			return val;
 	}
