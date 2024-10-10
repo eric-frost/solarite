@@ -1345,7 +1345,6 @@ class ExprPath {
 				args = expr.slice(1);
 			}
 
-			// Undocumented.
 			// oninput=${[this, 'value']}
 			else {
 				func = setValue;
@@ -1357,20 +1356,27 @@ class ExprPath {
 		else
 			func = expr;
 
+		this.bindEvent(node, root, eventName, eventName, func, args);
+	}
+
+
+	bindEvent(node, root, key, eventName, func, args, capture=false) {
 		let nodeEvents = Globals.nodeEvents.get(node);
 		if (!nodeEvents) {
-			nodeEvents = {[eventName]: new Array(3)};
+			nodeEvents = {[key]: new Array(3)};
 			Globals.nodeEvents.set(node, nodeEvents);
 		}
-		let nodeEvent = nodeEvents[eventName];
-
+		let nodeEvent = nodeEvents[key];
+		if (!nodeEvent)
+			nodeEvents[key] = nodeEvent = new Array(3);
 
 
 		// If function has changed, remove and rebind the event.
 		if (nodeEvent[0] !== func) {
+
 			let [existing, existingBound, _] = nodeEvent;
 			if (existing)
-				node.removeEventListener(eventName, existingBound);
+				node.removeEventListener(eventName, existingBound, capture);
 
 			let originalFunc = func;
 
@@ -1386,7 +1392,7 @@ class ExprPath {
 			nodeEvent[0] = originalFunc;
 			nodeEvent[1] = boundFunc;
 
-			node.addEventListener(eventName, boundFunc);
+			node.addEventListener(eventName, boundFunc, capture);
 
 			// TODO: classic event attribs?
 			//el[attr.name] = e => // e.g. el.onclick = ...
@@ -1394,7 +1400,7 @@ class ExprPath {
 		}
 
 		//  Otherwise just update the args to the function.
-		nodeEvents[eventName][2] = args;
+		nodeEvents[key][2] = args;
 	}
 
 	applyValueAttrib(node, exprs, exprIndex) {
@@ -1412,9 +1418,14 @@ class ExprPath {
 		else if ((this.attrName === 'value' || this.attrName === 'data-value') && Util.isPath(expr)) {
 			let [obj, path] = [expr[0], expr.slice(1)];
 			node.value = delve(obj, path);
-			node.addEventListener('input', () => {
+			// TODO: We need to remove any old listeners, like in bindEventAttribute
+
+			let func = () => {
 				delve(obj, path, Util.getInputValue(node));
-			}, true); // We use capture so we update the values before other events added by the user.
+			};
+
+			// We use capture so we update the values before other events added by the user.
+			this.bindEvent(node, path[0], 'value', 'input', func, [], true);
 		}
 
 		// Regular attribute
