@@ -676,28 +676,41 @@ export default class ExprPath {
 	 *         or createa  new NodeGroup from the template.
 	 * @return {NodeGroup} */
 	getNodeGroup(template, exact=true) {
+		// This makes the benchmark 10x slower!
 		//if (exact && this.nodeGroupsFree.isEmpty())
 		//	return null;
 
 		let result;
+		let collection = this.nodeGroupsFree;
 
 		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
 		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
-			result = this.nodeGroupsFree.deletePreferred(template.getExactKey(), ng=>ng.startNode.parentElement);
+			result = this.nodeGroupsFree.deleteAny(template.getExactKey());
+			if (!result) {
+				result = this.nodeGroupsDetached.deleteAny(template.getExactKey());
+				collection = this.nodeGroupsDetached;
+			}
+
 			if (result) // also delete the matching close key.
-				this.nodeGroupsFree.delete(template.getCloseKey(), result);
-			else
+				collection.deleteSpecific(template.getCloseKey(), result);
+			else {
 				return null;
+			}
 		}
 
 		// Find a close match.
 		// This is a match that has matching html, but different expressions applied.
 		// We can then apply the expressions to make it an exact match.
 		else {
-			result = this.nodeGroupsFree.deletePreferred(template.getCloseKey(), ng=>ng.startNode.parentElement)
+			result = this.nodeGroupsFree.deleteAny(template.getCloseKey());
+			if (!result) {
+				result = this.nodeGroupsDetached.deleteAny(template.getCloseKey());
+				collection = this.nodeGroupsDetached;
+			}
+
 			if (result) {
 				/*#IFDEV*/assert(result.exactKey);/*#ENDIF*/
-				this.nodeGroupsFree.delete(result.exactKey, result);
+				collection.deleteSpecific(result.exactKey, result);
 
 				// Update this close match with the new expression values.
 				result.applyExprs(template.exprs);
@@ -711,17 +724,13 @@ export default class ExprPath {
 		// old:
 		this.nodeGroupsInUse.push(result);
 
-		// new:
-		// let ngiu = this.nodeGroupsInUse;
-		// ngiu.add(result.exactKey, result);
-		// ngiu.add(result.closeKey, result);
-
 		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
 		return result;
 	}
 
 
 	/**
+	 * Nodes that have been used during the current render().
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * TODO: Use an array of WeakRef so the gc can collect them?
 	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
@@ -732,11 +741,15 @@ export default class ExprPath {
 	//nodeGroupsInUse = new MultiValueMap();
 
 	/**
+	 * Nodes that were used during the last render()
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
 	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
 	nodeGroupsFree = new MultiValueMap();
 
+	/**
+	 * Nodes that were not used during the last render().
+	 * @type {MultiValueMap} */
 	nodeGroupsDetached = new MultiValueMap();
 
 
@@ -746,14 +759,25 @@ export default class ExprPath {
 	freeNodeGroups() {
 		// old:
 
-		//this.nodeGroupsDetached = this.nodeGroupsFree;
-		//this.nodeGroupsFree = new MultiValueMap();
+		// Add nodes that weren't used during render() to nodeGroupsDetached
+		let ngfd = this.nodeGroupsFree.data;
+		let ngd = this.nodeGroupsDetached;
+		for (let key in ngfd) {
+			// TODO: We can speed this up by just adding the whole Set if it doesn't already exist, instead of each key in the Set.
+			for (let ng of ngfd[key]) {
+				ngd.add(ng.exactKey, ng);
+				ngd.add(ng.closeKey, ng);
+			}
+		}
 
+		// Add nodes that were used during render() to nodeGroupsFree.
+		this.nodeGroupsFree = new MultiValueMap();
 		let ngf = this.nodeGroupsFree;
 		for (let ng of this.nodeGroupsInUse) {
 			ngf.add(ng.exactKey, ng);
 			ngf.add(ng.closeKey, ng);
 		}
+
 		this.nodeGroupsInUse = [];
 
 		// new:

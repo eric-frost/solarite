@@ -1,7 +1,7 @@
 import {Solarite, r} from './Solarite.min.js';
 //import {Solarite, r} from '../../src/solarite/Solarite.js';
 let debug2 = window.location.search.includes('debug');
-let benchmark = window.location.search.includes('benchmark');
+let benchmark = (new URL(window.location.href)).searchParams.get('benchmark');
 
 if (debug2) {
 	window.getHtml = (item, includeComments=false) => {
@@ -335,5 +335,5 @@ document.body.append(app);
 
 
 if (benchmark)
-	app.benchmark(50);
+	app.benchmark(benchmark*1);
 

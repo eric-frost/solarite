@@ -785,23 +785,14 @@ class MultiValueMap {
 	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
 	 * @returns {*|undefined} The deleted item. */
 	delete(key, val=undefined) {
-		// if (key === '["Html2",[[["Html3",["F1","A"]],["Html3",["F1","B"]]]]]')
-		// 	debugger;
-
 		let data = this.data;
-
-		// if (!data.hasOwnProperty(key))
-		// 	return undefined;
-
-		// Delete a specific value.
 		let result;
 		let set = data[key];
-		if (!set) // slower than pre-check.
+		if (!set)
 			return undefined;
 
 		// Delete any value.
 		if (val === undefined) {
-			//result = set.values().next().value; // get first item from set.
 			[result] = set; // Does the same as above and seems to be about the same speed.
 			set.delete(result);
 		}
@@ -812,7 +803,6 @@ class MultiValueMap {
 			result = val;
 		}
 
-		// TODO: Will this make it slower?
 		if (set.size === 0)
 			delete data[key];
 
@@ -820,24 +810,62 @@ class MultiValueMap {
 	}
 
 	/**
+	 * Remove one value from a key, and return it.
+	 * @param key {string}
+	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
+	 * @returns {*|undefined} The deleted item. */
+	deleteAny(key, val=undefined) {
+		let data = this.data;
+		let result;
+		let set = data[key];
+		if (!set) // slower than pre-check.
+			return undefined;
+
+		[result] = set; // Does the same as above and seems to be about the same speed.
+		set.delete(result);
+
+		if (set.size === 0)
+			delete data[key];
+
+		return result;
+	}
+
+	deleteSpecific(key, val) {
+		let data = this.data;
+		let result;
+		let set = data[key];
+		if (!set)
+			return undefined;
+
+		set.delete(val);
+		result = val;
+
+		if (set.size === 0)
+			delete data[key];
+
+		return result;
+	}
+
+
+	/**
 	 * Try to delete an item that matches the key and the isPreferred function.
 	 * if not the latter, just delete any item that matches the key.
 	 * @param key {string}
-	 * @param isPreferred {function}
 	 * @returns {*|undefined} The deleted item. */
-	deletePreferred(key, isPreferred) {
+	deletePreferred(key, parent) {
 		let result;
 		let data = this.data;
 		let set = data[key];
 		if (!set)
 			return undefined;
 
-		for (let val of set)
-			if (isPreferred(val)) {
+		for (let val of set) {
+			if (val?.parentNode === parent) {
 				set.delete(val);
 				result = val;
 				break;
 			}
+		}
 		if (!result) {
 			[result] = set;
 			set.delete(result);
@@ -1744,28 +1772,41 @@ class ExprPath {
 	 *         or createa  new NodeGroup from the template.
 	 * @return {NodeGroup} */
 	getNodeGroup(template, exact=true) {
+		// This makes the benchmark 10x slower!
 		//if (exact && this.nodeGroupsFree.isEmpty())
 		//	return null;
 
 		let result;
+		let collection = this.nodeGroupsFree;
 
 		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
 		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
-			result = this.nodeGroupsFree.deletePreferred(template.getExactKey(), ng=>ng.startNode.parentElement);
+			result = this.nodeGroupsFree.deleteAny(template.getExactKey());
+			if (!result) {
+				result = this.nodeGroupsDetached.deleteAny(template.getExactKey());
+				collection = this.nodeGroupsDetached;
+			}
+
 			if (result) // also delete the matching close key.
-				this.nodeGroupsFree.delete(template.getCloseKey(), result);
-			else
+				collection.deleteSpecific(template.getCloseKey(), result);
+			else {
 				return null;
+			}
 		}
 
 		// Find a close match.
 		// This is a match that has matching html, but different expressions applied.
 		// We can then apply the expressions to make it an exact match.
 		else {
-			result = this.nodeGroupsFree.deletePreferred(template.getCloseKey(), ng=>ng.startNode.parentElement);
+			result = this.nodeGroupsFree.deleteAny(template.getCloseKey());
+			if (!result) {
+				result = this.nodeGroupsDetached.deleteAny(template.getCloseKey());
+				collection = this.nodeGroupsDetached;
+			}
+
 			if (result) {
 				/*#IFDEV*/assert(result.exactKey);/*#ENDIF*/
-				this.nodeGroupsFree.delete(result.exactKey, result);
+				collection.deleteSpecific(result.exactKey, result);
 
 				// Update this close match with the new expression values.
 				result.applyExprs(template.exprs);
@@ -1779,17 +1820,13 @@ class ExprPath {
 		// old:
 		this.nodeGroupsInUse.push(result);
 
-		// new:
-		// let ngiu = this.nodeGroupsInUse;
-		// ngiu.add(result.exactKey, result);
-		// ngiu.add(result.closeKey, result);
-
 		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
 		return result;
 	}
 
 
 	/**
+	 * Nodes that have been used during the current render().
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * TODO: Use an array of WeakRef so the gc can collect them?
 	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
@@ -1800,11 +1837,15 @@ class ExprPath {
 	//nodeGroupsInUse = new MultiValueMap();
 
 	/**
+	 * Nodes that were used during the last render()
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
 	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
 	nodeGroupsFree = new MultiValueMap();
 
+	/**
+	 * Nodes that were not used during the last render().
+	 * @type {MultiValueMap} */
 	nodeGroupsDetached = new MultiValueMap();
 
 
@@ -1814,14 +1855,25 @@ class ExprPath {
 	freeNodeGroups() {
 		// old:
 
-		//this.nodeGroupsDetached = this.nodeGroupsFree;
-		//this.nodeGroupsFree = new MultiValueMap();
+		// Add nodes that weren't used during render() to nodeGroupsDetached
+		let ngfd = this.nodeGroupsFree.data;
+		let ngd = this.nodeGroupsDetached;
+		for (let key in ngfd) {
+			// TODO: We can speed this up by just adding the whole Set if it doesn't already exist, instead of each key in the Set.
+			for (let ng of ngfd[key]) {
+				ngd.add(ng.exactKey, ng);
+				ngd.add(ng.closeKey, ng);
+			}
+		}
 
+		// Add nodes that were used during render() to nodeGroupsFree.
+		this.nodeGroupsFree = new MultiValueMap();
 		let ngf = this.nodeGroupsFree;
 		for (let ng of this.nodeGroupsInUse) {
 			ngf.add(ng.exactKey, ng);
 			ngf.add(ng.closeKey, ng);
 		}
+
 		this.nodeGroupsInUse = [];
 
 		// new:
