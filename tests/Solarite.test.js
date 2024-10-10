@@ -887,8 +887,47 @@ Testimony.test('Solarite.loop.continuity', `Make sure elements are reused in a c
 	a.remove();
 });
 
+Testimony.test('Solarite.loop.continuity2', `Identical items`, () => {
+
+	class A214 extends Solarite {
+		constructor(items=[]) {
+			super();
+			this.items = items;
+		}
+
+		render() {
+			r(this)`
+			<a-214>
+				${this.items.map(item => r`
+					<div>${item}</div>		   
+				`)}
+				<button onclick=${this.render}>Render</button>
+			</a-214>`
+		}
+	}
+	let a = new A214(['apple', 'apple', 'apple']);
+	document.body.append(a);
+
+	let apple1 = a.children[0];
+	let apple2 = a.children[1];
+
+	// Remove an item, to make sure rendering prefers NodeGroups that are already attached.
+	// An older version of the code would juggle on each render and preferably attached the previously detached node.
+	a.items.splice(1, 1);
+
+	a.render();
+	assert.eq(apple1, a.children[0]);
+	assert.eq(apple2, a.children[1]);
+
+	a.render();
+	assert.eq(apple1, a.children[0]);
+	assert.eq(apple2, a.children[1]);
+
+	a.remove();
+});
+
 Testimony.test('Solarite.loop.eventBindings', async () => {
-	await new Promise((resolve, reject) => {
+	await new Promise((resolve, reject) => { // TODO: This doesn't need to be async?
 		let callCount = 0;
 
 		class R215 extends Solarite {
@@ -1973,8 +2012,6 @@ Testimony.test('Solarite.r.staticElement4', () => {
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
 
-
-
 Testimony.test('Solarite.r.element', () => {
 	let adjective = 'better'
 	let button = r()`<button>I'm a <b>${adjective}</b> button</button>`;
@@ -2539,7 +2576,6 @@ Testimony.test('Solarite.slots.named', () => {
 	div.remove();
 });
 
-
 Testimony.test('Solarite.slots.slotless', `Add children even when no slots present.`, () => {
 
 	class S30 extends Solarite {
@@ -2716,46 +2752,6 @@ Testimony.test('Solarite.events.onExprChild', () => {
 	let e = new E60();
 	e.querySelector('button').dispatchEvent(new MouseEvent('click'));
 	assert.eq(e.items.length, 1);
-});
-
-Testimony.test('Solarite.events.loop', () => {
-
-	class V70 extends Solarite {
-		constructor(items=[]) {
-			super();
-			this.items = items;
-		}
-
-		removeItem(i) {
-			this.items.splice(i, 1);
-			this.render();
-		}
-
-		render() {
-			r(this)`
-			<v-70>	
-				${this.items.map((item, i) => r`
-					<div>
-						<input type="number" oninput=${this.render} value=${[item, 'qty']}>
-						<button onclick=${()=>this.removeItem(i)}>x</button>
-					</div>		   
-				`)}
-			</v-70>`
-		}
-	}
-	let v = new V70([
-		{name: 'apple', qty: 1},
-		{name: 'banana', qty: 2},
-		{name: 'cherry', qty: 3}
-	]);
-	document.body.append(v);
-
-	v.removeItem(1);
-
-
-
-
-	//v.remove();
 });
 //</editor-fold>
 
@@ -2970,35 +2966,76 @@ Testimony.test('Solarite.binding.number2', () => {
 	b.remove();
 });
 
-// TODO:
-Testimony.test('Solarite.binding.loop', () => {
+Testimony.test('Solarite.binding.loop', 'similar to the loop.continuity2 test above', () => {
 
-	class B60 extends Solarite {
-		count = 1
+	class V70 extends Solarite {
+		constructor(items=[]) {
+			super();
+			this.items = items;
+		}
+
+		removeItem(i) {
+			this.items.splice(i, 1);
+			this.render();
+		}
 
 		render() {
-			r(this)`<input type="number" data-id="input" value=${[this, 'count']}>`
+			r(this)`
+			<v-70>	
+				${this.items.map((item, i) => r`
+					<div>
+						<input type="number" oninput=${this.render} value=${[item, 'qty']}>
+						<button onclick=${()=>this.removeItem(i)}>x</button>
+					</div>		   
+				`)}
+				<button onclick=${this.render}>Render</button>
+			</v-70>`
 		}
 	}
+	let v = new V70([
+		{name: 'apple', qty: 1},
+		{name: 'banana', qty: 2},
+		{name: 'cherry', qty: 3}
+	]);
+	document.body.append(v);
 
-	let b = new B60();
-	document.body.append(b);
-	assert.eq(b.input.value, '1')
 
-	b.count = 2;
-	b.render();
-	assert.eq(b.input.value, '2')
+	let input1 = v.children[0].children[0];
+	let input2 = v.children[1].children[0];
 
-	b.input.value = 3;
-	b.input.dispatchEvent(new Event('input', {
+	v.removeItem(1);
+
+
+
+	input1.value = 10;
+	input1.dispatchEvent(new Event('input', {
 		bubbles: true,
 		cancelable: true,
 	}));
-	assert.eq(b.count, 3)
+	v.render();
+	assert.eq(input1, v.children[0].children[0]);
+	assert.eq(input2, v.children[1].children[0]);
 
-	b.remove();
+	input1.value = 20;
+	input1.dispatchEvent(new Event('input', {
+		bubbles: true,
+		cancelable: true,
+	}));
+	v.render();
+	assert.eq(input1, v.children[0].children[0]);
+	assert.eq(input2, v.children[1].children[0]);
+
+	input2.value = 30;
+	input2.dispatchEvent(new Event('input', {
+		bubbles: true,
+		cancelable: true,
+	}));
+	v.render();
+	assert.eq(input1, v.children[0].children[0]);
+	assert.eq(input2, v.children[1].children[0]);
+
+	v.remove();
 });
-
 
 //</editor-fold>
 

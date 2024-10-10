@@ -228,7 +228,7 @@ export default class ExprPath {
 	}
 
 	/**
-	 * Used by watch for replacing individual loop items. */
+	 * Used by watch() for replacing individual loop items. */
 	applyLoopItemUpdate(index, template) {
 		// At this point none of the nodes being used will be in nodeGroupsFree.
 		let oldNg = this.nodeGroups[index];
@@ -453,8 +453,8 @@ export default class ExprPath {
 			node.addEventListener(eventName, boundFunc, capture);
 
 			// TODO: classic event attribs?
-			//el[attr.name] = e => // e.g. el.onclick = ...
-			//	(new Function('event', 'el', attr.value)).bind(this.manager.rootEl)(e, el) // put "event", "el", and "this" in scope for the event code.
+			//el[attr.name] = e => // e.g. el.onclick = ... // put "event", "el", and "this" in scope for the event code.
+			//	(new Function('event', 'el', attr.value)).bind(this.manager.rootEl)(e, el)
 		}
 
 		//  Otherwise just update the args to the function.
@@ -681,8 +681,9 @@ export default class ExprPath {
 
 		let result;
 
-		if (exact) {
-			result = this.nodeGroupsFree.delete(template.getExactKey());
+		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
+		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
+			result = this.nodeGroupsFree.deletePreferred(template.getExactKey(), ng=>ng.startNode.parentElement);
 			if (result) // also delete the matching close key.
 				this.nodeGroupsFree.delete(template.getCloseKey(), result);
 			else
@@ -693,7 +694,7 @@ export default class ExprPath {
 		// This is a match that has matching html, but different expressions applied.
 		// We can then apply the expressions to make it an exact match.
 		else {
-			result = this.nodeGroupsFree.delete(template.getCloseKey())
+			result = this.nodeGroupsFree.deletePreferred(template.getCloseKey(), ng=>ng.startNode.parentElement)
 			if (result) {
 				/*#IFDEV*/assert(result.exactKey);/*#ENDIF*/
 				this.nodeGroupsFree.delete(result.exactKey, result);
@@ -736,12 +737,18 @@ export default class ExprPath {
 	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
 	nodeGroupsFree = new MultiValueMap();
 
+	nodeGroupsDetached = new MultiValueMap();
+
 
 	/**
 	 * Move everything from this.nodeGroupsInUse to this.nodeGroupsFree.
 	 * TODO: this could run as needed in getNodeGroup? */
 	freeNodeGroups() {
 		// old:
+
+		//this.nodeGroupsDetached = this.nodeGroupsFree;
+		//this.nodeGroupsFree = new MultiValueMap();
+
 		let ngf = this.nodeGroupsFree;
 		for (let ng of this.nodeGroupsInUse) {
 			ngf.add(ng.exactKey, ng);

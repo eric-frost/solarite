@@ -22,7 +22,7 @@ export default class MultiValueMap {
 
 	/**
 	 * Get all values for a key.
-	 * @param key
+	 * @param key {string}
 	 * @returns {Set|*[]} */
 	getAll(key) {
 		return this.data[key] || [];
@@ -32,7 +32,7 @@ export default class MultiValueMap {
 	 * Remove one value from a key, and return it.
 	 * @param key {string}
 	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
-	 * @returns {*} */
+	 * @returns {*|undefined} The deleted item. */
 	delete(key, val=undefined) {
 		// if (key === '["Html2",[[["Html3",["F1","A"]],["Html3",["F1","B"]]]]]')
 		// 	debugger;
@@ -62,6 +62,36 @@ export default class MultiValueMap {
 		}
 
 		// TODO: Will this make it slower?
+		if (set.size === 0)
+			delete data[key];
+
+		return result;
+	}
+
+	/**
+	 * Try to delete an item that matches the key and the isPreferred function.
+	 * if not the latter, just delete any item that matches the key.
+	 * @param key {string}
+	 * @param isPreferred {function}
+	 * @returns {*|undefined} The deleted item. */
+	deletePreferred(key, isPreferred) {
+		let result;
+		let data = this.data;
+		let set = data[key];
+		if (!set)
+			return undefined;
+
+		for (let val of set)
+			if (isPreferred(val)) {
+				set.delete(val);
+				result = val;
+				break;
+			}
+		if (!result) {
+			[result] = set;
+			set.delete(result);
+		}
+
 		if (set.size === 0)
 			delete data[key];
 

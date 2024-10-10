@@ -773,7 +773,7 @@ class MultiValueMap {
 
 	/**
 	 * Get all values for a key.
-	 * @param key
+	 * @param key {string}
 	 * @returns {Set|*[]} */
 	getAll(key) {
 		return this.data[key] || [];
@@ -783,7 +783,7 @@ class MultiValueMap {
 	 * Remove one value from a key, and return it.
 	 * @param key {string}
 	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
-	 * @returns {*} */
+	 * @returns {*|undefined} The deleted item. */
 	delete(key, val=undefined) {
 		// if (key === '["Html2",[[["Html3",["F1","A"]],["Html3",["F1","B"]]]]]')
 		// 	debugger;
@@ -813,6 +813,36 @@ class MultiValueMap {
 		}
 
 		// TODO: Will this make it slower?
+		if (set.size === 0)
+			delete data[key];
+
+		return result;
+	}
+
+	/**
+	 * Try to delete an item that matches the key and the isPreferred function.
+	 * if not the latter, just delete any item that matches the key.
+	 * @param key {string}
+	 * @param isPreferred {function}
+	 * @returns {*|undefined} The deleted item. */
+	deletePreferred(key, isPreferred) {
+		let result;
+		let data = this.data;
+		let set = data[key];
+		if (!set)
+			return undefined;
+
+		for (let val of set)
+			if (isPreferred(val)) {
+				set.delete(val);
+				result = val;
+				break;
+			}
+		if (!result) {
+			[result] = set;
+			set.delete(result);
+		}
+
 		if (set.size === 0)
 			delete data[key];
 
@@ -1280,7 +1310,7 @@ class ExprPath {
 	}
 
 	/**
-	 * Used by watch for replacing individual loop items. */
+	 * Used by watch() for replacing individual loop items. */
 	applyLoopItemUpdate(index, template) {
 		// At this point none of the nodes being used will be in nodeGroupsFree.
 		let oldNg = this.nodeGroups[index];
@@ -1505,8 +1535,8 @@ class ExprPath {
 			node.addEventListener(eventName, boundFunc, capture);
 
 			// TODO: classic event attribs?
-			//el[attr.name] = e => // e.g. el.onclick = ...
-			//	(new Function('event', 'el', attr.value)).bind(this.manager.rootEl)(e, el) // put "event", "el", and "this" in scope for the event code.
+			//el[attr.name] = e => // e.g. el.onclick = ... // put "event", "el", and "this" in scope for the event code.
+			//	(new Function('event', 'el', attr.value)).bind(this.manager.rootEl)(e, el)
 		}
 
 		//  Otherwise just update the args to the function.
@@ -1719,8 +1749,9 @@ class ExprPath {
 
 		let result;
 
-		if (exact) {
-			result = this.nodeGroupsFree.delete(template.getExactKey());
+		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
+		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
+			result = this.nodeGroupsFree.deletePreferred(template.getExactKey(), ng=>ng.startNode.parentElement);
 			if (result) // also delete the matching close key.
 				this.nodeGroupsFree.delete(template.getCloseKey(), result);
 			else
@@ -1731,7 +1762,7 @@ class ExprPath {
 		// This is a match that has matching html, but different expressions applied.
 		// We can then apply the expressions to make it an exact match.
 		else {
-			result = this.nodeGroupsFree.delete(template.getCloseKey());
+			result = this.nodeGroupsFree.deletePreferred(template.getCloseKey(), ng=>ng.startNode.parentElement);
 			if (result) {
 				/*#IFDEV*/assert(result.exactKey);/*#ENDIF*/
 				this.nodeGroupsFree.delete(result.exactKey, result);
@@ -1774,12 +1805,18 @@ class ExprPath {
 	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
 	nodeGroupsFree = new MultiValueMap();
 
+	nodeGroupsDetached = new MultiValueMap();
+
 
 	/**
 	 * Move everything from this.nodeGroupsInUse to this.nodeGroupsFree.
 	 * TODO: this could run as needed in getNodeGroup? */
 	freeNodeGroups() {
 		// old:
+
+		//this.nodeGroupsDetached = this.nodeGroupsFree;
+		//this.nodeGroupsFree = new MultiValueMap();
+
 		let ngf = this.nodeGroupsFree;
 		for (let ng of this.nodeGroupsInUse) {
 			ngf.add(ng.exactKey, ng);
