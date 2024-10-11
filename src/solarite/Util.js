@@ -285,46 +285,6 @@ let state = {...defaultState};
 
 
 
-
-
-
-let cacheItems = {};
-
-/**
- * @param item {string}
- * @param initial {*}
- * @returns {*} */
-export function cache(item, initial) {
-	let result = cacheItems[item];
-	if (!result) {
-		cacheItems[item] = initial
-		result = initial;
-	}
-	return result;
-}
-
-
-
-export class WeakCache {
-
-	items = new WeakMap();
-
-	constructor(initial) {
-		this.initial = initial;
-	}
-
-	get(item) {
-		let result = this.items.get(item);
-		if (!result) {
-			let value = typeof this.initial === 'function' ? this.initial() : this.initial;
-			this.items.set(item, value)
-			result = this.initial;
-		}
-		return result;
-	}
-}
-
-
 // For debugging only
 //#IFDEV
 export function setIndent(items, level=1) {

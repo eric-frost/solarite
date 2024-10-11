@@ -48,7 +48,21 @@ var Globals = {
 	/**
 	 * Map from array of Html strings to a Shell created from them.
 	 * @type {WeakMap<string[], Shell>} */
-	shells: new WeakMap()
+	shells: new WeakMap(),
+
+	reset() {
+		this.componentHash = new WeakMap();
+		this.connected = new WeakSet();
+		this.rendered = new WeakSet();
+		this.currentExprPath = null;
+		this.elementClasses = {};
+		this.nodeEvents = new WeakMap();
+		this.nodeGroups = new WeakMap();
+		this.objToEl = new WeakMap();
+		this.pendingChildren = [];
+		this.rendering = new WeakSet();
+		this.shells = new WeakMap();
+	}
 };
 
 export default Globals;

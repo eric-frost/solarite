@@ -1,6 +1,13 @@
 let lastObjectId = 1>>>0; // Is a 32-bit int faster to increment than JavaScript's Number, which is a 64-bit float?
 let objectIds = new WeakMap();
 
+//#IFDEV
+export function hashReset() {
+	lastObjectId = 1>>>0;
+	objectIds = new WeakMap();
+}
+//#ENDIF
+
 /**
  * @param obj {Object|string|Node}
  * @returns {string} */
@@ -10,7 +17,7 @@ export function getObjectId(obj) {
 	
 	let result = objectIds.get(obj);
 	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
-		result = (lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ strings not from getObjectId()
+		result = '\f' + (lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ strings not from getObjectId()
 		objectIds.set(obj, result)
 	}
 	return result;

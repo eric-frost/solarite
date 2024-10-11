@@ -259,6 +259,7 @@ var ArgType = {
 
 let lastObjectId = 1>>>0; // Is a 32-bit int faster to increment than JavaScript's Number, which is a 64-bit float?
 let objectIds = new WeakMap();
+//#ENDIF
 
 /**
  * @param obj {Object|string|Node}
@@ -269,7 +270,7 @@ function getObjectId(obj) {
 	
 	let result = objectIds.get(obj);
 	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
-		result = (lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ strings not from getObjectId()
+		result = '\f' + (lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ strings not from getObjectId()
 		objectIds.set(obj, result);
 	}
 	return result;
@@ -394,7 +395,21 @@ var Globals = {
 	/**
 	 * Map from array of Html strings to a Shell created from them.
 	 * @type {WeakMap<string[], Shell>} */
-	shells: new WeakMap()
+	shells: new WeakMap(),
+
+	reset() {
+		this.componentHash = new WeakMap();
+		this.connected = new WeakSet();
+		this.rendered = new WeakSet();
+		this.currentExprPath = null;
+		this.elementClasses = {};
+		this.nodeEvents = new WeakMap();
+		this.nodeGroups = new WeakMap();
+		this.objToEl = new WeakMap();
+		this.pendingChildren = [];
+		this.rendering = new WeakSet();
+		this.shells = new WeakMap();
+	}
 };
 
 let Util = {
@@ -677,6 +692,7 @@ let defaultState = {
 	lastChar: null
 };
 let state = {...defaultState};
+
 
 
 // For debugging only

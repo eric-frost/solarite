@@ -15,6 +15,7 @@ import Template from "../src/solarite/Template.js";
 import Shell from "../src/solarite/Shell.js";
 
 import Testimony, {assert} from './Testimony.js';
+import Globals from "../src/solarite/Globals.js";
 
 // This function is used by the various tests.
 window.getHtml = (item, includeComments=false) => {
@@ -783,7 +784,6 @@ Testimony.test('Solarite.loop.paragraphs', () => {
 	assert.eq(getHtml(a), '<r-210><p>Apple</p><p>Banana</p><p>Cherry</p></r-210>');
 
 	a.fruits.pop();
-	window.debug = true;
 	a.render();
 	assert.eq(getHtml(a), '<r-210><p>Apple</p><p>Banana</p></r-210>');
 
@@ -981,7 +981,6 @@ Testimony.test('Solarite.loop.pathCache', () => {
 	assert.eq(getHtml(a), `<r-216><p>Item</p><p>Item</p></r-216>`);
 
 	a.fruits.shift();
-	window.debug = true;
 	a.render();
 	assert.eq(getHtml(a), `<r-216><p>Item</p></r-216>`);
 });
@@ -1033,7 +1032,6 @@ Testimony.test('Solarite.loop.nested', () => {
 
 	a.pets.reverse();
 	a.fruits.reverse();
-	window.debug = true;
 	a.render();
 	assert.eq(getHtml(a), `<r-220><p>Bird eats Apricot</p><p>Bird eats Banana</p><p>Cat eats Apricot</p><p>Cat eats Banana</p></r-220>`);
 
@@ -1130,7 +1128,6 @@ Testimony.test('Solarite.loop.nested3', `Move items from one sublist to another.
 	
 	let a = new A225();
 	document.body.append(a);
-	window.debug = true;
 	a.render();
 	
 	let cherry = a.fruitGroups[1].pop();
@@ -1314,13 +1311,21 @@ Testimony.test('Solarite.loop.conditionalNested', () => {
 	a.remove();
 });
 
+import {hashReset} from "../src/solarite/hash.js";
+
 Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
+
+
+	//Globals.reset();
+	//lastObjectId = 1>>>0;
+	//objectIds = new WeakMap();
+	//hashReset();
 
 	class R250 extends Solarite {
 		rows = [[[0]]];
 
 		render() {
-			this.html = r`${this.rows.map(row =>
+			r(this)`${this.rows.map(row =>
 				r`${row.map(items =>
 					r`${items.map(item =>
 						r`${item}`
