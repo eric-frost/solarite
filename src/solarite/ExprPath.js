@@ -232,8 +232,8 @@ export default class ExprPath {
 	applyLoopItemUpdate(index, template) {
 		// At this point none of the nodes being used will be in nodeGroupsFree.
 		let oldNg = this.nodeGroups[index];
-		this.nodeGroupsFree.add(oldNg.exactKey, oldNg);
-		this.nodeGroupsFree.add(oldNg.closeKey, oldNg);
+		this.nodeGroupsAttached.add(oldNg.exactKey, oldNg);
+		this.nodeGroupsAttached.add(oldNg.closeKey, oldNg);
 
 		let ng = this.getNodeGroup(template, true);
 		if (ng) {
@@ -681,11 +681,11 @@ export default class ExprPath {
 		//	return null;
 
 		let result;
-		let collection = this.nodeGroupsFree;
+		let collection = this.nodeGroupsAttached;
 
 		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
 		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
-			result = this.nodeGroupsFree.deleteAny(template.getExactKey());
+			result = this.nodeGroupsAttached.deleteAny(template.getExactKey());
 			if (!result) {
 				result = this.nodeGroupsDetached.deleteAny(template.getExactKey());
 				collection = this.nodeGroupsDetached;
@@ -702,7 +702,7 @@ export default class ExprPath {
 		// This is a match that has matching html, but different expressions applied.
 		// We can then apply the expressions to make it an exact match.
 		else {
-			result = this.nodeGroupsFree.deleteAny(template.getCloseKey());
+			result = this.nodeGroupsAttached.deleteAny(template.getCloseKey());
 			if (!result) {
 				result = this.nodeGroupsDetached.deleteAny(template.getCloseKey());
 				collection = this.nodeGroupsDetached;
@@ -722,7 +722,7 @@ export default class ExprPath {
 			result = new NodeGroup(template, this);
 
 		// old:
-		this.nodeGroupsInUse.push(result);
+		this.nodeGroupsRendered.push(result);
 
 		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
 		return result;
@@ -735,7 +735,7 @@ export default class ExprPath {
 	 * TODO: Use an array of WeakRef so the gc can collect them?
 	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
 	 * @type {NodeGroup[]} */
-	nodeGroupsInUse = [];
+	nodeGroupsRendered = [];
 
 	/** @type {MultiValueMap<key:string, value:NodeGroup>} */
 	//nodeGroupsInUse = new MultiValueMap();
@@ -745,7 +745,7 @@ export default class ExprPath {
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
 	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
-	nodeGroupsFree = new MultiValueMap();
+	nodeGroupsAttached = new MultiValueMap();
 
 	/**
 	 * Nodes that were not used during the last render().
@@ -754,13 +754,13 @@ export default class ExprPath {
 
 
 	/**
-	 * Move everything from this.nodeGroupsInUse to this.nodeGroupsFree.
+	 * Move everything from this.nodeGroupsRendered to this.nodeGroupsAttached and nodeGroupsDetached.
 	 * TODO: this could run as needed in getNodeGroup? */
 	freeNodeGroups() {
 		// old:
 
 		// Add nodes that weren't used during render() to nodeGroupsDetached
-		let ngfd = this.nodeGroupsFree.data;
+		let ngfd = this.nodeGroupsAttached.data;
 		let ngd = this.nodeGroupsDetached;
 		for (let key in ngfd) {
 			// TODO: We can speed this up by just adding the whole Set if it doesn't already exist, instead of each key in the Set.
@@ -770,15 +770,15 @@ export default class ExprPath {
 			}
 		}
 
-		// Add nodes that were used during render() to nodeGroupsFree.
-		this.nodeGroupsFree = new MultiValueMap();
-		let ngf = this.nodeGroupsFree;
-		for (let ng of this.nodeGroupsInUse) {
-			ngf.add(ng.exactKey, ng);
-			ngf.add(ng.closeKey, ng);
+		// Add nodes that were used during render() to nodeGroupsRendered.
+		this.nodeGroupsAttached = new MultiValueMap();
+		let ngr = this.nodeGroupsAttached;
+		for (let ng of this.nodeGroupsRendered) {
+			ngr.add(ng.exactKey, ng);
+			ngr.add(ng.closeKey, ng);
 		}
 
-		this.nodeGroupsInUse = [];
+		this.nodeGroupsRendered = [];
 
 		// new:
 		// for (let key in this.nodeGroupsFree.data)
