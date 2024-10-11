@@ -737,9 +737,6 @@ export default class ExprPath {
 	 * @type {NodeGroup[]} */
 	nodeGroupsRendered = [];
 
-	/** @type {MultiValueMap<key:string, value:NodeGroup>} */
-	//nodeGroupsInUse = new MultiValueMap();
-
 	/**
 	 * Nodes that were used during the last render()
 	 * Used with getNodeGroup() and freeNodeGroups().
@@ -760,14 +757,15 @@ export default class ExprPath {
 		// old:
 
 		// Add nodes that weren't used during render() to nodeGroupsDetached
-		let ngfd = this.nodeGroupsAttached.data;
-		let ngd = this.nodeGroupsDetached;
-		for (let key in ngfd) {
-			// TODO: We can speed this up by just adding the whole Set if it doesn't already exist, instead of each key in the Set.
-			for (let ng of ngfd[key]) {
-				ngd.add(ng.exactKey, ng);
-				ngd.add(ng.closeKey, ng);
-			}
+		let previouslyAttached = this.nodeGroupsAttached.data;
+		let detached = this.nodeGroupsDetached.data;
+		for (let key in previouslyAttached) {
+			let set = detached[key];
+			if (!set)
+				detached[key] = previouslyAttached[key]
+			else
+				for (let ng of previouslyAttached[key])
+					set.add(ng);
 		}
 
 		// Add nodes that were used during render() to nodeGroupsRendered.
@@ -779,14 +777,6 @@ export default class ExprPath {
 		}
 
 		this.nodeGroupsRendered = [];
-
-		// new:
-		// for (let key in this.nodeGroupsFree.data)
-		// 	for (let item of this.nodeGroupsFree.data[key])
-		// 		this.nodeGroupsInUse.add(key, item);
-		//
-		// this.nodeGroupsFree = this.nodeGroupsInUse;
-		// this.nodeGroupsInUse = new MultiValueMap();
 	}
 
 	//#IFDEV
@@ -861,6 +851,9 @@ export default class ExprPath {
 				nodes.push(current)
 				current = current.nextSibling
 			}
+
+			if (!arraySame(this.nodesCache, nodes))
+				console.log(this.nodesCache, nodes)
 			assert(arraySame(this.nodesCache, nodes) === true);
 		}
 	}

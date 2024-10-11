@@ -151,6 +151,7 @@ export default function watch3(root, field, value=unusedArg) {
 }
 
 /**
+ * Render the ExprPaths that were added to rootNg.exprsToRender.
  * TODO: Rename so we have watch.add() and watch.render() ?
  * @param root
  * @returns {*[]} */
@@ -164,7 +165,7 @@ export function renderWatched(root) {
 		if (params === true) {
 			exprPath.apply(exprPath.watchFunction);
 
-			// TODO: freeNodeGroups() could be skipped if applyExprs() never marked them as in-use.
+			// TODO: freeNodeGroups() could be skipped if we updated applyExprs() to never marked them as rendered.
 			exprPath.freeNodeGroups();
 
 			modified.push(...exprPath.getNodes());

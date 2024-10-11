@@ -1349,6 +1349,7 @@ Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 	a.render()
 	assert.eq(getHtml(a), `<r-250>12345678</r-250>`);
 
+	// Replace numbers with nodes.
 	let p1 = r('<p>1</p')
 	let p2 = r('<p>2</p')
 	let p3 = r('<p>3</p')
@@ -1365,16 +1366,19 @@ Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 	a.render()
 	assert.eq(getHtml(a), `<r-250><p>1</p><p>2</p><p>3</p><p>4</p><p>5</p><p>6</p><p>7</p><p>8</p></r-250>`);
 
+	// Reverse the order.
 	a.rows = [
 		[[p8,p7],[p6,p5]],
 		[[p4,p3],[p2,p1]]
 	];
-	a.render()
+	a.render(); // TODO: checkNodesCache() fails at this step.
 	assert.eq(getHtml(a), `<r-250><p>8</p><p>7</p><p>6</p><p>5</p><p>4</p><p>3</p><p>2</p><p>1</p></r-250>`);
 
 	a.rows = [];
 	a.render();
 	assert.eq(getHtml(a), `<r-250></r-250>`);
+
+
 
 	a.remove();
 });

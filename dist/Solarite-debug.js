@@ -596,7 +596,7 @@ function camelToDashes(str) {
 
 
 /**
- * Returns false if they're the same.  Or the first index where they differ.
+ * Returns true if they're the same.
  * @param a
  * @param b
  * @returns {boolean} */
@@ -1833,9 +1833,6 @@ class ExprPath {
 	 * @type {NodeGroup[]} */
 	nodeGroupsRendered = [];
 
-	/** @type {MultiValueMap<key:string, value:NodeGroup>} */
-	//nodeGroupsInUse = new MultiValueMap();
-
 	/**
 	 * Nodes that were used during the last render()
 	 * Used with getNodeGroup() and freeNodeGroups().
@@ -1856,14 +1853,15 @@ class ExprPath {
 		// old:
 
 		// Add nodes that weren't used during render() to nodeGroupsDetached
-		let ngfd = this.nodeGroupsAttached.data;
-		let ngd = this.nodeGroupsDetached;
-		for (let key in ngfd) {
-			// TODO: We can speed this up by just adding the whole Set if it doesn't already exist, instead of each key in the Set.
-			for (let ng of ngfd[key]) {
-				ngd.add(ng.exactKey, ng);
-				ngd.add(ng.closeKey, ng);
-			}
+		let previouslyAttached = this.nodeGroupsAttached.data;
+		let detached = this.nodeGroupsDetached.data;
+		for (let key in previouslyAttached) {
+			let set = detached[key];
+			if (!set)
+				detached[key] = previouslyAttached[key];
+			else
+				for (let ng of previouslyAttached[key])
+					set.add(ng);
 		}
 
 		// Add nodes that were used during render() to nodeGroupsRendered.
@@ -1875,14 +1873,6 @@ class ExprPath {
 		}
 
 		this.nodeGroupsRendered = [];
-
-		// new:
-		// for (let key in this.nodeGroupsFree.data)
-		// 	for (let item of this.nodeGroupsFree.data[key])
-		// 		this.nodeGroupsInUse.add(key, item);
-		//
-		// this.nodeGroupsFree = this.nodeGroupsInUse;
-		// this.nodeGroupsInUse = new MultiValueMap();
 	}
 
 	//#IFDEV
@@ -3606,6 +3596,7 @@ function watch3(root, field, value=unusedArg) {
 }
 
 /**
+ * Render the ExprPaths that were added to rootNg.exprsToRender.
  * TODO: Rename so we have watch.add() and watch.render() ?
  * @param root
  * @returns {*[]} */
@@ -3619,7 +3610,7 @@ function renderWatched(root) {
 		if (params === true) {
 			exprPath.apply(exprPath.watchFunction);
 
-			// TODO: freeNodeGroups() could be skipped if applyExprs() never marked them as in-use.
+			// TODO: freeNodeGroups() could be skipped if we updated applyExprs() to never marked them as rendered.
 			exprPath.freeNodeGroups();
 
 			modified.push(...exprPath.getNodes());

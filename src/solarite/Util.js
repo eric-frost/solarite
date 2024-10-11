@@ -193,7 +193,7 @@ export function camelToDashes(str) {
 
 
 /**
- * Returns false if they're the same.  Or the first index where they differ.
+ * Returns true if they're the same.
  * @param a
  * @param b
  * @returns {boolean} */
