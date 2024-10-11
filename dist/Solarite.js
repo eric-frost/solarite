@@ -270,7 +270,7 @@ function getObjectId(obj) {
 	
 	let result = objectIds.get(obj);
 	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
-		result = '\f' + (lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ strings not from getObjectId()
+		result = '~\f' + (lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ integers not from getObjectId()
 		objectIds.set(obj, result);
 	}
 	return result;
@@ -289,14 +289,7 @@ function toJSON() {
 
 // Node.prototype.toJSON = toJSON;
 // Function.prototype.toJSON = toJSON;
-// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
-// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
-// So we check the assignments on every run of getObjectHash()
-if (Node.prototype.toJSON !== toJSON) {
-	Node.prototype.toJSON = toJSON;
-	if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
-		Function.prototype.toJSON = toJSON;
-}
+
 
 /**
  * Get a string that uniquely maps to the values of the given object.
@@ -305,12 +298,19 @@ if (Node.prototype.toJSON !== toJSON) {
  *
  * Relies on the Node and Function prototypes being overridden above.
  *
- * Note that passing an integer may collide with the number we get from hashing an object.
- * But we don't handle that case because we need max performance and Solarite never passes integers to this function.
- *
  * @param obj {*}
  * @returns {string} */
 function getObjectHash(obj) {
+
+	// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
+	// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
+	// So we check the assignments on every run of getObjectHash()
+	if (Node.prototype.toJSON !== toJSON) {
+		Node.prototype.toJSON = toJSON;
+		if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
+			Function.prototype.toJSON = toJSON;
+	}
+
 	let result;
 	isHashing = true;
 	try {
@@ -345,72 +345,71 @@ function getObjectHashCircular(obj) {
 
 
 
-var Globals = {
+var Globals;
 
-	/**
-	 * Used by NodeGroup.applyComponentExprs() */
-	componentHash: new WeakMap(),
+/**
+ * Created with a reset() function because it's useful for testing. */
+function reset() {
+	Globals = {
 
-	/**
-	 * Store which instances of Solarite have already been added to the DOM.
-	 * @type {WeakSet<HTMLElement>} */
-	connected: new WeakSet(),
+		/**
+		 * Used by NodeGroup.applyComponentExprs() */
+		componentHash: new WeakMap(),
 
-	/**
-	 * Elements that have been rendered to by r() at least once.
-	 * This is used by the Solarite class to know when to call onFirstConnect()
-	 * @type {WeakSet<HTMLElement>} */
-	rendered: new WeakSet(),
+		/**
+		 * Store which instances of Solarite have already been added to the DOM.
+		 * @type {WeakSet<HTMLElement>} */
+		connected: new WeakSet(),
 
-	/**
-	 * Used by watch3 to see which expressions are being accessed.
-	 * @type {[]}*/
-	currentExprPath: null,
+		div: document.createElement("div"),
 
-	/**
-	 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
-	elementClasses: {},
+		/**
+		 * Elements that have been rendered to by r() at least once.
+		 * This is used by the Solarite class to know when to call onFirstConnect()
+		 * @type {WeakSet<HTMLElement>} */
+		rendered: new WeakSet(),
 
-	/**
-	 * Used by ExprPath.applyEventAttrib()
-	 * @type {WeakMap<Node, Object<eventName:string, [original:function, bound:function, args:*[]]>>} */
-	nodeEvents: new WeakMap(),
+		/**
+		 * Used by watch3 to see which expressions are being accessed.
+		 * @type {[]}*/
+		currentExprPath: null,
 
-	/**
-	 * Get the RootNodeGroup for an element.
-	 * @type {WeakMap<HTMLElement, RootNodeGroup>} */
-	nodeGroups: new WeakMap(),
+		/**
+		 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
+		elementClasses: {},
 
-	/**
-	 * Used by r() path 9. */
-	objToEl: new WeakMap(),
+		/**
+		 * Used by ExprPath.applyEventAttrib()
+		 * @type {WeakMap<Node, Object<eventName:string, [original:function, bound:function, args:*[]]>>} */
+		nodeEvents: new WeakMap(),
 
-	pendingChildren: [],
+		/**
+		 * Get the RootNodeGroup for an element.
+		 * @type {WeakMap<HTMLElement, RootNodeGroup>} */
+		nodeGroups: new WeakMap(),
 
-	/**
-	 * Elements that are currently rendering via the r() function.
-	 * @type {WeakSet<HTMLElement>} */
-	rendering: new WeakSet(),
+		/**
+		 * Used by r() path 9. */
+		objToEl: new WeakMap(),
 
-	/**
-	 * Map from array of Html strings to a Shell created from them.
-	 * @type {WeakMap<string[], Shell>} */
-	shells: new WeakMap(),
+		pendingChildren: [],
 
-	reset() {
-		this.componentHash = new WeakMap();
-		this.connected = new WeakSet();
-		this.rendered = new WeakSet();
-		this.currentExprPath = null;
-		this.elementClasses = {};
-		this.nodeEvents = new WeakMap();
-		this.nodeGroups = new WeakMap();
-		this.objToEl = new WeakMap();
-		this.pendingChildren = [];
-		this.rendering = new WeakSet();
-		this.shells = new WeakMap();
-	}
-};
+		/**
+		 * Elements that are currently rendering via the r() function.
+		 * @type {WeakSet<HTMLElement>} */
+		rendering: new WeakSet(),
+
+		/**
+		 * Map from array of Html strings to a Shell created from them.
+		 * @type {WeakMap<string[], Shell>} */
+		shells: new WeakMap(),
+
+		reset,
+	};
+}
+reset();
+
+var Globals$1 = Globals;
 
 let Util = {
 
@@ -503,42 +502,6 @@ let Util = {
 	},
 
 	/**
-	 * Find NodeGroups that had their nodes removed and add those nodes to a Fragment so
-	 * they're not lost forever and the NodeGroup's internal structure is still consistent.
-	 * This saves all of a NodeGroup's nodes in order, so that nextChildNode still works.
-	 * This is necessary because a NodeGroup normally only stores the first and last node.
-	 * Called from ExprPath.apply().
-	 * @param oldNodeGroups {NodeGroup[]}
-	 * @param oldNodes {Node[]} */
-	saveOrphans(oldNodeGroups, oldNodes) {
-		let oldNgMap = new Map();
-		for (let ng of oldNodeGroups) {
-			oldNgMap.set(ng.startNode, ng);
-
-			// TODO: Is this necessary?
-			// if (ng.parentPath)
-			// 	ng.parentPath.clearNodesCache();
-		}
-
-		for (let i=0, node; node = oldNodes[i]; i++) {
-			let ng;
-			if (!node.parentNode && (ng = oldNgMap.get(node))) {
-				//ng.nodesCache = [];
-				let fragment = document.createDocumentFragment();
-				let endNode = ng.endNode;
-				while (node !== endNode) {
-					fragment.append(node);
-					//ng.nodesCache.push(node);
-					i++;
-					node = oldNodes[i];
-				}
-				fragment.append(endNode);
-				//ng.nodesCache.push(endNode);
-			}
-		}
-	},
-
-	/**
 	 * Remove nodes from the beginning and end that are not:
 	 * 1.  Elements.
 	 * 2.  Non-whitespace text nodes.
@@ -566,9 +529,7 @@ let Util = {
 
 
 
-let div = document.createElement('div');
-
-let isEvent = attrName => attrName.startsWith('on') && attrName in div;
+let isEvent = attrName => attrName.startsWith('on') && attrName in Globals$1.div;
 
 
 /**
@@ -1328,10 +1289,10 @@ class ExprPath {
 			// TODO: One ExprPath can have multiple expr functions.
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
-			Globals.currentExprPath = [this, expr]; // Used by watch3()
+			Globals$1.currentExprPath = [this, expr]; // Used by watch3()
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
 			let result = expr();
-			Globals.currentExprPath = null;
+			Globals$1.currentExprPath = null;
 
 			this.applyExact(result, newNodes, secondPass);
 		}
@@ -1435,10 +1396,10 @@ class ExprPath {
 
 
 	bindEvent(node, root, key, eventName, func, args, capture=false) {
-		let nodeEvents = Globals.nodeEvents.get(node);
+		let nodeEvents = Globals$1.nodeEvents.get(node);
 		if (!nodeEvents) {
 			nodeEvents = {[key]: new Array(3)};
-			Globals.nodeEvents.set(node, nodeEvents);
+			Globals$1.nodeEvents.set(node, nodeEvents);
 		}
 		let nodeEvent = nodeEvents[key];
 		if (!nodeEvent)
@@ -2087,7 +2048,7 @@ class Shell {
 		// Check for valid id names.
 		for (let el of idEls) {
 			let id = el.getAttribute('data-id') || el.getAttribute('id');
-			if (div.hasOwnProperty(id))
+			if (Globals$1.div.hasOwnProperty(id))
 				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement id property.`)
 		}
 
@@ -2116,10 +2077,10 @@ class Shell {
 	 * @param htmlStrings {string[]} Typically comes from a Template.
 	 * @returns {Shell} */
 	static get(htmlStrings) {
-		let result = Globals.shells.get(htmlStrings);
+		let result = Globals$1.shells.get(htmlStrings);
 		if (!result) {
 			result = new Shell(htmlStrings);
-			Globals.shells.set(htmlStrings, result); // cache
+			Globals$1.shells.set(htmlStrings, result); // cache
 		}
 
 		
@@ -2303,12 +2264,12 @@ class NodeGroup {
 
 		// Call render() with the same params that would've been passed to the constructor.
 		else if (el.render) {
-			let oldHash = Globals.componentHash.get(el);
+			let oldHash = Globals$1.componentHash.get(el);
 			if (oldHash !== newHash)
 				el.render(props); // Pass new values of props to render so it can decide how it wants to respond.
 		}
 
-		Globals.componentHash.set(el, newHash);
+		Globals$1.componentHash.set(el, newHash);
 	}
 	
 	/**
@@ -2354,7 +2315,7 @@ class NodeGroup {
 		// Globals.pendingChildren stores the childen so the super construtor call to Solarite's constructor
 		// can add them as children before the rest of the constructor code executes.
 		let ch = [... el.childNodes];
-		Globals.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
+		Globals$1.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
 		let newEl = new Constructor(props, ch);
 
 		if (!isPreHtmlElement)
@@ -2610,7 +2571,7 @@ class RootNodeGroup extends NodeGroup {
 		let offset = 0;
 		let root = fragment; // TODO: Rename so it's not confused with this.root.
 		if (el) {
-			Globals.nodeGroups.set(el, this);
+			Globals$1.nodeGroups.set(el, this);
 
 			// Save slot children
 			let slotFragment;
@@ -2664,7 +2625,7 @@ class RootNodeGroup extends NodeGroup {
 			let singleEl = getSingleEl(fragment);
 			this.root = singleEl || fragment; // We return the whole fragment when calling r() with a collection of nodes.
 
-			Globals.nodeGroups.set(this.root, this);
+			Globals$1.nodeGroups.set(this.root, this);
 			if (singleEl) {
 				root = singleEl;
 				offset = 1;
@@ -2781,7 +2742,7 @@ class Template {
 			firstTime = true;
 		}
 		else {
-			ng = Globals.nodeGroups.get(el);
+			ng = Globals$1.nodeGroups.get(el);
 			if (!ng) {
 				ng = new RootNodeGroup(this, el, options);
 				//Globals.nodeGroups.set(el, ng);
@@ -2877,7 +2838,7 @@ function r(htmlStrings=undefined, ...exprs) {
 
 			// Return a tagged template function that applies the tagged themplate to parent.
 			let taggedTemplate = (htmlStrings, ...exprs) => {
-				Globals.rendered.add(parent);
+				Globals$1.rendered.add(parent);
 				let template = new Template(htmlStrings, exprs);
 				return template.render(parent, options);
 			};
@@ -2953,20 +2914,20 @@ function r(htmlStrings=undefined, ...exprs) {
 		let obj = htmlStrings;
 
 		// Special rebound render path, called by normal path.
-		if (Globals.objToEl.has(obj)) {
+		if (Globals$1.objToEl.has(obj)) {
 			return function(...args) {
 			   let template = r(...args);
 			   let el = template.render();
-				Globals.objToEl.set(obj, el);
+				Globals$1.objToEl.set(obj, el);
 			}.bind(obj);
 		}
 
 		// Normal path
 		else {
-			Globals.objToEl.set(obj, null);
+			Globals$1.objToEl.set(obj, null);
 			obj.render(); // Calls the Special rebound render path above, when the render function calls r(this)
-			let el = Globals.objToEl.get(obj);
-			Globals.objToEl.delete(obj);
+			let el = Globals$1.objToEl.get(obj);
+			Globals$1.objToEl.delete(obj);
 
 			for (let name in obj)
 				if (typeof obj[name] === 'function')
@@ -3029,10 +2990,10 @@ function createSolarite(extendsTag=null) {
 	if (extendsTag && !extendsTag.includes('-')) {
 		extendsTag = extendsTag.toLowerCase();
 
-		BaseClass = Globals.elementClasses[extendsTag];
+		BaseClass = Globals$1.elementClasses[extendsTag];
 		if (!BaseClass) { // TODO: Use Cache
 			BaseClass = document.createElement(extendsTag).constructor;
-			Globals.elementClasses[extendsTag] = BaseClass;
+			Globals$1.elementClasses[extendsTag] = BaseClass;
 		}
 	}
 
@@ -3073,19 +3034,19 @@ function createSolarite(extendsTag=null) {
 				this.render();
 
 			else if (options.render===false)
-				Globals.rendered.add(this); // Don't render on connectedCallback()
+				Globals$1.rendered.add(this); // Don't render on connectedCallback()
 
 			// Add children before constructor code executes.
 			// PendingChildren is setup in NodeGroup.createNewComponent()
 			// TODO: Match named slots.
-			let ch = Globals.pendingChildren.pop();
+			let ch = Globals$1.pendingChildren.pop();
 			if (ch)
 				(this.querySelector('slot') || this).append(...ch);
 
 			/** @deprecated */
 			Object.defineProperty(this, 'html', {
 				set(html) {
-					Globals.rendered.add(this);
+					Globals$1.rendered.add(this);
 					if (typeof html === 'string') {
 						console.warn("Assigning to this.html without the r template prefix.");
 						this.innerHTML = html;
@@ -3108,7 +3069,7 @@ function createSolarite(extendsTag=null) {
 		/**
 		 * Call render() only if it hasn't already been called.	 */
 		renderFirstTime() {
-			if (!Globals.rendered.has(this) && this.render)
+			if (!Globals$1.rendered.has(this) && this.render)
 				this.render();
 		}
 		
@@ -3116,8 +3077,8 @@ function createSolarite(extendsTag=null) {
 		 * Called automatically by the browser. */
 		connectedCallback() {
 			this.renderFirstTime();
-			if (!Globals.connected.has(this)) {
-				Globals.connected.add(this);
+			if (!Globals$1.connected.has(this)) {
+				Globals$1.connected.add(this);
 				this.onFirstConnect();
 			}
 			this.onConnect();
@@ -3184,16 +3145,16 @@ function watch3(root, field, value=unusedArg) {
 				// Double function so the ExprPath calls it as a function,
 				// instead of it being evaluated immediately when the Templat eis created.
 				return (callback) => () => {
-					let rootNg = Globals.nodeGroups.get(root);
+					let rootNg = Globals$1.nodeGroups.get(root);
 					rootNg.mapCallbacks.set(obj, callback);
 					return map(new Proxy(obj, handler), callback);
 				}
 
 			// Track which ExprPath is using this variable.
-			if (Globals.currentExprPath) {
-				let [exprPath, exprFunction] = Globals.currentExprPath; // Set in ExprPath.applyExact()
+			if (Globals$1.currentExprPath) {
+				let [exprPath, exprFunction] = Globals$1.currentExprPath; // Set in ExprPath.applyExact()
 
-				let rootNg = Globals.nodeGroups.get(root);
+				let rootNg = Globals$1.nodeGroups.get(root);
 
 				// Init for field.
 				rootNg.watchedExprPaths[field] = rootNg.watchedExprPaths[field] || new Set();
@@ -3218,7 +3179,7 @@ function watch3(root, field, value=unusedArg) {
 				Reflect.set(obj, prop, val, receiver);
 
 			// 2. Add to the list of ExprPaths to re-render.
-			let rootNg = Globals.nodeGroups.get(root);
+			let rootNg = Globals$1.nodeGroups.get(root);
 			for (let exprPath of rootNg.watchedExprPaths[field]) {
 
 				// Update a single NodeGroup created by array.map()
@@ -3250,7 +3211,7 @@ function watch3(root, field, value=unusedArg) {
  * @param root
  * @returns {*[]} */
 function renderWatched(root) {
-	let rootNg = Globals.nodeGroups.get(root);
+	let rootNg = Globals$1.nodeGroups.get(root);
 	let modified = [];
 
 	for (let [exprPath, params] of rootNg.exprsToRender) {
@@ -3300,4 +3261,4 @@ let Solarite = new Proxy(createSolarite(), {
 let getInputValue = Util.getInputValue;
  // unfinished
 
-export { ArgType, Globals, Solarite, Template, delve, getArg, getInputValue, r, renderWatched, watch3 as watch };
+export { ArgType, Globals$1 as Globals, Solarite, Template, delve, getArg, getInputValue, r, renderWatched, watch3 as watch };

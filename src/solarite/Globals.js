@@ -1,68 +1,65 @@
-var Globals = {
+var Globals;
 
-	/**
-	 * Used by NodeGroup.applyComponentExprs() */
-	componentHash: new WeakMap(),
+/**
+ * Created with a reset() function because it's useful for testing. */
+function reset() {
+	Globals = {
 
-	/**
-	 * Store which instances of Solarite have already been added to the DOM.
-	 * @type {WeakSet<HTMLElement>} */
-	connected: new WeakSet(),
+		/**
+		 * Used by NodeGroup.applyComponentExprs() */
+		componentHash: new WeakMap(),
 
-	/**
-	 * Elements that have been rendered to by r() at least once.
-	 * This is used by the Solarite class to know when to call onFirstConnect()
-	 * @type {WeakSet<HTMLElement>} */
-	rendered: new WeakSet(),
+		/**
+		 * Store which instances of Solarite have already been added to the DOM.
+		 * @type {WeakSet<HTMLElement>} */
+		connected: new WeakSet(),
 
-	/**
-	 * Used by watch3 to see which expressions are being accessed.
-	 * @type {[]}*/
-	currentExprPath: null,
+		div: document.createElement("div"),
 
-	/**
-	 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
-	elementClasses: {},
+		/**
+		 * Elements that have been rendered to by r() at least once.
+		 * This is used by the Solarite class to know when to call onFirstConnect()
+		 * @type {WeakSet<HTMLElement>} */
+		rendered: new WeakSet(),
 
-	/**
-	 * Used by ExprPath.applyEventAttrib()
-	 * @type {WeakMap<Node, Object<eventName:string, [original:function, bound:function, args:*[]]>>} */
-	nodeEvents: new WeakMap(),
+		/**
+		 * Used by watch3 to see which expressions are being accessed.
+		 * @type {[]}*/
+		currentExprPath: null,
 
-	/**
-	 * Get the RootNodeGroup for an element.
-	 * @type {WeakMap<HTMLElement, RootNodeGroup>} */
-	nodeGroups: new WeakMap(),
+		/**
+		 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
+		elementClasses: {},
 
-	/**
-	 * Used by r() path 9. */
-	objToEl: new WeakMap(),
+		/**
+		 * Used by ExprPath.applyEventAttrib()
+		 * @type {WeakMap<Node, Object<eventName:string, [original:function, bound:function, args:*[]]>>} */
+		nodeEvents: new WeakMap(),
 
-	pendingChildren: [],
+		/**
+		 * Get the RootNodeGroup for an element.
+		 * @type {WeakMap<HTMLElement, RootNodeGroup>} */
+		nodeGroups: new WeakMap(),
 
-	/**
-	 * Elements that are currently rendering via the r() function.
-	 * @type {WeakSet<HTMLElement>} */
-	rendering: new WeakSet(),
+		/**
+		 * Used by r() path 9. */
+		objToEl: new WeakMap(),
 
-	/**
-	 * Map from array of Html strings to a Shell created from them.
-	 * @type {WeakMap<string[], Shell>} */
-	shells: new WeakMap(),
+		pendingChildren: [],
 
-	reset() {
-		this.componentHash = new WeakMap();
-		this.connected = new WeakSet();
-		this.rendered = new WeakSet();
-		this.currentExprPath = null;
-		this.elementClasses = {};
-		this.nodeEvents = new WeakMap();
-		this.nodeGroups = new WeakMap();
-		this.objToEl = new WeakMap();
-		this.pendingChildren = [];
-		this.rendering = new WeakSet();
-		this.shells = new WeakMap();
-	}
-};
+		/**
+		 * Elements that are currently rendering via the r() function.
+		 * @type {WeakSet<HTMLElement>} */
+		rendering: new WeakSet(),
+
+		/**
+		 * Map from array of Html strings to a Shell created from them.
+		 * @type {WeakMap<string[], Shell>} */
+		shells: new WeakMap(),
+
+		reset,
+	};
+}
+reset();
 
 export default Globals;

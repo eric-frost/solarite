@@ -1,6 +1,6 @@
 import {assert} from "../util/Errors.js";
 import ExprPath, {PathType, getNodePath} from "./ExprPath.js";
-import {div, htmlContext, isEvent} from "./Util.js";
+import {htmlContext, isEvent} from "./Util.js";
 import Globals from "./Globals.js";
 
 /**
@@ -253,7 +253,7 @@ export default class Shell {
 		// Check for valid id names.
 		for (let el of idEls) {
 			let id = el.getAttribute('data-id') || el.getAttribute('id')
-			if (div.hasOwnProperty(id))
+			if (Globals.div.hasOwnProperty(id))
 				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement id property.`)
 		}
 

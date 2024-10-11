@@ -17,7 +17,7 @@ export function getObjectId(obj) {
 	
 	let result = objectIds.get(obj);
 	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
-		result = '\f' + (lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ strings not from getObjectId()
+		result = '~\f' + (lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ integers not from getObjectId()
 		objectIds.set(obj, result)
 	}
 	return result;
@@ -36,14 +36,7 @@ function toJSON() {
 
 // Node.prototype.toJSON = toJSON;
 // Function.prototype.toJSON = toJSON;
-// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
-// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
-// So we check the assignments on every run of getObjectHash()
-if (Node.prototype.toJSON !== toJSON) {
-	Node.prototype.toJSON = toJSON;
-	if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
-		Function.prototype.toJSON = toJSON;
-}
+
 
 /**
  * Get a string that uniquely maps to the values of the given object.
@@ -52,12 +45,19 @@ if (Node.prototype.toJSON !== toJSON) {
  *
  * Relies on the Node and Function prototypes being overridden above.
  *
- * Note that passing an integer may collide with the number we get from hashing an object.
- * But we don't handle that case because we need max performance and Solarite never passes integers to this function.
- *
  * @param obj {*}
  * @returns {string} */
 export function getObjectHash(obj) {
+
+	// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
+	// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
+	// So we check the assignments on every run of getObjectHash()
+	if (Node.prototype.toJSON !== toJSON) {
+		Node.prototype.toJSON = toJSON;
+		if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
+			Function.prototype.toJSON = toJSON;
+	}
+
 	let result;
 	isHashing = true;
 	try {

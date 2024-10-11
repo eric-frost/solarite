@@ -1,3 +1,5 @@
+import Globals from "./Globals.js";
+
 let Util = {
 
 	bindStyles(style, root) {
@@ -89,42 +91,6 @@ let Util = {
 	},
 
 	/**
-	 * Find NodeGroups that had their nodes removed and add those nodes to a Fragment so
-	 * they're not lost forever and the NodeGroup's internal structure is still consistent.
-	 * This saves all of a NodeGroup's nodes in order, so that nextChildNode still works.
-	 * This is necessary because a NodeGroup normally only stores the first and last node.
-	 * Called from ExprPath.apply().
-	 * @param oldNodeGroups {NodeGroup[]}
-	 * @param oldNodes {Node[]} */
-	saveOrphans(oldNodeGroups, oldNodes) {
-		let oldNgMap = new Map();
-		for (let ng of oldNodeGroups) {
-			oldNgMap.set(ng.startNode, ng)
-
-			// TODO: Is this necessary?
-			// if (ng.parentPath)
-			// 	ng.parentPath.clearNodesCache();
-		}
-
-		for (let i=0, node; node = oldNodes[i]; i++) {
-			let ng;
-			if (!node.parentNode && (ng = oldNgMap.get(node))) {
-				//ng.nodesCache = [];
-				let fragment = document.createDocumentFragment();
-				let endNode = ng.endNode;
-				while (node !== endNode) {
-					fragment.append(node);
-					//ng.nodesCache.push(node);
-					i++;
-					node = oldNodes[i];
-				}
-				fragment.append(endNode);
-				//ng.nodesCache.push(endNode);
-			}
-		}
-	},
-
-	/**
 	 * Remove nodes from the beginning and end that are not:
 	 * 1.  Elements.
 	 * 2.  Non-whitespace text nodes.
@@ -154,10 +120,7 @@ export default Util;
 
 
 
-let div = document.createElement('div');
-export {div}
-
-let isEvent = attrName => attrName.startsWith('on') && attrName in div;
+let isEvent = attrName => attrName.startsWith('on') && attrName in Globals.div;
 export {isEvent};
 
 

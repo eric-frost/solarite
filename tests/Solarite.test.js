@@ -1311,15 +1311,11 @@ Testimony.test('Solarite.loop.conditionalNested', () => {
 	a.remove();
 });
 
-import {hashReset} from "../src/solarite/hash.js";
+//import {hashReset} from "../src/solarite/hash.js";
 
 Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 
-
-	//Globals.reset();
-	//lastObjectId = 1>>>0;
-	//objectIds = new WeakMap();
-	//hashReset();
+	Globals.reset();
 
 	class R250 extends Solarite {
 		rows = [[[0]]];
