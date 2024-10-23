@@ -17,7 +17,7 @@ export function getObjectId(obj) {
 	
 	let result = objectIds.get(obj);
 	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
-		result = '~\f' + (lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ integers not from getObjectId()
+		result = '~\f' + (lastObjectId++); // We use a unique, 2-byte prefix to ensure it doesn't collide w/ strings not from getObjectId()
 		objectIds.set(obj, result)
 	}
 	return result;
@@ -44,6 +44,9 @@ function toJSON() {
  * This is used by NodeGroupManager to create a hash that represents the current values of a NodeGroup.
  *
  * Relies on the Node and Function prototypes being overridden above.
+ *
+ * Note that passing an integer may collide with the number we get from hashing an object.
+ * But we don't handle that case because we need max performance and Solarite never passes integers to this function.
  *
  * @param obj {*}
  * @returns {string} */

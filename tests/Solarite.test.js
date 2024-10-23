@@ -2773,13 +2773,7 @@ Testimony.test('Solarite.binding.input', () => {
 		count = 1
 
 		render() {
-			this.html = r`<input data-id="input" value=${this.count} oninput=${[this, 'count']}>`
-
-			// Alternate syntax:
-			// this.html = r`<input data-bind=${this.$.value}>`
-			// this.html = r`<input value=${this.value} oninput=${el => this.value = el.value}>`
-			// this.html = r`<input data-bind=${[this, 'value']}>`
-			//you havethis.html = r`<input data-id="input" value=${this.count} oninput=${this.count}>` // requires this.render = this.render.bind(Proxy(this).  Won't hash properly.
+			this.html = r`<input data-id="input" value=${[this, 'count']}>`
 		}
 	}
 
@@ -2833,7 +2827,7 @@ Testimony.test('Solarite.binding.textarea', () => {
 		text = 1
 
 		render() {
-			this.html = r`<textarea data-id="input" value=${this.text} oninput=${[this, 'text']}></textarea>`
+			this.html = r`<textarea data-id="input" value=${[this, 'text']}></textarea>`
 		}
 	}
 
@@ -2862,7 +2856,7 @@ Testimony.test('Solarite.binding.select', () => {
 		count = 1
 
 		render() {
-			this.html = r`<select data-id="input" value=${this.count} onchange=${[this, 'count']}><option>1</option><option>2</option><option>3</option></select>`
+			this.html = r`<select data-id="input" value=${[this, 'count']}><option>1</option><option>2</option><option>3</option></select>`
 		}
 	}
 
@@ -2875,7 +2869,7 @@ Testimony.test('Solarite.binding.select', () => {
 	assert.eq(b.input.value, '2');
 
 	b.input.value = 3;
-	b.input.dispatchEvent(new Event('change', {
+	b.input.dispatchEvent(new Event('input', {
 		bubbles: true,
 		cancelable: true,
 	}));
@@ -2890,7 +2884,7 @@ Testimony.test('Solarite.binding.selectDynamic', () => {
 		count = 1
 		
 		render() {
-			this.html = r`<select data-id="input" value=${this.count} onchange=${[this, 'count']}>${[1, 2, 3].map(item => r`<option>${item}</option>`)}</select>`
+			this.html = r`<select data-id="input" value=${[this, 'count']}>${[1, 2, 3].map(item => r`<option>${item}</option>`)}</select>`
 		}
 	}
 	
@@ -2905,7 +2899,7 @@ Testimony.test('Solarite.binding.selectDynamic', () => {
 	assert.eq(b.input.selectedIndex, 1);
 	
 	b.input.value = 3;
-	b.input.dispatchEvent(new Event('change', {
+	b.input.dispatchEvent(new Event('input', {
 		bubbles: true,
 		cancelable: true,
 	}));
@@ -2921,7 +2915,7 @@ Testimony.test('Solarite.binding.number', () => {
 		count = 1
 
 		render() {
-			this.html = r`<input type="number" data-id="input" value=${this.count} oninput=${[this, 'count']}>`
+			this.html = r`<input type="number" data-id="input" value=${[this, 'count']}>`
 		}
 	}
 
@@ -2931,34 +2925,6 @@ Testimony.test('Solarite.binding.number', () => {
 
 	b.count = 2
 	b.render()
-	assert.eq(b.input.value, '2')
-
-	b.input.value = 3;
-	b.input.dispatchEvent(new Event('input', {
-		bubbles: true,
-		cancelable: true,
-	}));
-	assert.eq(b.count, 3)
-
-	b.remove();
-});
-
-Testimony.test('Solarite.binding.number2', () => {
-
-	class B50 extends Solarite {
-		count = 1
-
-		render() {
-			r(this)`<input type="number" data-id="input" value=${[this, 'count']}>`
-		}
-	}
-
-	let b = new B50();
-	document.body.append(b);
-	assert.eq(b.input.value, '1')
-
-	b.count = 2;
-	b.render();
 	assert.eq(b.input.value, '2')
 
 	b.input.value = 3;
@@ -3447,7 +3413,6 @@ Testimony.test('Solarite.watch2._forEachSpliceDelete', () => {
 	table.remove();
 });
 
-
 Testimony.test('Solarite.watch2._forEachSpliceDeleteStart', () => {
 
 	class W55 extends Solarite {
@@ -3619,8 +3584,6 @@ Testimony.test('Solarite.watch3.primitive', () => {
 	a.remove();
 });
 
-
-
 Testimony.test('Solarite.watch3.primitive2', `One primitive variable used twice.`, () => {
 
 	class W20 extends Solarite {
@@ -3645,8 +3608,6 @@ Testimony.test('Solarite.watch3.primitive2', `One primitive variable used twice.
 	console.log(modified);
 	assert.eq(getHtml(a), `<w-20>Jim.<br>Jim!</w-20>`);
 });
-
-
 
 Testimony.test('Solarite.watch3.object', () => {
 
@@ -3683,8 +3644,7 @@ Testimony.test('Solarite.watch3.object', () => {
 	a.remove();
 });
 
-
-Testimony.test('Solarite.watch3.array', () => {
+Testimony.test('Solarite.watch3._loop', `replace array elements`, () => {
 
 	class W50 extends HTMLElement {
 
@@ -3708,65 +3668,69 @@ Testimony.test('Solarite.watch3.array', () => {
 	//debugger;
 	a.items[1] = 'banana2';
 	let modified = renderWatched(a);
-	console.log(modified);
+	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana2</div><div>cherry</div></w-50>`);
 
 	a.items[1] = 'banana3';
 	modified = renderWatched(a);
-	console.log(modified);
+	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry</div></w-50>`);
 
 	a.items[2] = 'cherry2';
 	modified = renderWatched(a);
-	console.log(modified);
+	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry2</div></w-50>`);
 
 
 	a.items[0] = 'apple3';
 	a.items[2] = 'cherry3';
 	modified = renderWatched(a);
-	console.log(modified);
+	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple3</div><div>banana3</div><div>cherry3</div></w-50>`);
 	assert.eq(modified, [a.children[0], a.children[2]]);
+
+
+	a.items = ['apple4', 'banana4', 'cherry4'];
+	modified = renderWatched(a);
+	//console.log(modified);
+	assert.eq(getHtml(a), `<w-50><div>apple4</div><div>banana4</div><div>cherry4</div></w-50>`);
+	assert.eq(modified, [a.children[0], a.children[2]]);
+
 
 	//a.remove();
 });
 
 
+Testimony.test('Solarite.watch3._loop2', `replace whole array`, () => {
 
-Testimony.test('Solarite.watch3._nodes', () => {
+	class W50 extends HTMLElement {
 
-	class W110 extends HTMLElement {
-		name = 'Fred';
-		name2 = 'White';
+		items = ['apple', 'banana', 'cherry'];
 
 		constructor() {
 			super();
-			watch(this, 'name');
+			watch(this, 'items');
 			this.render();
 		}
 
 		render() {
-			r(this)`<w-110>${() => r`<div>${this.name + '!'}</div>`} ${this.name2}</w-110>`;
+			r(this)`<w-50>${this.items.map(item => r`<div>${item}</div>`)}</w-50>`;
 		}
 	}
-	customElements.define('w-110', W110);
+	customElements.define('w-50', W50);
 
-	let a = new W110();
+	let a = new W50();
 	document.body.append(a);
-	assert(a.outerHTML, `<w-110><div>Fred!</div> White</w-110>`);
 
-	a.name = 'Jim';
-	assert(a.outerHTML, `<w-110><div>Jim!</div> White</w-110>`);
+	a.items = ['apple2', 'banana2', 'cherry2'];
+	let modified = renderWatched(a);
+	//console.log(modified);
+	assert.eq(getHtml(a), `<w-50><div>apple2</div><div>banana2</div><div>cherry2</div></w-50>`);
+	assert.eq(modified, [a.children[0], a.children[2]]);
 
-	a.name2 = 'Brown'
-	a.render();
-	assert(a.outerHTML, `<w-110><div>Jim!</div> Brown</w-110>`);
 
-	a.remove();
+	//a.remove();
 });
-//</editor-fold>
-
 
 
 

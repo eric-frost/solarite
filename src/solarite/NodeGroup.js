@@ -260,7 +260,10 @@ export default class NodeGroup {
 				let [obj, path] = [val[0], val.slice(1)];
 				newEl.value = delve(obj, path);
 				newEl.addEventListener('input', e => {
-					delve(obj, path, Util.getInputValue(newEl));
+					let value = (propName === 'value')
+						? Util.getInputValue(newEl)
+						: newEl[propName];
+					delve(obj, path, value);
 				}, true); // We use capture so we update the values before other events added by the user.
 			}
 		}

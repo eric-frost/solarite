@@ -111,7 +111,7 @@ let weakMemoizeInputs = new WeakMap();
  * Follow a path into an object.
  * @param obj {object}
  * @param path {string[]}
- * @param createVal {*}  If set, non-existant paths will be created and value at path will be set to createVal.
+ * @param createVal {*}  If set, non-existent paths will be created and value at path will be set to createVal.
  * @return {*} The value, or undefined if it can't be reached. */
 function delve(obj, path, createVal = delveDontCreate) {
 	let isCreate = createVal !== delveDontCreate;
@@ -270,7 +270,7 @@ function getObjectId(obj) {
 	
 	let result = objectIds.get(obj);
 	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
-		result = '~\f' + (lastObjectId++); // We use a unique prefix to ensure it doesn't collide w/ integers not from getObjectId()
+		result = '~\f' + (lastObjectId++); // We use a unique, 2-byte prefix to ensure it doesn't collide w/ strings not from getObjectId()
 		objectIds.set(obj, result);
 	}
 	return result;
@@ -297,6 +297,9 @@ function toJSON() {
  * This is used by NodeGroupManager to create a hash that represents the current values of a NodeGroup.
  *
  * Relies on the Node and Function prototypes being overridden above.
+ *
+ * Note that passing an integer may collide with the number we get from hashing an object.
+ * But we don't handle that case because we need max performance and Solarite never passes integers to this function.
  *
  * @param obj {*}
  * @returns {string} */
@@ -1492,9 +1495,7 @@ class ExprPath {
 
 			// oninput=${[this, 'value']}
 			else {
-				func = setValue;
-				args = [expr[0], expr.slice(1), node];
-				node.value = delve(expr[0], expr.slice(1));
+				throw new Error('test');
 				// root.render(); // TODO: This causes infinite recursion.
 			}
 		}
@@ -1505,6 +1506,15 @@ class ExprPath {
 	}
 
 
+	/**
+	 * Call function when eventName is triggerd on node.
+	 * @param node {HTMLElement}
+	 * @param root {HTMLElement}
+	 * @param key {string{
+	 * @param eventName {string}
+	 * @param func {function}
+	 * @param args
+	 * @param capture {boolean} */
 	bindEvent(node, root, key, eventName, func, args, capture=false) {
 		let nodeEvents = Globals$1.nodeEvents.get(node);
 		if (!nodeEvents) {
@@ -1519,6 +1529,9 @@ class ExprPath {
 		// If function has changed, remove and rebind the event.
 		if (nodeEvent[0] !== func) {
 
+			// TODO: We should be removing event listeners when calling getNodeGroup(),
+			// when we get the node from the list of nodeGroupsAttached/nodeGroupsDetached,
+			// instead of only when we rebind an event.
 			let [existing, existingBound, _] = nodeEvent;
 			if (existing)
 				node.removeEventListener(eventName, existingBound, capture);
@@ -1558,19 +1571,27 @@ class ExprPath {
 		else if (!this.attrValue && expr === true)
 			node.setAttribute(this.attrName, '');
 
+		// Two-way binding between attributes
 		// Passing a path to the value attribute.
+		// Copies the attribute to the property when the input event fires.
+		// value=${[this, 'value]'}
+		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.createNewComponent() for components.
-		else if ((this.attrName === 'value' || this.attrName === 'data-value') && Util.isPath(expr)) {
+		else if (Util.isPath(expr)) {
 			let [obj, path] = [expr[0], expr.slice(1)];
-			node.value = delve(obj, path);
-			// TODO: We need to remove any old listeners, like in bindEventAttribute
+			node[this.attrName] = delve(obj, path);
 
+			// TODO: We need to remove any old listeners, like in bindEventAttribute.
+			// Does bindEvent() now handle that?
 			let func = () => {
-				delve(obj, path, Util.getInputValue(node));
+				let value = (this.attrName === 'value')
+					? Util.getInputValue(node)
+					: node[this.attrName];
+				delve(obj, path, value);
 			};
 
 			// We use capture so we update the values before other events added by the user.
-			this.bindEvent(node, path[0], 'value', 'input', func, [], true);
+			this.bindEvent(node, path[0], this.attrName, 'input', func, [], true);
 		}
 
 		// Regular attribute
@@ -1911,22 +1932,6 @@ class ExprPath {
 		return;
 	}
 	//#ENDIF
-}
-
-
-
-/**
- *
- * @param root
- * @param path {string[]}
- * @param node {HTMLElement}
- */
-function setValue(root, path, node) {
-	let val = node.value;
-	if (node.type === 'number')
-		val = parseFloat(val);
-
-	delve(root, path, val);
 }
 
 /** @enum {int} */
@@ -2525,7 +2530,10 @@ class NodeGroup {
 				let [obj, path] = [val[0], val.slice(1)];
 				newEl.value = delve(obj, path);
 				newEl.addEventListener('input', e => {
-					delve(obj, path, Util.getInputValue(newEl));
+					let value = (propName === 'value')
+						? Util.getInputValue(newEl)
+						: newEl[propName];
+					delve(obj, path, value);
 				}, true); // We use capture so we update the values before other events added by the user.
 			}
 		}

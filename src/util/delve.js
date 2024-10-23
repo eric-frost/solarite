@@ -2,7 +2,7 @@
  * Follow a path into an object.
  * @param obj {object}
  * @param path {string[]}
- * @param createVal {*}  If set, non-existant paths will be created and value at path will be set to createVal.
+ * @param createVal {*}  If set, non-existent paths will be created and value at path will be set to createVal.
  * @return {*} The value, or undefined if it can't be reached. */
 export default function delve(obj, path, createVal = delveDontCreate) {
 	let isCreate = createVal !== delveDontCreate;
