@@ -374,7 +374,7 @@ document.body.append(new BindingDemo());
 
 In addition to `<input>`,  `<select>` and `<textarea>` can also use the `value` attribute to set their value on render.  Likewise so can any custom web component that defines a `value` property.
 
-A shorthand way to do two-way binding is to pass a property path as the value expression.  Here with `value=${[this, 'count']}`.  When a user types in the input, Solarite listens to the `oninput` listener and updates `this.count`.  Note that we still need a second `oninput` attribute if we want to trigger rendering.
+A shorthand way to do two-way binding is to pass a property path as an expression to a property's attribute.  Here with `value=${[this, 'count']}`.  When a user types in the input, Solarite listens to the `oninput` listener and updates `this.count`.  Note that we still need a second `oninput` attribute if we want to trigger rendering.
 
 ```javascript
 import {r} from './dist/Solarite.js';
@@ -383,20 +383,27 @@ class BindingDemo extends HTMLElement {
    
 	constructor() {
         super();
+        this.reset();
+    }
+    
+    reset() {        
         this.count = 0;
+        this.isBig = false;
         this.render();
     }
     
 	render() { 
 		r(this)`
         <binding-demo>
+        	<style> :host { font-size: ${this.isBig ? 20 : 12}px }</style>
             <input type="number" value=${[this, 'count']}
-                oninput=${() => this.render()}>
+                oninput=${() => this.render()}><br>
+            <label>
+                <input type="checkbox" checked=${[this, 'isBig']}
+                    oninput=${() => this.render()}> Big Text
+            </label>
             <pre>count is ${this.count}</pre>
-            <button onclick=${()=> { 
-                this.count = 0;
-                this.render();
-            }}>Reset</button>
+            <button onclick=${this.reset}>Reset</button>
         </binding-demo>`
 	}
 }
