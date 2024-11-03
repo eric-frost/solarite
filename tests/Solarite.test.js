@@ -1314,7 +1314,6 @@ Testimony.test('Solarite.loop.conditionalNested', () => {
 //import {hashReset} from "../src/solarite/hash.js";
 
 Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
-
 	Globals.reset();
 
 	class R250 extends Solarite {

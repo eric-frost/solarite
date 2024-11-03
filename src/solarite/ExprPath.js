@@ -492,6 +492,10 @@ export default class ExprPath {
 		// This same logic is in NodeGroup.createNewComponent() for components.
 		else if (Util.isPath(expr)) {
 			let [obj, path] = [expr[0], expr.slice(1)];
+
+			if (!obj)
+				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
+
 			node[this.attrName] = delve(obj, path);
 
 			// TODO: We need to remove any old listeners, like in bindEventAttribute.
@@ -504,6 +508,8 @@ export default class ExprPath {
 			}
 
 			// We use capture so we update the values before other events added by the user.
+			// TODO: Bind to scroll events also?
+			// What about resize events and width/height?
 			this.bindEvent(node, path[0], this.attrName, 'input', func, [], true);
 		}
 

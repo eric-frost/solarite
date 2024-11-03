@@ -498,10 +498,11 @@ let Util = {
 
 	/**
 	 * Is it an array and a path that can be evaluated by delve() ?
+	 * We allow the first element to be null/undefined so binding can report errors.
 	 * @param arr {Array|*}
 	 * @returns {boolean} */
 	isPath(arr) {
-		return Array.isArray(arr) && typeof arr[0] === 'object' && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
+		return Array.isArray(arr) && (typeof arr[0] === 'object' || typeof arr[0] === 'undefined') && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
 	},
 
 	/**
@@ -1469,6 +1470,10 @@ class ExprPath {
 		// This same logic is in NodeGroup.createNewComponent() for components.
 		else if (Util.isPath(expr)) {
 			let [obj, path] = [expr[0], expr.slice(1)];
+
+			if (!obj)
+				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
+
 			node[this.attrName] = delve(obj, path);
 
 			// TODO: We need to remove any old listeners, like in bindEventAttribute.
@@ -1481,6 +1486,8 @@ class ExprPath {
 			};
 
 			// We use capture so we update the values before other events added by the user.
+			// TODO: Bind to scroll events also?
+			// What about resize events and width/height?
 			this.bindEvent(node, path[0], this.attrName, 'input', func, [], true);
 		}
 
@@ -2335,14 +2342,18 @@ class NodeGroup {
 
 		// Copy over event attributes.
 		for (let propName in props) {
-			let val = props[propName];
-			if (propName.startsWith('on') && typeof val === 'function')
-				newEl.addEventListener(propName.slice(2), e => val(e, newEl));
+			let expr = props[propName];
+			if (propName.startsWith('on') && typeof expr === 'function')
+				newEl.addEventListener(propName.slice(2), e => expr(e, newEl));
 
 			// Bind array based event attributes on value.
 			// This same logic is in ExprPath.applyValueAttrib() for non-components.
-			if ((propName === 'value' || propName === 'data-value') && Util.isPath(val)) {
-				let [obj, path] = [val[0], val.slice(1)];
+			if (Util.isPath(expr)) {
+				let [obj, path] = [expr[0], expr.slice(1)];
+
+				if (!obj)
+					throw new Error(`Solarite cannot bind to <${newEl.tagName.toLowerCase()} ${propName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
+
 				newEl.value = delve(obj, path);
 				newEl.addEventListener('input', e => {
 					let value = (propName === 'value')

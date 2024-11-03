@@ -359,7 +359,7 @@ class Test {
 		this.desc = desc;
 		this.fn = fn;
 
-		if (window.location) {
+		if (globalThis.window?.location) {
 			let url = new URL(window.location);
 			this.expanded = url.searchParams.getAll('x').includes(name);
 
@@ -756,7 +756,7 @@ var Testimony = {
 		return errorStack.replace(new RegExp(window.location.origin, 'g'), ''); // Remove server name to shorten error stack.
 	}
 }
-window.Testimony = Testimony; // used by command line test runner.
+globalThis.Testimony = Testimony; // used by command line test runner.
 
 export default Testimony;
 export {assert, Testimony, TextRenderer, HtmlRenderer};

@@ -250,14 +250,18 @@ export default class NodeGroup {
 
 		// Copy over event attributes.
 		for (let propName in props) {
-			let val = props[propName];
-			if (propName.startsWith('on') && typeof val === 'function')
-				newEl.addEventListener(propName.slice(2), e => val(e, newEl));
+			let expr = props[propName];
+			if (propName.startsWith('on') && typeof expr === 'function')
+				newEl.addEventListener(propName.slice(2), e => expr(e, newEl));
 
 			// Bind array based event attributes on value.
 			// This same logic is in ExprPath.applyValueAttrib() for non-components.
-			if ((propName === 'value' || propName === 'data-value') && Util.isPath(val)) {
-				let [obj, path] = [val[0], val.slice(1)];
+			if (Util.isPath(expr)) {
+				let [obj, path] = [expr[0], expr.slice(1)];
+
+				if (!obj)
+					throw new Error(`Solarite cannot bind to <${newEl.tagName.toLowerCase()} ${propName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
+
 				newEl.value = delve(obj, path);
 				newEl.addEventListener('input', e => {
 					let value = (propName === 'value')

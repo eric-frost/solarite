@@ -84,10 +84,11 @@ let Util = {
 
 	/**
 	 * Is it an array and a path that can be evaluated by delve() ?
+	 * We allow the first element to be null/undefined so binding can report errors.
 	 * @param arr {Array|*}
 	 * @returns {boolean} */
 	isPath(arr) {
-		return Array.isArray(arr) && typeof arr[0] === 'object' && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
+		return Array.isArray(arr) && (typeof arr[0] === 'object' || typeof arr[0] === 'undefined') && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
 	},
 
 	/**

@@ -54,11 +54,11 @@ class ShoppingList extends HTMLElement {
             <button onclick=${this.addItem}>Add Item</button>
 
             ${this.items.map(item => r`
-                <div>
-                    <input placeholder="Item" oninput=${this.render}
-                        value=${[item, 'name']}> <!-- 2-way binding -->
-                    <input type="number" oninput=${this.render}
-                        value=${[item, 'qty']}>
+                <div>  <!-- 2-way binding -->
+                    <input placeholder="Item"value=${[item, 'name']}
+                        oninput=${this.render}>
+                    <input type="number" value=${[item, 'qty']}
+                        oninput=${this.render}>
                     <button onclick=${()=>this.removeItem(item)}>x</button>
                 </div>			 
             `)}
