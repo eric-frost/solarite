@@ -88,7 +88,7 @@ let Util = {
 	 * @param arr {Array|*}
 	 * @returns {boolean} */
 	isPath(arr) {
-		return Array.isArray(arr) && (typeof arr[0] === 'object' || typeof arr[0] === 'undefined') && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
+		return Array.isArray(arr) && arr.length >=2 && (typeof arr[0] === 'object' || typeof arr[0] === 'undefined') && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
 	},
 
 	/**
