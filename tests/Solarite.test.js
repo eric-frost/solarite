@@ -4,8 +4,7 @@
 
 import {camelToDashes, htmlContext} from "../src/solarite/Util.js";
 //import {watchGet, watchSet} from "../src/solarite/watch.js";
-
-import {Solarite, r, getArg, renderWatched} from '../src/solarite/Solarite.js';
+import {getArg, r, renderWatched, Solarite} from '../src/solarite/Solarite.js';
 //import {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 //import {watch} from "../src/solarite/watch2.js";
 import watch from "../src/solarite/watch3.js";
@@ -1912,6 +1911,35 @@ Testimony.test('Solarite.attrib.idsDelve', () => {
 	assert(a.one.tagName === 'DIV')
 	assert(a.path.to.p.tagName === 'P')
 });
+
+
+
+Testimony.test('Solarite.attrib.property', () => {
+	class R530 extends Solarite {
+		enabled;
+		render() {
+			r(this)`<r-530><input type="checkbox" checked=${this.enabled}></p></r-530>`;
+		}
+	}
+
+	let a = new R530();
+	a.render();
+
+	let input = a.firstElementChild;
+	assert.eq(input.checked, false);
+
+	a.enabled = true;
+	a.render();
+	assert.eq(input.checked, true);
+
+	a.enabled = false;
+	a.render();
+	assert.eq(input.checked, false);
+
+	input.click();
+	assert.eq(input.checked, true);
+	assert.eq(a.enabled, false); // It's not updated because we're not using two-way binding.  See the binding tests for that.
+});
 //</editor-fold>
 
 
@@ -2339,8 +2367,7 @@ Testimony.test('Solarite.component.nested', () => {
 	assert.eq(getHtml(a), `<a-515><b-515><div>B</div></b-515></a-515>`);
 })
 
-// Pass an object to the child.
-Testimony.test('Solarite.component.nested2', () => {
+Testimony.test('Solarite.component.nestedExprConstructorArg', "Pass an object to the nested component's constructor", () => {
 
 	let bRenderCount = 0;
 	class B520 extends Solarite {
@@ -2394,11 +2421,49 @@ Testimony.test('Solarite.component.nested2', () => {
 	a.remove();
 });
 
+Testimony.test('Solarite.component.nestedExprEvent', () => {
+
+	let bRenderCount = 0;
+	class B530 extends HTMLElement {
+
+		constructor() {
+			super();
+			this.render();
+		}
+
+		render() {
+			console.log(arguments)
+			this.html = r(this)`
+			<b-530>				
+				<div>Name:</div><div>Fred</div>
+			</b-530>`;
+			bRenderCount++;
+		}
+
+	}
+	customElements.define('b-530', B530);
+
+	class A530 extends Solarite {
+		render() {
+			r(this)`
+			<a-530>
+				<b-530 onclick=${() => {console.log('click')}}></b-530>
+			</a-530>`
+		}
+	}
+
+	let a = new A530();
+	document.body.append(a);
+
+	assert(a.children[0].render);
+
+});
+
 // Pass an object to the child.
 Testimony.test('Solarite.component.nestedNonSolarite', () => {
 
 	let bRenderCount = 0;
-	class B530 extends HTMLElement {
+	class B540 extends HTMLElement {
 
 		constructor({user}={}) {
 			super();
@@ -2413,31 +2478,31 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 			bRenderCount++;
 		}
 	}
-	customElements.define('b-530', B530);
+	customElements.define('b-540', B540);
 
-	class A530 extends HTMLElement {
+	class A540 extends HTMLElement {
 		title = 'Users'
 		user = {name: 'John', email: 'john@example.com'};
 		render() {
-			r(this)`${this.title}<b-530 user="${this.user}"></b-530>`
+			r(this)`${this.title}<b-540 user="${this.user}"></b-540>`
 		}
 	}
-	customElements.define('a-530', A530);
+	customElements.define('a-540', A540);
 
-	let a = new A530();
+	let a = new A540();
 	a.render();
 	document.body.append(a);
-	assert.eq(getHtml(a), `<a-530>Users<b-530 user=""><div>Name:</div><div>John</div><div>Email:</div><div>john@example.com</div></b-530></a-530>`)
+	assert.eq(getHtml(a), `<a-540>Users<b-540 user=""><div>Name:</div><div>John</div><div>Email:</div><div>john@example.com</div></b-540></a-540>`)
 
 
 	a.user = {name: 'Fred', email: 'fred@example.com'};
 	a.render();
-	assert.eq(getHtml(a), `<a-530>Users<b-530 user=""><div>Name:</div><div>Fred</div><div>Email:</div><div>fred@example.com</div></b-530></a-530>`)
+	assert.eq(getHtml(a), `<a-540>Users<b-540 user=""><div>Name:</div><div>Fred</div><div>Email:</div><div>fred@example.com</div></b-540></a-540>`)
 
 
 	a.user.name = 'Barry'
 	a.render();
-	assert.eq(getHtml(a), `<a-530>Users<b-530 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-530></a-530>`)
+	assert.eq(getHtml(a), `<a-540>Users<b-540 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-540></a-540>`)
 
 	bRenderCount = 0
 	a.render();
@@ -2445,7 +2510,7 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 
 	a.title = 'Users2'
 	a.render();
-	assert.eq(getHtml(a), `<a-530>Users2<b-530 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-530></a-530>`)
+	assert.eq(getHtml(a), `<a-540>Users2<b-540 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-540></a-540>`)
 	assert.eq(bRenderCount, 0) // Value passed to b didn't change, so it shouldn't re-render.
 
 	a.remove();
@@ -2483,7 +2548,7 @@ Testimony.test('Solarite.component.nestedTrLoop', () => {
 
 
 	table.users[1].name = 'Barry'
-	
+
 	table.render();
 	assert.eq(getHtml(table),
 		`<my-table><table><tbody>` +
@@ -2500,9 +2565,28 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 		constructor({user}={}) {
 			super();
 			this.user = user;
+
+			Object.defineProperty(this, 'user', {
+				get user() {
+					return this._user;
+				},
+
+				set user(value) {
+					console.log('User is being set:', value);
+					//	debugger;
+					this._user = value;
+				}
+			})
 		}
 
-		render() {
+
+
+
+		// The code at the end of ExprPath.applyValueAttrib() updates the user property when the attribute changes.
+		// So we don't need to intercept the props passed to render()
+		render(props=null) { // Props is set when re-rendering, so we don't have to recreate the whole component.
+			if (props?.user)
+				this.user = props.user;
 			this.html = r`<td>${this.user.name}</td><td>${this.user.email}</td>`
 		}
 	}
@@ -2528,11 +2612,23 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
 
 	table.users[1].name = 'Barry'
+	window.debug = true;
 	table.render();
 	assert.eq(getHtml(table),
 		`<table-540><table><tbody>` +
 		`<tr is="tr-540" user=""><td>John</td><td>john@example.com</td></tr>` +
 		`<tr is="tr-540" user=""><td>Barry</td><td>fred@example.com</td></tr>` +
+		`</tbody></table></table-540>`);
+
+
+
+	table.users[1] = {name: 'Dave', email: 'dave@example.com'};
+	window.debug = true;
+	table.render();
+	assert.eq(getHtml(table),
+		`<table-540><table><tbody>` +
+		`<tr is="tr-540" user=""><td>John</td><td>john@example.com</td></tr>` +
+		`<tr is="tr-540" user=""><td>Dave</td><td>dave@example.com</td></tr>` +
 		`</tbody></table></table-540>`)
 
 	table.remove();
@@ -2794,6 +2890,8 @@ Testimony.test('Solarite.binding.input', () => {
 	b.remove();
 });
 
+
+
 Testimony.test('Solarite.binding.inputReuse', () => {
 	
 	class B12 extends Solarite {
@@ -2817,6 +2915,32 @@ Testimony.test('Solarite.binding.inputReuse', () => {
 	// Make sure it takes the new value.
 	assert.eq(b.firstElementChild.value, '4');
 	
+	b.remove();
+});
+
+
+Testimony.test('Solarite.binding.checkbox', () => {
+
+	class B15 extends Solarite {
+		enabled;
+
+		render() {
+			r(this)`<input data-id="input" type="checkbox" checked=${[this, 'enabled']}>`
+		}
+	}
+
+	let b = new B15();
+	document.body.append(b);
+	assert.eq(b.input.checked, false)
+
+	b.enabled = true
+	b.render()
+	assert.eq(b.input.checked, true)
+
+	b.input.click();
+	assert.eq(b.input.checked, false)
+	assert.eq(b.enabled, false)
+
 	b.remove();
 });
 
@@ -3555,7 +3679,7 @@ Testimony.test('Solarite.watch2._forEachSpliceInsert', () => {
 
 
 
-Testimony.test('Solarite.watch3.primitive', () => {
+Testimony.test('Solarite.watch3._primitive', () => {
 
 	class W10 extends HTMLElement {
 
@@ -3583,7 +3707,7 @@ Testimony.test('Solarite.watch3.primitive', () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.watch3.primitive2', `One primitive variable used twice.`, () => {
+Testimony.test('Solarite.watch3._primitive2', `One primitive variable used twice.`, () => {
 
 	class W20 extends Solarite {
 
@@ -3608,7 +3732,7 @@ Testimony.test('Solarite.watch3.primitive2', `One primitive variable used twice.
 	assert.eq(getHtml(a), `<w-20>Jim.<br>Jim!</w-20>`);
 });
 
-Testimony.test('Solarite.watch3.object', () => {
+Testimony.test('Solarite.watch3._object', () => {
 
 	class W30 extends HTMLElement {
 

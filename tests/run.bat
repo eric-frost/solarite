@@ -1,2 +1,2 @@
 @echo off
-deno run -A Testimony.js --page=tests/index.html --webroot=../ --headless
+deno run -A Testimony.js --webroot=../ --page=tests/index.html --headless

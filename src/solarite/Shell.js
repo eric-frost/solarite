@@ -19,8 +19,8 @@ export default class Shell {
 	/** @type {ExprPath[]} Paths to where expressions should go. */
 	paths = [];
 
-	// Embeds and ids
-	events = [];
+	// Elements with events.  Not yet used.
+	// events = [];
 
 	/** @type {int[][]} Array of paths */
 	ids = [];
@@ -260,11 +260,12 @@ export default class Shell {
 
 		this.ids = Array.prototype.map.call(idEls, el => getNodePath(el))
 
-		// Events (not yet used)
+
 		for (let el of this.fragment.querySelectorAll('*')) {
-			for (let attrib of el.attributes)
-				if (isEvent(attrib.name))
-					this.events.push([attrib.name, getNodePath(el)])
+			// Events (not yet used)
+			// for (let attrib of el.attributes)
+			// 	if (isEvent(attrib.name))
+			// 		this.events.push([attrib.name, getNodePath(el)])
 
 			if (el.tagName.includes('-') || el.hasAttribute('_is'))
 

@@ -113,42 +113,70 @@ export default class NodeGroup {
 	 * Use the paths to insert the given expressions.
 	 * Dispatches expression handling to other functions depending on the path type.
 	 * @param exprs {(*|*[]|function|Template)[]}
-	 * @param paths {?ExprPath[]} Optional.  */
+	 * @param paths {?ExprPath[]} Optional.  Only used for testing.  Normally uses this.paths.  */
 	applyExprs(exprs, paths=null) {
 		paths = paths || this.paths;
 
-		/*#IFDEV*/this.verify();/*#ENDIF*/
+		/*#IFDEV*/
+		this.verify();/*#ENDIF*/
 
-		// Update exprs at paths.
-		let exprIndex = exprs.length-1, expr, lastNode;
+		// Things to consider:
+		// 1. One path may use multipe esprssions.  E.g. <div class="${1} ${2}">
+		// 2. One component may need to use multiple attribute paths to be instantiated.
+		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
+		//    before its instantiated and its value attribute is set via an expression.
 
-		// We apply them in reverse order so that a <select> box has its options created from an expression
-		// before its value attribute is set via an expression.
-		for (let path of paths.toReversed()) {
-			expr = exprs[exprIndex];
+		let exprIndex = exprs.length - 1; // Update exprs at paths.
+		let lastComponentPathIndex;
+		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
+		for (let i = paths.length - 1, path; path = paths[i]; i--) {
+			let prevPath = paths[i - 1];
+			let nextPath = paths[i + 1];
 
-			// Nodes
-
-			// This is necessary both here and below.
-			if (lastNode && lastNode !== this.rootNg.root && lastNode !== path.nodeMarker && Object.keys(this.currentComponentProps).length) {
-				this.applyComponentExprs(lastNode, this.currentComponentProps);
-				this.currentComponentProps = {};
+			// Get the expressions associated with this path.
+			if (path.attrValue?.length > 2) {
+				let startIndex = (exprIndex - (path.attrValue.length - 1)) + 1;
+				pathExprs[i] = exprs.slice(startIndex, exprIndex + 1); // probably doesn't allocate if the JS vm implements copy on write.
+				exprIndex -= pathExprs[i].length;
+			} else {
+				pathExprs[i] = [exprs[exprIndex]];
+				exprIndex--;
 			}
 
-			exprIndex = path.apply(expr, exprs, exprIndex, this.currentComponentProps);
+			// TODO: Need to end and restart this block when going from one component to the next.
+			// Think of having two adjacent components.
 
-			lastNode = path.nodeMarker;
+			// If a component:
+			// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
+			// 2. Otherwise send them to its render function.
+			if (path.nodeMarker !== this.rootNg.root && path.isComponent()) {
+
+				if (!nextPath || !nextPath.isComponent() || nextPath.nodeMarker !== path.nodeMarker)
+					lastComponentPathIndex = i;
+				let isFirstComponentPath = !prevPath || !prevPath.isComponent() || prevPath.nodeMarker !== path.nodeMarker;
+
+				if (isFirstComponentPath) {
+
+					let componentProps = {}
+					for (let j=i; j<=lastComponentPathIndex; j++)
+						componentProps[paths[j].attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
+
+					this.applyComponentExprs(path.nodeMarker, componentProps);
+
+					// Set attributes on component.
+					for (let j=i; j<=lastComponentPathIndex; j++)
+						paths[j].apply(pathExprs[j]);
+				}
+			}
+
+			// Else apply it normally
+			else
+				path.apply(pathExprs[i]);
 
 
-			exprIndex--;
 		} // end for(path of this.paths)
 
 
-		// Check again after we iterate through all paths to apply to a component.
-		if (lastNode && lastNode !== this.rootNg.root && Object.keys(this.currentComponentProps).length) {
-			this.applyComponentExprs(lastNode, this.currentComponentProps);
-			this.currentComponentProps = {};
-		}
 
 		this.updateStyles();
 
@@ -157,10 +185,12 @@ export default class NodeGroup {
 
 		// If there's leftover expressions, there's probably an issue with the Shell that created this NodeGroup,
 		// and the number of paths not matching.
-		/*#IFDEV*/assert(exprIndex === -1);/*#ENDIF*/
+		/*#IFDEV*/
+		assert(exprIndex === -1);/*#ENDIF*/
 
 
-		/*#IFDEV*/this.verify();/*#ENDIF*/
+		/*#IFDEV*/
+		this.verify();/*#ENDIF*/
 	}
 
 	/**
@@ -249,6 +279,7 @@ export default class NodeGroup {
 		//slot.append(...el.childNodes);
 
 		// Copy over event attributes.
+		// TODO: If we instantiate the component before applying events, we could skip this step here.
 		for (let propName in props) {
 			let expr = props[propName];
 			if (propName.startsWith('on') && typeof expr === 'function')

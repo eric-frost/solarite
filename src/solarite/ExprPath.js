@@ -104,36 +104,26 @@ export default class ExprPath {
 	 * We should modify path.applyValueAttrib so it stores the procssed parts and then only calls
 	 * setAttribute() once all the pieces are in place.
 	 *
-	 * @param expr {Expr}
-	 * @param exprs {Expr[]}
-	 * @param exprIndex {int}
-	 * @param componentExprs {object}
-	 * @returns {int} */
-	apply(expr, exprs=null, exprIndex=0, componentExprs={}) {
+	 * @param exprs {Expr[]}*/
+	apply(exprs) {
 		switch (this.type) {
 			case 1: // PathType.Content:
-				this.applyNodes(expr);
+				this.applyNodes(exprs[0]);
 				break;
 			case 2: // PathType.Multiple:
-				this.applyMultipleAttribs(this.nodeMarker, expr);
+				this.applyMultipleAttribs(this.nodeMarker, exprs[0]);
 				break;
 			case 5: // PathType.Comment:
 				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
 				break;
 			case 6: // PathType.Event:
-				this.applyEventAttrib(this.nodeMarker, expr, this.parentNg.rootNg.root);
+				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
 				break;
-			default:
-				if (this.type === 4 /*PathType.Component*/ && this.nodeMarker !== this.parentNg.rootNg.root)
-					componentExprs[this.attrName] = expr;
-				else {
-					// One attribute value may have multiple expressions.  Here we apply them all at once.
-					exprIndex = this.applyValueAttrib(this.nodeMarker, exprs || [expr], exprIndex);
-				}
+			default: // TODO: Is this sitll used?
+				// One attribute value may have multiple expressions.  Here we apply them all at once.
+				this.applyValueAttrib(this.nodeMarker, exprs);
 				break;
 		}
-
-		return exprIndex;
 	}
 
 	/**
@@ -321,7 +311,7 @@ export default class ExprPath {
 		else {
 			// Convert falsy values (but not 0) to empty string.
 			// Convert numbers to string so they compare the same.
-			let text = (expr === undefined || expr === false || expr === null) ? '' : (expr + '');
+			let text = Util.isFalsy(expr) ? '' : (expr + '');
 
 			// Fast path for updating the text of a single text node.
 			let first = this.nodeBefore.nextSibling;
@@ -405,7 +395,7 @@ export default class ExprPath {
 
 			// oninput=${[this, 'value']}
 			else {
-				throw new Error('test');
+				throw new Error('is this ever used?');
 				func = setValue;
 				args = [expr[0], expr.slice(1), node]
 				node.value = delve(expr[0], expr.slice(1));
@@ -474,11 +464,12 @@ export default class ExprPath {
 		nodeEvents[key][2] = args;
 	}
 
-	applyValueAttrib(node, exprs, exprIndex) {
-		let expr = exprs[exprIndex];
+	// TODO: node is always this.nodeMarker?
+	applyValueAttrib(node, exprs) {
+		let expr = exprs[0];
 
 		// Values to toggle an attribute
-		if (!this.attrValue && (expr === false || expr === null || expr === undefined))
+		if (!this.attrValue && Util.isFalsy(expr))
 			node.removeAttribute(this.attrName);
 
 		else if (!this.attrValue && expr === true)
@@ -515,25 +506,21 @@ export default class ExprPath {
 
 		// Regular attribute
 		else {
-			let value = [];
-
-			// We go backward because NodeGroup.applyExprs() calls this function, and it goes backward through the exprs.
+			let joinedValue;
 			if (this.attrValue) {
-				for (let i=this.attrValue.length-1; i>=0; i--) {
-					value.unshift(this.attrValue[i]);
-					if (i > 0) {
-						let val = exprs[exprIndex];
-						if (val !== false && val !== null && val !== undefined)
-							value.unshift(val);
-						exprIndex--;
+				let value = [];
+				for (let i=0; i < this.attrValue.length; i++) {
+					value.push(this.attrValue[i]);
+					if (i < this.attrValue.length-1) {
+						let val = exprs[i];
+						if (!Util.isFalsy(val) && Util.isPrimitive(val))
+							value.push(val);
 					}
 				}
-				exprIndex ++;
+				joinedValue = value.join('')
 			}
 			else
-				value.unshift(expr);
-
-			let joinedValue = value.join('')
+				joinedValue = Util.isPrimitive(expr) ? expr : '';
 
 			// Only update attributes if the value has changed.
 			// The .value property is special.  If it changes we don't update the attribute.
@@ -544,12 +531,15 @@ export default class ExprPath {
 
 			// This is needed for setting input.value, .checked, option.selected, etc.
 			// But in some cases setting the attribute is enough.  such as div.setAttribute('title') updates div.title.
+			// This also updates web component properties when their attributes change, only if they already have that property defined.
 			// TODO: How to tell which is which?
-			if (this.attrName in node)
-				node[this.attrName] = joinedValue;
-		}
+			//if (this.attrName in node) { // old
+			//debugger;
+			if (Object.getOwnPropertyDescriptor(node, this.attrName)?.set) {
 
-		return exprIndex;
+			//	node[this.attrName] = expr;
+			}
+		}
 	}
 
 
@@ -755,6 +745,11 @@ export default class ExprPath {
 		return result;
 	}
 
+	isComponent() {
+		// Events won't have type===Component.
+		// TODO: Have a special flag for components instead of it being on the type?
+		return this.type === PathType.Component || (this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
+	}
 
 	/**
 	 * Nodes that have been used during the current render().

@@ -397,10 +397,10 @@ class BindingDemo extends HTMLElement {
         <binding-demo>
         	<style> :host { font-size: ${this.isBig ? 20 : 12}px }</style>
             <input type="number" value=${[this, 'count']}
-                oninput=${() => this.render()}><br>
+                oninput=${this.render}><br>
             <label>
                 <input type="checkbox" checked=${[this, 'isBig']}
-                    oninput=${() => this.render()}> Big Text
+                    oninput=${this.render}> Big Text
             </label>
             <pre>count is ${this.count}</pre>
             <button onclick=${this.reset}>Reset</button>

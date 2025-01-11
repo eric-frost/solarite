@@ -513,6 +513,14 @@ let Util = {
 		return Array.isArray(arr) && arr.length >=2 && (typeof arr[0] === 'object' || typeof arr[0] === 'undefined') && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
 	},
 
+	isFalsy(val) {
+		return val === undefined || val === false || val === null;
+	},
+
+	isPrimitive(val) {
+		return typeof val === 'string' || typeof val === 'number'
+	},
+
 	/**
 	 * Remove nodes from the beginning and end that are not:
 	 * 1.  Elements.
@@ -1195,36 +1203,26 @@ class ExprPath {
 	 * We should modify path.applyValueAttrib so it stores the procssed parts and then only calls
 	 * setAttribute() once all the pieces are in place.
 	 *
-	 * @param expr {Expr}
-	 * @param exprs {Expr[]}
-	 * @param exprIndex {int}
-	 * @param componentExprs {object}
-	 * @returns {int} */
-	apply(expr, exprs=null, exprIndex=0, componentExprs={}) {
+	 * @param exprs {Expr[]}*/
+	apply(exprs) {
 		switch (this.type) {
 			case 1: // PathType.Content:
-				this.applyNodes(expr);
+				this.applyNodes(exprs[0]);
 				break;
 			case 2: // PathType.Multiple:
-				this.applyMultipleAttribs(this.nodeMarker, expr);
+				this.applyMultipleAttribs(this.nodeMarker, exprs[0]);
 				break;
 			case 5: // PathType.Comment:
 				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
 				break;
 			case 6: // PathType.Event:
-				this.applyEventAttrib(this.nodeMarker, expr, this.parentNg.rootNg.root);
+				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
 				break;
-			default:
-				if (this.type === 4 /*PathType.Component*/ && this.nodeMarker !== this.parentNg.rootNg.root)
-					componentExprs[this.attrName] = expr;
-				else {
-					// One attribute value may have multiple expressions.  Here we apply them all at once.
-					exprIndex = this.applyValueAttrib(this.nodeMarker, exprs || [expr], exprIndex);
-				}
+			default: // TODO: Is this sitll used?
+				// One attribute value may have multiple expressions.  Here we apply them all at once.
+				this.applyValueAttrib(this.nodeMarker, exprs);
 				break;
 		}
-
-		return exprIndex;
 	}
 
 	/**
@@ -1412,7 +1410,7 @@ class ExprPath {
 		else {
 			// Convert falsy values (but not 0) to empty string.
 			// Convert numbers to string so they compare the same.
-			let text = (expr === undefined || expr === false || expr === null) ? '' : (expr + '');
+			let text = Util.isFalsy(expr) ? '' : (expr + '');
 
 			// Fast path for updating the text of a single text node.
 			let first = this.nodeBefore.nextSibling;
@@ -1496,7 +1494,7 @@ class ExprPath {
 
 			// oninput=${[this, 'value']}
 			else {
-				throw new Error('test');
+				throw new Error('is this ever used?');
 				// root.render(); // TODO: This causes infinite recursion.
 			}
 		}
@@ -1562,11 +1560,12 @@ class ExprPath {
 		nodeEvents[key][2] = args;
 	}
 
-	applyValueAttrib(node, exprs, exprIndex) {
-		let expr = exprs[exprIndex];
+	// TODO: node is always this.nodeMarker?
+	applyValueAttrib(node, exprs) {
+		let expr = exprs[0];
 
 		// Values to toggle an attribute
-		if (!this.attrValue && (expr === false || expr === null || expr === undefined))
+		if (!this.attrValue && Util.isFalsy(expr))
 			node.removeAttribute(this.attrName);
 
 		else if (!this.attrValue && expr === true)
@@ -1603,25 +1602,21 @@ class ExprPath {
 
 		// Regular attribute
 		else {
-			let value = [];
-
-			// We go backward because NodeGroup.applyExprs() calls this function, and it goes backward through the exprs.
+			let joinedValue;
 			if (this.attrValue) {
-				for (let i=this.attrValue.length-1; i>=0; i--) {
-					value.unshift(this.attrValue[i]);
-					if (i > 0) {
-						let val = exprs[exprIndex];
-						if (val !== false && val !== null && val !== undefined)
-							value.unshift(val);
-						exprIndex--;
+				let value = [];
+				for (let i=0; i < this.attrValue.length; i++) {
+					value.push(this.attrValue[i]);
+					if (i < this.attrValue.length-1) {
+						let val = exprs[i];
+						if (!Util.isFalsy(val) && Util.isPrimitive(val))
+							value.push(val);
 					}
 				}
-				exprIndex ++;
+				joinedValue = value.join('');
 			}
 			else
-				value.unshift(expr);
-
-			let joinedValue = value.join('');
+				joinedValue = Util.isPrimitive(expr) ? expr : '';
 
 			// Only update attributes if the value has changed.
 			// The .value property is special.  If it changes we don't update the attribute.
@@ -1632,12 +1627,12 @@ class ExprPath {
 
 			// This is needed for setting input.value, .checked, option.selected, etc.
 			// But in some cases setting the attribute is enough.  such as div.setAttribute('title') updates div.title.
+			// This also updates web component properties when their attributes change, only if they already have that property defined.
 			// TODO: How to tell which is which?
-			if (this.attrName in node)
-				node[this.attrName] = joinedValue;
+			//if (this.attrName in node) { // old
+			//debugger;
+			if (Object.getOwnPropertyDescriptor(node, this.attrName)?.set) ;
 		}
-
-		return exprIndex;
 	}
 
 
@@ -1829,6 +1824,11 @@ class ExprPath {
 		return result;
 	}
 
+	isComponent() {
+		// Events won't have type===Component.
+		// TODO: Have a special flag for components instead of it being on the type?
+		return this.type === PathType.Component || (this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
+	}
 
 	/**
 	 * Nodes that have been used during the current render().
@@ -2003,8 +2003,8 @@ class Shell {
 	/** @type {ExprPath[]} Paths to where expressions should go. */
 	paths = [];
 
-	// Embeds and ids
-	events = [];
+	// Elements with events.  Not yet used.
+	// events = [];
 
 	/** @type {int[][]} Array of paths */
 	ids = [];
@@ -2244,11 +2244,12 @@ class Shell {
 
 		this.ids = Array.prototype.map.call(idEls, el => getNodePath(el));
 
-		// Events (not yet used)
+
 		for (let el of this.fragment.querySelectorAll('*')) {
-			for (let attrib of el.attributes)
-				if (isEvent(attrib.name))
-					this.events.push([attrib.name, getNodePath(el)]);
+			// Events (not yet used)
+			// for (let attrib of el.attributes)
+			// 	if (isEvent(attrib.name))
+			// 		this.events.push([attrib.name, getNodePath(el)])
 
 			if (el.tagName.includes('-') || el.hasAttribute('_is'))
 
@@ -2390,42 +2391,70 @@ class NodeGroup {
 	 * Use the paths to insert the given expressions.
 	 * Dispatches expression handling to other functions depending on the path type.
 	 * @param exprs {(*|*[]|function|Template)[]}
-	 * @param paths {?ExprPath[]} Optional.  */
+	 * @param paths {?ExprPath[]} Optional.  Only used for testing.  Normally uses this.paths.  */
 	applyExprs(exprs, paths=null) {
 		paths = paths || this.paths;
 
-		/*#IFDEV*/this.verify();/*#ENDIF*/
+		/*#IFDEV*/
+		this.verify();/*#ENDIF*/
 
-		// Update exprs at paths.
-		let exprIndex = exprs.length-1, expr, lastNode;
+		// Things to consider:
+		// 1. One path may use multipe esprssions.  E.g. <div class="${1} ${2}">
+		// 2. One component may need to use multiple attribute paths to be instantiated.
+		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
+		//    before its instantiated and its value attribute is set via an expression.
 
-		// We apply them in reverse order so that a <select> box has its options created from an expression
-		// before its value attribute is set via an expression.
-		for (let path of paths.toReversed()) {
-			expr = exprs[exprIndex];
+		let exprIndex = exprs.length - 1; // Update exprs at paths.
+		let lastComponentPathIndex;
+		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
+		for (let i = paths.length - 1, path; path = paths[i]; i--) {
+			let prevPath = paths[i - 1];
+			let nextPath = paths[i + 1];
 
-			// Nodes
-
-			// This is necessary both here and below.
-			if (lastNode && lastNode !== this.rootNg.root && lastNode !== path.nodeMarker && Object.keys(this.currentComponentProps).length) {
-				this.applyComponentExprs(lastNode, this.currentComponentProps);
-				this.currentComponentProps = {};
+			// Get the expressions associated with this path.
+			if (path.attrValue?.length > 2) {
+				let startIndex = (exprIndex - (path.attrValue.length - 1)) + 1;
+				pathExprs[i] = exprs.slice(startIndex, exprIndex + 1); // probably doesn't allocate if the JS vm implements copy on write.
+				exprIndex -= pathExprs[i].length;
+			} else {
+				pathExprs[i] = [exprs[exprIndex]];
+				exprIndex--;
 			}
 
-			exprIndex = path.apply(expr, exprs, exprIndex, this.currentComponentProps);
+			// TODO: Need to end and restart this block when going from one component to the next.
+			// Think of having two adjacent components.
 
-			lastNode = path.nodeMarker;
+			// If a component:
+			// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
+			// 2. Otherwise send them to its render function.
+			if (path.nodeMarker !== this.rootNg.root && path.isComponent()) {
+
+				if (!nextPath || !nextPath.isComponent() || nextPath.nodeMarker !== path.nodeMarker)
+					lastComponentPathIndex = i;
+				let isFirstComponentPath = !prevPath || !prevPath.isComponent() || prevPath.nodeMarker !== path.nodeMarker;
+
+				if (isFirstComponentPath) {
+
+					let componentProps = {};
+					for (let j=i; j<=lastComponentPathIndex; j++)
+						componentProps[paths[j].attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
+
+					this.applyComponentExprs(path.nodeMarker, componentProps);
+
+					// Set attributes on component.
+					for (let j=i; j<=lastComponentPathIndex; j++)
+						paths[j].apply(pathExprs[j]);
+				}
+			}
+
+			// Else apply it normally
+			else
+				path.apply(pathExprs[i]);
 
 
-			exprIndex--;
 		} // end for(path of this.paths)
 
 
-		// Check again after we iterate through all paths to apply to a component.
-		if (lastNode && lastNode !== this.rootNg.root && Object.keys(this.currentComponentProps).length) {
-			this.applyComponentExprs(lastNode, this.currentComponentProps);
-			this.currentComponentProps = {};
-		}
 
 		this.updateStyles();
 
@@ -2434,10 +2463,12 @@ class NodeGroup {
 
 		// If there's leftover expressions, there's probably an issue with the Shell that created this NodeGroup,
 		// and the number of paths not matching.
-		/*#IFDEV*/assert(exprIndex === -1);/*#ENDIF*/
+		/*#IFDEV*/
+		assert(exprIndex === -1);/*#ENDIF*/
 
 
-		/*#IFDEV*/this.verify();/*#ENDIF*/
+		/*#IFDEV*/
+		this.verify();/*#ENDIF*/
 	}
 
 	/**
@@ -2526,6 +2557,7 @@ class NodeGroup {
 		//slot.append(...el.childNodes);
 
 		// Copy over event attributes.
+		// TODO: If we instantiate the component before applying events, we could skip this step here.
 		for (let propName in props) {
 			let expr = props[propName];
 			if (propName.startsWith('on') && typeof expr === 'function')
