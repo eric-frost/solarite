@@ -273,7 +273,7 @@ Testimony.test('Solarite.basic.empty2', () => {
         }
 
         render() {
-            this.html = r`<r-11></r-11>`
+            r(this)`<r-11></r-11>`
         }
     }
     R11.define();
@@ -332,7 +332,7 @@ Testimony.test('Solarite.basic.manualRender', () => {
 Testimony.test('Solarite.basic.pseudoRoot', () => {
 	class R30 extends Solarite {
 		render() {
-			this.html = r`<r-30 title="Hello">World</r-30>`
+			r(this)`<r-30 title="Hello">World</r-30>`
 		}
 	}
 
@@ -352,7 +352,7 @@ Testimony.test('Solarite.basic.createElement', () => {
 		}
 
 		render() {
-			this.html = r`<div>Hello!</div>`
+			r(this)`<div>Hello!</div>`
 		}
 	}
 	R35.define();
@@ -702,7 +702,7 @@ Testimony.test('Solarite.expr.cyclicRef', () => {
 		value = { name: 'Apple', self: null };
 
 		render() {
-			this.html = r`The fruit is ${this.value.name}!`
+			r(this)`The fruit is ${this.value.name}!`
 		}
 	}
 
@@ -941,7 +941,7 @@ Testimony.test('Solarite.loop.eventBindings', async () => {
 			}
 
 			render() {
-				this.html = r`${this.fruits.map((fruit, i) => r`<p onclick="${() => this.checkFruit(fruit, i)}">${fruit}</p>`)}`
+				r(this)`${this.fruits.map((fruit, i) => r`<p onclick="${() => this.checkFruit(fruit, i)}">${fruit}</p>`)}`
 			}
 		}
 
@@ -1150,7 +1150,7 @@ Testimony.test('Solarite.loop.nested4', () => {
 		fruits2 = ['Banana', 'Cherry']
 		
 		render() {
-			this.html = r`
+			r(this)`
 				<div>${this.fruits1.map(fruit => r`<span>${fruit}</span>`)}</div>
 				<div>${this.fruits2.map(fruit => r`<span>${fruit}</span>`)}</div>`
 		}
@@ -1397,7 +1397,7 @@ Testimony.test('Solarite.embed.styleStatic', () => {
 
 	class R300 extends Solarite {
 		render() {
-			this.html = r`
+			r(this)`
 				<style>
 					:host { color: blue }			
 				</style>
@@ -1449,7 +1449,7 @@ Testimony.test('Solarite.embed.styleDynamic', () => {
 
 	class R320 extends Solarite {
 		render() {
-			this.html = r`
+			r(this)`
 				<style>
 					${style1} ${style2}
 				</style>
@@ -1476,7 +1476,7 @@ Testimony.test('Solarite.embed.styleDynamicNoSpaces', () => {
 
 	class R322 extends Solarite {
 		render() {
-			this.html = r`
+			r(this)`
 				<style>${style1}${style2}</style>
 				Text that should be bold and red.
 			`;
@@ -1501,7 +1501,7 @@ Testimony.test('Solarite.embed.styleDynamicTag', () => {
 
 	class R325 extends Solarite {
 		render() {
-			this.html = r`${style1}Text.`;
+			r(this)`${style1}Text.`;
 		}
 	}
 
@@ -1519,7 +1519,7 @@ Testimony.test('Solarite.embed.styleDynamicTag', () => {
 Testimony.test('Solarite.embed.svg', () => {
 	class R330 extends Solarite {
 		render() {
-			this.html = r`
+			r(this)`
 				<div>
 					<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
 						<circle cx="25" cy="25" r="25" fill="blue" />
@@ -1541,7 +1541,7 @@ Testimony.test('Solarite.embed.scriptStatic', () => {
 	window.scriptStaticCount = 1;
 	class R340 extends Solarite {
 		render() {
-			this.html = r`
+			r(this)`
 				<div>
 					<script>
 						window.scriptStaticCount = 1;
@@ -1568,7 +1568,7 @@ Testimony.test('Solarite.embed._scriptDynamic', () => {
 	let val = 1;
 	class R350 extends Solarite {
 		render() {
-			this.html = r`
+			r(this)`
 				<div>
 					<script>
 						window.scriptStaticCount = ${val};
@@ -1609,7 +1609,7 @@ Testimony.test('Solarite.attrib.single', () => {
 
 	class R400 extends Solarite {
 		render() {
-			this.html = r`<div class="${val}">${val}</div>`;
+			r(this)`<div class="${val}">${val}</div>`;
 		}
 	}
 
@@ -1630,7 +1630,7 @@ Testimony.test('Solarite.attrib.singleAndText', () => {
 
 	class R410 extends Solarite {
 		render() {
-			this.html = r`<div class="before ${val} after">${val}</div>`;
+			r(this)`<div class="before ${val} after">${val}</div>`;
 		}
 	}
 
@@ -1657,7 +1657,7 @@ Testimony.test('Solarite.attrib.double', () => {
 
 	class R420 extends Solarite {
 		render() {
-			this.html = r`<div class="${val1}${val2}">${val1}</div>`;
+			r(this)`<div class="${val1}${val2}">${val1}</div>`;
 		}
 	}
 
@@ -1679,7 +1679,7 @@ Testimony.test('Solarite.attrib.doubleAndText', () => {
 
 	class R430 extends Solarite {
 		render() {
-			this.html = r`<div class="a ${val1} b ${val2} c">${val1}</div>`;
+			r(this)`<div class="a ${val1} b ${val2} c">${val1}</div>`;
 		}
 	}
 
@@ -1701,7 +1701,7 @@ Testimony.test('Solarite.attrib.doubleAndText', () => {
 
 	class R430 extends Solarite {
 		render() {
-			this.html = r`<div class="a ${val1} b ${val2} c">${val1}</div>`;
+			r(this)`<div class="a ${val1} b ${val2} c">${val1}</div>`;
 		}
 	}
 
@@ -1722,7 +1722,7 @@ Testimony.test('Solarite.attrib.sparse', () => {
 
 	class R440 extends Solarite {
 		render() {
-			this.html = r`<div ${isEdit && 'contenteditable'}>${isEdit && 'Editable!'}</div>`;
+			r(this)`<div ${isEdit && 'contenteditable'}>${isEdit && 'Editable!'}</div>`;
 		}
 	}
 
@@ -1745,7 +1745,7 @@ Testimony.test('Solarite.attrib.doubleSparse', () => {
 
 	class R450 extends Solarite {
 		render() {
-			this.html = r`<div ${isEdit && 'contenteditable spellcheck="false"'}>${isEdit && 'Editable!'}</div>`;
+			r(this)`<div ${isEdit && 'contenteditable spellcheck="false"'}>${isEdit && 'Editable!'}</div>`;
 		}
 	}
 
@@ -1768,7 +1768,7 @@ Testimony.test('Solarite.attrib.toggle', () => {
 
 	class R460 extends Solarite {
 		render() {
-			this.html = r`<div contenteditable=${isEdit}>${isEdit && 'Editable!'}</div>`;
+			r(this)`<div contenteditable=${isEdit}>${isEdit && 'Editable!'}</div>`;
 		}
 	}
 
@@ -1811,7 +1811,7 @@ Testimony.test('Solarite.attrib.pseudoRoot2', 'Static attribute overrides.', () 
 	let title = 'Hello'
 	class R472 extends Solarite {
 		render() {
-			this.html = r`<r-472 title="${title}" style="color: red">World</r-472>`
+			r(this)`<r-472 title="${title}" style="color: red">World</r-472>`
 		}
 	}
 	R472.define();
@@ -1828,7 +1828,7 @@ Testimony.test('Solarite.attrib.pseudoRoot3', 'Dynamic attribute overrides.', ()
 	let title = 'Hello'
 	class R473 extends Solarite {
 		render() {
-			this.html = r`<r-473 title="${title}" style="color: red">World</r-473>`
+			r(this)`<r-473 title="${title}" style="color: red">World</r-473>`
 		}
 	}
 	R473.define();
@@ -1857,7 +1857,7 @@ Testimony.test('Solarite.attrib.multiple', '', () => {
 	let button = 'Hello'
 	class R474 extends Solarite {
 		render() {
-			this.html = r`
+			r(this)`
 				<r-474><button ${'class="primary"'} onclick=${e => {}}>${button}</button></r-474>`
 		}
 	}
@@ -1953,7 +1953,7 @@ Testimony.test('Solarite.comments.one', () => {
 	
 	class A480 extends Solarite {
 		render() {
-			this.html = r`
+			r(this)`
 				<!--a-->
 				<div></div>`
 		}
@@ -1968,7 +1968,7 @@ Testimony.test('Solarite.comments.two', () => {
 	
 	class A482 extends Solarite {
 		render() {
-			this.html = r`<div><!--${1} ${2}-->${3}</div>`
+			r(this)`<div><!--${1} ${2}-->${3}</div>`
 		}
 	}
 	let a = new A482();
@@ -2242,7 +2242,7 @@ Testimony.test('Solarite.component.tr', () => {
 
 	class TR510 extends Solarite('tr') {
 		render() {
-			this.html = r`<td>hello</td>`
+			r(this)`<td>hello</td>`
 		}
 	}
 
@@ -2268,14 +2268,14 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 		}
 		
 		render() {
-			this.html = r`<b-512>${this.name} | ${this.userId}</b-512>`
+			r(this)`<b-512>${this.name} | ${this.userId}</b-512>`
 		}
 	}
 	B512.define();
 	
 	class A512 extends Solarite {
 		render() {
-			this.html = r`<div><b-512 name="User" userId="2"></b-512></div>`;
+			r(this)`<div><b-512 name="User" userId="2"></b-512></div>`;
 		}
 	}
 	A512.define();
@@ -2296,14 +2296,14 @@ Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...
 		}
 		
 		render() {
-			this.html = r`<b-513>${this.name} | ${this.userId}</b-513>`
+			r(this)`<b-513>${this.name} | ${this.userId}</b-513>`
 		}
 	}
 	B513.define();
 	
 	class A513 extends Solarite {
 		render() {
-			this.html = r`<div><b-513 name="${'User'}" userId="${2}"></b-513></div>`;
+			r(this)`<div><b-513 name="${'User'}" userId="${2}"></b-513></div>`;
 		}
 	}
 	A513.define();
@@ -2326,7 +2326,7 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 		}
 		
 		render() {
-			this.html = r`<b-514>${this.name} | ${this.userId}</b-514>`
+			r(this)`<b-514>${this.name} | ${this.userId}</b-514>`
 		}
 	}
 	B514.define();
@@ -2345,7 +2345,7 @@ Testimony.test('Solarite.component.nested', () => {
 
 	class B515 extends Solarite {
 		render() {
-			this.html = r`<div>B</div>`;
+			r(this)`<div>B</div>`;
 			bRenderCount++;
 		}
 	}
@@ -2380,7 +2380,7 @@ Testimony.test('Solarite.component.nestedExprConstructorArg', "Pass an object to
 		render(props={}) {
 			if (props.user)
 				this.user = props.user;
-			this.html = r`<div>Name:</div><div>${this.user.name}</div><div>Email:</div><div>${this.user.email}</div>`;
+			r(this)`<div>Name:</div><div>${this.user.name}</div><div>Email:</div><div>${this.user.email}</div>`;
 			bRenderCount++;
 		}
 
@@ -2433,7 +2433,7 @@ Testimony.test('Solarite.component.nestedExprEvent', () => {
 
 		render() {
 			console.log(arguments)
-			this.html = r(this)`
+			r(this)`
 			<b-530>				
 				<div>Name:</div><div>Fred</div>
 			</b-530>`;
@@ -2535,7 +2535,7 @@ Testimony.test('Solarite.component.nestedTrLoop', () => {
 			{name: 'Fred', email: 'fred@example.com'}
 		]
 		render() {
-			this.html = r`<table><tbody>${this.users.map(user => tableRow(user))}</tbody></table>`
+			r(this)`<table><tbody>${this.users.map(user => tableRow(user))}</tbody></table>`
 		}
 	}
 	let table = new MyTable
@@ -2587,7 +2587,7 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 		render(props=null) { // Props is set when re-rendering, so we don't have to recreate the whole component.
 			if (props?.user)
 				this.user = props.user;
-			this.html = r`<td>${this.user.name}</td><td>${this.user.email}</td>`
+			r(this)`<td>${this.user.name}</td><td>${this.user.email}</td>`
 		}
 	}
 	TR540.define('tr-540');
@@ -2599,7 +2599,7 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 			{name: 'Fred', email: 'fred@example.com'}
 		]
 		render() {
-			this.html = r`<table><tbody>${this.users.map(user => r`<tr is="tr-540" user="${user}"></tr>`)}</tbody></table>`
+			r(this)`<table><tbody>${this.users.map(user => r`<tr is="tr-540" user="${user}"></tr>`)}</tbody></table>`
 		}
 	}
 	let table = new Table540
@@ -2663,7 +2663,7 @@ Testimony.test('Solarite.slots.named', () => {
 
 	class S20 extends Solarite {
 		render() {
-			this.html = r`<div>slot content:<slot name="one"></slot><slot></slot><slot name="two"></slot></div>`
+			r(this)`<div>slot content:<slot name="one"></slot><slot></slot><slot name="two"></slot></div>`
 		}
 	}
 	S20.define();
@@ -2707,7 +2707,7 @@ Testimony.test('Solarite.events.classic', () => {
 		count = 1
 
 		render() {
-			this.html = r`<input data-id="input" value=${this.count} oninput="this.count=el.count">`
+			r(this)`<input data-id="input" value=${this.count} oninput="this.count=el.count">`
 		}
 	}
 
@@ -2732,7 +2732,7 @@ Testimony.test('Solarite.events.rebind', 'Ensure function is unbound/rebound on 
 		}
 		
 		render() {
-			this.html = r`<input data-id="input" value=${this.count} oninput="${(e, el) => this.assign(el.value)}">`
+			r(this)`<input data-id="input" value=${this.count} oninput="${(e, el) => this.assign(el.value)}">`
 		}
 	}
 	Ev20.define();
@@ -2758,7 +2758,7 @@ Testimony.test('Solarite.events.args', 'Ensure event function args are received'
 		}
 		
 		render() {
-			this.html = r`<input data-id="input" value='1' oninput="${(e, el) => this.assign(el.value)}">`
+			r(this)`<input data-id="input" value='1' oninput="${(e, el) => this.assign(el.value)}">`
 		}
 	}
 	Ev30.define();
@@ -2783,7 +2783,7 @@ Testimony.test('Solarite.events.onComponent', 'Event attrib on root component', 
 		}
 		
 		render() {
-			this.html = r`<ev-40 oninput="${(e, el) => this.assign(el.firstChild.value)}"><input data-id="input" value='1'></ev-40>`
+			r(this)`<ev-40 oninput="${(e, el) => this.assign(el.firstChild.value)}"><input data-id="input" value='1'></ev-40>`
 		}
 	}
 	Ev40.define();
@@ -2868,7 +2868,7 @@ Testimony.test('Solarite.binding.input', () => {
 		count = 1
 
 		render() {
-			this.html = r`<input data-id="input" value=${[this, 'count']}>`
+			r(this)`<input data-id="input" value=${[this, 'count']}>`
 		}
 	}
 
@@ -2898,7 +2898,7 @@ Testimony.test('Solarite.binding.inputReuse', () => {
 		items = [1, 2, 3]
 		
 		render() {
-			this.html = r`${this.items.map(item => r`<input data-id="input" value=${item}>`)}`;
+			r(this)`${this.items.map(item => r`<input data-id="input" value=${item}>`)}`;
 		}
 	}
 	
@@ -2950,7 +2950,7 @@ Testimony.test('Solarite.binding.textarea', () => {
 		text = 1
 
 		render() {
-			this.html = r`<textarea data-id="input" value=${[this, 'text']}></textarea>`
+			r(this)`<textarea data-id="input" value=${[this, 'text']}></textarea>`
 		}
 	}
 
@@ -2979,7 +2979,7 @@ Testimony.test('Solarite.binding.select', () => {
 		count = 1
 
 		render() {
-			this.html = r`<select data-id="input" value=${[this, 'count']}><option>1</option><option>2</option><option>3</option></select>`
+			r(this)`<select data-id="input" value=${[this, 'count']}><option>1</option><option>2</option><option>3</option></select>`
 		}
 	}
 
@@ -3007,7 +3007,7 @@ Testimony.test('Solarite.binding.selectDynamic', () => {
 		count = 1
 		
 		render() {
-			this.html = r`<select data-id="input" value=${[this, 'count']}>${[1, 2, 3].map(item => r`<option>${item}</option>`)}</select>`
+			r(this)`<select data-id="input" value=${[this, 'count']}>${[1, 2, 3].map(item => r`<option>${item}</option>`)}</select>`
 		}
 	}
 	
@@ -3038,7 +3038,7 @@ Testimony.test('Solarite.binding.number', () => {
 		count = 1
 
 		render() {
-			this.html = r`<input type="number" data-id="input" value=${[this, 'count']}>`
+			r(this)`<input type="number" data-id="input" value=${[this, 'count']}>`
 		}
 	}
 
