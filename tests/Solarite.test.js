@@ -3679,7 +3679,7 @@ Testimony.test('Solarite.watch2._forEachSpliceInsert', () => {
 
 
 
-Testimony.test('Solarite.watch3._primitive', () => {
+Testimony.test('Solarite.watch3.primitive', () => {
 
 	class W10 extends HTMLElement {
 
@@ -3707,7 +3707,7 @@ Testimony.test('Solarite.watch3._primitive', () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.watch3._primitive2', `One primitive variable used twice.`, () => {
+Testimony.test('Solarite.watch3.primitive2', `One primitive variable used twice.`, () => {
 
 	class W20 extends Solarite {
 
@@ -3732,7 +3732,7 @@ Testimony.test('Solarite.watch3._primitive2', `One primitive variable used twice
 	assert.eq(getHtml(a), `<w-20>Jim.<br>Jim!</w-20>`);
 });
 
-Testimony.test('Solarite.watch3._object', () => {
+Testimony.test('Solarite.watch3.object', () => {
 
 	class W30 extends HTMLElement {
 

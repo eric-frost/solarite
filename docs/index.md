@@ -4,7 +4,7 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 ---
 
-<!-- To convert documentation to html: (1) Open in Typora.  (2) Select the GitHub theme, or go to Settings -> Export -> Html -> Theme -> Github. (3) Export as html with styles to index.html. -->
+<!-- To convert documentation to html: (1) Open in Typora.  (2) Select the GitHub theme, or go to Settings -> Export -> Html -> Theme -> Github. (3) Then go to File -> Export -> Export as html with styles to index.html. -->
 
 <!-- Playgrounds that don't have a lowercase language name will not have a preview. -->
 

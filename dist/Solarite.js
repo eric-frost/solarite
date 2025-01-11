@@ -3260,7 +3260,7 @@ function renderWatched(root) {
 
 		// Reapply the whole expression.
 		if (params === true) {
-			exprPath.apply(exprPath.watchFunction);
+			exprPath.apply([exprPath.watchFunction]);
 
 			// TODO: freeNodeGroups() could be skipped if we updated applyExprs() to never marked them as rendered.
 			exprPath.freeNodeGroups();

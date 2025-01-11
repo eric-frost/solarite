@@ -3398,107 +3398,6 @@ function createSolarite(extendsTag=null) {
 		}
 
 		//#IFDEV
-
-		/** @deprecated */
-		renderWatched() {
-			let ngm = NodeGroupManager.get(this);
-
-			let nodeGroupUpdates = [];
-
-			for (let change of ngm.changes) {
-				if (change.action === 'set') {
-					for (let transformerInfo of change.transformerInfo) {
-
-						let oldHash = transformerInfo.hash;
-
-						let newObj = delve(watchSet(transformerInfo.path[0]), transformerInfo.path.slice(1));
-						let newTemplate = transformerInfo.transformer(newObj);
-						let newHash = getObjectHash(newTemplate);
-						let ngs = [...ngm.nodeGroupsAvailable.data[oldHash]];
-						for (let ng of ngs) {
-							nodeGroupUpdates.push([ng, oldHash, newHash, newTemplate.exprs, transformerInfo]);
-						}
-					}
-				}
-
-				else if (change.action === 'delete') {
-					for (let hash of change.value) {
-						let ngs = [...ngm.nodeGroupsAvailable.getAll(hash)]; // deletes from nodeGroupsAvailable.
-
-						for (let ng of ngs) {
-							if (ng.parentPath)
-								ng.parentPath.clearNodesCache();
-
-							for (let node of ng.getNodes())
-								node.remove();
-
-							// TODO: Update ancestor NodeGroup exactKeys
-						}
-					}
-				}
-				else if (change.action === 'insert') {
-
-					let beforeNg = change.beforeTemplate ? ngm.getNodeGroup(change.beforeTemplate, true) : null;
-					let arrayPath = [change.root, ...change.path];
-
-					// Get anchor so we can use it to get the parent
-					// TODO: Should this be watchGet(change.root) ?
-					for (let loopInfo of ngm.getLoopInfo([change.root, ...change.path.slice(0, -1)])) {
-
-						// Change.extra is aTemplate telling us where to insert before.
-						let beforeNode = beforeNg?.startNode || loopInfo.template.parentPath.nodeMarker;
-
-						// Loop over every item added to the array.
-						let i = 0; // TODO: How to get real insert index.
-						for (let obj of change.value) {
-
-							// Same logic as forEach() function.
-
-							let callback = loopInfo.itemTransformer;
-							let path = [...arrayPath.slice(0, -1), (arrayPath.at(-1) * 1 + i) + ''];
-
-							// Shortened logic found in watchGet(), but not any faster?
-							// the watchSet() is what makes this slower!
-							// let obj = delve(watchSet(path[0]), path.slice(1));
-							// let template = callback(obj);
-							// let serializedPath = serializePath(path);
-							// pathToTransformer.add(serializedPath, new TransformerInfo(path, callback, template)); // Uses a Set() to ensure no duplicates.
-
-							let template = watchGet(path, callback);
-							i++;
-
-
-							//let template = loopInfo.itemTransformer(obj); // What if it takes more than one obj argument?
-
-							// Create new NodeGroup
-							let ng = ngm.getNodeGroup(template, false, true);
-							ng.parentPath = beforeNg?.parentPath || loopInfo.template.parentPath;
-
-							for (let node of ng.getNodes())
-								beforeNode.parentNode.insertBefore(node, beforeNode);
-
-							if (ng.parentPath) // This check is needed for the forEachSpliceInsert test, but why?
-								ng.parentPath.clearNodesCache();
-						}
-
-						// TODO: Update ancestor NodeGroup exactKeys
-					}
-				}
-			}
-
-			// Update them all at once, that way we can reassign the same value twice.
-			for (let [ng, oldHash, newHash, exprs, ti] of nodeGroupUpdates) {
-				ng.applyExprs(exprs);
-				ngm.nodeGroupsAvailable.data[oldHash].delete(ng);
-				ng.exactKey = ti.hash = newHash;
-				ngm.nodeGroupsAvailable.add(ng.exactKey, ng); // Add back to Map with new key.
-			}
-
-
-			ngm.changes = [];
-
-			return []; // TODO
-		}
 		
 		/**
 		 * @deprecated Use the getArg() function instead. */
@@ -3630,7 +3529,7 @@ function renderWatched(root) {
 
 		// Reapply the whole expression.
 		if (params === true) {
-			exprPath.apply(exprPath.watchFunction);
+			exprPath.apply([exprPath.watchFunction]);
 
 			// TODO: freeNodeGroups() could be skipped if we updated applyExprs() to never marked them as rendered.
 			exprPath.freeNodeGroups();
