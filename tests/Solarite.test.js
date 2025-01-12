@@ -3701,7 +3701,8 @@ Testimony.test('Solarite.watch3.primitive', () => {
 
 	a.name = 'Jim';
 	let modified = renderWatched(a);
-	console.log(modified);
+	assert.eq(modified.length, 1);
+	//console.log(modified);
 	assert.eq(getHtml(a), `<w-10>Jim!</w-10>`);
 
 	a.remove();
@@ -3724,11 +3725,14 @@ Testimony.test('Solarite.watch3.primitive2', `One primitive variable used twice.
 	}
 
 	let a = new W20();
+	document.body.append(a);
 	assert.eq(getHtml(a), `<w-20>Fred.<br>Fred!</w-20>`);
 
 	a.name = 'Jim';
 	let modified = renderWatched(a);
-	console.log(modified);
+	assert.eq(2, modified.length);
+	assert.neq(modified[0], modified[1]);
+	//console.log(modified);
 	assert.eq(getHtml(a), `<w-20>Jim.<br>Jim!</w-20>`);
 });
 
@@ -3767,7 +3771,7 @@ Testimony.test('Solarite.watch3.object', () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.watch3._loop', `replace array elements`, () => {
+Testimony.test('Solarite.watch3.loop', `replace array elements`, () => {
 
 	class W50 extends HTMLElement {
 
@@ -3788,27 +3792,26 @@ Testimony.test('Solarite.watch3._loop', `replace array elements`, () => {
 	let a = new W50();
 	document.body.append(a);
 
-	//debugger;
 	a.items[1] = 'banana2';
 	let modified = renderWatched(a);
-	//console.log(modified);
+	console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana2</div><div>cherry</div></w-50>`);
 
 	a.items[1] = 'banana3';
 	modified = renderWatched(a);
-	//console.log(modified);
+	console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry</div></w-50>`);
 
 	a.items[2] = 'cherry2';
 	modified = renderWatched(a);
-	//console.log(modified);
+	console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry2</div></w-50>`);
 
 
 	a.items[0] = 'apple3';
 	a.items[2] = 'cherry3';
 	modified = renderWatched(a);
-	//console.log(modified);
+	console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple3</div><div>banana3</div><div>cherry3</div></w-50>`);
 	assert.eq(modified, [a.children[0], a.children[2]]);
 
@@ -3817,7 +3820,7 @@ Testimony.test('Solarite.watch3._loop', `replace array elements`, () => {
 	modified = renderWatched(a);
 	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple4</div><div>banana4</div><div>cherry4</div></w-50>`);
-	assert.eq(modified, [a.children[0], a.children[2]]);
+	assert.eq(modified, [a.children[0], a.children[1], a.children[2]]);
 
 
 	//a.remove();

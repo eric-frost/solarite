@@ -1065,8 +1065,11 @@ class ExprPath {
 	nodeMarkerPath;
 
 
-	/** @type {?function} */
+	/** @type {?function} A function called by renderWatched() to update the value of this expression.  */
 	watchFunction
+
+	/** @type {?function} */
+	mapCallback
 
 	/**
 	 * @param nodeBefore {Node}
@@ -1292,6 +1295,7 @@ class ExprPath {
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
 			Globals$1.currentExprPath = [this, expr]; // Used by watch3()
+
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
 			let result = expr();
 			Globals$1.currentExprPath = null;
@@ -2591,14 +2595,8 @@ class RootNodeGroup extends NodeGroup {
 	watchedExprPaths = {};
 
 	/**
-	 * Map from arrays where .map is called and their callback functions.
-	 * TODO: One array might be called with two different map functions in different places!
-	 * @type {Map<Array, function>} */
-	mapCallbacks = new Map();
-
-	/**
 	 *
-	 * @type {Map<ExprPath, boolean|Array>} */
+	 * @type {Map<ExprPath, NewValue|Array>} */
 	exprsToRender = new Map();
 
 	/**
@@ -2690,7 +2688,6 @@ class RootNodeGroup extends NodeGroup {
 
 	clearRenderWatched() {
 		this.watchedExprPaths = {};
-		this.mapCallbacks = new Map();
 	}
 }
 
@@ -3140,10 +3137,13 @@ function createSolarite(extendsTag=null) {
 }
 
 /**
+ *
+ *
  * Trying to be able to automatically watch primitive values.
  * TODO:
  * 1.  Have get() return Proxies for nested updates.
  * 2.  Override .map() for loops to capture changes.
+ * 3.  Rename so we have watch.add() and watch.render() ?
  */
 
 let unusedArg = Symbol('unusedArg');
@@ -3162,8 +3162,18 @@ function map(array, callback) {
 
 
 /**
+ * This function markes a property of a web component to be watched for changes.
  *
- * @param root {HTMLElement}
+ * Here is how watches work:
+ * 1.  When we call watch3() it creates properties and proxies to watch when those values are set.
+ * 2.  When they are set, we add their paths to a list of what to re-render.
+ * 3.  Then we call renderWatched() to re-render only those parts.
+ *
+ * In more detail:
+ * TODO
+ *
+ *
+ * @param root {HTMLElement} Must be an instance of a Web Component.
  * @param field {string}
  * @param value {string|Symbol} */
 function watch3(root, field, value=unusedArg) {
@@ -3182,18 +3192,25 @@ function watch3(root, field, value=unusedArg) {
 				? value // top-level value.
 				: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
 
-			if (prop === 'map')
+			// We override the map() function the first time render() is called.
+			// But it's not re-overridden when we call renderWatched()
+			if (prop === 'map') {
 
-				// Double function so the ExprPath calls it as a function,
-				// instead of it being evaluated immediately when the Templat eis created.
-				return (callback) => () => {
-					let rootNg = Globals$1.nodeGroups.get(root);
-					rootNg.mapCallbacks.set(obj, callback);
-					return map(new Proxy(obj, handler), callback);
-				}
+				// This outer function is so the ExprPath calls it as a function,
+	 			// instead of it being evaluated immediately when the Template is created.
+				return (callback) =>
+
+					// This is the new map function.
+					// TODO: Find a way to pass it a new obj when called from renderWatched
+					function temp() {
+						let newObj = temp.newValue || obj;
+						Globals$1.currentExprPath[0].mapCallback = callback;
+						return map(new Proxy(newObj, handler), callback);
+					}
+			}
 
 			// Track which ExprPath is using this variable.
-			if (Globals$1.currentExprPath) {
+			else if (Globals$1.currentExprPath) {
 				let [exprPath, exprFunction] = Globals$1.currentExprPath; // Set in ExprPath.applyExact()
 
 				let rootNg = Globals$1.nodeGroups.get(root);
@@ -3235,7 +3252,7 @@ function watch3(root, field, value=unusedArg) {
 
 				// Reapply the whole expression.
 				else
-					rootNg.exprsToRender.set(exprPath, true);
+					rootNg.exprsToRender.set(exprPath, new NewValue(val)); // True means to re-render the whole thing.
 			}
 			return true;
 		}
@@ -3249,9 +3266,8 @@ function watch3(root, field, value=unusedArg) {
 
 /**
  * Render the ExprPaths that were added to rootNg.exprsToRender.
- * TODO: Rename so we have watch.add() and watch.render() ?
- * @param root
- * @returns {*[]} */
+ * @param root {HTMLElement}
+ * @returns {Node[]} Modified elements.  */
 function renderWatched(root) {
 	let rootNg = Globals$1.nodeGroups.get(root);
 	let modified = [];
@@ -3259,10 +3275,14 @@ function renderWatched(root) {
 	for (let [exprPath, params] of rootNg.exprsToRender) {
 
 		// Reapply the whole expression.
-		if (params === true) {
+		if (params instanceof NewValue) {
+
+			// TODO: Find a way to make exprPath.watchFunction use params.value
+
+			exprPath.watchFunction.newValue = params.value;
 			exprPath.apply([exprPath.watchFunction]);
 
-			// TODO: freeNodeGroups() could be skipped if we updated applyExprs() to never marked them as rendered.
+			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
 			exprPath.freeNodeGroups();
 
 			modified.push(...exprPath.getNodes());
@@ -3272,7 +3292,7 @@ function renderWatched(root) {
 		else {
 			for (let row of params) {
 				let [obj, prop, value] = row;
-				let callback = rootNg.mapCallbacks.get(obj);
+				let callback = exprPath.mapCallback;
 				let template = callback(value);
 				exprPath.applyLoopItemUpdate(prop, template);
 
@@ -3284,6 +3304,12 @@ function renderWatched(root) {
 	rootNg.exprsToRender = new Map(); // clear
 
 	return modified;
+}
+
+class NewValue {
+	constructor(value) {
+		this.value = value;
+	}
 }
 
 /**

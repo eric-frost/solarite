@@ -35,6 +35,8 @@ function assert(val) {
 	}
 }
 
+
+// TODO: Have same and notSame in addition to eq and neq.
 Object.assign(assert, {
 	eq(expected, actual) {
 		if (!isSame(expected, actual)) { // JUnit, PhpUnit, and mocha all use the order: expected, actual.
@@ -53,7 +55,7 @@ Object.assign(assert, {
 	},
 
 	neq(val1, val2) {
-		if (val1 !== val2) {
+		if (isSame(val1, val2)) {
 			if (Testimony.debugOnAssertFail)
 				debugger;
 			throw new AssertError(val1 + ' === ' + val2);

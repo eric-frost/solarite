@@ -566,14 +566,8 @@ export class RootNodeGroup extends NodeGroup {
 	watchedExprPaths = {};
 
 	/**
-	 * Map from arrays where .map is called and their callback functions.
-	 * TODO: One array might be called with two different map functions in different places!
-	 * @type {Map<Array, function>} */
-	mapCallbacks = new Map();
-
-	/**
 	 *
-	 * @type {Map<ExprPath, boolean|Array>} */
+	 * @type {Map<ExprPath, NewValue|Array>} */
 	exprsToRender = new Map();
 
 	/**
@@ -665,7 +659,6 @@ export class RootNodeGroup extends NodeGroup {
 
 	clearRenderWatched() {
 		this.watchedExprPaths = {};
-		this.mapCallbacks = new Map();
 	}
 }
 

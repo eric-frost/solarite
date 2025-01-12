@@ -73,8 +73,11 @@ export default class ExprPath {
 	nodeMarkerPath;
 
 
-	/** @type {?function} */
+	/** @type {?function} A function called by renderWatched() to update the value of this expression.  */
 	watchFunction
+
+	/** @type {?function} */
+	mapCallback
 
 	/**
 	 * @param nodeBefore {Node}
@@ -300,6 +303,7 @@ export default class ExprPath {
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
 			Globals.currentExprPath = [this, expr]; // Used by watch3()
+
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
 			let result = expr();
 			Globals.currentExprPath = null;
