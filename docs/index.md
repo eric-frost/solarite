@@ -348,6 +348,7 @@ class BindingDemo extends HTMLElement {
 	constructor() {
         super();
         this.count = 0;
+        this.lines = [];
         this.render();
     }
     
@@ -360,8 +361,16 @@ class BindingDemo extends HTMLElement {
                     this.render();
                 }}>
             <pre>count is ${this.count}</pre>
+            <textarea rows="6" value=${this.lines.join('\n')}
+            	oninput=${ev => {
+        			this.lines = ev.target.value.split('\n')
+                    this.render();
+        		}}            
+            ></textarea>            
+            <pre>line count is ${this.lines.length}</pre>
             <button onclick=${()=> { 
                 this.count = 0;
+            	this.lines = [];
                 this.render();
             }}>Reset</button>
         </binding-demo>`

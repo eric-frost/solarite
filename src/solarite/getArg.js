@@ -24,15 +24,17 @@
  * }
  *
  * @param el {HTMLElement}
- * @param name {string} Attribute name.  Not case-sensitive.
- * @param val {*} Default value to use if attribute doesn't exist.
+ * @param attributeName {string} Attribute name.  Not case-sensitive.
+ * @param defaultValue {*} Default value to use if attribute doesn't exist.
  * @param type {ArgType|function|*[]}
  *     If an array, use the value if it's in the array, otherwise return undefined.
  *     If it's a function, pass the value to the function and return the result.
- * @param fallback {*} If the type can't be parsed as the given type, use this value.
+ * @param fallback {*} If the defaultValue is undefiend and type can't be parsed as the given type, use this value.
+ *     TODO: Should this be merged with the defaultValue argument?
  * @return {*} Undefined if attribute isn't set.  */
-export function getArg(el, name, val=undefined, type=ArgType.String, fallback=undefined) {
-	let attrVal = el.getAttribute(name);
+export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, fallback=undefined) {
+	let val = defaultValue;
+	let attrVal = el.getAttribute(attributeName);
 	if (attrVal !== null) // If attribute doesn't exist.
 		val = attrVal;
 		

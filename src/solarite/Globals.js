@@ -24,7 +24,8 @@ function reset() {
 
 		/**
 		 * Used by watch3 to see which expressions are being accessed.
-		 * @type {[]}*/
+		 * Set in ExprPath.applyExact()
+		 * @type {ExprPath}*/
 		currentExprPath: null,
 
 		/**

@@ -720,6 +720,32 @@ Testimony.test('Solarite.expr.cyclicRef', () => {
 	a.render();
 	assert.eq(getHtml(a), '<r-100>The fruit is Cherry!</r-100>');
 });
+
+
+Testimony.test('Solarite.expr.textareaChild', 'Make sure we throw if an expression is the child of a textarea.', () => {
+
+	class R110 extends HTMLElement {
+		text = 1
+
+		render() {
+			r(this)`<textarea>${this.text}</textarea>`
+		}
+	}
+	customElements.define('r-110', R110);
+
+
+	let a = new R110();
+
+	let error;
+	try {
+		a.render()
+	}
+	catch (e) {
+		error = e;
+	}
+	assert(error);
+	assert(error.message.includes(`Textarea can't have expressions`));
+});
 //</editor-fold>
 
 
@@ -1932,6 +1958,9 @@ Testimony.test('Solarite.attrib.property', () => {
 	a.render();
 	assert.eq(input.checked, true);
 
+	// Make sure manually checking it doesn't break it..
+	input.checked = true;
+
 	a.enabled = false;
 	a.render();
 	assert.eq(input.checked, false);
@@ -1939,6 +1968,61 @@ Testimony.test('Solarite.attrib.property', () => {
 	input.click();
 	assert.eq(input.checked, true);
 	assert.eq(a.enabled, false); // It's not updated because we're not using two-way binding.  See the binding tests for that.
+});
+
+
+Testimony.test('Solarite.attrib.inputValue', 'Make sure we can one-way bind to the value of input.', () => {
+
+	class R540 extends Solarite {
+		text = 1
+
+		render() {
+			r(this)`<input data-id="input" value=${this.text} oninput=${ev=>{ this.text = ev.target.value; this.render() }}>`
+		}
+	}
+
+	let a = new R540();
+	document.body.append(a);
+	assert.eq(a.input.value, '1');
+
+
+	// Simulate typing.
+	// This caused reseting it to '2' below to fail until I modified ExprPath.applyValueAttrib()
+	a.input.value += '3'
+	assert.eq(a.input.value, '13');
+
+	a.text = 2
+	a.render()
+	assert.eq(a.input.value, '2')
+
+	a.remove();
+});
+
+Testimony.test('Solarite.attrib.textareaValue', 'Make sure we can one-way bind to the value of textarea.', () => {
+
+	class R550 extends Solarite {
+		text = 1
+
+		render() {
+			r(this)`<textarea data-id="textarea" value=${this.text + '0'}></textarea>`
+		}
+	}
+
+	let a = new R550();
+	document.body.append(a);
+	assert.eq(a.textarea.value, '10')
+
+
+	// Simulate typing.
+	// This caused reseting it to '2' below to fail until I modified ExprPath.applyValueAttrib()
+	a.textarea.value += '3'
+	assert.eq(a.textarea.value, '103');
+
+	a.text = 2
+	a.render()
+	assert.eq(a.textarea.value, '20')
+
+	a.remove();
 });
 //</editor-fold>
 
@@ -2456,6 +2540,8 @@ Testimony.test('Solarite.component.nestedExprEvent', () => {
 	document.body.append(a);
 
 	assert(a.children[0].render);
+
+	a.remove();
 
 });
 
@@ -3766,6 +3852,7 @@ Testimony.test('Solarite.watch3.object', () => {
 	a.user = {name: 'Bob'};
 	modified = renderWatched(a);
 	console.log(modified);
+	//assert.eq(modified, a.children[1]);
 	assert.eq(getHtml(a), `<w-30>Bob!</w-30>`);
 
 	a.remove();
@@ -3816,22 +3903,21 @@ Testimony.test('Solarite.watch3.loop', `replace array elements`, () => {
 	assert.eq(modified, [a.children[0], a.children[2]]);
 
 
+	// Test replacing the whole loop.
 	a.items = ['apple4', 'banana4', 'cherry4'];
 	modified = renderWatched(a);
-	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple4</div><div>banana4</div><div>cherry4</div></w-50>`);
 	assert.eq(modified, [a.children[0], a.children[1], a.children[2]]);
 
-
-	//a.remove();
+	a.remove();
 });
 
 
-Testimony.test('Solarite.watch3._loop2', `replace whole array`, () => {
+Testimony.test('Solarite.watch3._loopPushPop', () => {
 
-	class W50 extends HTMLElement {
+	class W60 extends HTMLElement {
 
-		items = ['apple', 'banana', 'cherry'];
+		items = ['apple', 'banana'];
 
 		constructor() {
 			super();
@@ -3840,19 +3926,18 @@ Testimony.test('Solarite.watch3._loop2', `replace whole array`, () => {
 		}
 
 		render() {
-			r(this)`<w-50>${this.items.map(item => r`<div>${item}</div>`)}</w-50>`;
+			r(this)`<w-60>${this.items.map(item => r`<div>${item}</div>`)}</w-60>`;
 		}
 	}
-	customElements.define('w-50', W50);
+	customElements.define('w-60', W60);
 
-	let a = new W50();
+	let a = new W60();
 	document.body.append(a);
 
-	a.items = ['apple2', 'banana2', 'cherry2'];
+	a.items.push('cherry');
 	let modified = renderWatched(a);
-	//console.log(modified);
-	assert.eq(getHtml(a), `<w-50><div>apple2</div><div>banana2</div><div>cherry2</div></w-50>`);
-	assert.eq(modified, [a.children[0], a.children[2]]);
+	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana</div><div>cherry</div></w-50>`);
+	assert.eq(modified, [a.children[2]]);
 
 
 	//a.remove();

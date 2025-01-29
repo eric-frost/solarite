@@ -174,15 +174,17 @@ let delveDontCreate = {};
  * }
  *
  * @param el {HTMLElement}
- * @param name {string} Attribute name.  Not case-sensitive.
- * @param val {*} Default value to use if attribute doesn't exist.
+ * @param attributeName {string} Attribute name.  Not case-sensitive.
+ * @param defaultValue {*} Default value to use if attribute doesn't exist.
  * @param type {ArgType|function|*[]}
  *     If an array, use the value if it's in the array, otherwise return undefined.
  *     If it's a function, pass the value to the function and return the result.
- * @param fallback {*} If the type can't be parsed as the given type, use this value.
+ * @param fallback {*} If the defaultValue is undefiend and type can't be parsed as the given type, use this value.
+ *     TODO: Should this be merged with the defaultValue argument?
  * @return {*} Undefined if attribute isn't set.  */
-function getArg(el, name, val=undefined, type=ArgType.String, fallback=undefined) {
-	let attrVal = el.getAttribute(name);
+function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, fallback=undefined) {
+	let val = defaultValue;
+	let attrVal = el.getAttribute(attributeName);
 	if (attrVal !== null) // If attribute doesn't exist.
 		val = attrVal;
 		
@@ -259,7 +261,6 @@ var ArgType = {
 
 let lastObjectId = 1>>>0; // Is a 32-bit int faster to increment than JavaScript's Number, which is a 64-bit float?
 let objectIds = new WeakMap();
-//#ENDIF
 
 /**
  * @param obj {Object|string|Node}
@@ -374,7 +375,8 @@ function reset() {
 
 		/**
 		 * Used by watch3 to see which expressions are being accessed.
-		 * @type {[]}*/
+		 * Set in ExprPath.applyExact()
+		 * @type {ExprPath}*/
 		currentExprPath: null,
 
 		/**
@@ -1006,7 +1008,7 @@ const udomdiff = (parentNode, a, b, before) => {
 class ExprPath {
 
 	/**
-	 * @type {PathType} */
+	 * @type {ExprPathType} */
 	type;
 
 	// Used for attributes:
@@ -1068,16 +1070,18 @@ class ExprPath {
 	/** @type {?function} A function called by renderWatched() to update the value of this expression.  */
 	watchFunction
 
-	/** @type {?function} */
+	/**
+	 * @type {?function} The most recent callback passed to a .map() function in this ExprPath.
+	 * TODO: What if one ExprPath has two .map() calls?  Maybe we just won't support that. */
 	mapCallback
 
 	/**
 	 * @param nodeBefore {Node}
 	 * @param nodeMarker {?Node}
-	 * @param type {PathType}
+	 * @param type {ExprPathType}
 	 * @param attrName {?string}
 	 * @param attrValue {string[]} */
-	constructor(nodeBefore, nodeMarker, type=PathType.Content, attrName=null, attrValue=null) {
+	constructor(nodeBefore, nodeMarker, type=ExprPathType.Content, attrName=null, attrValue=null) {
 
 		// If path is a node.
 		this.nodeBefore = nodeBefore;
@@ -1085,7 +1089,7 @@ class ExprPath {
 		this.type = type;
 		this.attrName = attrName;
 		this.attrValue = attrValue;
-		if (type === PathType.Multiple)
+		if (type === ExprPathType.Multiple)
 			this.attrNames = new Set();
 	}
 
@@ -1294,7 +1298,7 @@ class ExprPath {
 			// TODO: One ExprPath can have multiple expr functions.
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
-			Globals$1.currentExprPath = [this, expr]; // Used by watch3()
+			Globals$1.currentExprPath = this; // Used by watch3()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
 			let result = expr();
@@ -1458,20 +1462,13 @@ class ExprPath {
 	applyValueAttrib(node, exprs) {
 		let expr = exprs[0];
 
-		// Values to toggle an attribute
-		if (!this.attrValue && Util.isFalsy(expr))
-			node.removeAttribute(this.attrName);
-
-		else if (!this.attrValue && expr === true)
-			node.setAttribute(this.attrName, '');
-
 		// Two-way binding between attributes
 		// Passing a path to the value attribute.
 		// Copies the attribute to the property when the input event fires.
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.createNewComponent() for components.
-		else if (Util.isPath(expr)) {
+		if (Util.isPath(expr)) {
 			let [obj, path] = [expr[0], expr.slice(1)];
 
 			if (!obj)
@@ -1496,36 +1493,56 @@ class ExprPath {
 
 		// Regular attribute
 		else {
-			let joinedValue;
-			if (this.attrValue) {
-				let value = [];
-				for (let i=0; i < this.attrValue.length; i++) {
-					value.push(this.attrValue[i]);
-					if (i < this.attrValue.length-1) {
-						let val = exprs[i];
-						if (!Util.isFalsy(val) && Util.isPrimitive(val))
-							value.push(val);
+			// TODO: Cache this on ExprPath.isProp when Shell creates the props.  Have ExprPath.clone() copy .isProp
+			// Or make it a new PathType.
+			let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
+
+			// Values to toggle an attribute
+			if (!this.attrValue && Util.isFalsy(expr)) {
+				if (isProp)
+					node[this.attrName] = false;
+				node.removeAttribute(this.attrName);
+			}
+
+			else if (!this.attrValue && expr === true) {
+				if (isProp)
+					node[this.attrName] = true;
+				node.setAttribute(this.attrName, '');
+			}
+
+			// A non-toggled attribute
+			else {
+
+				let joinedValue;
+				if (this.attrValue) {
+					let value = [];
+					for (let i = 0; i < this.attrValue.length; i++) {
+						value.push(this.attrValue[i]);
+						if (i < this.attrValue.length - 1) {
+							let val = exprs[i];
+							if (!Util.isFalsy(val) && Util.isPrimitive(val))
+								value.push(val);
+						}
 					}
+					joinedValue = value.join('');
+				} else
+					joinedValue = Util.isPrimitive(expr) ? expr : '';
+
+				// Only update attributes if the value has changed.
+				// This is needed for setting input.value, .checked, option.selected, etc.
+
+				let oldVal = isProp ? node[this.attrName] : node.getAttribute(this.attrName);
+				if (oldVal !== joinedValue) {
+
+					// <textarea value=${expr}></textarea>
+					// Without this branch we have no way to set the value of a textarea,
+					// since we also prohibit expressions that are a child of textarea.
+					if (isProp)
+						node[this.attrName] = joinedValue;
+					// TODO: Putting an 'else' here would be more performant
+					node.setAttribute(this.attrName, joinedValue);
 				}
-				joinedValue = value.join('');
 			}
-			else
-				joinedValue = Util.isPrimitive(expr) ? expr : '';
-
-			// Only update attributes if the value has changed.
-			// The .value property is special.  If it changes we don't update the attribute.
-			let oldVal = this.attrName === 'value' ? node.value : node.getAttribute(this.attrName);
-			if (oldVal !== joinedValue) {
-				node.setAttribute(this.attrName, joinedValue);
-			}
-
-			// This is needed for setting input.value, .checked, option.selected, etc.
-			// But in some cases setting the attribute is enough.  such as div.setAttribute('title') updates div.title.
-			// This also updates web component properties when their attributes change, only if they already have that property defined.
-			// TODO: How to tell which is which?
-			//if (this.attrName in node) { // old
-			//debugger;
-			if (Object.getOwnPropertyDescriptor(node, this.attrName)?.set) ;
 		}
 	}
 
@@ -1714,7 +1731,7 @@ class ExprPath {
 	isComponent() {
 		// Events won't have type===Component.
 		// TODO: Have a special flag for components instead of it being on the type?
-		return this.type === PathType.Component || (this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
+		return this.type === ExprPathType.Component || (this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
 	}
 
 	/**
@@ -1771,7 +1788,7 @@ class ExprPath {
 }
 
 /** @enum {int} */
-const PathType = {
+const ExprPathType = {
 	/** Child of a node */
 	Content: 1,
 	
@@ -1918,7 +1935,7 @@ class Shell {
 			// Remove previous after each iteration, so paths will still be calculated correctly.
 			toRemove.map(el => el.remove());
 			toRemove = [];
-
+			
 			// Replace attributes
 			if (node.nodeType === 1) {
 				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes as we go.
@@ -1926,7 +1943,7 @@ class Shell {
 					// Whole attribute
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/);
 					if (matches) {
-						this.paths.push(new ExprPath(null, node, PathType.Multiple));
+						this.paths.push(new ExprPath(null, node, ExprPathType.Multiple));
 						node.removeAttribute(matches[0]);
 					}
 
@@ -1935,7 +1952,7 @@ class Shell {
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
-							let type = isEvent(attr.name) ? PathType.Event : PathType.Value;
+							let type = isEvent(attr.name) ? ExprPathType.Event : ExprPathType.Value;
 
 							this.paths.push(new ExprPath(null, node, type, attr.name, nonEmptyParts));
 							node.setAttribute(attr.name, parts.join(''));
@@ -1944,7 +1961,7 @@ class Shell {
 				}
 			}
 			// Replace comment placeholders
-			else if (node.nodeType === Node.COMMENT_NODE && node.nodeValue === '!✨!') {
+			else if (node.nodeType === 8 && node.nodeValue === '!✨!') {
 
 				// Get or create nodeBefore.
 				let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
@@ -1971,10 +1988,14 @@ class Shell {
 
 
 
-				let path = new ExprPath(nodeBefore, nodeMarker, PathType.Content);
+				let path = new ExprPath(nodeBefore, nodeMarker, ExprPathType.Content);
 
 				this.paths.push(path);
 			}
+
+			else if (node.nodeType === 3 && node.parentNode?.tagName === 'TEXTAREA' && node.textContent.includes('<!--!✨!-->'))
+				throw new Error(`Textarea can't have expressions inside them. Use <textarea value="\${...}"> instead.`);
+
 			
 			
 			// Sometimes users will comment out a block of html code that has expressions.
@@ -1985,7 +2006,7 @@ class Shell {
 				let parts = node.textContent.split(/[\ue000-\uf8ff]/g);
 				for (let i=0; i<parts.length-1; i++) {
 					let path = new ExprPath(node.previousSibling, node);
-					path.type = PathType.Comment;
+					path.type = ExprPathType.Comment;
 					this.paths.push(path);
 				}
 			}
@@ -2004,7 +2025,7 @@ class Shell {
 					}
 
 					for (let i=0, node; node=placeholders[i]; i++) {
-						let path = new ExprPath(node.previousSibling, node, PathType.Content);
+						let path = new ExprPath(node.previousSibling, node, ExprPathType.Content);
 						this.paths.push(path);
 
 						
@@ -2035,9 +2056,9 @@ class Shell {
 			path.nodeMarkerPath = getNodePath(path.nodeMarker);
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
-			if (path.type === PathType.Value && path.nodeMarker.nodeType === 1 && /*path.nodeMarker !== template.content.children[0] &&*/
+			if (path.type === ExprPathType.Value && path.nodeMarker.nodeType === 1 && /*path.nodeMarker !== template.content.children[0] &&*/
 				(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
-				path.type = PathType.Component;
+				path.type = ExprPathType.Component;
 			}
 		}
 
@@ -3202,22 +3223,20 @@ function watch3(root, field, value=unusedArg) {
 
 					// This is the new map function.
 					// TODO: Find a way to pass it a new obj when called from renderWatched
-					function temp() {
-						let newObj = temp.newValue || obj;
-						Globals$1.currentExprPath[0].mapCallback = callback;
+					function mapFunction() {
+						let newObj = mapFunction.newValue || obj;
+						Globals$1.currentExprPath.mapCallback = callback;
 						return map(new Proxy(newObj, handler), callback);
 					}
 			}
 
 			// Track which ExprPath is using this variable.
 			else if (Globals$1.currentExprPath) {
-				let [exprPath, exprFunction] = Globals$1.currentExprPath; // Set in ExprPath.applyExact()
-
 				let rootNg = Globals$1.nodeGroups.get(root);
 
 				// Init for field.
 				rootNg.watchedExprPaths[field] = rootNg.watchedExprPaths[field] || new Set();
-				rootNg.watchedExprPaths[field].add(exprPath);
+				rootNg.watchedExprPaths[field].add(Globals$1.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExact()
 			}
 
 			if (result && typeof result === 'object')
@@ -3277,8 +3296,8 @@ function renderWatched(root) {
 		// Reapply the whole expression.
 		if (params instanceof NewValue) {
 
-			// TODO: Find a way to make exprPath.watchFunction use params.value
-
+			// So it doesn't use the old value inside the map callback in the get handler above.
+			// TODO: Find a more sensible way to pass newValue.
 			exprPath.watchFunction.newValue = params.value;
 			exprPath.apply([exprPath.watchFunction]);
 
@@ -3292,8 +3311,7 @@ function renderWatched(root) {
 		else {
 			for (let row of params) {
 				let [obj, prop, value] = row;
-				let callback = exprPath.mapCallback;
-				let template = callback(value);
+				let template = exprPath.mapCallback(value);
 				exprPath.applyLoopItemUpdate(prop, template);
 
 				modified.push(...exprPath.nodeGroups[prop].getNodes());
@@ -3306,6 +3324,8 @@ function renderWatched(root) {
 	return modified;
 }
 
+/**
+ * Wrap a value in a way that tells renderWatched() to take the first path and reapply the whole expression. */
 class NewValue {
 	constructor(value) {
 		this.value = value;

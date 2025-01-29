@@ -108,22 +108,20 @@ export default function watch3(root, field, value=unusedArg) {
 
 					// This is the new map function.
 					// TODO: Find a way to pass it a new obj when called from renderWatched
-					function temp() {
-						let newObj = temp.newValue || obj;
-						Globals.currentExprPath[0].mapCallback = callback;
+					function mapFunction() {
+						let newObj = mapFunction.newValue || obj;
+						Globals.currentExprPath.mapCallback = callback;
 						return map(new Proxy(newObj, handler), callback);
 					}
 			}
 
 			// Track which ExprPath is using this variable.
 			else if (Globals.currentExprPath) {
-				let [exprPath, exprFunction] = Globals.currentExprPath; // Set in ExprPath.applyExact()
-
 				let rootNg = Globals.nodeGroups.get(root);
 
 				// Init for field.
 				rootNg.watchedExprPaths[field] = rootNg.watchedExprPaths[field] || new Set();
-				rootNg.watchedExprPaths[field].add(exprPath);
+				rootNg.watchedExprPaths[field].add(Globals.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExact()
 			}
 
 			if (result && typeof result === 'object')
@@ -183,8 +181,8 @@ export function renderWatched(root) {
 		// Reapply the whole expression.
 		if (params instanceof NewValue) {
 
-			// TODO: Find a way to make exprPath.watchFunction use params.value
-
+			// So it doesn't use the old value inside the map callback in the get handler above.
+			// TODO: Find a more sensible way to pass newValue.
 			exprPath.watchFunction.newValue = params.value;
 			exprPath.apply([exprPath.watchFunction]);
 
@@ -198,8 +196,7 @@ export function renderWatched(root) {
 		else {
 			for (let row of params) {
 				let [obj, prop, value] = row;
-				let callback = exprPath.mapCallback;
-				let template = callback(value);
+				let template = exprPath.mapCallback(value);
 				exprPath.applyLoopItemUpdate(prop, template);
 
 				modified.push(...exprPath.nodeGroups[prop].getNodes());
@@ -212,6 +209,8 @@ export function renderWatched(root) {
 	return modified;
 }
 
+/**
+ * Wrap a value in a way that tells renderWatched() to take the first path and reapply the whole expression. */
 class NewValue {
 	constructor(value) {
 		this.value = value;
