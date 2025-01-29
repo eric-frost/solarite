@@ -1,5 +1,5 @@
 import {assert} from "../util/Errors.js";
-import ExprPath, {PathType, resolveNodePath} from "./ExprPath.js";
+import ExprPath, {ExprPathType, resolveNodePath} from "./ExprPath.js";
 import {getObjectHash} from "./hash.js";
 import Shell from "./Shell.js";
 import udomdiff from "./udomdiff.js";
@@ -434,7 +434,7 @@ export default class NodeGroup {
 					
 					let tree = nodeToArrayTree(item, nextNode => {
 						
-						let path = this.paths.find(path=>path.type === PathType.Content && path.getNodes().includes(nextNode));
+						let path = this.paths.find(path=>path.type === ExprPathType.Content && path.getNodes().includes(nextNode));
 						if (path)
 							return [`Path.nodes:`]
 						
