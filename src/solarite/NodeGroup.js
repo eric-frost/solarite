@@ -8,6 +8,7 @@ import Util, {arraySame, flattenAndIndent, isEvent, nodeToArrayTree, setIndent} 
 import delve from "../util/delve.js";
 import Globals from "./Globals.js";
 import MultiValueMap from "../util/MultiValueMap.js";
+import {Solarite} from "./Solarite.js";
 
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
@@ -52,6 +53,8 @@ export default class NodeGroup {
 	nodesCache;
 
 	/**
+	 * A map between <style> Elements and their text content.
+	 * This lets NodeGroup.updateStyles() see when the style text has changed.
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
 
@@ -177,7 +180,7 @@ export default class NodeGroup {
 		} // end for(path of this.paths)
 
 
-
+		// TODO: Only do this if we have ExprPaths within styles?
 		this.updateStyles();
 
 		// Invalidate the nodes cache because we just changed it.
@@ -265,11 +268,13 @@ export default class NodeGroup {
 		// Globals.pendingChildren stores the childen so the super construtor call to Solarite's constructor
 		// can add them as children before the rest of the constructor code executes.
 		let ch = [... el.childNodes];
-		Globals.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
+		//if (el instanceof Solarite)
+		//	Globals.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
 		let newEl = new Constructor(props, ch);
 
 		if (!isPreHtmlElement)
-			newEl.setAttribute('is', el.getAttribute('is').toLowerCase())
+			newEl.setAttribute('is', el.getAttribute('is').toLowerCase());
+
 		el.replaceWith(newEl);
 
 		// Set children / slot children
@@ -283,7 +288,7 @@ export default class NodeGroup {
 		for (let propName in props) {
 			let expr = props[propName];
 			if (propName.startsWith('on') && typeof expr === 'function')
-				newEl.addEventListener(propName.slice(2), e => expr(e, newEl));
+				newEl.addEventListener(propName.slice(2), e => expr.call(this.rootNg.root, e, newEl));
 
 			// Bind array based event attributes on value.
 			// This same logic is in ExprPath.applyValueAttrib() for non-components.
@@ -500,6 +505,7 @@ export default class NodeGroup {
 			let el = resolveNodePath(root, path);
 
 			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
+			// Recreating it is necessary so we can pass the constructor args to it.
 			if (root !== el/* && !isReplaceEl(root, el)*/) // TODO: is isReplaceEl necessary?
 				this.createNewComponent(el)
 		}
@@ -533,8 +539,10 @@ export default class NodeGroup {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
 					let style = resolveNodePath(root, path);
-					Util.bindStyles(style, rootEl);
-					this.styles.set(style, style.textContent);
+					if (rootEl.nodeType === 1) {
+						Util.bindStyles(style, rootEl);
+						this.styles.set(style, style.textContent);
+					}
 				}
 
 			}

@@ -102,12 +102,13 @@ export default function createSolarite(extendsTag=null) {
 			else if (options.render===false)
 				Globals.rendered.add(this); // Don't render on connectedCallback()
 
-			// Add children before constructor code executes.
+			// Add slot children before constructor code executes.
+			// This breaks the styleStaticNested test.
 			// PendingChildren is setup in NodeGroup.createNewComponent()
 			// TODO: Match named slots.
-			let ch = Globals.pendingChildren.pop();
-			if (ch)
-				(this.querySelector('slot') || this).append(...ch);
+			//let ch = Globals.pendingChildren.pop();
+			//if (ch) // TODO: how could there be a slot before render is called?
+			//	(this.querySelector('slot') || this).append(...ch);
 
 			/** @deprecated */
 			Object.defineProperty(this, 'html', {

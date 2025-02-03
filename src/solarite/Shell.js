@@ -24,9 +24,14 @@ export default class Shell {
 
 	/** @type {int[][]} Array of paths */
 	ids = [];
+
+	/** @type {int[][]} Array of paths */
 	scripts = [];
+
+	/** @type {int[][]} Array of paths */
 	styles = [];
 
+	/** @type {int[][]} Array of paths */
 	staticComponents = [];
 
 
@@ -34,7 +39,7 @@ export default class Shell {
 	/**
 	 * Create the nodes but without filling in the expressions.
 	 * This is useful because the expression-less nodes created by a template can be cached.
-	 * @param html {string[]} */
+	 * @param html {string[]} Html strings, split on places where an expression exists.  */
 	constructor(html=null) {
 		if (!html)
 			return;
@@ -44,58 +49,14 @@ export default class Shell {
 		//#ENDIF
 
 		// 1.  Add placeholders
-		// We increment the placeholder char as we go because nodes can't have the same attribute more than once.
-		let placeholder = 0xe000; // https://en.wikipedia.org/wiki/Private_Use_Areas  6400.
+		let joinedHtml = Shell.addPlaceholders(html);
 
-		let buffer = [];
-		let commentPlaceholder = `<!--!✨!-->`;
-		let componentNames = {};
 
-		htmlContext(null); // Reset the context.
-		for (let i=0; i<html.length; i++) {
-			let lastHtml = html[i];
-			let context = htmlContext(lastHtml);
-
-			// Swap out Embedded Solarite Components with ${} attributes.
-			// Later, NodeGroup.render() will search for these and replace them with the real components.
-			// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-			if (context === htmlContext.Attribute) {
-
-				let lastIndex, lastMatch;
-				lastHtml.replace(/<[a-z][a-z0-9]*-[a-z0-9-]+/ig, (match, index) => {
-					lastIndex = index+1; // +1 for after opening <
-					lastMatch = match.slice(1);
-				})
-
-				if (lastMatch) {
-					let newTagName = lastMatch + '-solarite-placeholder';
-					lastHtml = lastHtml.slice(0, lastIndex) + newTagName + lastHtml.slice(lastIndex + lastMatch.length);
-					componentNames[lastMatch] = newTagName
-				}
-			}
-
-			buffer.push(lastHtml);
-			//console.log(lastHtml, context)
-			if (i < html.length-1)
-				if (context === htmlContext.Text)
-					buffer.push(commentPlaceholder) // Comment Placeholder. because we can't put text in between <tr> tags for example.
-				else
-					buffer.push(String.fromCharCode(placeholder+i));
-		}
-
-		// 2. Create elements from html with placeholders.
 		let template = document.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
-		let joinedHtml = buffer.join('');
-
-		// Replace '-solarite-placeholder' close tags.
-		// TODO: is there a better way?  What if the close tag is inside a comment?
-		for (let name in componentNames)
-			joinedHtml = joinedHtml.replaceAll(`</${name}>`, `</${componentNames[name]}>`);
-		
-        if (joinedHtml)
-		    template.innerHTML = joinedHtml;
-        else // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
-            template.content.append(document.createTextNode(''))
+		if (joinedHtml)
+			template.innerHTML = joinedHtml;
+      else // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
+         template.content.append(document.createTextNode(''))
 		this.fragment = template.content;
 
 		// 3. Find placeholders
@@ -158,10 +119,7 @@ export default class Shell {
 				}
 				/*#IFDEV*/assert(nodeMarker);/*#ENDIF*/
 
-
-
 				let path = new ExprPath(nodeBefore, nodeMarker, ExprPathType.Content);
-
 				this.paths.push(path);
 			}
 
@@ -211,15 +169,11 @@ export default class Shell {
 		toRemove.map(el => el.remove());
 
 		// Handle solarite-placeholder's.
-		// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-		//if (componentNames.size)
-		//	this.components = [...this.fragment.querySelectorAll([...componentNames].join(','))]
 
 		// Rename "is" attributes so the Web Components don't instantiate until we have the values of their PathExpr arguments.
 		// that happens in NodeGroup.applyComponentExprs()
 		for (let el of this.fragment.querySelectorAll('[is]')) {
 			el.setAttribute('_is', el.getAttribute('is'))
-		//	this.components.push(el);
 		}
 
 		for (let path of this.paths) {
@@ -228,7 +182,7 @@ export default class Shell {
 			path.nodeMarkerPath = getNodePath(path.nodeMarker)
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
-			if (path.type === ExprPathType.Value && path.nodeMarker.nodeType === 1 && /*path.nodeMarker !== template.content.children[0] &&*/
+			if (path.type === ExprPathType.Value && path.nodeMarker.nodeType === 1 &&
 				(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
 				path.type = ExprPathType.Component;
 			}
@@ -237,7 +191,62 @@ export default class Shell {
 		this.findEmbeds();
 
 		/*#IFDEV*/this.verify();/*#ENDIF*/
-	} // end constructor
+	}
+
+	/**
+	 * 1. Add a unicode placeholder char for where expressions go within attributes.
+	 * 2. Add a comment placeholder for where expressions are children of other nodes.
+	 * 3. Append -solarite-placeholder to the tag names of custom components so that we can wait to instantiate them later.
+	 * @param html {string[]}
+	 * @returns {string} */
+	static addPlaceholders(html) {
+		let componentRenames = {};
+		let buffer = [];
+
+		htmlContext(null); // Reset the context.
+		for (let i = 0; i < html.length; i++) {
+			let lastHtml = html[i];
+			let context = htmlContext(lastHtml);
+
+			// Find nested Solarite Components that have ${} attributes and append -solarite-placeholder to their tag names.
+			// This way we can gather their constructor arguments and their children before we call their constructor.
+			// Later, NodeGroup.createNewComponent() will replace them with the real components.
+			// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
+			if (context === htmlContext.Attribute) {
+
+				let lastIndex, lastMatch;
+				lastHtml.replace(/<[a-z][a-z0-9]*-[a-z0-9-]+/ig, (match, index) => { // TODO: This might find more than one.
+					lastIndex = index + 1; // +1 for after opening <
+					lastMatch = match.slice(1);
+				}); // Close tags are handled below in step 2.
+
+				if (lastMatch) {
+					let newTagName = lastMatch + '-solarite-placeholder';
+					lastHtml = lastHtml.slice(0, lastIndex) + newTagName + lastHtml.slice(lastIndex + lastMatch.length);
+					componentRenames[lastMatch] = newTagName
+				}
+			}
+
+			buffer.push(lastHtml);
+			//console.log(lastHtml, context)
+			if (i < html.length - 1)
+				if (context === htmlContext.Text)
+					buffer.push(commentPlaceholder) // Comment Placeholder. because we can't put text in between <tr> tags for example.
+				else
+					buffer.push(String.fromCharCode(attribPlaceholder + i));
+		}
+
+		// 2. Create elements from html with placeholders.
+		let joinedHtml = buffer.join('');
+
+		// Replace '-solarite-placeholder' close tags.
+		// TODO: is there a better way?  What if the close tag is inside a comment?
+		for (let name in componentRenames)
+			joinedHtml = joinedHtml.replaceAll(`</${name}>`, `</${componentRenames[name]}>`);
+		return joinedHtml;
+	}
+
+// end constructor
 
 	/**
 	 * We find the path to every embed here once in the Shell, instead of every time a NodeGroup is instantiated.
@@ -249,6 +258,8 @@ export default class Shell {
 	 * this.staticComponents */
 	findEmbeds() {
 		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => getNodePath(el))
+
+		// TODO: only find styles that have ExprPaths in them?
 		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => getNodePath(el))
 
 		let idEls = this.fragment.querySelectorAll('[id],[data-id]');
@@ -264,7 +275,6 @@ export default class Shell {
 
 		this.ids = Array.prototype.map.call(idEls, el => getNodePath(el))
 
-
 		for (let el of this.fragment.querySelectorAll('*')) {
 			// Events (not yet used)
 			// for (let attrib of el.attributes)
@@ -273,7 +283,7 @@ export default class Shell {
 
 			if (el.tagName.includes('-') || el.hasAttribute('_is'))
 
-				// Dynamic components have attributes with expression values.
+				// Dynamic components are components that have attributes with expression values.
 				// They are created from applyExprs()
 				// But static components are created in a separate path inside the NodeGroup constructor.
 				if (!this.paths.find(path => path.nodeMarker === el))
@@ -307,4 +317,12 @@ export default class Shell {
 	}
 	//#ENDIF
 }
+
+
+const commentPlaceholder = `<!--!✨!-->`;
+
+
+// We increment the placeholder char as we go because nodes can't have the same attribute more than once.
+const attribPlaceholder = 0xe000; // https://en.wikipedia.org/wiki/Private_Use_Areas  6400.
+
 

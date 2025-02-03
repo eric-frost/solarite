@@ -22,7 +22,7 @@ Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript library fo
 - MIT license.  Free for commercial use.  No attribution needed.
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 class ShoppingList extends HTMLElement {
 	constructor(items=[]) {
@@ -74,7 +74,7 @@ document.body.append(new ShoppingList()); // add <shopping-list> element
 
 To use, import one of these pre-bundled es6 modules into your project:
 
-- [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 85KB
+- [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) - 85KB
 - [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) - 24KB / 8KB gzipped
 
 Or get Solarite from GitHub or NPM:
@@ -92,7 +92,7 @@ This project is currently in BETA stage.  Tip:  A JetBrains IDE like [WebStorm](
 The `r()` function can create elements.  Pass any object with a `render()` function as the first argument.  This object can optionally have additional properties and methods, which become bound to the resulting element.  When `render()` is called, only the changed nodes will be updated.
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 let button = r({
     count: 0,
@@ -112,7 +112,7 @@ document.body.append(button);
 If you want multiple instances of such an element, the code above can be wrapped in a function:
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 function createButton(text) {
 	return r({
@@ -139,7 +139,7 @@ Solarite can also create [web components](https://developer.mozilla.org/en-US/do
 All browsers require web component tag names to have at least one dash in the middle.  
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 class MyComponent extends HTMLElement {
 	name = 'Solarite';
@@ -185,7 +185,7 @@ Unlike other frameworks, Solarite does not re-render automatically when data cha
 Wrapping the web component's html in its tag name is optional.  But without it you then must set any attributes on your web component manually, as seen in this example:
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 class MyComponent extends HTMLElement {
 	name = 'Solarite';
@@ -207,7 +207,7 @@ If you do wrap the web component's html in its tag, that tag name must exactly m
 Note that by default, `r()` will render expressions as text, with escaped html entities.  To render as html, wrap a variable in the `r()` function:
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 let folderIcon = `
 <svg width="10em" height="10em" viewBox="0 0 24 24">
@@ -249,7 +249,7 @@ These types of objects can be returned by in expressions with `r` tagged templat
 Dynamic attributes can be specified by inserting expressions inside a tag.  An expression can be part or all of an attribute value, or a string specifying multiple whole attributes.  For example:
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 let style = 'width: 100px; height: 40px; background: orange';
 let isEditable = true;
@@ -282,7 +282,7 @@ Note that attributes can also be assigned to the root element, such as `class="b
 Any element in the html with an `id` or `data-id` attribute is automatically bound to a property with the same name on the class instance.  But this only happens after `render()` is first called:
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 let raceTeam = r({    
 	render() { 
@@ -308,7 +308,7 @@ Id's that have values matching built-in HTMLElement attribute names such as `tit
 To intercept events, set the value of an event attribute like `onclick` to a function.  Alternatively, set the value to an array where the first item is a function and subsequent items are arguments to that function.
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 class EventDemo extends HTMLElement {
 	constructor() {
@@ -341,7 +341,7 @@ Make sure to put your events inside `${...}` expressions, because classic events
 Form elements can update the properties that provide their values if an event attribute such as `oninput` is assigned a function to perform the update:
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 class BindingDemo extends HTMLElement {
    
@@ -386,7 +386,7 @@ In addition to `<input>`,  `<select>` and `<textarea>` can also use the `value` 
 A shorthand way to do two-way binding is to pass a property path as an expression to a property's attribute.  Here with `value=${[this, 'count']}`.  When a user types in the input, Solarite listens to the `oninput` listener and updates `this.count`.  Note that we still need a second `oninput` attribute if we want to trigger rendering.
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 class BindingDemo extends HTMLElement {
    
@@ -428,7 +428,7 @@ document.body.append(new BindingDemo());
 As previously seen, loops can be written with JavaScript's [Array.map()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map) function:
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 class TodoList extends HTMLElement {
 	render() { 
@@ -468,7 +468,7 @@ These local, "scoped" styles are implemented by:
 2. Replacing any `:host` selectors inside the style with `element-name[data-style="1"]`.  For example the `:host` selector below becomes `fancy-text[data-style="1"]`.
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 class FancyText extends HTMLElement {
 	render() { 
@@ -505,7 +505,7 @@ Note that if shadow-dom is used, the element will not replace the `:host` select
 When one web component is embedded within another, its attributes and children are passed as arguments to the constructor:
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 class NotesItem extends HTMLElement {
 	// Constructor receives item object from attributes.
@@ -587,7 +587,7 @@ class NotesList extends HTMLElement {
 The `r()` function renders templates and elements.  There are multiple ways to use the `r()` function:
 
 ```JavaScript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 // r`string`
 // Convert the html to a Template that can later be used to create nodes.
@@ -633,7 +633,7 @@ document.body.append(button);
 Suppose you want to use a custom component for each `<tr>` in a `<table>`.  Html won't allow you to put just any element as a child of table or tbody.  In this case you can make your web component inherit from the browser's built in `<tr>` element, by passing it as the third argument to `customElements.define`:
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 class LineItem extends HTMLElement {
 	constructor(user) {
@@ -673,7 +673,7 @@ You can perform manual DOM operations on your elements in these cases:
 This example creates a list inside a `div` element and demonstrates which manual DOM operations are allowed.
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 let list = r({
     items: [],
@@ -733,7 +733,7 @@ Instead of inheriting from HTMLElement, you can inherit from the `Solarite` clas
 If you want the component to have a tag name that's different than the name derived from the class name, you can pass a different name to `define()`:
 
 ```javascript
-import {r, Solarite} from './dist/Solarite.js';
+import {r, Solarite} from './dist/Solarite.min.js';
 
 class TodoList extends Solarite {
 	render() { 
@@ -762,7 +762,7 @@ list.render();
 Suppose you're looping over an array of 10 objects and printing them to a list or table:
 
 ```javascript
-import {r} from './dist/Solarite.js';
+import {r} from './dist/Solarite.min.js';
 
 class MyTasks extends HTMLElement {
 	tasks = [];
@@ -807,7 +807,7 @@ This is the time example from Lit.js implemented with Solarite:
 
 ```html
 <script type="module">
-import {r, getArg} from './dist/Solarite.js';
+import {r, getArg} from './dist/Solarite.min.js';
 
 const replay = r`<svg enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"><title>Replay</title><g><rect fill="none" height="24" width="24"/><rect fill="none" height="24" width="24"/><rect fill="none" height="24" width="24"/></g><g><g/><path d="M12,5V1L7,6l5,5V7c3.31,0,6,2.69,6,6s-2.69,6-6,6s-6-2.69-6-6H4c0,4.42,3.58,8,8,8s8-3.58,8-8S16.42,5,12,5z"/></g></svg>`;
 const pause = r`<svg height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"><title>Pause</title><path d="M0 0h24v24H0V0z" fill="none"/><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;

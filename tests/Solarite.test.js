@@ -1436,14 +1436,65 @@ Testimony.test('Solarite.embed.styleStatic', () => {
 	let a = new R300();
 	document.body.append(a);
 
+	assert.eq(a.getAttribute('data-style'), '1');
 	assert.eq(a.querySelector('style').textContent.trim(), `r-300[data-style="1"] { color: blue }`)
 
 	// Make sure styleid isn't incremented on render.
 	count++;
 	a.render();
+
+	assert.eq(a.getAttribute('data-style'), '1');
 	assert.eq(a.querySelector('style').textContent.trim(), `r-300[data-style="1"] { color: blue }`)
 
 	a.remove();
+});
+
+Testimony.test('Solarite.embed.styleStaticNested', () => {
+	let count = 0;
+
+	// This bug only happened when extending from Solarite,
+	// since it adds the children before calling the constructor.
+	class B305 extends Solarite {
+		render() {
+			console.log('b render')
+			console.log(this)
+			r(this)`
+				<style>:host { color: blue }</style>
+				Text that should be blue.
+			`;
+		}
+	}
+	B305.define();
+
+	class A305 extends Solarite {
+		render() {
+			console.log('a render')
+			r(this)`
+				<style>:host { color: red }</style>
+				Text that should be red.
+				${count}
+				<b-305></b-305>
+			`;
+		}
+	}
+
+
+	let a = new A305();
+	document.body.append(a);
+	let b = a.querySelector('b-305');
+
+	console.log(a.outerHTML)
+	//assert.eq(a.querySelector('style').textContent.trim(), `a-305[data-style="1"] { color: red }`)
+	//assert.eq(b.querySelector('style').textContent.trim(), `b-305[data-style="1"] { color: blue }`)
+
+	// Make sure styleid isn't incremented on render.
+	// count++;
+	// a.render();
+	// // console.log(a.outerHTML)
+	// assert.eq(a.querySelector('style').textContent.trim(), `a-305[data-style="1"] { color: red }`)
+	// assert.eq(b.querySelector('style').textContent.trim(), `b-305[data-style="1"] { color: blue }`)
+
+	//a.remove();
 });
 
 Testimony.test('Solarite.embed.optionsNoStyles', () => {
@@ -2346,6 +2397,7 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 	// Not sure how to prevent this w/o using an xml doctype.
 	class B512 extends Solarite {
 		constructor({name, userid}={}) {
+			console.log('b')
 			super();
 			this.name = name;
 			this.userId = userid;
@@ -3142,6 +3194,26 @@ Testimony.test('Solarite.binding.number', () => {
 		cancelable: true,
 	}));
 	assert.eq(b.count, 3)
+
+	b.remove();
+});
+
+
+
+Testimony.test('Solarite.binding.undefined', () => {
+
+	class B50 extends Solarite {
+
+		render() {
+			r(this)`<input data-id="input" value=${[this, 'count']}>`
+		}
+	}
+
+	let b = new B50();
+	document.body.append(b);
+	console.log(b.input.value);
+	assert.eq(b.input.value, '')
+
 
 	b.remove();
 });

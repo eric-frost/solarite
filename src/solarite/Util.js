@@ -2,6 +2,9 @@ import Globals from "./Globals.js";
 
 let Util = {
 
+	/**
+	 * @param style {HTMLStyleElement}
+	 * @param root {HTMLElement} */
 	bindStyles(style, root) {
 		let styleId = root.getAttribute('data-style');
 		if (!styleId) {
@@ -14,11 +17,12 @@ let Util = {
 			root.setAttribute('data-style', styleId)
 		}
 
+		// Replace ":host" with "tagName[data-style=...]" in the css.
 		let tagName = root.tagName.toLowerCase();
 		for (let child of style.childNodes) {
 			if (child.nodeType === 3) {
 				let oldText = child.textContent;
-				let newText = oldText.replace(/:host(?=[^a-z0-9_])/gi, tagName + '[data-style="' + styleId + '"]')
+				let newText = oldText.replace(/:host(?=[^a-z0-9_])/gi, `${tagName}[data-style="${styleId}"]`)
 				if (oldText !== newText)
 					child.textContent = newText;
 			}

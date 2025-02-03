@@ -470,6 +470,10 @@ export default class ExprPath {
 		nodeEvents[key][2] = args;
 	}
 
+	/**
+	 * Handle values, including two-way binding.
+	 * @param node
+	 * @param exprs */
 	// TODO: node is always this.nodeMarker?
 	applyValueAttrib(node, exprs) {
 		let expr = exprs[0];
@@ -486,7 +490,8 @@ export default class ExprPath {
 			if (!obj)
 				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
 
-			node[this.attrName] = delve(obj, path);
+			let value = delve(obj, path);
+			node[this.attrName] = Util.isFalsy(value) ? '' : value;
 
 			// TODO: We need to remove any old listeners, like in bindEventAttribute.
 			// Does bindEvent() now handle that?
@@ -630,7 +635,7 @@ export default class ExprPath {
 
 	/**
 	 * Attempt to remove all of this ExprPath's nodes from the DOM, if it can be done using a special fast method.
-	 * @returns {boolean} Returns false if Nodes werne't removed, and they should instead be removed manually. */
+	 * @returns {boolean} Returns false if Nodes weren't removed, and they should instead be removed manually. */
 	fastClear() {
 		let parent = this.nodeBefore.parentNode;
 		if (this.nodeBefore === parent.firstChild && this.nodeMarker === parent.lastChild) {
