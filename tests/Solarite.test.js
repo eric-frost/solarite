@@ -2,7 +2,8 @@
 
 // Broken tests will be annotated with FIXME
 
-import {camelToDashes, htmlContext} from "../src/solarite/Util.js";
+import {camelToDashes} from "../src/solarite/Util.js";
+import HtmlContext from "../src/solarite/HtmlContext.js";
 //import {watchGet, watchSet} from "../src/solarite/watch.js";
 import {getArg, r, renderWatched, Solarite} from '../src/solarite/Solarite.js';
 //import {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
@@ -217,16 +218,17 @@ Testimony.test('Solarite.NodeGroup.arrayReverse', () => {
  * └─────────────────╯*/
 
 Testimony.test('Solarite.Util.htmlContext', () => {
-	assert.eq(htmlContext('<div class="test'), htmlContext.Attribute)
-	assert.eq(htmlContext('">hello '), htmlContext.Text);
-	assert.eq(htmlContext('<span data-attr="hi > there"'), htmlContext.Tag);
-	assert.eq(htmlContext(` attr='`), htmlContext.Attribute);
-	assert.eq(htmlContext(`'`), htmlContext.Tag);
-	assert.eq(htmlContext(' attr='), htmlContext.Attribute);
-	assert.eq(htmlContext('a'), htmlContext.Attribute);
-	assert.eq(htmlContext(' '), htmlContext.Tag);
-	assert.eq(htmlContext(' attr='), htmlContext.Attribute);
-	assert.eq(htmlContext('>'), htmlContext.Text);
+	let htmlContext = new HtmlContext();
+	assert.eq(htmlContext.parse('<div class="test'), HtmlContext.Attribute)
+	assert.eq(htmlContext.parse('">hello '), HtmlContext.Text);
+	assert.eq(htmlContext.parse('<span data-attr="hi > there"'), HtmlContext.Tag);
+	assert.eq(htmlContext.parse(` attr='`), HtmlContext.Attribute);
+	assert.eq(htmlContext.parse(`'`), HtmlContext.Tag);
+	assert.eq(htmlContext.parse(' attr='), HtmlContext.Attribute);
+	assert.eq(htmlContext.parse('a'), HtmlContext.Attribute);
+	assert.eq(htmlContext.parse(' '), HtmlContext.Tag);
+	assert.eq(htmlContext.parse(' attr='), HtmlContext.Attribute);
+	assert.eq(htmlContext.parse('>'), HtmlContext.Text);
 });
 
 Testimony.test('Solarite.Util.camelToDashes', () => {

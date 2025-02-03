@@ -605,80 +605,6 @@ function arraySame(a, b) {
 }
 
 
-/**
- * TODO: Turn this into a class because it has internal state.
- * TODO: Don't break on 3<a inside a <script> or <style> tag.
- * @param html {?string} Pass null to reset context.
- * @returns {string} */
-function htmlContext(html) {
-	if (html === null) {
-		state = {...defaultState};
-		return state.context;
-	}
-	for (let i = 0; i < html.length; i++) {
-		const char = html[i];
-		switch (state.context) {
-			case htmlContext.Text:
-				if (char === '<' && html[i+1].match(/[a-z!]/i)) { // Start of a tag or comment.
-					// if (html.slice(i, i+4) === '<!--')
-					// 	state.context = htmlContext.Comment;
-					// else
-						state.context = htmlContext.Tag;
-					state.buffer = '';
-				}
-				break;
-			case htmlContext.Tag:
-				if (char === '>') {
-					state.context = htmlContext.Text;
-					state.quote = null;
-					state.buffer = '';
-				} else if (char === ' ' && !state.buffer) {
-					// No attribute name is present. Skipping the space.
-					continue;
-				} else if (char === ' ' || char === '/' || char === '?') {
-					state.buffer = '';  // Reset the buffer when a delimiter or potential self-closing sign is found.
-				} else if (char === '"' || char === "'" || char === '=') {
-					state.context = htmlContext.Attribute;
-					state.quote = char === '=' ? null : char;
-					state.buffer = '';
-				} else {
-					state.buffer += char;
-				}
-				break;
-			case htmlContext.Attribute:
-				if (!state.quote && !state.buffer.length && (char === '"' || char === "'"))
-					state.quote = char;
-
-				else if (char === state.quote || (!state.quote && state.buffer.length)) {
-					state.context = htmlContext.Tag;
-					state.quote = null;
-					state.buffer = '';
-				} else if (!state.quote && char === '>') {
-					state.context = htmlContext.Text;
-					state.quote = null;
-					state.buffer = '';
-				} else if (char !== ' ') {
-					state.buffer += char;
-				}
-				break;
-		}
-
-	}
-	return state.context;
-}
-
-
-htmlContext.Attribute = 'Attribute';
-htmlContext.Text = 'Text';
-htmlContext.Tag = 'Tag';
-//htmlContext.Comment = 'Comment';
-let defaultState = {
-	context: htmlContext.Text, // possible values: 'TEXT', 'TAG', 'ATTRIBUTE'
-	quote: null, // possible values: null, '"', "'"
-	buffer: '',
-	lastChar: null
-};
-let state = {...defaultState};
 
 
 
@@ -2017,6 +1943,78 @@ function resolveNodePath(root, path) {
 	return root;
 }
 
+class HtmlContext {
+	constructor() {
+		this.defaultState = {
+			context: HtmlContext.Text, // possible values: 'TEXT', 'TAG', 'ATTRIBUTE'
+			quote: null, // possible values: null, '"', "'"
+			buffer: '',
+			lastChar: null
+		};
+		this.state = {...this.defaultState};
+	}
+
+	reset() {
+		this.state = {...this.defaultState};
+		return this.state.context;
+	}
+
+	parse(html) {
+		if (html === null) {
+			return this.reset();
+		}
+		for (let i = 0; i < html.length; i++) {
+			const char = html[i];
+			switch (this.state.context) {
+				case HtmlContext.Text:
+					if (char === '<' && html[i + 1].match(/[a-z!]/i)) { // Start of a tag or comment.
+						this.state.context = HtmlContext.Tag;
+						this.state.buffer = '';
+					}
+					break;
+				case HtmlContext.Tag:
+					if (char === '>') {
+						this.state.context = HtmlContext.Text;
+						this.state.quote = null;
+						this.state.buffer = '';
+					} else if (char === ' ' && !this.state.buffer) {
+						// No attribute name is present. Skipping the space.
+						continue;
+					} else if (char === ' ' || char === '/' || char === '?') {
+						this.state.buffer = ''; // Reset the buffer when a delimiter or potential self-closing sign is found.
+					} else if (char === '"' || char === "'" || char === '=') {
+						this.state.context = HtmlContext.Attribute;
+						this.state.quote = char === '=' ? null : char;
+						this.state.buffer = '';
+					} else {
+						this.state.buffer += char;
+					}
+					break;
+				case HtmlContext.Attribute:
+					if (!this.state.quote && !this.state.buffer.length && (char === '"' || char === "'")) {
+						this.state.quote = char;
+					} else if (char === this.state.quote || (!this.state.quote && this.state.buffer.length)) {
+						this.state.context = HtmlContext.Tag;
+						this.state.quote = null;
+						this.state.buffer = '';
+					} else if (!this.state.quote && char === '>') {
+						this.state.context = HtmlContext.Text;
+						this.state.quote = null;
+						this.state.buffer = '';
+					} else if (char !== ' ') {
+						this.state.buffer += char;
+					}
+					break;
+			}
+		}
+		return this.state.context;
+	}
+}
+
+HtmlContext.Attribute = 'Attribute';
+HtmlContext.Text = 'Text';
+HtmlContext.Tag = 'Tag';
+
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
  * but without any expressions filled in.
@@ -2208,7 +2206,7 @@ class Shell {
 	}
 
 	/**
-	 * 1. Add a unicode placeholder char for where expressions go within attributes.
+	 * 1. Add a Unicode placeholder char for where expressions go within attributes.
 	 * 2. Add a comment placeholder for where expressions are children of other nodes.
 	 * 3. Append -solarite-placeholder to the tag names of custom components so that we can wait to instantiate them later.
 	 * @param html {string[]}
@@ -2217,16 +2215,16 @@ class Shell {
 		let componentRenames = {};
 		let buffer = [];
 
-		htmlContext(null); // Reset the context.
+		let htmlContext = new HtmlContext(); // Reset the context.
 		for (let i = 0; i < html.length; i++) {
 			let lastHtml = html[i];
-			let context = htmlContext(lastHtml);
+			let context = htmlContext.parse(lastHtml);
 
 			// Find nested Solarite Components that have ${} attributes and append -solarite-placeholder to their tag names.
 			// This way we can gather their constructor arguments and their children before we call their constructor.
 			// Later, NodeGroup.createNewComponent() will replace them with the real components.
 			// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-			if (context === htmlContext.Attribute) {
+			if (context === HtmlContext.Attribute) {
 
 				let lastIndex, lastMatch;
 				lastHtml.replace(/<[a-z][a-z0-9]*-[a-z0-9-]+/ig, (match, index) => { // TODO: This might find more than one.
@@ -2244,7 +2242,7 @@ class Shell {
 			buffer.push(lastHtml);
 			//console.log(lastHtml, context)
 			if (i < html.length - 1)
-				if (context === htmlContext.Text)
+				if (context === HtmlContext.Text)
 					buffer.push(commentPlaceholder); // Comment Placeholder. because we can't put text in between <tr> tags for example.
 				else
 					buffer.push(String.fromCharCode(attribPlaceholder + i));

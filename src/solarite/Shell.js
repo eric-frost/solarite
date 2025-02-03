@@ -1,7 +1,8 @@
 import {assert} from "../util/Errors.js";
 import ExprPath, {ExprPathType, getNodePath} from "./ExprPath.js";
-import {htmlContext, isEvent} from "./Util.js";
+import {isEvent} from "./Util.js";
 import Globals from "./Globals.js";
+import HtmlContext from "./HtmlContext.js";
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -194,7 +195,7 @@ export default class Shell {
 	}
 
 	/**
-	 * 1. Add a unicode placeholder char for where expressions go within attributes.
+	 * 1. Add a Unicode placeholder char for where expressions go within attributes.
 	 * 2. Add a comment placeholder for where expressions are children of other nodes.
 	 * 3. Append -solarite-placeholder to the tag names of custom components so that we can wait to instantiate them later.
 	 * @param html {string[]}
@@ -203,16 +204,16 @@ export default class Shell {
 		let componentRenames = {};
 		let buffer = [];
 
-		htmlContext(null); // Reset the context.
+		let htmlContext = new HtmlContext(); // Reset the context.
 		for (let i = 0; i < html.length; i++) {
 			let lastHtml = html[i];
-			let context = htmlContext(lastHtml);
+			let context = htmlContext.parse(lastHtml);
 
 			// Find nested Solarite Components that have ${} attributes and append -solarite-placeholder to their tag names.
 			// This way we can gather their constructor arguments and their children before we call their constructor.
 			// Later, NodeGroup.createNewComponent() will replace them with the real components.
 			// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-			if (context === htmlContext.Attribute) {
+			if (context === HtmlContext.Attribute) {
 
 				let lastIndex, lastMatch;
 				lastHtml.replace(/<[a-z][a-z0-9]*-[a-z0-9-]+/ig, (match, index) => { // TODO: This might find more than one.
@@ -230,7 +231,7 @@ export default class Shell {
 			buffer.push(lastHtml);
 			//console.log(lastHtml, context)
 			if (i < html.length - 1)
-				if (context === htmlContext.Text)
+				if (context === HtmlContext.Text)
 					buffer.push(commentPlaceholder) // Comment Placeholder. because we can't put text in between <tr> tags for example.
 				else
 					buffer.push(String.fromCharCode(attribPlaceholder + i));
