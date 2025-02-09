@@ -1784,7 +1784,13 @@ class HtmlContext {
 		return this.state.context;
 	}
 
-	parse(html) {
+	/**
+	 * Parse the next chunk of html, starting with the same context we left off with from the previous chunk.
+	 * @param html {string}
+	 * @param onContextChange {?function(html:string, index:int, oldContext:string, newContext:string)}
+	 *     Called every time the context changes, and again at the last context.
+	 * @return {('Attribute','Text','Tag')} The context at the end of html.  */
+	parse(html, onContextChange=null) {
 		if (html === null) {
 			return this.reset();
 		}
@@ -1792,46 +1798,59 @@ class HtmlContext {
 			const char = html[i];
 			switch (this.state.context) {
 				case HtmlContext.Text:
-					if (char === '<' && html[i + 1].match(/[a-z!]/i)) { // Start of a tag or comment.
+					if (char === '<' && html[i + 1].match(/[/a-z!]/i)) { // Start of a tag or comment.
+						onContextChange?.(html, i, this.state.context, HtmlContext.Tag);
 						this.state.context = HtmlContext.Tag;
 						this.state.buffer = '';
 					}
 					break;
 				case HtmlContext.Tag:
 					if (char === '>') {
+						onContextChange?.(html, i+1, this.state.context, HtmlContext.Text);
 						this.state.context = HtmlContext.Text;
 						this.state.quote = null;
 						this.state.buffer = '';
-					} else if (char === ' ' && !this.state.buffer) {
+					}
+					else if (char === ' ' && !this.state.buffer) {
 						// No attribute name is present. Skipping the space.
 						continue;
-					} else if (char === ' ' || char === '/' || char === '?') {
+					}
+					else if (char === ' ' || char === '/' || char === '?') {
 						this.state.buffer = ''; // Reset the buffer when a delimiter or potential self-closing sign is found.
-					} else if (char === '"' || char === "'" || char === '=') {
+					}
+					else if (char === '"' || char === "'" || char === '=') {
+						onContextChange?.(html, i, this.state.context, HtmlContext.Attribute);
 						this.state.context = HtmlContext.Attribute;
 						this.state.quote = char === '=' ? null : char;
 						this.state.buffer = '';
-					} else {
-						this.state.buffer += char;
 					}
+					else
+						this.state.buffer += char;
 					break;
 				case HtmlContext.Attribute:
+					// Start an attribute quote.
 					if (!this.state.quote && !this.state.buffer.length && (char === '"' || char === "'")) {
 						this.state.quote = char;
-					} else if (char === this.state.quote || (!this.state.quote && this.state.buffer.length)) {
+					}
+					else if (char === this.state.quote || (!this.state.quote && this.state.buffer.length)) {
+						onContextChange?.(html, i, this.state.context, HtmlContext.Tag);
 						this.state.context = HtmlContext.Tag;
 						this.state.quote = null;
 						this.state.buffer = '';
-					} else if (!this.state.quote && char === '>') {
+					}
+					else if (!this.state.quote && char === '>') {
+						onContextChange?.(html, i+1, this.state.context, HtmlContext.Text);
 						this.state.context = HtmlContext.Text;
 						this.state.quote = null;
 						this.state.buffer = '';
-					} else if (char !== ' ') {
-						this.state.buffer += char;
 					}
+					else if (char !== ' ')
+						this.state.buffer += char;
+
 					break;
 			}
 		}
+		onContextChange?.(html, html.length, this.state.context, null);
 		return this.state.context;
 	}
 }
@@ -1885,7 +1904,6 @@ class Shell {
 
 		// 1.  Add placeholders
 		let joinedHtml = Shell.addPlaceholders(html);
-
 
 		let template = document.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
 		if (joinedHtml)
@@ -2032,56 +2050,45 @@ class Shell {
 	 * 1. Add a Unicode placeholder char for where expressions go within attributes.
 	 * 2. Add a comment placeholder for where expressions are children of other nodes.
 	 * 3. Append -solarite-placeholder to the tag names of custom components so that we can wait to instantiate them later.
-	 * @param html {string[]}
+	 * @param htmlChunks {string[]}
 	 * @returns {string} */
-	static addPlaceholders(html) {
-		let componentRenames = {};
-		let buffer = [];
+	static addPlaceholders(htmlChunks) {
+		let tokens = [];
 
-		let htmlContext = new HtmlContext(); // Reset the context.
-		for (let i = 0; i < html.length; i++) {
-			let lastHtml = html[i];
-			let context = htmlContext.parse(lastHtml);
+		function addToken(token, context) {
 
-			// Find nested Solarite Components that have ${} attributes and append -solarite-placeholder to their tag names.
+			// Find Solarite Components tags and append -solarite-placeholder to their tag names.
 			// This way we can gather their constructor arguments and their children before we call their constructor.
 			// Later, NodeGroup.createNewComponent() will replace them with the real components.
 			// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-			if (context === HtmlContext.Attribute) {
-
-				let lastIndex, lastMatch;
-				lastHtml.replace(/<[a-z][a-z0-9]*-[a-z0-9-]+/ig, (match, index) => { // TODO: This might find more than one.
-					lastIndex = index + 1; // +1 for after opening <
-					lastMatch = match.slice(1);
-				}); // Close tags are handled below in step 2.
-
-				if (lastMatch) {
-					let newTagName = lastMatch + '-solarite-placeholder';
-					lastHtml = lastHtml.slice(0, lastIndex) + newTagName + lastHtml.slice(lastIndex + lastMatch.length);
-					componentRenames[lastMatch] = newTagName;
-				}
-			}
-
-			buffer.push(lastHtml);
-			//console.log(lastHtml, context)
-			if (i < html.length - 1)
-				if (context === HtmlContext.Text)
-					buffer.push(commentPlaceholder); // Comment Placeholder. because we can't put text in between <tr> tags for example.
-				else
-					buffer.push(String.fromCharCode(attribPlaceholder + i));
+			if (context === HtmlContext.Tag)
+				token = token.replace(/^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i, match => match + '-solarite-placeholder');
+			tokens.push(token);
 		}
 
-		// 2. Create elements from html with placeholders.
-		let joinedHtml = buffer.join('');
+		let htmlContext = new HtmlContext(); // Reset the context.
+		for (let i = 0; i < htmlChunks.length; i++) {
+			let lastHtml = htmlChunks[i];
 
-		// Replace '-solarite-placeholder' close tags.
-		// TODO: is there a better way?  What if the close tag is inside a comment?
-		for (let name in componentRenames)
-			joinedHtml = joinedHtml.replaceAll(`</${name}>`, `</${componentRenames[name]}>`);
-		return joinedHtml;
+			// Append -solarite-placholder to web component tags, so we can pass args to them when they're instantiated.
+			let lastIndex = 0;
+			let context = htmlContext.parse(lastHtml, (html, index, oldContext) => {
+				if (lastIndex !== index)
+					addToken(html.slice(lastIndex, index), oldContext);
+				lastIndex = index;
+			});
+
+			// Insert placeholders
+			if (i < htmlChunks.length - 1) {
+				if (context === HtmlContext.Text)
+					tokens.push(commentPlaceholder); // Comment Placeholder. because we can't put text in between <tr> tags for example.
+				else
+					tokens.push(String.fromCharCode(attribPlaceholder + i));
+			}
+		}
+
+		return tokens.join('');
 	}
-
-// end constructor
 
 	/**
 	 * We find the path to every embed here once in the Shell, instead of every time a NodeGroup is instantiated.

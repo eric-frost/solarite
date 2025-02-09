@@ -1458,8 +1458,6 @@ Testimony.test('Solarite.embed.styleStaticNested', () => {
 	// since it adds the children before calling the constructor.
 	class B305 extends Solarite {
 		render() {
-			console.log('b render')
-			console.log(this)
 			r(this)`
 				<style>:host { color: blue }</style>
 				Text that should be blue.
@@ -1470,13 +1468,13 @@ Testimony.test('Solarite.embed.styleStaticNested', () => {
 
 	class A305 extends Solarite {
 		render() {
-			console.log('a render')
 			r(this)`
+			<a-305>
 				<style>:host { color: red }</style>
 				Text that should be red.
 				${count}
-				<b-305></b-305>
-			`;
+				<br><b-305></b-305>
+			</a-305>`;
 		}
 	}
 
@@ -1485,18 +1483,17 @@ Testimony.test('Solarite.embed.styleStaticNested', () => {
 	document.body.append(a);
 	let b = a.querySelector('b-305');
 
-	console.log(a.outerHTML)
-	//assert.eq(a.querySelector('style').textContent.trim(), `a-305[data-style="1"] { color: red }`)
-	//assert.eq(b.querySelector('style').textContent.trim(), `b-305[data-style="1"] { color: blue }`)
+	assert.eq(a.querySelector('style').textContent.trim(), `a-305[data-style="1"] { color: red }`)
+	assert.eq(b.querySelector('style').textContent.trim(), `b-305[data-style="1"] { color: blue }`)
 
 	// Make sure styleid isn't incremented on render.
-	// count++;
-	// a.render();
-	// // console.log(a.outerHTML)
-	// assert.eq(a.querySelector('style').textContent.trim(), `a-305[data-style="1"] { color: red }`)
-	// assert.eq(b.querySelector('style').textContent.trim(), `b-305[data-style="1"] { color: blue }`)
+	count++;
+	a.render();
+	// console.log(a.outerHTML)
+	assert.eq(a.querySelector('style').textContent.trim(), `a-305[data-style="1"] { color: red }`)
+	assert.eq(b.querySelector('style').textContent.trim(), `b-305[data-style="1"] { color: blue }`)
 
-	//a.remove();
+	a.remove();
 });
 
 Testimony.test('Solarite.embed.optionsNoStyles', () => {

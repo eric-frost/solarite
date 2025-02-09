@@ -15,7 +15,13 @@ export default class HtmlContext {
 		return this.state.context;
 	}
 
-	parse(html) {
+	/**
+	 * Parse the next chunk of html, starting with the same context we left off with from the previous chunk.
+	 * @param html {string}
+	 * @param onContextChange {?function(html:string, index:int, oldContext:string, newContext:string)}
+	 *     Called every time the context changes, and again at the last context.
+	 * @return {('Attribute','Text','Tag')} The context at the end of html.  */
+	parse(html, onContextChange=null) {
 		if (html === null) {
 			return this.reset();
 		}
@@ -23,46 +29,59 @@ export default class HtmlContext {
 			const char = html[i];
 			switch (this.state.context) {
 				case HtmlContext.Text:
-					if (char === '<' && html[i + 1].match(/[a-z!]/i)) { // Start of a tag or comment.
+					if (char === '<' && html[i + 1].match(/[/a-z!]/i)) { // Start of a tag or comment.
+						onContextChange?.(html, i, this.state.context, HtmlContext.Tag);
 						this.state.context = HtmlContext.Tag;
 						this.state.buffer = '';
 					}
 					break;
 				case HtmlContext.Tag:
 					if (char === '>') {
+						onContextChange?.(html, i+1, this.state.context, HtmlContext.Text);
 						this.state.context = HtmlContext.Text;
 						this.state.quote = null;
 						this.state.buffer = '';
-					} else if (char === ' ' && !this.state.buffer) {
+					}
+					else if (char === ' ' && !this.state.buffer) {
 						// No attribute name is present. Skipping the space.
 						continue;
-					} else if (char === ' ' || char === '/' || char === '?') {
+					}
+					else if (char === ' ' || char === '/' || char === '?') {
 						this.state.buffer = ''; // Reset the buffer when a delimiter or potential self-closing sign is found.
-					} else if (char === '"' || char === "'" || char === '=') {
+					}
+					else if (char === '"' || char === "'" || char === '=') {
+						onContextChange?.(html, i, this.state.context, HtmlContext.Attribute);
 						this.state.context = HtmlContext.Attribute;
 						this.state.quote = char === '=' ? null : char;
 						this.state.buffer = '';
-					} else {
-						this.state.buffer += char;
 					}
+					else
+						this.state.buffer += char;
 					break;
 				case HtmlContext.Attribute:
+					// Start an attribute quote.
 					if (!this.state.quote && !this.state.buffer.length && (char === '"' || char === "'")) {
 						this.state.quote = char;
-					} else if (char === this.state.quote || (!this.state.quote && this.state.buffer.length)) {
+					}
+					else if (char === this.state.quote || (!this.state.quote && this.state.buffer.length)) {
+						onContextChange?.(html, i, this.state.context, HtmlContext.Tag);
 						this.state.context = HtmlContext.Tag;
 						this.state.quote = null;
 						this.state.buffer = '';
-					} else if (!this.state.quote && char === '>') {
+					}
+					else if (!this.state.quote && char === '>') {
+						onContextChange?.(html, i+1, this.state.context, HtmlContext.Text);
 						this.state.context = HtmlContext.Text;
 						this.state.quote = null;
 						this.state.buffer = '';
-					} else if (char !== ' ') {
-						this.state.buffer += char;
 					}
+					else if (char !== ' ')
+						this.state.buffer += char;
+
 					break;
 			}
 		}
+		onContextChange?.(html, html.length, this.state.context, null);
 		return this.state.context;
 	}
 }
