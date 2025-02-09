@@ -3138,9 +3138,48 @@ Testimony.test('Solarite.binding.select', () => {
 	b.remove();
 });
 
+Testimony.test('Solarite.binding.selectMultiple', () => {
+
+	class B33 extends Solarite {
+		items = [2]
+
+		render() {
+			r(this)`<select multiple data-id="input" value=${[this, 'items']}><option value="1">Item 1</option><option value="2"">Item 2</option><option value="3">Item 3</option></select>`
+		}
+	}
+
+	let b = new B33();
+	document.body.append(b);
+	assert.eq([...b.input.selectedOptions].map(o=>o.value), ['2']);
+
+	b.items = ['1', '3'];
+	b.render();
+	assert.eq([...b.input.selectedOptions].map(o=>o.value), ['1', '3']);
+
+
+	b.items = ['2'];
+	b.render();
+	assert.eq([...b.input.selectedOptions].map(o=>o.value), ['2']);
+	assert.eq(b.input.value, '2')
+
+	b.items = [1, 3]
+	b.render()
+	assert.eq([...b.input.selectedOptions].map(o=>o.value), ['1', '3']);
+	assert.eq(b.input.value, '1');
+
+	b.input.value = 3;
+	b.input.dispatchEvent(new Event('input', {
+		bubbles: true,
+		cancelable: true,
+	}));
+	assert.eq(b.items, ['3'])
+
+	b.remove();
+});
+
 Testimony.test('Solarite.binding.selectDynamic', () => {
 	
-	class B32 extends Solarite {
+	class B36 extends Solarite {
 		count = 1
 		
 		render() {
@@ -3148,7 +3187,7 @@ Testimony.test('Solarite.binding.selectDynamic', () => {
 		}
 	}
 	
-	let b = new B32();
+	let b = new B36();
 	document.body.append(b);
 	assert.eq(b.input.value, '1')
 	assert.eq(b.input.selectedIndex, 0);

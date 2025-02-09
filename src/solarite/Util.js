@@ -72,6 +72,7 @@ let Util = {
 	 * @param node {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|HTMLDivElement}
 	 * @return {string|string[]|number|[]|File[]|Date|boolean} */
 	getInputValue(node) {
+		// .type is a built-in DOM property
 		if (node.type === 'checkbox' || node.type === 'radio')
 			return node.checked; // Boolean
 		if (node.type === 'file')

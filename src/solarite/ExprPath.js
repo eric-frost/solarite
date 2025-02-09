@@ -422,7 +422,7 @@ export default class ExprPath {
 	 * @param key {string{
 	 * @param eventName {string}
 	 * @param func {function}
-	 * @param args
+	 * @param args {array}
 	 * @param capture {boolean} */
 	bindEvent(node, root, key, eventName, func, args, capture=false) {
 		let nodeEvents = Globals.nodeEvents.get(node);
@@ -491,7 +491,18 @@ export default class ExprPath {
 				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
 
 			let value = delve(obj, path);
-			node[this.attrName] = Util.isFalsy(value) ? '' : value;
+
+			// Special case to allow setting select-multiple value from an array
+			if (this.attrName === 'value' && node.type === 'select-multiple' && Array.isArray(value)) {
+				// Set the .selected property on the options having a value within value.
+				let strValues = value.map(v => v + '');
+				for (let option of node.options)
+					option.selected = strValues.includes(option.value)
+			}
+			else {
+				// TODO: should we remove isFalsy, since these are always props?
+				node[this.attrName] = Util.isFalsy(value) ? '' : value;
+			}
 
 			// TODO: We need to remove any old listeners, like in bindEventAttribute.
 			// Does bindEvent() now handle that?
