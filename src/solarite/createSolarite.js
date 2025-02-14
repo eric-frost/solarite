@@ -106,7 +106,7 @@ export default function createSolarite(extendsTag=null) {
 			//if (ch) // TODO: how could there be a slot before render is called?
 			//	(this.querySelector('slot') || this).append(...ch);
 
-			/** @deprecated */
+			/** @deprecated
 			Object.defineProperty(this, 'html', {
 				set(html) {
 					Globals.rendered.add(this);
@@ -117,7 +117,7 @@ export default function createSolarite(extendsTag=null) {
 					else
 						this.modifications = r(this, html, options);
 				}
-			})
+			})*/
 
 			/*
 			let pthis = new Proxy(this, {

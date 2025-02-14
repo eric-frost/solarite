@@ -1308,14 +1308,13 @@ Testimony.test('Solarite.loop.conditionalNested', () => {
 		];
 
 		render() {
-			this.html =
-				r`${this.pets.map(pet =>
-					pet.activities.map(activity =>
-						activity.length >= 5
-							? r`<p>${pet.name} will ${activity}.</p>`
-							: ``
-					)
-				)}`
+			r(this)`${this.pets.map(pet =>
+				pet.activities.map(activity =>
+					activity.length >= 5
+						? r`<p>${pet.name} will ${activity}.</p>`
+						: ``
+				)
+			)}`
 		}
 	}
 	let a = new R240();
@@ -2520,8 +2519,7 @@ Testimony.test('Solarite.component.nested', () => {
 
 	class A518 extends Solarite {
 		render() {
-			this.html =
-				r`<b-518></b-518>`
+			r(this)`<b-518></b-518>`
 		}
 	}
 

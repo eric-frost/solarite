@@ -3430,18 +3430,18 @@ function createSolarite(extendsTag=null) {
 			//if (ch) // TODO: how could there be a slot before render is called?
 			//	(this.querySelector('slot') || this).append(...ch);
 
-			/** @deprecated */
+			/** @deprecated
 			Object.defineProperty(this, 'html', {
 				set(html) {
-					Globals$1.rendered.add(this);
+					Globals.rendered.add(this);
 					if (typeof html === 'string') {
-						console.warn("Assigning to this.html without the r template prefix.");
+						console.warn("Assigning to this.html without the r template prefix.")
 						this.innerHTML = html;
 					}
 					else
 						this.modifications = r(this, html, options);
 				}
-			});
+			})*/
 
 			/*
 			let pthis = new Proxy(this, {
