@@ -3,7 +3,7 @@
 // Broken tests will be annotated with FIXME
 
 import {camelToDashes} from "../src/solarite/Util.js";
-import HtmlContext from "../src/solarite/HtmlContext.js";
+import HtmlParser from "../src/solarite/HtmlParser.js";
 //import {watchGet, watchSet} from "../src/solarite/watch.js";
 import {getArg, r, renderWatched, Solarite} from '../src/solarite/Solarite.js';
 //import {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
@@ -218,17 +218,17 @@ Testimony.test('Solarite.NodeGroup.arrayReverse', () => {
  * └─────────────────╯*/
 
 Testimony.test('Solarite.Util.htmlContext', () => {
-	let htmlContext = new HtmlContext();
-	assert.eq(htmlContext.parse('<div class="test'), HtmlContext.Attribute)
-	assert.eq(htmlContext.parse('">hello '), HtmlContext.Text);
-	assert.eq(htmlContext.parse('<span data-attr="hi > there"'), HtmlContext.Tag);
-	assert.eq(htmlContext.parse(` attr='`), HtmlContext.Attribute);
-	assert.eq(htmlContext.parse(`'`), HtmlContext.Tag);
-	assert.eq(htmlContext.parse(' attr='), HtmlContext.Attribute);
-	assert.eq(htmlContext.parse('a'), HtmlContext.Attribute);
-	assert.eq(htmlContext.parse(' '), HtmlContext.Tag);
-	assert.eq(htmlContext.parse(' attr='), HtmlContext.Attribute);
-	assert.eq(htmlContext.parse('>'), HtmlContext.Text);
+	let htmlContext = new HtmlParser();
+	assert.eq(htmlContext.parse('<div class="test'), HtmlParser.Attribute)
+	assert.eq(htmlContext.parse('">hello '), HtmlParser.Text);
+	assert.eq(htmlContext.parse('<span data-attr="hi > there"'), HtmlParser.Tag);
+	assert.eq(htmlContext.parse(` attr='`), HtmlParser.Attribute);
+	assert.eq(htmlContext.parse(`'`), HtmlParser.Tag);
+	assert.eq(htmlContext.parse(' attr='), HtmlParser.Attribute);
+	assert.eq(htmlContext.parse('a'), HtmlParser.Attribute);
+	assert.eq(htmlContext.parse(' '), HtmlParser.Tag);
+	assert.eq(htmlContext.parse(' attr='), HtmlParser.Attribute);
+	assert.eq(htmlContext.parse('>'), HtmlParser.Text);
 });
 
 Testimony.test('Solarite.Util.camelToDashes', () => {
@@ -2395,11 +2395,11 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 	// Note that all attribs become lowercase.
 	// Not sure how to prevent this w/o using an xml doctype.
 	class B512 extends Solarite {
-		constructor({name, userid}={}) {
+		constructor({name, userId}={}) {
 			console.log('b')
 			super();
 			this.name = name;
-			this.userId = userid;
+			this.userId = userId;
 		}
 		
 		render() {
@@ -2410,7 +2410,7 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 	
 	class A512 extends Solarite {
 		render() {
-			r(this)`<div><b-512 name="User" userId="2"></b-512></div>`;
+			r(this)`<div><b-512 name="User" user-id="2"></b-512></div>`;
 		}
 	}
 	A512.define();
@@ -2418,16 +2418,16 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 	let a = new A512();
 	a.render();
 	
-	assert.eq(a.outerHTML, `<a-512><div><b-512 name="User" userid="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-512></div></a-512>`);
+	assert.eq(a.outerHTML, `<a-512><div><b-512 name="User" user-id="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-512></div></a-512>`);
 });
 
 Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...}', () => {
 	
 	class B513 extends Solarite {
-		constructor({name, userid}={}) {
+		constructor({name, userId}={}) {
 			super();
 			this.name = name;
-			this.userId = userid;
+			this.userId = userId;
 		}
 		
 		render() {
@@ -2438,7 +2438,7 @@ Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...
 	
 	class A513 extends Solarite {
 		render() {
-			r(this)`<div><b-513 name="${'User'}" userId="${2}"></b-513></div>`;
+			r(this)`<div><b-513 name=${'User'} user-id=${2}></b-513></div>`;
 		}
 	}
 	A513.define();
@@ -2446,12 +2446,43 @@ Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...
 	let a = new A513();
 	a.render();
 	
-	assert.eq(a.outerHTML, `<a-513><div><b-513 name="User" userid="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-513></div></a-513>`);
+	assert.eq(a.outerHTML, `<a-513><div><b-513 name="User" user-id="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-513></div></a-513>`);
 });
+
+
+
+Testimony.test('Solarite.component.dynamicAttribsAdjacent', 'Attribs specified via ${...}', () => {
+
+	class B515 extends Solarite {
+		constructor({name, userid}={}) {
+			super();
+			this.name = name;
+			this.userId = userid;
+		}
+
+		render() {
+			r(this)`<b-515>${this.name} | ${this.userId}</b-515>`
+		}
+	}
+	B515.define();
+
+	class A515 extends Solarite {
+		render() {
+			r(this)`<div><b-515 selected name="${'User'}" SELECTED2 selected3="test" userId="${1}" selected4></b-515><b-515 name="${'User2'}" userId="${2}"></b-515></div>`;
+		}
+	}
+	A515.define();
+
+	let a = new A515();
+	a.render();
+
+	//assert.eq(a.outerHTML, `<a-515><div><b-515 name="User" userid="1"><!--ExprPath:0-->User | 1<!--ExprPathEnd:1--></b-515><b-515 name="User2" userid="2"><!--ExprPath:0-->User2 | 2<!--ExprPathEnd:1--></b-515></div></a-515>`);
+});
+
 
 Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Solarite component.', () => {
 
-	class B514 extends Solarite {
+	class B517 extends Solarite {
 		constructor({name, userid}={}) {
 			super();
 
@@ -2461,16 +2492,16 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 		}
 		
 		render() {
-			r(this)`<b-514>${this.name} | ${this.userId}</b-514>`
+			r(this)`<b-517>${this.name} | ${this.userId}</b-517>`
 		}
 	}
-	B514.define();
+	B517.define();
 	
 
 	let div = document.createElement('div');
-	div.innerHTML = `<b-514 name="User" userid="2"></b-514>`
+	div.innerHTML = `<b-517 name="User" userid="2"></b-517>`
 
-	assert.eq(div.outerHTML, `<div><b-514 name="User" userid="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-514></div>`)
+	assert.eq(div.outerHTML, `<div><b-517 name="User" userid="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-517></div>`)
 	
 });
 
@@ -2478,28 +2509,28 @@ Testimony.test('Solarite.component.nested', () => {
 
 	let bRenderCount = 0;
 
-	class B515 extends Solarite {
+	class B518 extends Solarite {
 		render() {
 			r(this)`<div>B</div>`;
 			bRenderCount++;
 		}
 	}
-	B515.define();
+	B518.define();
 
 
-	class A515 extends Solarite {
+	class A518 extends Solarite {
 		render() {
 			this.html =
-				r`<b-515></b-515>`
+				r`<b-518></b-518>`
 		}
 	}
 
-	let a = new A515();
-	assert(!(a.firstChild instanceof B515))
+	let a = new A518();
+	assert(!(a.firstChild instanceof B518))
 
 	a.render();
-   assert(a.firstChild instanceof B515);
-	assert.eq(getHtml(a), `<a-515><b-515><div>B</div></b-515></a-515>`);
+   assert(a.firstChild instanceof B518);
+	assert.eq(getHtml(a), `<a-518><b-518><div>B</div></b-518></a-518>`);
 })
 
 Testimony.test('Solarite.component.nestedExprConstructorArg', "Pass an object to the nested component's constructor", () => {

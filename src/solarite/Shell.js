@@ -2,7 +2,7 @@ import {assert} from "../util/Errors.js";
 import ExprPath, {ExprPathType, getNodePath} from "./ExprPath.js";
 import {isEvent} from "./Util.js";
 import Globals from "./Globals.js";
-import HtmlContext from "./HtmlContext.js";
+import HtmlParser from "./HtmlParser.js";
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -10,7 +10,7 @@ import HtmlContext from "./HtmlContext.js";
  * Only one Shell is created for all the items in a loop.
  *
  * When a NodeGroup is created from a Template's html strings,
- * the NodeGroup then clones the Shell's fragmentn to be its nodes. */
+ * the NodeGroup then clones the Shell's fragment to be its nodes. */
 export default class Shell {
 
 	/**
@@ -32,8 +32,11 @@ export default class Shell {
 	/** @type {int[][]} Array of paths */
 	styles = [];
 
-	/** @type {int[][]} Array of paths */
+	/** @type {int[][]} Array of paths.  Used by activateEmbeds() to quickly find components. */
 	staticComponents = [];
+
+	/** @type {{path:int[], attribs:Object<string, string>}[]} */
+	//componentAttribs = [];
 
 
 
@@ -201,33 +204,48 @@ export default class Shell {
 	 * @returns {string} */
 	static addPlaceholders(htmlChunks) {
 		let tokens = [];
+		let attributes={};
 
 		function addToken(token, context) {
 
-			// Find Solarite Components tags and append -solarite-placeholder to their tag names.
-			// This way we can gather their constructor arguments and their children before we call their constructor.
-			// Later, NodeGroup.createNewComponent() will replace them with the real components.
-			// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-			if (context === HtmlContext.Tag)
+			if (context === HtmlParser.Tag) {
+
+
+				// Find Solarite Components tags and append -solarite-placeholder to their tag names.
+				// This way we can gather their constructor arguments and their children before we call their constructor.
+				// Later, NodeGroup.createNewComponent() will replace them with the real components.
+				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 				token = token.replace(/^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i, match => match + '-solarite-placeholder');
+
+				// This was a path where I was going to grab the original case of the attribute names, to allow
+				// using them when passing arguments to the constructor.
+				// But I decided to convert dash-case to camelCase instead.
+				// token.replace(/(?<=\s)[a-z0-9-]+/gi, match => {
+				// 	console.log(match, '`' + token + '`')
+				// 	let path = getNodePath(el);
+				// 	this.componentAttribs.push({path, attribs: attributes});
+				// });
+			}
 			tokens.push(token)
 		}
 
-		let htmlContext = new HtmlContext(); // Reset the context.
+		let htmlParser = new HtmlParser(); // Reset the context.
 		for (let i = 0; i < htmlChunks.length; i++) {
 			let lastHtml = htmlChunks[i];
 
 			// Append -solarite-placholder to web component tags, so we can pass args to them when they're instantiated.
 			let lastIndex = 0;
-			let context = htmlContext.parse(lastHtml, (html, index, oldContext) => {
-				if (lastIndex !== index)
-					addToken(html.slice(lastIndex, index), oldContext);
+			let context = htmlParser.parse(lastHtml, (html, index, oldContext, newContext) => {
+				if (lastIndex !== index) {
+					let token = html.slice(lastIndex, index);
+					addToken(token, oldContext);
+				}
 				lastIndex = index;
 			});
 
 			// Insert placeholders
 			if (i < htmlChunks.length - 1) {
-				if (context === HtmlContext.Text)
+				if (context === HtmlParser.Text)
 					tokens.push(commentPlaceholder) // Comment Placeholder. because we can't put text in between <tr> tags for example.
 				else
 					tokens.push(String.fromCharCode(attribPlaceholder + i));

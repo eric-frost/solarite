@@ -124,7 +124,7 @@ export default class NodeGroup {
 		this.verify();/*#ENDIF*/
 
 		// Things to consider:
-		// 1. One path may use multipe esprssions.  E.g. <div class="${1} ${2}">
+		// 1. One path may use multipe expressions.  E.g. <div class="${1} ${2}">
 		// 2. One component may need to use multiple attribute paths to be instantiated.
 		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
 		//    before its instantiated and its value attribute is set via an expression.
@@ -146,12 +146,14 @@ export default class NodeGroup {
 				exprIndex--;
 			}
 
-			// TODO: Need to end and restart this block when going from one component to the next.
+			// TODO: Need to end and restart this block when going from one component to the next?
 			// Think of having two adjacent components.
+			// But the dynamicAttribsAdjacet test already passes.
 
 			// If a component:
 			// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
 			// 2. Otherwise send them to its render function.
+			// Components with no expressions as attributes are instead activated in activateEmbeds().
 			if (path.nodeMarker !== this.rootNg.root && path.isComponent()) {
 
 				if (!nextPath || !nextPath.isComponent() || nextPath.nodeMarker !== path.nodeMarker)
@@ -161,8 +163,10 @@ export default class NodeGroup {
 				if (isFirstComponentPath) {
 
 					let componentProps = {}
-					for (let j=i; j<=lastComponentPathIndex; j++)
-						componentProps[paths[j].attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
+					for (let j=i; j<=lastComponentPathIndex; j++) {
+						let attrName = paths[j].attrName; // Util.dashesToCamel(paths[j].attrName);
+						componentProps[attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
+					}
 
 					this.applyComponentExprs(path.nodeMarker, componentProps);
 
@@ -217,12 +221,16 @@ export default class NodeGroup {
 
 		// Call render() with the same params that would've been passed to the constructor.
 		else if (el.render) {
-			let oldHash = Globals.componentHash.get(el);
-			if (oldHash !== newHash)
-				el.render(props); // Pass new values of props to render so it can decide how it wants to respond.
+			let oldHash = Globals.componentArgsHash.get(el);
+			if (oldHash !== newHash) {
+				let args = {};
+				for (let name in props || {})
+					args[Util.dashesToCamel(name)] = props[name];
+				el.render(args); // Pass new values of props to render so it can decide how it wants to respond.
+			}
 		}
 
-		Globals.componentHash.set(el, newHash);
+		Globals.componentArgsHash.set(el, newHash);
 	}
 	
 	/**
@@ -240,41 +248,43 @@ export default class NodeGroup {
 			isPreHtmlElement = !el.hasAttribute('_is');
 		
 		let tagName = (isPreHtmlElement
-			? el.tagName.endsWith('-SOLARITE-PLACEHOLDER')
-				? el.tagName.slice(0, -21)
-				: el.tagName
+			? el.tagName.slice(0, -21) // Remove -SOLARITE-PLACEHOLDER
 			: el.getAttribute('is')).toLowerCase();
 
-		let dynamicProps = {...(props || {})}
+
+		// Throw if custom element isn't defined.
+		let Constructor = customElements.get(tagName);
+		if (!Constructor)
+			throw new Error(`The custom tag name ${tagName} is not registered.`)
+
+		let args = {};
+		for (let name in props || {})
+			args[Util.dashesToCamel(name)] = props[name];
 		
 		// Pass other attribs to constructor, since otherwise they're not yet set on the element,
 		// and the constructor would otherwise have no way to see them.
 		if (el.attributes.length) {
-			if (!props)
-				props = {};
-			for (let attrib of el.attributes)
-				if (!props.hasOwnProperty(attrib.name))
-					props[attrib.name] = attrib.value;
+			for (let attrib of el.attributes) {
+				let attribName = Util.dashesToCamel(attrib.name);
+				if (!args.hasOwnProperty(attribName))
+					args[attribName] = attrib.value;
+			}
 		}
-		
-		// Create CustomElement and
-		let Constructor = customElements.get(tagName);
-		if (!Constructor)
-			throw new Error(`The custom tag name ${tagName} is not registered.`)
 
 		// We pass the childNodes to the constructor so it can know about them,
 		// instead of only afterward when they're appended to the slot below.
 		// This is useful for a custom selectbox, for example.
 		// Globals.pendingChildren stores the childen so the super construtor call to Solarite's constructor
 		// can add them as children before the rest of the constructor code executes.
-		let ch = [... el.childNodes];
+		let ch = [...el.childNodes];
 		//if (el instanceof Solarite)
 		//	Globals.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
-		let newEl = new Constructor(props, ch);
+		let newEl = new Constructor(args, ch);
 
 		if (!isPreHtmlElement)
 			newEl.setAttribute('is', el.getAttribute('is').toLowerCase());
 
+		// Replace the placeholder tag with the instantiated web component.
 		el.replaceWith(newEl);
 
 		// Set children / slot children
@@ -283,31 +293,6 @@ export default class NodeGroup {
 		//let slot = newEl.querySelector('slot') || newEl;
 		//slot.append(...el.childNodes);
 
-		// Copy over event attributes.
-		// TODO: If we instantiate the component before applying events, we could skip this step here.
-		for (let propName in props) {
-			let expr = props[propName];
-			if (propName.startsWith('on') && typeof expr === 'function')
-				newEl.addEventListener(propName.slice(2), e => expr.call(this.rootNg.root, e, newEl));
-
-			// Bind array based event attributes on value.
-			// This same logic is in ExprPath.applyValueAttrib() for non-components.
-			if (Util.isPath(expr)) {
-				let [obj, path] = [expr[0], expr.slice(1)];
-
-				if (!obj)
-					throw new Error(`Solarite cannot bind to <${newEl.tagName.toLowerCase()} ${propName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
-
-				newEl.value = delve(obj, path);
-				newEl.addEventListener('input', e => {
-					let value = (propName === 'value')
-						? Util.getInputValue(newEl)
-						: newEl[propName];
-					delve(obj, path, value);
-				}, true); // We use capture so we update the values before other events added by the user.
-			}
-		}
-		
 		// If an id pointed at the placeholder, update it to point to the new element.
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
 		if (id)
@@ -331,21 +316,21 @@ export default class NodeGroup {
 		// So we want to render the sub-component also.
 		if (newEl.renderFirstTime)
 			newEl.renderFirstTime();
-		
+
 		// Copy attributes over.
 		for (let attrib of el.attributes)
 			if (attrib.name !== '_is')
 				newEl.setAttribute(attrib.name, attrib.value);
 
 		// Set dynamic attributes if they are primitive types.
-		for (let name in dynamicProps) {
-			let val = dynamicProps[name];
+		for (let name in props) {
+			let val = props[name];
 			if (typeof val === 'boolean') {
 				if (val !== false && val !== undefined && val !== null)
 					newEl.setAttribute(name, '');
 			}
 
-			// If type isn't an object or array, set the attribute.
+			// If type is a non-boolean primitive, set the attribute value.
 			else if (['number', 'bigint', 'string'].includes(typeof val))
 				newEl.setAttribute(name, val);
 		}
@@ -497,8 +482,10 @@ export default class NodeGroup {
 	 * @param pathOffset {int} */
 	activateEmbeds(root, shell, pathOffset=0) {
 
-		// static components.  These are WebComponents not created by an expression.
-		// Must happen before ids.
+		// static components.  These are WebComponents that do not have any constructor arguments that are expressions.
+		// Those are instead created by applyExpr() which calls applyComponentExprs() which calls createNewcomponent().
+		// Maybe someday these two paths will be merged?
+		// Must happen before ids because createNewComponent will replace the element.
 		for (let path of shell.staticComponents) {
 			if (pathOffset)
 				path = path.slice(0, -pathOffset);

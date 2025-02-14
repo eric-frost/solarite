@@ -76,7 +76,7 @@ export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.S
 				} catch (e) {
 					return val;
 				}
-			else return fallback;
+			else return val;
 
 		// type not provided
 		default:

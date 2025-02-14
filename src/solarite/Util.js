@@ -29,6 +29,21 @@ let Util = {
 		}
 	},
 
+
+	/**
+	 * Converts a string written in kebab-case to camelCase.
+	 *
+	 * @param {string} str - The input string written in kebab-case.
+	 * @return {string} - The resulting camelCase string.
+	 *
+	 * @example
+	 * dashesToCamel('example-string') // Returns 'exampleString'
+	 * dashesToCamel('another-example-test') // Returns 'anotherExampleTest' */
+	dashesToCamel(str) {
+		return str.replace(/-([a-z])/g, g => g[1].toUpperCase());
+	},
+
+
 	/**
 	 * A generator function that recursively traverses and flattens a value.
 	 *
@@ -163,6 +178,10 @@ export function camelToDashes(str) {
 
 	// Convert all the remaining capital letters to lowercase.
 	return str.toLowerCase();
+}
+
+export function dashesToCamel(str) {
+	return str.replace(/-([a-z])/g, g => g[1].toUpperCase());
 }
 
 

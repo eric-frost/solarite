@@ -151,7 +151,7 @@ export default function watch3(root, field, value=unusedArg) {
 
 					// If we're not re-rendering the whole thing.
 					if (exprsToRender !== true)
-						Util.mapAdd(rootNg.exprsToRender, exprPath, [obj, prop, val]);
+						Util.mapArrayAdd(rootNg.exprsToRender, exprPath, [obj, prop, val]);
 				}
 
 				// Reapply the whole expression.

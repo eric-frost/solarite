@@ -78,10 +78,12 @@ var Util$1 = {
 	},
 
 	/**
+	 * Use an array as the value of a map, appending to it when we add.
+	 * Used by watch3.js.
 	 * @param map {Map|WeakMap|Object}
 	 * @param key
 	 * @param value */
-	mapAdd(map, key, value) {
+	mapArrayAdd(map, key, value) {
 		let isMap = map instanceof Map || map instanceof WeakMap;
 		let result = isMap ? map.get(key) : map[key];
 		if (!result) {
@@ -226,7 +228,7 @@ function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, 
 				} catch (e) {
 					return val;
 				}
-			else return fallback;
+			else return val;
 
 		// type not provided
 		default:
@@ -366,7 +368,7 @@ function reset() {
 
 		/**
 		 * Used by NodeGroup.applyComponentExprs() */
-		componentHash: new WeakMap(),
+		componentArgsHash: new WeakMap(),
 
 		/**
 		 * Store which instances of Solarite have already been added to the DOM.
@@ -405,7 +407,7 @@ function reset() {
 		 * Used by r() path 9. */
 		objToEl: new WeakMap(),
 
-		pendingChildren: [],
+		//pendingChildren: [],
 
 		/**
 		 * Elements that are currently rendering via the r() function.
@@ -452,6 +454,21 @@ let Util = {
 			}
 		}
 	},
+
+
+	/**
+	 * Converts a string written in kebab-case to camelCase.
+	 *
+	 * @param {string} str - The input string written in kebab-case.
+	 * @return {string} - The resulting camelCase string.
+	 *
+	 * @example
+	 * dashesToCamel('example-string') // Returns 'exampleString'
+	 * dashesToCamel('another-example-test') // Returns 'anotherExampleTest' */
+	dashesToCamel(str) {
+		return str.replace(/-([a-z])/g, g => g[1].toUpperCase());
+	},
+
 
 	/**
 	 * A generator function that recursively traverses and flattens a value.
@@ -1955,10 +1972,10 @@ function resolveNodePath(root, path) {
 	return root;
 }
 
-class HtmlContext {
+class HtmlParser {
 	constructor() {
 		this.defaultState = {
-			context: HtmlContext.Text, // possible values: 'TEXT', 'TAG', 'ATTRIBUTE'
+			context: HtmlParser.Text, // possible values: 'TEXT', 'TAG', 'ATTRIBUTE'
 			quote: null, // possible values: null, '"', "'"
 			buffer: '',
 			lastChar: null
@@ -1978,23 +1995,23 @@ class HtmlContext {
 	 *     Called every time the context changes, and again at the last context.
 	 * @return {('Attribute','Text','Tag')} The context at the end of html.  */
 	parse(html, onContextChange=null) {
-		if (html === null) {
+		if (html === null)
 			return this.reset();
-		}
+
 		for (let i = 0; i < html.length; i++) {
 			const char = html[i];
 			switch (this.state.context) {
-				case HtmlContext.Text:
+				case HtmlParser.Text:
 					if (char === '<' && html[i + 1].match(/[/a-z!]/i)) { // Start of a tag or comment.
-						onContextChange?.(html, i, this.state.context, HtmlContext.Tag);
-						this.state.context = HtmlContext.Tag;
+						onContextChange?.(html, i, this.state.context, HtmlParser.Tag);
+						this.state.context = HtmlParser.Tag;
 						this.state.buffer = '';
 					}
 					break;
-				case HtmlContext.Tag:
+				case HtmlParser.Tag:
 					if (char === '>') {
-						onContextChange?.(html, i+1, this.state.context, HtmlContext.Text);
-						this.state.context = HtmlContext.Text;
+						onContextChange?.(html, i+1, this.state.context, HtmlParser.Text);
+						this.state.context = HtmlParser.Text;
 						this.state.quote = null;
 						this.state.buffer = '';
 					}
@@ -2006,28 +2023,28 @@ class HtmlContext {
 						this.state.buffer = ''; // Reset the buffer when a delimiter or potential self-closing sign is found.
 					}
 					else if (char === '"' || char === "'" || char === '=') {
-						onContextChange?.(html, i, this.state.context, HtmlContext.Attribute);
-						this.state.context = HtmlContext.Attribute;
+						onContextChange?.(html, i, this.state.context, HtmlParser.Attribute);
+						this.state.context = HtmlParser.Attribute;
 						this.state.quote = char === '=' ? null : char;
 						this.state.buffer = '';
 					}
 					else
 						this.state.buffer += char;
 					break;
-				case HtmlContext.Attribute:
+				case HtmlParser.Attribute:
 					// Start an attribute quote.
 					if (!this.state.quote && !this.state.buffer.length && (char === '"' || char === "'")) {
 						this.state.quote = char;
 					}
 					else if (char === this.state.quote || (!this.state.quote && this.state.buffer.length)) {
-						onContextChange?.(html, i, this.state.context, HtmlContext.Tag);
-						this.state.context = HtmlContext.Tag;
+						onContextChange?.(html, i, this.state.context, HtmlParser.Tag);
+						this.state.context = HtmlParser.Tag;
 						this.state.quote = null;
 						this.state.buffer = '';
 					}
 					else if (!this.state.quote && char === '>') {
-						onContextChange?.(html, i+1, this.state.context, HtmlContext.Text);
-						this.state.context = HtmlContext.Text;
+						onContextChange?.(html, i+1, this.state.context, HtmlParser.Text);
+						this.state.context = HtmlParser.Text;
 						this.state.quote = null;
 						this.state.buffer = '';
 					}
@@ -2042,9 +2059,9 @@ class HtmlContext {
 	}
 }
 
-HtmlContext.Attribute = 'Attribute';
-HtmlContext.Text = 'Text';
-HtmlContext.Tag = 'Tag';
+HtmlParser.Attribute = 'Attribute';
+HtmlParser.Text = 'Text';
+HtmlParser.Tag = 'Tag';
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -2052,7 +2069,7 @@ HtmlContext.Tag = 'Tag';
  * Only one Shell is created for all the items in a loop.
  *
  * When a NodeGroup is created from a Template's html strings,
- * the NodeGroup then clones the Shell's fragmentn to be its nodes. */
+ * the NodeGroup then clones the Shell's fragment to be its nodes. */
 class Shell {
 
 	/**
@@ -2074,8 +2091,11 @@ class Shell {
 	/** @type {int[][]} Array of paths */
 	styles = [];
 
-	/** @type {int[][]} Array of paths */
+	/** @type {int[][]} Array of paths.  Used by activateEmbeds() to quickly find components. */
 	staticComponents = [];
+
+	/** @type {{path:int[], attribs:Object<string, string>}[]} */
+	//componentAttribs = [];
 
 
 
@@ -2246,30 +2266,44 @@ class Shell {
 
 		function addToken(token, context) {
 
-			// Find Solarite Components tags and append -solarite-placeholder to their tag names.
-			// This way we can gather their constructor arguments and their children before we call their constructor.
-			// Later, NodeGroup.createNewComponent() will replace them with the real components.
-			// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-			if (context === HtmlContext.Tag)
+			if (context === HtmlParser.Tag) {
+
+
+				// Find Solarite Components tags and append -solarite-placeholder to their tag names.
+				// This way we can gather their constructor arguments and their children before we call their constructor.
+				// Later, NodeGroup.createNewComponent() will replace them with the real components.
+				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 				token = token.replace(/^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i, match => match + '-solarite-placeholder');
+
+				// This was a path where I was going to grab the original case of the attribute names, to allow
+				// using them when passing arguments to the constructor.
+				// But I decided to convert dash-case to camelCase instead.
+				// token.replace(/(?<=\s)[a-z0-9-]+/gi, match => {
+				// 	console.log(match, '`' + token + '`')
+				// 	let path = getNodePath(el);
+				// 	this.componentAttribs.push({path, attribs: attributes});
+				// });
+			}
 			tokens.push(token);
 		}
 
-		let htmlContext = new HtmlContext(); // Reset the context.
+		let htmlParser = new HtmlParser(); // Reset the context.
 		for (let i = 0; i < htmlChunks.length; i++) {
 			let lastHtml = htmlChunks[i];
 
 			// Append -solarite-placholder to web component tags, so we can pass args to them when they're instantiated.
 			let lastIndex = 0;
-			let context = htmlContext.parse(lastHtml, (html, index, oldContext) => {
-				if (lastIndex !== index)
-					addToken(html.slice(lastIndex, index), oldContext);
+			let context = htmlParser.parse(lastHtml, (html, index, oldContext, newContext) => {
+				if (lastIndex !== index) {
+					let token = html.slice(lastIndex, index);
+					addToken(token, oldContext);
+				}
 				lastIndex = index;
 			});
 
 			// Insert placeholders
 			if (i < htmlChunks.length - 1) {
-				if (context === HtmlContext.Text)
+				if (context === HtmlParser.Text)
 					tokens.push(commentPlaceholder); // Comment Placeholder. because we can't put text in between <tr> tags for example.
 				else
 					tokens.push(String.fromCharCode(attribPlaceholder + i));
@@ -2469,7 +2503,7 @@ class NodeGroup {
 		this.verify();/*#ENDIF*/
 
 		// Things to consider:
-		// 1. One path may use multipe esprssions.  E.g. <div class="${1} ${2}">
+		// 1. One path may use multipe expressions.  E.g. <div class="${1} ${2}">
 		// 2. One component may need to use multiple attribute paths to be instantiated.
 		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
 		//    before its instantiated and its value attribute is set via an expression.
@@ -2491,12 +2525,14 @@ class NodeGroup {
 				exprIndex--;
 			}
 
-			// TODO: Need to end and restart this block when going from one component to the next.
+			// TODO: Need to end and restart this block when going from one component to the next?
 			// Think of having two adjacent components.
+			// But the dynamicAttribsAdjacet test already passes.
 
 			// If a component:
 			// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
 			// 2. Otherwise send them to its render function.
+			// Components with no expressions as attributes are instead activated in activateEmbeds().
 			if (path.nodeMarker !== this.rootNg.root && path.isComponent()) {
 
 				if (!nextPath || !nextPath.isComponent() || nextPath.nodeMarker !== path.nodeMarker)
@@ -2506,8 +2542,10 @@ class NodeGroup {
 				if (isFirstComponentPath) {
 
 					let componentProps = {};
-					for (let j=i; j<=lastComponentPathIndex; j++)
-						componentProps[paths[j].attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
+					for (let j=i; j<=lastComponentPathIndex; j++) {
+						let attrName = paths[j].attrName; // Util.dashesToCamel(paths[j].attrName);
+						componentProps[attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
+					}
 
 					this.applyComponentExprs(path.nodeMarker, componentProps);
 
@@ -2562,12 +2600,16 @@ class NodeGroup {
 
 		// Call render() with the same params that would've been passed to the constructor.
 		else if (el.render) {
-			let oldHash = Globals$1.componentHash.get(el);
-			if (oldHash !== newHash)
-				el.render(props); // Pass new values of props to render so it can decide how it wants to respond.
+			let oldHash = Globals$1.componentArgsHash.get(el);
+			if (oldHash !== newHash) {
+				let args = {};
+				for (let name in props || {})
+					args[Util.dashesToCamel(name)] = props[name];
+				el.render(args); // Pass new values of props to render so it can decide how it wants to respond.
+			}
 		}
 
-		Globals$1.componentHash.set(el, newHash);
+		Globals$1.componentArgsHash.set(el, newHash);
 	}
 	
 	/**
@@ -2585,41 +2627,43 @@ class NodeGroup {
 			isPreHtmlElement = !el.hasAttribute('_is');
 		
 		let tagName = (isPreHtmlElement
-			? el.tagName.endsWith('-SOLARITE-PLACEHOLDER')
-				? el.tagName.slice(0, -21)
-				: el.tagName
+			? el.tagName.slice(0, -21) // Remove -SOLARITE-PLACEHOLDER
 			: el.getAttribute('is')).toLowerCase();
 
-		let dynamicProps = {...(props || {})};
+
+		// Throw if custom element isn't defined.
+		let Constructor = customElements.get(tagName);
+		if (!Constructor)
+			throw new Error(`The custom tag name ${tagName} is not registered.`)
+
+		let args = {};
+		for (let name in props || {})
+			args[Util.dashesToCamel(name)] = props[name];
 		
 		// Pass other attribs to constructor, since otherwise they're not yet set on the element,
 		// and the constructor would otherwise have no way to see them.
 		if (el.attributes.length) {
-			if (!props)
-				props = {};
-			for (let attrib of el.attributes)
-				if (!props.hasOwnProperty(attrib.name))
-					props[attrib.name] = attrib.value;
+			for (let attrib of el.attributes) {
+				let attribName = Util.dashesToCamel(attrib.name);
+				if (!args.hasOwnProperty(attribName))
+					args[attribName] = attrib.value;
+			}
 		}
-		
-		// Create CustomElement and
-		let Constructor = customElements.get(tagName);
-		if (!Constructor)
-			throw new Error(`The custom tag name ${tagName} is not registered.`)
 
 		// We pass the childNodes to the constructor so it can know about them,
 		// instead of only afterward when they're appended to the slot below.
 		// This is useful for a custom selectbox, for example.
 		// Globals.pendingChildren stores the childen so the super construtor call to Solarite's constructor
 		// can add them as children before the rest of the constructor code executes.
-		let ch = [... el.childNodes];
+		let ch = [...el.childNodes];
 		//if (el instanceof Solarite)
 		//	Globals.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
-		let newEl = new Constructor(props, ch);
+		let newEl = new Constructor(args, ch);
 
 		if (!isPreHtmlElement)
 			newEl.setAttribute('is', el.getAttribute('is').toLowerCase());
 
+		// Replace the placeholder tag with the instantiated web component.
 		el.replaceWith(newEl);
 
 		// Set children / slot children
@@ -2628,31 +2672,6 @@ class NodeGroup {
 		//let slot = newEl.querySelector('slot') || newEl;
 		//slot.append(...el.childNodes);
 
-		// Copy over event attributes.
-		// TODO: If we instantiate the component before applying events, we could skip this step here.
-		for (let propName in props) {
-			let expr = props[propName];
-			if (propName.startsWith('on') && typeof expr === 'function')
-				newEl.addEventListener(propName.slice(2), e => expr.call(this.rootNg.root, e, newEl));
-
-			// Bind array based event attributes on value.
-			// This same logic is in ExprPath.applyValueAttrib() for non-components.
-			if (Util.isPath(expr)) {
-				let [obj, path] = [expr[0], expr.slice(1)];
-
-				if (!obj)
-					throw new Error(`Solarite cannot bind to <${newEl.tagName.toLowerCase()} ${propName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
-
-				newEl.value = delve(obj, path);
-				newEl.addEventListener('input', e => {
-					let value = (propName === 'value')
-						? Util.getInputValue(newEl)
-						: newEl[propName];
-					delve(obj, path, value);
-				}, true); // We use capture so we update the values before other events added by the user.
-			}
-		}
-		
 		// If an id pointed at the placeholder, update it to point to the new element.
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
 		if (id)
@@ -2676,21 +2695,21 @@ class NodeGroup {
 		// So we want to render the sub-component also.
 		if (newEl.renderFirstTime)
 			newEl.renderFirstTime();
-		
+
 		// Copy attributes over.
 		for (let attrib of el.attributes)
 			if (attrib.name !== '_is')
 				newEl.setAttribute(attrib.name, attrib.value);
 
 		// Set dynamic attributes if they are primitive types.
-		for (let name in dynamicProps) {
-			let val = dynamicProps[name];
+		for (let name in props) {
+			let val = props[name];
 			if (typeof val === 'boolean') {
 				if (val !== false && val !== undefined && val !== null)
 					newEl.setAttribute(name, '');
 			}
 
-			// If type isn't an object or array, set the attribute.
+			// If type is a non-boolean primitive, set the attribute value.
 			else if (['number', 'bigint', 'string'].includes(typeof val))
 				newEl.setAttribute(name, val);
 		}
@@ -2842,8 +2861,10 @@ class NodeGroup {
 	 * @param pathOffset {int} */
 	activateEmbeds(root, shell, pathOffset=0) {
 
-		// static components.  These are WebComponents not created by an expression.
-		// Must happen before ids.
+		// static components.  These are WebComponents that do not have any constructor arguments that are expressions.
+		// Those are instead created by applyExpr() which calls applyComponentExprs() which calls createNewcomponent().
+		// Maybe someday these two paths will be merged?
+		// Must happen before ids because createNewComponent will replace the element.
 		for (let path of shell.staticComponents) {
 			if (pathOffset)
 				path = path.slice(0, -pathOffset);
@@ -3586,7 +3607,7 @@ function watch3(root, field, value=unusedArg) {
 
 					// If we're not re-rendering the whole thing.
 					if (exprsToRender !== true)
-						Util$1.mapAdd(rootNg.exprsToRender, exprPath, [obj, prop, val]);
+						Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, [obj, prop, val]);
 				}
 
 				// Reapply the whole expression.

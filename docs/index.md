@@ -509,18 +509,20 @@ import {r} from './dist/Solarite.min.js';
 
 class NotesItem extends HTMLElement {
 	// Constructor receives item object from attributes.
-	constructor({item}, children) {
+	constructor({item, fontSize}, children) {
 		super();
 		this.item = item;
+        this.fontSize = fontSize;
 		this.render();
 	}
 	
-	render({item}={}) {
+	render({item, fontSize}={}) {
         // If item passed to the constructor has changed.
-        if (item)
-	        this.item = item;
+        if (item) this.item = item;
+        if (fontSize) this.fontSize = fontSize;
 		r(this)`
 		<notes-item>
+		   <style> :host { font-size: ${this.fontSize}px }</style>
 		   <b>${this.item.name}</b> - ${this.item.description}<br>
 		</notes-item>`
 	}
@@ -531,8 +533,8 @@ class NotesList extends HTMLElement {
 	render() { 
 		r(this)`
 		<notes-list>
-			${this.items.map(item => // Pass item object to NotesItem constructor:
-				r`<notes-item item=${item}"></notes-item>`
+			${this.items.map((item, i) => // Pass item object to NotesItem constructor:
+				r`<notes-item item=${item} font-size=${15+i}</notes-item>`
 			)}
 		</notes-list>`
 	}
@@ -562,6 +564,8 @@ list.items[0].name = 'PhysEd';
 list.render();
 
 ```
+
+Since html attributes are case-insensitive, Solarite converts dash-case (aka kabob-case) attribute names to camelCase, as happens above with the `font-size` attribute becoming the `fontSize` argument.
 
 Calling `render()` on a parent component will call `render()` on child components if the attributes passed to the child component have changed.  The new attributes will be passed as an object as the first argument to the child component's `render()` function.  The `render()` function can then decide what to do with that data, and if it should re-render itself by calling `r(this)`, which will in turn call `render()` on its own child web components.
 

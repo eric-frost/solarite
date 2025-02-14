@@ -7,7 +7,7 @@ function reset() {
 
 		/**
 		 * Used by NodeGroup.applyComponentExprs() */
-		componentHash: new WeakMap(),
+		componentArgsHash: new WeakMap(),
 
 		/**
 		 * Store which instances of Solarite have already been added to the DOM.
@@ -46,7 +46,7 @@ function reset() {
 		 * Used by r() path 9. */
 		objToEl: new WeakMap(),
 
-		pendingChildren: [],
+		//pendingChildren: [],
 
 		/**
 		 * Elements that are currently rendering via the r() function.
