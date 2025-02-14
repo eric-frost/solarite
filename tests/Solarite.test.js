@@ -2,7 +2,7 @@
 
 // Broken tests will be annotated with FIXME
 
-import {camelToDashes} from "../src/solarite/Util.js";
+import Util from "../src/solarite/Util.js";
 import HtmlParser from "../src/solarite/HtmlParser.js";
 //import {watchGet, watchSet} from "../src/solarite/watch.js";
 import {getArg, r, renderWatched, Solarite} from '../src/solarite/Solarite.js';
@@ -232,11 +232,11 @@ Testimony.test('Solarite.Util.htmlContext', () => {
 });
 
 Testimony.test('Solarite.Util.camelToDashes', () => {
-	assert.eq(camelToDashes('ProperName'), 'proper-name');
-	assert.eq(camelToDashes('HTMLElement'), 'html-element');
-	assert.eq(camelToDashes('BigUI'), 'big-ui');
-	assert.eq(camelToDashes('UIForm'), 'ui-form');
-	assert.eq(camelToDashes('A100'), 'a-100');
+	assert.eq(Util.camelToDashes('ProperName'), 'proper-name');
+	assert.eq(Util.camelToDashes('HTMLElement'), 'html-element');
+	assert.eq(Util.camelToDashes('BigUI'), 'big-ui');
+	assert.eq(Util.camelToDashes('UIForm'), 'ui-form');
+	assert.eq(Util.camelToDashes('A100'), 'a-100');
 });
 //</editor-fold>
 
@@ -2853,10 +2853,10 @@ Testimony.test('Solarite.slots.slotless', `Add children even when no slots prese
 	}
 	S30.define();
 
-	let div = r('<div><s-30>child2<br>child4</s-30></div>')
+	let div = r('<div><s-30>child2<br>child3</s-30></div>')
 	document.body.append(div);
 
-	assert.eq(div.outerHTML, `<div><s-30><div>child1</div>child2<br>child4</s-30></div>`)
+	assert.eq(div.outerHTML, `<div><s-30><div>child1</div>child2<br>child3</s-30></div>`)
 
 	div.remove();
 });

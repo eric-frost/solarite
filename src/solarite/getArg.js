@@ -1,4 +1,4 @@
-
+import Util from "./Util.js";
 
 
 /**
@@ -34,7 +34,7 @@
  * @return {*} Undefined if attribute isn't set.  */
 export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, fallback=undefined) {
 	let val = defaultValue;
-	let attrVal = el.getAttribute(attributeName);
+	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util.camelToDashes(attributeName));
 	if (attrVal !== null) // If attribute doesn't exist.
 		val = attrVal;
 		

@@ -271,14 +271,8 @@ export default class NodeGroup {
 			}
 		}
 
-		// We pass the childNodes to the constructor so it can know about them,
-		// instead of only afterward when they're appended to the slot below.
-		// This is useful for a custom selectbox, for example.
-		// Globals.pendingChildren stores the childen so the super construtor call to Solarite's constructor
-		// can add them as children before the rest of the constructor code executes.
+		// Create the web component.
 		let ch = [...el.childNodes];
-		//if (el instanceof Solarite)
-		//	Globals.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
 		let newEl = new Constructor(args, ch);
 
 		if (!isPreHtmlElement)
@@ -286,12 +280,6 @@ export default class NodeGroup {
 
 		// Replace the placeholder tag with the instantiated web component.
 		el.replaceWith(newEl);
-
-		// Set children / slot children
-		// TODO: Match named slots.
-		// TODO: This only appends to slot if render() is called in the constructor.
-		//let slot = newEl.querySelector('slot') || newEl;
-		//slot.append(...el.childNodes);
 
 		// If an id pointed at the placeholder, update it to point to the new element.
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
@@ -585,11 +573,11 @@ export class RootNodeGroup extends NodeGroup {
 		if (el) {
 			Globals.nodeGroups.set(el, this);
 
-			// Save slot children
-			let slotFragment;
+			// Save original children
+			let originalChildren;
 			if (el.childNodes.length) {
-				slotFragment = document.createDocumentFragment();
-				slotFragment.append(...el.childNodes);
+				originalChildren = document.createDocumentFragment();
+				originalChildren.append(...el.childNodes);
 			}
 
 			this.root = el;
@@ -612,20 +600,26 @@ export class RootNodeGroup extends NodeGroup {
 					el.append(...fragment.childNodes);
 			}
 
-			// Setup slots
-			if (slotFragment) {
+			// Setup children
+			if (originalChildren) {
+
+				// Named slots
 				for (let slot of el.querySelectorAll('slot[name]')) {
 					let name = slot.getAttribute('name')
 					if (name) {
-						let slotChildren = slotFragment.querySelectorAll(`[slot='${name}']`);
+						let slotChildren = originalChildren.querySelectorAll(`[slot='${name}']`);
 						slot.append(...slotChildren);
 					}
 				}
+
+				// Unnamed slots
 				let unamedSlot = el.querySelector('slot:not([name])')
 				if (unamedSlot)
-					unamedSlot.append(slotFragment);
+					unamedSlot.append(originalChildren);
+
+				// No slots
 				else
-					el.append(slotFragment);
+					el.append(originalChildren);
 			}
 
 			root = el;

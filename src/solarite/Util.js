@@ -31,6 +31,33 @@ let Util = {
 
 
 	/**
+	 * Convert a Proper Case name to a name with dashes.
+	 * Dashes will be placed between letters and numbers.
+	 * If there are multiple consecutive capital letters followed by another chracater, a dash will be placed before the last capital letter.
+	 * @param str {string}
+	 * @return {string}
+	 *
+	 * @example
+	 * 'ProperName' => 'proper-name'
+	 * 'HTMLElement' => 'html-element'
+	 * 'BigUI' => 'big-ui'
+	 * 'UIForm' => 'ui-form'
+	 * 'A100' => 'a-100' */
+	camelToDashes(str) {
+		// Convert any capital letter that is preceded by a lowercase letter or number to lowercase and precede with a dash.
+		str = str.replace(/([a-z0-9])([A-Z])/g, '$1-$2');
+
+		// Convert any capital letter that is followed by a lowercase letter or number to lowercase and precede with a dash.
+		str = str.replace(/([A-Z])([A-Z][a-z])/g, '$1-$2');
+
+		// Convert any number that is preceded by a lowercase or uppercase letter to be preceded by a dash.
+		str = str.replace(/([a-zA-Z])([0-9])/g, '$1-$2');
+
+		// Convert all the remaining capital letters to lowercase.
+		return str.toLowerCase();
+	},
+
+	/**
 	 * Converts a string written in kebab-case to camelCase.
 	 *
 	 * @param {string} str - The input string written in kebab-case.
@@ -152,33 +179,6 @@ export default Util;
 let isEvent = attrName => attrName.startsWith('on') && attrName in Globals.div;
 export {isEvent};
 
-
-/**
- * Convert a Proper Case name to a name with dashes.
- * Dashes will be placed between letters and numbers.
- * If there are multiple consecutive capital letters followed by another chracater, a dash will be placed before the last capital letter.
- * @param str {string}
- * @return {string}
- *
- * @example
- * 'ProperName' => 'proper-name'
- * 'HTMLElement' => 'html-element'
- * 'BigUI' => 'big-ui'
- * 'UIForm' => 'ui-form'
- * 'A100' => 'a-100' */
-export function camelToDashes(str) {
-	// Convert any capital letter that is preceded by a lowercase letter or number to lowercase and precede with a dash.
-	str = str.replace(/([a-z0-9])([A-Z])/g, '$1-$2');
-
-	// Convert any capital letter that is followed by a lowercase letter or number to lowercase and precede with a dash.
-	str = str.replace(/([A-Z])([A-Z][a-z])/g, '$1-$2');
-
-	// Convert any number that is preceded by a lowercase or uppercase letter to be preceded by a dash.
-	str = str.replace(/([a-zA-Z])([0-9])/g, '$1-$2');
-
-	// Convert all the remaining capital letters to lowercase.
-	return str.toLowerCase();
-}
 
 export function dashesToCamel(str) {
 	return str.replace(/-([a-z])/g, g => g[1].toUpperCase());

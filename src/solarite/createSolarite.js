@@ -1,11 +1,7 @@
 import Util from "../util/Util.js";
-//import {assert} from "../util/Errors.js";
-import delve from "../util/delve.js";
+import SolariteUtil from './Util.js';
 import {getArg, ArgType} from "./getArg.js";
-import {getObjectHash} from "./hash.js";
-//import NodeGroupManager from "./NodeGroupManager.js";
 import r from "./r.js";
-import {camelToDashes} from "./Util.js";
 import Globals from "./Globals.js";
 
 
@@ -15,7 +11,7 @@ import Globals from "./Globals.js";
 
 function defineClass(Class, tagName, extendsTag) {
 	if (!customElements.getName(Class)) { // If not previously defined.
-		tagName = tagName || camelToDashes(Class.name)
+		tagName = tagName || SolariteUtil.camelToDashes(Class.name)
 		if (!tagName.includes('-'))
 			tagName += '-element';
 

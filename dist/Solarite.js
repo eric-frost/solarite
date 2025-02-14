@@ -109,248 +109,6 @@ var Util$1 = {
 
 let weakMemoizeInputs = new WeakMap();
 
-/**
- * Follow a path into an object.
- * @param obj {object}
- * @param path {string[]}
- * @param createVal {*}  If set, non-existent paths will be created and value at path will be set to createVal.
- * @return {*} The value, or undefined if it can't be reached. */
-function delve(obj, path, createVal = delveDontCreate) {
-	let isCreate = createVal !== delveDontCreate;
-
-	let len = path.length;
-	if (!obj && !isCreate && len)
-		return undefined;
-
-	let i = 0;
-	for (let srcProp of path) {
-
-		// If the path is undefined and we're not to the end yet:
-		if (obj[srcProp] === undefined) {
-
-			// If the next index is an integer or integer string.
-			if (isCreate) {
-				if (i < len - 1) {
-					// If next level path is a number, create as an array
-					let isArray = (path[i + 1] + '').match(/^\d+$/);
-					obj[srcProp] = isArray ? [] : {};
-				}
-			} else
-				return undefined; // can't traverse
-		}
-
-		// If last item in path
-		if (isCreate && i === len - 1)
-			obj[srcProp] = createVal;
-
-		// Traverse deeper along destination object.
-		obj = obj[srcProp];
-		i++;
-	}
-
-	return obj;
-}
-
-let delveDontCreate = {};
-
-/**
- * There are three ways to create an instance of a Solarite Component:
- * 1.  new ComponentName();                                         // direct class instantiation
- * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another RedComponent.
- * 3.  <body><component-name></component-name></body>               // in the Document html.
- *
- * When created via #3, Solarite has no way to pass attributes as arguments to the constructor.  So to make
- * sure we get the correct value via all three paths, we write our constructors according to the following
- * example.  Note that constructor args are embedded in an object, and must be all lower-case because
- * Browsers make all html attribute names lowercase.
- *
- * @example
- * constructor({name, userid=1}={}) {
- *     super();
- *
- *     // Get value from "name" attriute if persent, otherwise from name constructor arg.
- *     this.name = getArg(this, 'name', name);
- *
- *     // Optionally convert the value to an integer.
- *     this.userId = getArg(this, 'userid', userid, ArgType.Int);
- * }
- *
- * @param el {HTMLElement}
- * @param attributeName {string} Attribute name.  Not case-sensitive.
- * @param defaultValue {*} Default value to use if attribute doesn't exist.
- * @param type {ArgType|function|*[]}
- *     If an array, use the value if it's in the array, otherwise return undefined.
- *     If it's a function, pass the value to the function and return the result.
- * @param fallback {*} If the defaultValue is undefiend and type can't be parsed as the given type, use this value.
- *     TODO: Should this be merged with the defaultValue argument?
- * @return {*} Undefined if attribute isn't set.  */
-function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, fallback=undefined) {
-	let val = defaultValue;
-	let attrVal = el.getAttribute(attributeName);
-	if (attrVal !== null) // If attribute doesn't exist.
-		val = attrVal;
-		
-	if (Array.isArray(type))
-		return type.includes(val) ? val : fallback;
-	
-	if (typeof type === 'function')
-		return type(val);
-	
-	// If bool, it's true as long as it exists and its value isn't falsey.
-	if (type===ArgType.Bool) {
-		let lAttrVal = typeof val === 'string' ? val.toLowerCase() : val;
-		if (['false', '0', false, 0, null, undefined, NaN].includes(lAttrVal))
-			return false;
-		if (['true', true].includes(lAttrVal) || parseFloat(lAttrVal) !== 0)
-			return true;
-		return fallback;
-	}
-	
-	// Attribute doesn't exist
-	let result;
-	switch (type) {
-		case ArgType.Int:
-			result = parseInt(val);
-			return isNaN(result) ? fallback : result;
-		case ArgType.Float:
-			result = parseFloat(val);
-			return isNaN(result) ? fallback : result;
-		case ArgType.String:
-			return [undefined, null, false].includes(val) ? '' : val+'';
-		case ArgType.JSON:
-		case ArgType.Eval:
-			if (typeof val === 'string' && val.length)
-				try {
-					if (type === ArgType.JSON)
-						return JSON.parse(val);
-					else
-						return eval(`(${val})`);
-				} catch (e) {
-					return val;
-				}
-			else return val;
-
-		// type not provided
-		default:
-			return val;
-	}
-}
-
-/**
- * @enum */
-var ArgType = {
-	
-	/**
-	 * false, 0, null, undefined, '0', and 'false' (case-insensitive) become false.
-	 * Anything else, including empty string becomes true.
-	 * Empty string is true because attributes with no value should be evaulated as true. */
-	Bool: 'Bool',
-	
-	Int: 'Int',
-	Float: 'Float',
-	String: 'String',
-	
-	/**
-	 * Parse the string value as JSON.
-	 * If it's not parsable, return the value as a string. */
-	JSON: 'JSON',
-	
-	/**
-	 * Evaluate the string as JavaScript using the eval() function.
-	 * If it can't be evaluated, return the original string. */
-	Eval: 'Eval'
-};
-
-let lastObjectId = 1>>>0; // Is a 32-bit int faster to increment than JavaScript's Number, which is a 64-bit float?
-let objectIds = new WeakMap();
-
-/**
- * @param obj {Object|string|Node}
- * @returns {string} */
-function getObjectId(obj) {
-	// if (typeof obj === 'function')
-	// 	return obj.toString(); // This fails to detect when a function's bound variables changes.
-	
-	let result = objectIds.get(obj);
-	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
-		result = '~\f' + (lastObjectId++); // We use a unique, 2-byte prefix to ensure it doesn't collide w/ strings not from getObjectId()
-		objectIds.set(obj, result);
-	}
-	return result;
-}
-
-/**
- * Control how JSON.stringify() handles Nodes and Functions.
- * Normally, we'd pass a replacer() function argument to JSON.stringify() to handle Nodes and Functions.
- * But that makes JSON.stringify() take twice as long to run.
- * Adding a toJSON method globally on these object prototypes doesn't incur that performance penalty. */
-let isHashing = true;
-function toJSON() {
-	return isHashing ? getObjectId(this) : this
-}
-
-
-// Node.prototype.toJSON = toJSON;
-// Function.prototype.toJSON = toJSON;
-
-
-/**
- * Get a string that uniquely maps to the values of the given object.
- * If a value in obj changes, calling getObjectHash(obj) will then return a different hash.
- * This is used by NodeGroupManager to create a hash that represents the current values of a NodeGroup.
- *
- * Relies on the Node and Function prototypes being overridden above.
- *
- * Note that passing an integer may collide with the number we get from hashing an object.
- * But we don't handle that case because we need max performance and Solarite never passes integers to this function.
- *
- * @param obj {*}
- * @returns {string} */
-function getObjectHash(obj) {
-
-	// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
-	// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
-	// So we check the assignments on every run of getObjectHash()
-	if (Node.prototype.toJSON !== toJSON) {
-		Node.prototype.toJSON = toJSON;
-		if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
-			Function.prototype.toJSON = toJSON;
-	}
-
-	let result;
-	isHashing = true;
-	try {
-		result = JSON.stringify(obj);
-	}
-	catch(e) {
-		result = getObjectHashCircular(obj);
-	}
-	isHashing = false;
-	return result;
-}
-
-/**
- * Slower hashing method that supports.
- * @param obj
- * @returns {string} */
-function getObjectHashCircular(obj) {
-
-	//console.log('circular')
-	// Slower version that handles circular references.
-	// Just adding any callback at all, even one that just returns the value, makes JSON.stringify() twice as slow.
-	const seen = new Set();
-	return JSON.stringify(obj, (key, value) => {
-		if (typeof value === 'object' && value !== null) {
-			if (seen.has(value))
-				return getObjectId(value);
-			seen.add(value);
-		}
-		return value;
-	});
-}
-
-
-
 var Globals;
 
 /**
@@ -447,6 +205,33 @@ let Util = {
 		}
 	},
 
+
+	/**
+	 * Convert a Proper Case name to a name with dashes.
+	 * Dashes will be placed between letters and numbers.
+	 * If there are multiple consecutive capital letters followed by another chracater, a dash will be placed before the last capital letter.
+	 * @param str {string}
+	 * @return {string}
+	 *
+	 * @example
+	 * 'ProperName' => 'proper-name'
+	 * 'HTMLElement' => 'html-element'
+	 * 'BigUI' => 'big-ui'
+	 * 'UIForm' => 'ui-form'
+	 * 'A100' => 'a-100' */
+	camelToDashes(str) {
+		// Convert any capital letter that is preceded by a lowercase letter or number to lowercase and precede with a dash.
+		str = str.replace(/([a-z0-9])([A-Z])/g, '$1-$2');
+
+		// Convert any capital letter that is followed by a lowercase letter or number to lowercase and precede with a dash.
+		str = str.replace(/([A-Z])([A-Z][a-z])/g, '$1-$2');
+
+		// Convert any number that is preceded by a lowercase or uppercase letter to be preceded by a dash.
+		str = str.replace(/([a-zA-Z])([0-9])/g, '$1-$2');
+
+		// Convert all the remaining capital letters to lowercase.
+		return str.toLowerCase();
+	},
 
 	/**
 	 * Converts a string written in kebab-case to camelCase.
@@ -568,34 +353,6 @@ let Util = {
 let isEvent = attrName => attrName.startsWith('on') && attrName in Globals$1.div;
 
 
-/**
- * Convert a Proper Case name to a name with dashes.
- * Dashes will be placed between letters and numbers.
- * If there are multiple consecutive capital letters followed by another chracater, a dash will be placed before the last capital letter.
- * @param str {string}
- * @return {string}
- *
- * @example
- * 'ProperName' => 'proper-name'
- * 'HTMLElement' => 'html-element'
- * 'BigUI' => 'big-ui'
- * 'UIForm' => 'ui-form'
- * 'A100' => 'a-100' */
-function camelToDashes(str) {
-	// Convert any capital letter that is preceded by a lowercase letter or number to lowercase and precede with a dash.
-	str = str.replace(/([a-z0-9])([A-Z])/g, '$1-$2');
-
-	// Convert any capital letter that is followed by a lowercase letter or number to lowercase and precede with a dash.
-	str = str.replace(/([A-Z])([A-Z][a-z])/g, '$1-$2');
-
-	// Convert any number that is preceded by a lowercase or uppercase letter to be preceded by a dash.
-	str = str.replace(/([a-zA-Z])([0-9])/g, '$1-$2');
-
-	// Convert all the remaining capital letters to lowercase.
-	return str.toLowerCase();
-}
-
-
 
 
 
@@ -620,6 +377,248 @@ function arraySame(a, b) {
 
 // For debugging only
 
+
+/**
+ * There are three ways to create an instance of a Solarite Component:
+ * 1.  new ComponentName();                                         // direct class instantiation
+ * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another RedComponent.
+ * 3.  <body><component-name></component-name></body>               // in the Document html.
+ *
+ * When created via #3, Solarite has no way to pass attributes as arguments to the constructor.  So to make
+ * sure we get the correct value via all three paths, we write our constructors according to the following
+ * example.  Note that constructor args are embedded in an object, and must be all lower-case because
+ * Browsers make all html attribute names lowercase.
+ *
+ * @example
+ * constructor({name, userid=1}={}) {
+ *     super();
+ *
+ *     // Get value from "name" attriute if persent, otherwise from name constructor arg.
+ *     this.name = getArg(this, 'name', name);
+ *
+ *     // Optionally convert the value to an integer.
+ *     this.userId = getArg(this, 'userid', userid, ArgType.Int);
+ * }
+ *
+ * @param el {HTMLElement}
+ * @param attributeName {string} Attribute name.  Not case-sensitive.
+ * @param defaultValue {*} Default value to use if attribute doesn't exist.
+ * @param type {ArgType|function|*[]}
+ *     If an array, use the value if it's in the array, otherwise return undefined.
+ *     If it's a function, pass the value to the function and return the result.
+ * @param fallback {*} If the defaultValue is undefiend and type can't be parsed as the given type, use this value.
+ *     TODO: Should this be merged with the defaultValue argument?
+ * @return {*} Undefined if attribute isn't set.  */
+function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, fallback=undefined) {
+	let val = defaultValue;
+	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util.camelToDashes(attributeName));
+	if (attrVal !== null) // If attribute doesn't exist.
+		val = attrVal;
+		
+	if (Array.isArray(type))
+		return type.includes(val) ? val : fallback;
+	
+	if (typeof type === 'function')
+		return type(val);
+	
+	// If bool, it's true as long as it exists and its value isn't falsey.
+	if (type===ArgType.Bool) {
+		let lAttrVal = typeof val === 'string' ? val.toLowerCase() : val;
+		if (['false', '0', false, 0, null, undefined, NaN].includes(lAttrVal))
+			return false;
+		if (['true', true].includes(lAttrVal) || parseFloat(lAttrVal) !== 0)
+			return true;
+		return fallback;
+	}
+	
+	// Attribute doesn't exist
+	let result;
+	switch (type) {
+		case ArgType.Int:
+			result = parseInt(val);
+			return isNaN(result) ? fallback : result;
+		case ArgType.Float:
+			result = parseFloat(val);
+			return isNaN(result) ? fallback : result;
+		case ArgType.String:
+			return [undefined, null, false].includes(val) ? '' : val+'';
+		case ArgType.JSON:
+		case ArgType.Eval:
+			if (typeof val === 'string' && val.length)
+				try {
+					if (type === ArgType.JSON)
+						return JSON.parse(val);
+					else
+						return eval(`(${val})`);
+				} catch (e) {
+					return val;
+				}
+			else return val;
+
+		// type not provided
+		default:
+			return val;
+	}
+}
+
+/**
+ * @enum */
+var ArgType = {
+	
+	/**
+	 * false, 0, null, undefined, '0', and 'false' (case-insensitive) become false.
+	 * Anything else, including empty string becomes true.
+	 * Empty string is true because attributes with no value should be evaulated as true. */
+	Bool: 'Bool',
+	
+	Int: 'Int',
+	Float: 'Float',
+	String: 'String',
+	
+	/**
+	 * Parse the string value as JSON.
+	 * If it's not parsable, return the value as a string. */
+	JSON: 'JSON',
+	
+	/**
+	 * Evaluate the string as JavaScript using the eval() function.
+	 * If it can't be evaluated, return the original string. */
+	Eval: 'Eval'
+};
+
+
+
+let lastObjectId = 1>>>0; // Is a 32-bit int faster to increment than JavaScript's Number, which is a 64-bit float?
+let objectIds = new WeakMap();
+
+/**
+ * @param obj {Object|string|Node}
+ * @returns {string} */
+function getObjectId(obj) {
+	// if (typeof obj === 'function')
+	// 	return obj.toString(); // This fails to detect when a function's bound variables changes.
+	
+	let result = objectIds.get(obj);
+	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
+		result = '~\f' + (lastObjectId++); // We use a unique, 2-byte prefix to ensure it doesn't collide w/ strings not from getObjectId()
+		objectIds.set(obj, result);
+	}
+	return result;
+}
+
+/**
+ * Control how JSON.stringify() handles Nodes and Functions.
+ * Normally, we'd pass a replacer() function argument to JSON.stringify() to handle Nodes and Functions.
+ * But that makes JSON.stringify() take twice as long to run.
+ * Adding a toJSON method globally on these object prototypes doesn't incur that performance penalty. */
+let isHashing = true;
+function toJSON() {
+	return isHashing ? getObjectId(this) : this
+}
+
+
+// Node.prototype.toJSON = toJSON;
+// Function.prototype.toJSON = toJSON;
+
+
+/**
+ * Get a string that uniquely maps to the values of the given object.
+ * If a value in obj changes, calling getObjectHash(obj) will then return a different hash.
+ * This is used by NodeGroupManager to create a hash that represents the current values of a NodeGroup.
+ *
+ * Relies on the Node and Function prototypes being overridden above.
+ *
+ * Note that passing an integer may collide with the number we get from hashing an object.
+ * But we don't handle that case because we need max performance and Solarite never passes integers to this function.
+ *
+ * @param obj {*}
+ * @returns {string} */
+function getObjectHash(obj) {
+
+	// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
+	// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
+	// So we check the assignments on every run of getObjectHash()
+	if (Node.prototype.toJSON !== toJSON) {
+		Node.prototype.toJSON = toJSON;
+		if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
+			Function.prototype.toJSON = toJSON;
+	}
+
+	let result;
+	isHashing = true;
+	try {
+		result = JSON.stringify(obj);
+	}
+	catch(e) {
+		result = getObjectHashCircular(obj);
+	}
+	isHashing = false;
+	return result;
+}
+
+/**
+ * Slower hashing method that supports.
+ * @param obj
+ * @returns {string} */
+function getObjectHashCircular(obj) {
+
+	//console.log('circular')
+	// Slower version that handles circular references.
+	// Just adding any callback at all, even one that just returns the value, makes JSON.stringify() twice as slow.
+	const seen = new Set();
+	return JSON.stringify(obj, (key, value) => {
+		if (typeof value === 'object' && value !== null) {
+			if (seen.has(value))
+				return getObjectId(value);
+			seen.add(value);
+		}
+		return value;
+	});
+}
+
+/**
+ * Follow a path into an object.
+ * @param obj {object}
+ * @param path {string[]}
+ * @param createVal {*}  If set, non-existent paths will be created and value at path will be set to createVal.
+ * @return {*} The value, or undefined if it can't be reached. */
+function delve(obj, path, createVal = delveDontCreate) {
+	let isCreate = createVal !== delveDontCreate;
+
+	let len = path.length;
+	if (!obj && !isCreate && len)
+		return undefined;
+
+	let i = 0;
+	for (let srcProp of path) {
+
+		// If the path is undefined and we're not to the end yet:
+		if (obj[srcProp] === undefined) {
+
+			// If the next index is an integer or integer string.
+			if (isCreate) {
+				if (i < len - 1) {
+					// If next level path is a number, create as an array
+					let isArray = (path[i + 1] + '').match(/^\d+$/);
+					obj[srcProp] = isArray ? [] : {};
+				}
+			} else
+				return undefined; // can't traverse
+		}
+
+		// If last item in path
+		if (isCreate && i === len - 1)
+			obj[srcProp] = createVal;
+
+		// Traverse deeper along destination object.
+		obj = obj[srcProp];
+		i++;
+	}
+
+	return obj;
+}
+
+let delveDontCreate = {};
 
 class MultiValueMap {
 
@@ -2462,14 +2461,8 @@ class NodeGroup {
 			}
 		}
 
-		// We pass the childNodes to the constructor so it can know about them,
-		// instead of only afterward when they're appended to the slot below.
-		// This is useful for a custom selectbox, for example.
-		// Globals.pendingChildren stores the childen so the super construtor call to Solarite's constructor
-		// can add them as children before the rest of the constructor code executes.
+		// Create the web component.
 		let ch = [...el.childNodes];
-		//if (el instanceof Solarite)
-		//	Globals.pendingChildren.push(ch);  // pop() is called in Solarite constructor.
 		let newEl = new Constructor(args, ch);
 
 		if (!isPreHtmlElement)
@@ -2477,12 +2470,6 @@ class NodeGroup {
 
 		// Replace the placeholder tag with the instantiated web component.
 		el.replaceWith(newEl);
-
-		// Set children / slot children
-		// TODO: Match named slots.
-		// TODO: This only appends to slot if render() is called in the constructor.
-		//let slot = newEl.querySelector('slot') || newEl;
-		//slot.append(...el.childNodes);
 
 		// If an id pointed at the placeholder, update it to point to the new element.
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
@@ -2711,11 +2698,11 @@ class RootNodeGroup extends NodeGroup {
 		if (el) {
 			Globals$1.nodeGroups.set(el, this);
 
-			// Save slot children
-			let slotFragment;
+			// Save original children
+			let originalChildren;
 			if (el.childNodes.length) {
-				slotFragment = document.createDocumentFragment();
-				slotFragment.append(...el.childNodes);
+				originalChildren = document.createDocumentFragment();
+				originalChildren.append(...el.childNodes);
 			}
 
 			this.root = el;
@@ -2738,20 +2725,26 @@ class RootNodeGroup extends NodeGroup {
 					el.append(...fragment.childNodes);
 			}
 
-			// Setup slots
-			if (slotFragment) {
+			// Setup children
+			if (originalChildren) {
+
+				// Named slots
 				for (let slot of el.querySelectorAll('slot[name]')) {
 					let name = slot.getAttribute('name');
 					if (name) {
-						let slotChildren = slotFragment.querySelectorAll(`[slot='${name}']`);
+						let slotChildren = originalChildren.querySelectorAll(`[slot='${name}']`);
 						slot.append(...slotChildren);
 					}
 				}
+
+				// Unnamed slots
 				let unamedSlot = el.querySelector('slot:not([name])');
 				if (unamedSlot)
-					unamedSlot.append(slotFragment);
+					unamedSlot.append(originalChildren);
+
+				// No slots
 				else
-					el.append(slotFragment);
+					el.append(originalChildren);
 			}
 
 			root = el;
@@ -3080,7 +3073,7 @@ function r(htmlStrings=undefined, ...exprs) {
 
 function defineClass(Class, tagName, extendsTag) {
 	if (!customElements.getName(Class)) { // If not previously defined.
-		tagName = tagName || camelToDashes(Class.name);
+		tagName = tagName || Util.camelToDashes(Class.name);
 		if (!tagName.includes('-'))
 			tagName += '-element';
 
