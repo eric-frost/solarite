@@ -71,10 +71,18 @@ export default class NodeGroup {
 
 			this.updatePaths(fragment, shell.paths);
 
+			// Static web components can sometimes have children created via expressions.
+			// But calling applyExprs() will mess up the shell's path to them.
+			// So we find them first, then call activateStaticComponents() after their children have been created.
+			let staticComponents = this.findStaticComponents(fragment, shell);
+
 			this.activateEmbeds(fragment, shell);
 
 			// Apply exprs
 			this.applyExprs(template.exprs);
+
+			this.activateStaticComponents(staticComponents);
+
 		}
 	}
 
@@ -272,7 +280,8 @@ export default class NodeGroup {
 		}
 
 		// Create the web component.
-		let ch = [...el.childNodes];
+		// Get the children that aren't Solarite's comment placeholders.
+		let ch = [...el.childNodes].filter(node => node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath'));
 		let newEl = new Constructor(args, ch);
 
 		if (!isPreHtmlElement)
@@ -463,12 +472,8 @@ export default class NodeGroup {
 	}
 	//#ENDIF
 
-
-	/**
-	 * @param root {HTMLElement}
-	 * @param shell {Shell}
-	 * @param pathOffset {int} */
-	activateEmbeds(root, shell, pathOffset=0) {
+	findStaticComponents(root, shell, pathOffset=0) {
+		let result = [];
 
 		// static components.  These are WebComponents that do not have any constructor arguments that are expressions.
 		// Those are instead created by applyExpr() which calls applyComponentExprs() which calls createNewcomponent().
@@ -482,8 +487,22 @@ export default class NodeGroup {
 			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
 			// Recreating it is necessary so we can pass the constructor args to it.
 			if (root !== el/* && !isReplaceEl(root, el)*/) // TODO: is isReplaceEl necessary?
-				this.createNewComponent(el)
+				result.push(el);
 		}
+		return result;
+	}
+
+	activateStaticComponents(staticComponents) {
+		for (let el of staticComponents)
+			this.createNewComponent(el)
+	}
+
+	/**
+	 * @param root {HTMLElement}
+	 * @param shell {Shell}
+	 * @param pathOffset {int}
+	 * @param template {Template} */
+	activateEmbeds(root, shell, pathOffset=0) {
 
 		let rootEl = this.rootNg.root;
 		if (rootEl) {
@@ -513,6 +532,8 @@ export default class NodeGroup {
 				for (let path of shell.styles) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
+
+					/** @type {HTMLStyleElement} */
 					let style = resolveNodePath(root, path);
 					if (rootEl.nodeType === 1) {
 						Util.bindStyles(style, rootEl);
@@ -549,7 +570,7 @@ export class RootNodeGroup extends NodeGroup {
 	watchedExprPaths = {};
 
 	/**
-	 *
+	 * When we call renerWatched() we re-render these expressions, then clear this to a new Map()
 	 * @type {Map<ExprPath, NewValue|Array>} */
 	exprsToRender = new Map();
 
@@ -573,11 +594,11 @@ export class RootNodeGroup extends NodeGroup {
 		if (el) {
 			Globals.nodeGroups.set(el, this);
 
-			// Save original children
-			let originalChildren;
+			// Save slot children
+			let slotChildren;
 			if (el.childNodes.length) {
-				originalChildren = document.createDocumentFragment();
-				originalChildren.append(...el.childNodes);
+				slotChildren = document.createDocumentFragment();
+				slotChildren.append(...el.childNodes);
 			}
 
 			this.root = el;
@@ -601,25 +622,25 @@ export class RootNodeGroup extends NodeGroup {
 			}
 
 			// Setup children
-			if (originalChildren) {
+			if (slotChildren) {
 
 				// Named slots
 				for (let slot of el.querySelectorAll('slot[name]')) {
 					let name = slot.getAttribute('name')
 					if (name) {
-						let slotChildren = originalChildren.querySelectorAll(`[slot='${name}']`);
-						slot.append(...slotChildren);
+						let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
+						slot.append(...slotChildren2);
 					}
 				}
 
 				// Unnamed slots
 				let unamedSlot = el.querySelector('slot:not([name])')
 				if (unamedSlot)
-					unamedSlot.append(originalChildren);
+					unamedSlot.append(slotChildren);
 
 				// No slots
 				else
-					el.append(originalChildren);
+					el.append(slotChildren);
 			}
 
 			root = el;
@@ -640,10 +661,17 @@ export class RootNodeGroup extends NodeGroup {
 
 		this.updatePaths(root, shell.paths, offset);
 
-		this.activateEmbeds(root, shell, offset);
+		// Static web components can sometimes have children created via expressions.
+		// But calling applyExprs() will mess up the shell's path to them.
+		// So we find them first, then call activateStaticComponents() after their children have been created.
+		let staticComponents = this.findStaticComponents(root, shell, offset);
+
+		this.activateEmbeds(root, shell, offset, template);
 
 		// Apply exprs
 		this.applyExprs(template.exprs);
+
+		this.activateStaticComponents(staticComponents);
 	}
 
 	clearRenderWatched() {

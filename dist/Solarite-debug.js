@@ -134,8 +134,8 @@ function reset() {
 		rendered: new WeakSet(),
 
 		/**
-		 * Used by watch3 to see which expressions are being accessed.
-		 * Set in ExprPath.applyExact()
+		 * ExprPath.applyExact() sets this property when an expression is being accessed.
+		 * watch3() then adds the ExprPath to rootNg.watchedExprPaths so we know which expressions use which fields.
 		 * @type {ExprPath}*/
 		currentExprPath: null,
 
@@ -1275,12 +1275,22 @@ class ExprPath {
 	applyLoopItemUpdate(index, template) {
 		// At this point none of the nodes being used will be in nodeGroupsFree.
 		let oldNg = this.nodeGroups[index];
+		if (!oldNg) {
+			oldNg = new NodeGroup(template, this);
+
+			// TODO: This start/end position only works for push()
+			oldNg.startNode = this.nodeBefore.previousSibling;
+			oldNg.endNode = this.nodeBefore;
+			oldNg.exactKey = template.getExactKey();
+			oldNg.closeKey = template.getCloseKey();
+			this.nodeGroups.push(oldNg);
+		}
 		this.nodeGroupsAttached.add(oldNg.exactKey, oldNg);
 		this.nodeGroupsAttached.add(oldNg.closeKey, oldNg);
 
 		let ng = this.getNodeGroup(template, true);
 		if (ng) {
-			return; // It's an exactl match, so replace nothing.
+			return; // It's an exact match, so replace nothing.
 		}
 
 
@@ -1964,7 +1974,7 @@ function getNodePath(node) {
  * Note that the path is backward, with the outermost element at the end.
  * @param root {HTMLElement|Document|DocumentFragment|ParentNode}
  * @param path {int[]}
- * @returns {Node|HTMLElement} */
+ * @returns {Node|HTMLElement|HTMLStyleElement} */
 function resolveNodePath(root, path) {
 	for (let i=path.length-1; i>=0; i--)
 		root = root.childNodes[path[i]];
@@ -2449,10 +2459,18 @@ class NodeGroup {
 
 			this.updatePaths(fragment, shell.paths);
 
+			// Static web components can sometimes have children created via expressions.
+			// But calling applyExprs() will mess up the shell's path to them.
+			// So we find them first, then call activateStaticComponents() after their children have been created.
+			let staticComponents = this.findStaticComponents(fragment, shell);
+
 			this.activateEmbeds(fragment, shell);
 
 			// Apply exprs
 			this.applyExprs(template.exprs);
+
+			this.activateStaticComponents(staticComponents);
+
 		}
 	}
 
@@ -2650,7 +2668,8 @@ class NodeGroup {
 		}
 
 		// Create the web component.
-		let ch = [...el.childNodes];
+		// Get the children that aren't Solarite's comment placeholders.
+		let ch = [...el.childNodes].filter(node => node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath'));
 		let newEl = new Constructor(args, ch);
 
 		if (!isPreHtmlElement)
@@ -2841,12 +2860,8 @@ class NodeGroup {
 	}
 	//#ENDIF
 
-
-	/**
-	 * @param root {HTMLElement}
-	 * @param shell {Shell}
-	 * @param pathOffset {int} */
-	activateEmbeds(root, shell, pathOffset=0) {
+	findStaticComponents(root, shell, pathOffset=0) {
+		let result = [];
 
 		// static components.  These are WebComponents that do not have any constructor arguments that are expressions.
 		// Those are instead created by applyExpr() which calls applyComponentExprs() which calls createNewcomponent().
@@ -2860,8 +2875,22 @@ class NodeGroup {
 			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
 			// Recreating it is necessary so we can pass the constructor args to it.
 			if (root !== el/* && !isReplaceEl(root, el)*/) // TODO: is isReplaceEl necessary?
-				this.createNewComponent(el);
+				result.push(el);
 		}
+		return result;
+	}
+
+	activateStaticComponents(staticComponents) {
+		for (let el of staticComponents)
+			this.createNewComponent(el);
+	}
+
+	/**
+	 * @param root {HTMLElement}
+	 * @param shell {Shell}
+	 * @param pathOffset {int}
+	 * @param template {Template} */
+	activateEmbeds(root, shell, pathOffset=0) {
 
 		let rootEl = this.rootNg.root;
 		if (rootEl) {
@@ -2891,6 +2920,8 @@ class NodeGroup {
 				for (let path of shell.styles) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
+
+					/** @type {HTMLStyleElement} */
 					let style = resolveNodePath(root, path);
 					if (rootEl.nodeType === 1) {
 						Util.bindStyles(style, rootEl);
@@ -2927,7 +2958,7 @@ class RootNodeGroup extends NodeGroup {
 	watchedExprPaths = {};
 
 	/**
-	 *
+	 * When we call renerWatched() we re-render these expressions, then clear this to a new Map()
 	 * @type {Map<ExprPath, NewValue|Array>} */
 	exprsToRender = new Map();
 
@@ -2951,11 +2982,11 @@ class RootNodeGroup extends NodeGroup {
 		if (el) {
 			Globals$1.nodeGroups.set(el, this);
 
-			// Save original children
-			let originalChildren;
+			// Save slot children
+			let slotChildren;
 			if (el.childNodes.length) {
-				originalChildren = document.createDocumentFragment();
-				originalChildren.append(...el.childNodes);
+				slotChildren = document.createDocumentFragment();
+				slotChildren.append(...el.childNodes);
 			}
 
 			this.root = el;
@@ -2979,25 +3010,25 @@ class RootNodeGroup extends NodeGroup {
 			}
 
 			// Setup children
-			if (originalChildren) {
+			if (slotChildren) {
 
 				// Named slots
 				for (let slot of el.querySelectorAll('slot[name]')) {
 					let name = slot.getAttribute('name');
 					if (name) {
-						let slotChildren = originalChildren.querySelectorAll(`[slot='${name}']`);
-						slot.append(...slotChildren);
+						let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
+						slot.append(...slotChildren2);
 					}
 				}
 
 				// Unnamed slots
 				let unamedSlot = el.querySelector('slot:not([name])');
 				if (unamedSlot)
-					unamedSlot.append(originalChildren);
+					unamedSlot.append(slotChildren);
 
 				// No slots
 				else
-					el.append(originalChildren);
+					el.append(slotChildren);
 			}
 
 			root = el;
@@ -3018,10 +3049,17 @@ class RootNodeGroup extends NodeGroup {
 
 		this.updatePaths(root, shell.paths, offset);
 
-		this.activateEmbeds(root, shell, offset);
+		// Static web components can sometimes have children created via expressions.
+		// But calling applyExprs() will mess up the shell's path to them.
+		// So we find them first, then call activateStaticComponents() after their children have been created.
+		let staticComponents = this.findStaticComponents(root, shell, offset);
+
+		this.activateEmbeds(root, shell, offset, template);
 
 		// Apply exprs
 		this.applyExprs(template.exprs);
+
+		this.activateStaticComponents(staticComponents);
 	}
 
 	clearRenderWatched() {
@@ -3504,7 +3542,7 @@ function createSolarite(extendsTag=null) {
 let unusedArg = Symbol('unusedArg');
 
 /**
- * Custom map function triggers the get() Proxy.
+ * Custom map function that triggers the get() Proxy.
  * @param array {Array}
  * @param callback {function}
  * @returns {*[]} */
@@ -3520,17 +3558,17 @@ function map(array, callback) {
  * This function markes a property of a web component to be watched for changes.
  *
  * Here is how watches work:
- * 1.  When we call watch3() it creates properties and proxies to watch when those values are set.
- * 2.  When they are set, we add their paths to a list of what to re-render.
+ * 1.  When we call watch3() it creates properties on the root object that return Proxies to watch when values are set.
+ * 2.  When they are set, we add their paths to the rootNodeGroup.exprsToRender that keeps track of what to re-render.
  * 3.  Then we call renderWatched() to re-render only those parts.
  *
  * In more detail:
  * TODO
  *
  *
- * @param root {HTMLElement} Must be an instance of a Web Component.
+ * @param root {HTMLElement} An instance of a Web Component that uses r() to render its content.
  * @param field {string}
- * @param value {string|Symbol} */
+ * @param value {string|Symbol} The default value. */
 function watch3(root, field, value=unusedArg) {
 	// Store internal value used by get/set.
 	if (value !== unusedArg)
@@ -3547,25 +3585,57 @@ function watch3(root, field, value=unusedArg) {
 				? value // top-level value.
 				: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
 
+			let isArray = Array.isArray(obj);
+
 			// We override the map() function the first time render() is called.
 			// But it's not re-overridden when we call renderWatched()
-			if (prop === 'map') {
+			if (isArray) {
 
-				// This outer function is so the ExprPath calls it as a function,
-	 			// instead of it being evaluated immediately when the Template is created.
-				return (callback) =>
 
-					// This is the new map function.
-					// TODO: Find a way to pass it a new obj when called from renderWatched
-					function mapFunction() {
-						let newObj = mapFunction.newValue || obj;
-						Globals$1.currentExprPath.mapCallback = callback;
-						return map(new Proxy(newObj, handler), callback);
+				if (prop === 'map') {
+
+					// This outer function is so the ExprPath calls it as a function,
+					// instead of it being evaluated immediately when the Template is created.
+					return (callback) =>
+
+						// This is the new map function.
+						// TODO: Find a way to pass it a new obj when called from renderWatched
+						function mapFunction() {
+							let newObj = mapFunction.newValue || obj;
+							Globals$1.currentExprPath.mapCallback = callback;
+							return map(new Proxy(newObj, handler), callback);
+						}
+				}
+
+				if (isArray && prop === 'push') {
+					return function push(...items) {
+
+						let rootNg = Globals$1.nodeGroups.get(root);
+
+						// Mark all expressions affected by the push() to be re-rendered
+						for (let exprPath of rootNg.watchedExprPaths[field]) {
+							let exprsToRender = rootNg.exprsToRender.get(exprPath);
+
+							// If we're not re-rendering the whole thing.
+							if (exprsToRender !== true)
+								for (let i=0; i<items.length; i++)
+									// TODO: Make sure we create NodeGroups for these new eprPaths.
+									Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, [obj, obj.length+i, items[i]]);
+						}
+
+						// Call original push() function
+						Array.prototype.push.apply(obj, items);
 					}
-			}
 
-			// Track which ExprPath is using this variable.
-			else if (Globals$1.currentExprPath) {
+
+				}
+			} // end if(isArray).
+
+
+
+
+			// Save the ExprPath that's currently accessing this variable.
+			if (Globals$1.currentExprPath) {
 				let rootNg = Globals$1.nodeGroups.get(root);
 
 				// Init for field.
@@ -3573,6 +3643,7 @@ function watch3(root, field, value=unusedArg) {
 				rootNg.watchedExprPaths[field].add(Globals$1.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExact()
 			}
 
+			// Accessing a sub-property
 			if (result && typeof result === 'object')
 				return new Proxy(result, handler);
 

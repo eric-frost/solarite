@@ -55,7 +55,7 @@ import Util from "../util/Util.js";
 let unusedArg = Symbol('unusedArg');
 
 /**
- * Custom map function triggers the get() Proxy.
+ * Custom map function that triggers the get() Proxy.
  * @param array {Array}
  * @param callback {function}
  * @returns {*[]} */
@@ -71,17 +71,17 @@ function map(array, callback) {
  * This function markes a property of a web component to be watched for changes.
  *
  * Here is how watches work:
- * 1.  When we call watch3() it creates properties and proxies to watch when those values are set.
- * 2.  When they are set, we add their paths to a list of what to re-render.
+ * 1.  When we call watch3() it creates properties on the root object that return Proxies to watch when values are set.
+ * 2.  When they are set, we add their paths to the rootNodeGroup.exprsToRender that keeps track of what to re-render.
  * 3.  Then we call renderWatched() to re-render only those parts.
  *
  * In more detail:
  * TODO
  *
  *
- * @param root {HTMLElement} Must be an instance of a Web Component.
+ * @param root {HTMLElement} An instance of a Web Component that uses r() to render its content.
  * @param field {string}
- * @param value {string|Symbol} */
+ * @param value {string|Symbol} The default value. */
 export default function watch3(root, field, value=unusedArg) {
 	// Store internal value used by get/set.
 	if (value !== unusedArg)
@@ -98,25 +98,57 @@ export default function watch3(root, field, value=unusedArg) {
 				? value // top-level value.
 				: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
 
+			let isArray = Array.isArray(obj);
+
 			// We override the map() function the first time render() is called.
 			// But it's not re-overridden when we call renderWatched()
-			if (prop === 'map') {
+			if (isArray) {
 
-				// This outer function is so the ExprPath calls it as a function,
-	 			// instead of it being evaluated immediately when the Template is created.
-				return (callback) =>
 
-					// This is the new map function.
-					// TODO: Find a way to pass it a new obj when called from renderWatched
-					function mapFunction() {
-						let newObj = mapFunction.newValue || obj;
-						Globals.currentExprPath.mapCallback = callback;
-						return map(new Proxy(newObj, handler), callback);
+				if (prop === 'map') {
+
+					// This outer function is so the ExprPath calls it as a function,
+					// instead of it being evaluated immediately when the Template is created.
+					return (callback) =>
+
+						// This is the new map function.
+						// TODO: Find a way to pass it a new obj when called from renderWatched
+						function mapFunction() {
+							let newObj = mapFunction.newValue || obj;
+							Globals.currentExprPath.mapCallback = callback;
+							return map(new Proxy(newObj, handler), callback);
+						}
+				}
+
+				if (isArray && prop === 'push') {
+					return function push(...items) {
+
+						let rootNg = Globals.nodeGroups.get(root);
+
+						// Mark all expressions affected by the push() to be re-rendered
+						for (let exprPath of rootNg.watchedExprPaths[field]) {
+							let exprsToRender = rootNg.exprsToRender.get(exprPath);
+
+							// If we're not re-rendering the whole thing.
+							if (exprsToRender !== true)
+								for (let i=0; i<items.length; i++)
+									// TODO: Make sure we create NodeGroups for these new eprPaths.
+									Util.mapArrayAdd(rootNg.exprsToRender, exprPath, [obj, obj.length+i, items[i]]);
+						}
+
+						// Call original push() function
+						Array.prototype.push.apply(obj, items);
 					}
-			}
 
-			// Track which ExprPath is using this variable.
-			else if (Globals.currentExprPath) {
+
+				}
+			} // end if(isArray).
+
+
+
+
+			// Save the ExprPath that's currently accessing this variable.
+			if (Globals.currentExprPath) {
 				let rootNg = Globals.nodeGroups.get(root);
 
 				// Init for field.
@@ -124,6 +156,7 @@ export default function watch3(root, field, value=unusedArg) {
 				rootNg.watchedExprPaths[field].add(Globals.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExact()
 			}
 
+			// Accessing a sub-property
 			if (result && typeof result === 'object')
 				return new Proxy(result, handler);
 

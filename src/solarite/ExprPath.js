@@ -227,12 +227,22 @@ export default class ExprPath {
 	applyLoopItemUpdate(index, template) {
 		// At this point none of the nodes being used will be in nodeGroupsFree.
 		let oldNg = this.nodeGroups[index];
+		if (!oldNg) {
+			oldNg = new NodeGroup(template, this);
+
+			// TODO: This start/end position only works for push()
+			oldNg.startNode = this.nodeBefore.previousSibling;
+			oldNg.endNode = this.nodeBefore;
+			oldNg.exactKey = template.getExactKey();
+			oldNg.closeKey = template.getCloseKey();
+			this.nodeGroups.push(oldNg);
+		}
 		this.nodeGroupsAttached.add(oldNg.exactKey, oldNg);
 		this.nodeGroupsAttached.add(oldNg.closeKey, oldNg);
 
 		let ng = this.getNodeGroup(template, true);
 		if (ng) {
-			return; // It's an exactl match, so replace nothing.
+			return; // It's an exact match, so replace nothing.
 		}
 
 
@@ -969,7 +979,7 @@ export function getNodePath(node) {
  * Note that the path is backward, with the outermost element at the end.
  * @param root {HTMLElement|Document|DocumentFragment|ParentNode}
  * @param path {int[]}
- * @returns {Node|HTMLElement} */
+ * @returns {Node|HTMLElement|HTMLStyleElement} */
 export function resolveNodePath(root, path) {
 	for (let i=path.length-1; i>=0; i--)
 		root = root.childNodes[path[i]];

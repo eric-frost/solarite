@@ -1495,6 +1495,60 @@ Testimony.test('Solarite.embed.styleStaticNested', () => {
 	a.remove();
 });
 
+Testimony.test('Solarite.embed.styleStaticNested2', () => {
+	let count = 0;
+
+	class B308 extends HTMLElement {
+		constructor() {
+			super();
+			this.render();
+		}
+		render() {
+			r(this)`
+				<style>:host { color: blue }</style>
+				Text that should be blue.
+			`;
+		}
+	}
+	customElements.define('b-308', B308);
+
+	class A308 extends HTMLElement {
+		constructor() {
+			super();
+			this.render();
+		}
+
+		// Below, the count expression changes the path to the static component <b-308>
+		render() {
+			r(this)`
+			<a-308>
+				<style>:host { color: red }</style>
+				Text that should be red.
+				${count}
+				<br><b-308></b-308>
+			</a-308>`;
+		}
+	}
+	customElements.define('a-308', A308);
+
+
+	let a = new A308();
+	document.body.append(a);
+	let b = a.querySelector('b-308');
+
+	assert.eq(a.querySelector('style').textContent.trim(), `a-308[data-style="1"] { color: red }`)
+	assert.eq(b.querySelector('style').textContent.trim(), `b-308[data-style="1"] { color: blue }`)
+
+	// Make sure styleid isn't incremented on render.
+	count++;
+	a.render();
+	// console.log(a.outerHTML)
+	assert.eq(a.querySelector('style').textContent.trim(), `a-308[data-style="1"] { color: red }`)
+	assert.eq(b.querySelector('style').textContent.trim(), `b-308[data-style="1"] { color: blue }`)
+
+	a.remove();
+});
+
 Testimony.test('Solarite.embed.optionsNoStyles', () => {
 	let count = 0;
 
@@ -2393,31 +2447,64 @@ Testimony.test('Solarite.component.tr', () => {
 Testimony.test('Solarite.component.staticAttribs', () => {
 	// Note that all attribs become lowercase.
 	// Not sure how to prevent this w/o using an xml doctype.
-	class B512 extends Solarite {
+	class B511 extends Solarite {
 		constructor({name, userId}={}) {
-			console.log('b')
 			super();
 			this.name = name;
 			this.userId = userId;
 		}
 		
 		render() {
-			r(this)`<b-512>${this.name} | ${this.userId}</b-512>`
+			r(this)`<b-511>${this.name} | ${this.userId}</b-511>`
+		}
+	}
+	B511.define();
+	
+	class A511 extends Solarite {
+		render() {
+			r(this)`<div><b-511 name="User" user-id="2"></b-511></div>`;
+		}
+	}
+	A511.define();
+	
+	let a = new A511();
+	a.render();
+	
+	assert.eq(a.outerHTML, `<a-511><div><b-511 name="User" user-id="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-511></div></a-511>`);
+});
+
+Testimony.test('Solarite.component.staticWithDynamicChildren', () => {
+
+	let bChildren = null;
+
+	// Note that all attribs become lowercase.
+	// Not sure how to prevent this w/o using an xml doctype.
+	class B512 extends Solarite {
+		constructor({name, userId}={}, children) {
+			super();
+			this.name = name;
+			this.userId = userId;
+			this.bChildren = bChildren = children;
+		}
+
+		render() {
+			r(this)`<b-512>${this.name} | ${this.userId}${this.bChildren}</b-512>`
 		}
 	}
 	B512.define();
-	
+
 	class A512 extends Solarite {
 		render() {
-			r(this)`<div><b-512 name="User" user-id="2"></b-512></div>`;
+			r(this)`<div><b-512 name="User" user-id="2">${[1,2,3].map(num => r`<b>${num}</b>`)}</b-512></div>`;
 		}
 	}
 	A512.define();
-	
+
 	let a = new A512();
 	a.render();
-	
-	assert.eq(a.outerHTML, `<a-512><div><b-512 name="User" user-id="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-512></div></a-512>`);
+
+	assert.eq(getHtml(a), `<a-512><div><b-512 name="User" user-id="2">User | 2<b>1</b><b>2</b><b>3</b></b-512></div></a-512>`);
+	assert.eq(bChildren.length, 3);
 });
 
 Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...}', () => {
@@ -3365,544 +3452,6 @@ Testimony.test('Solarite.binding.loop', 'similar to the loop.continuity2 test ab
 /* ┌─────────────────╮
  * | Watch           |
  * └─────────────────╯*/
-/*
-Testimony.test('Solarite.watched.watchSet', () => {
-	
-	class W10 extends Solarite {
-		user = {
-			name: 'John',
-			email: 'john@example.com'
-		}
-		render() {
-			this.html = r`
-				<w-10>
-					<div>${watchGet([this, 'user'], user => user.name + ' (user)')}</div>
-					<div>${watchGet([this, 'user', 'email'])}</div>
-				</w-10>`
-		}
-	}
-	
-	let a = new W10();
-	document.body.append(a);
-	
-	// swap property on user.
-	watchSet(a).user.name = 'Fred';
-	a.renderWatched();
-	//console.log(getHtml(a))
-	assert.eq(getHtml(a), `<w-10><div>Fred (user)</div><div>john@example.com</div></w-10>`)
-	
-	// Swap whole user.
-	watchSet(a).user = {name: 'Fred', email: 'fred@example.com'};
-	a.renderWatched();
-	//console.log(getHtml(a))
-	assert.eq(getHtml(a), `<w-10><div>Fred (user)</div><div>fred@example.com</div></w-10>`)
-	
-	
-	a.remove();
-});
-
-
-
-
-
-
-Testimony.test('Solarite.watched.forEach', () => {
-
-	class Table650 extends Solarite {
-		users = [
-			{name: 'John', email: 'john@example.com'},
-			{name: 'Fred', email: 'fred@example.com'}
-		]
-		render() {
-			this.html = r`
-				<table style="table-layout: fixed; width: 150px">
-					<tbody>${
-						forEach([this, 'users'], user =>
-							r`<tr><td>${user.name}</td><td>${user.email}</td></tr>`
-						)}
-					</tbody>
-				</table>`
-		}
-	}
-	let table = new Table650
-	document.body.append(table)
-
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-			`<tr><td>John</td><td>john@example.com</td></tr>` +
-			`<tr><td>Fred</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></table-650>`)
-
-	// Watch one row, set property
-	watchSet(table).users[1].name = 'Barry'
-
-	table.renderWatched();
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-			`<tr><td>John</td><td>john@example.com</td></tr>` +
-			`<tr><td>Barry</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></table-650>`)
-
-	// Watch one row, set property twice
-	watchSet(table).users[1].name = 'Bob'
-	watchSet(table).users[1].name = 'Rob'
-	table.renderWatched();
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>Rob</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></table-650>`)
-
-	// Watch all rows, set property of one.
-	watchSet(table).users[1].name = 'George'
-	table.renderWatched();
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>George</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></table-650>`)
-
-	// Watch whole object, set property of one.
-	watchSet(table).users[1].name = 'Jim'
-	table.renderWatched();
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>Jim</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></table-650>`)
-
-	// Update entire row object
-	watchSet(table).users[1] = {name: 'Ned', email: 'ned@example.com'}
-	table.renderWatched();
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>Ned</td><td>ned@example.com</td></tr>` +
-		`</tbody></table></table-650>`)
-
-	table.remove();
-
-});
-
-
-Testimony.test('Solarite.watched.forEachSpliceDelete', () => {
-
-	class W50 extends Solarite {
-		users = [
-			{name: 'John', email: 'john@example.com'},
-			{name: 'Fred', email: 'fred@example.com'},
-			{name: 'George', email: 'george@example.com'},
-			{name: 'Bill', email: 'bill@example.com'}
-		]
-		render() {
-			this.html = r`<table style="table-layout: fixed; width: 150px"><tbody>${forEach([this, 'users'], user => r`<tr><td>${user.name}</td><td>${user.email}</td></tr>`)}</tbody></table>`
-		}
-	}
-	let table = new W50
-	document.body.append(table)
-
-	assert.eq(getHtml(table),
-		`<w-50><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>Fred</td><td>fred@example.com</td></tr>` +
-		`<tr><td>George</td><td>george@example.com</td></tr>` +
-		`<tr><td>Bill</td><td>bill@example.com</td></tr>` +
-		`</tbody></table></w-50>`)
-
-
-	// Splice
-	watchSet(table).users.splice(1, 2)
-	table.renderWatched();
-	assert.eq(getHtml(table),
-		`<w-50><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>Bill</td><td>bill@example.com</td></tr>` +
-		`</tbody></table></w-50>`)
-
-	table.remove();
-});
-
-Testimony.test('Solarite.watched.forEachSpliceInsert', () => {
-	
-	class W60 extends Solarite {
-		users = [
-			{name: 'John', email: 'john@example.com'},
-			{name: 'Fred', email: 'fred@example.com'}
-		]
-		render() {
-			this.html = r`
-				<table style="table-layout: fixed; width: 150px">
-					<tbody>${forEach([this, 'users'], user => 
-						r`<tr><td>${user.name}</td><td>${user.email}</td></tr>`
-					)}
-					</tbody>
-				</table>`
-		}
-	}
-	let table = new W60
-	document.body.append(table)
-	
-	assert.eq(getHtml(table),
-		`<w-60><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>Fred</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></w-60>`)
-	
-	
-	// Splice
-	watchSet(table).users.splice(1, 0, {name: 'George', email: 'george@example.com'})
-	table.renderWatched();
-	assert.eq(getHtml(table),
-		`<w-60><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>George</td><td>george@example.com</td></tr>` +
-		`<tr><td>Fred</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></w-60>`)
-	
-	table.remove();
-});
-
-
-
-
-
-// Experiment with a new syntax for watching.
-Testimony.test('Solarite.watched._$', () => {
-
-	class Table670 extends Solarite {
-		title = 'Title';
-		users = [
-			{name: 'John', email: 'john@example.com'},
-			{name: 'Fred', email: 'fred@example.com'}
-		]
-		render() {
-			this.html = // r() can check for instanceof Proxy and convert it to something?
-			  r`${this.$.title}
-				<table style="table-layout: fixed; width: 150px">
-					<tbody>${this.$.users.map(user => 
-						r`<tr><td>${user.name}</td><td>${user.email}</td></tr>`)}
-					</tbody>
-				</table>`
-		}
-	}
-	let table = new Table670
-	document.body.append(table)
-
-
-	table.$.title = 'test';
-	table.$.users[1].name = 'Jim';
-
-	//table.remove();
-});
-
-
-
-
-
-Testimony.test('Solarite.watch2.set', () => {
-	
-	class W10 extends Solarite {
-		user = {
-			name: 'John',
-			email: 'john@example.com'
-		}
-		render() {
-			this.html = r`
-				<w-10>
-					<div>${() => watch(this).user.name + ' (user)'}</div>
-					<div>${() => watch(this).user.email}</div>
-				</w-10>`
-		}
-	}
-	
-	let a = new W10();
-	document.body.append(a);
-	
-	// swap property on user.
-	watch(a).user.name = 'Fred';
-	//console.log(getHtml(a))
-	assert.eq(getHtml(a), `<w-10><div>Fred (user)</div><div>john@example.com</div></w-10>`)
-	
-	// Swap whole user.
-	watch(a).user = {name: 'Fred', email: 'fred@example.com'};
-	//console.log(getHtml(a))
-	assert.eq(getHtml(a), `<w-10><div>Fred (user)</div><div>fred@example.com</div></w-10>`)
-	
-	
-	a.remove();
-});
-
-*/
-
-Testimony.test('Solarite.watch2._forEach', () => {
-
-	class Table650 extends Solarite {
-		users = [
-			{name: 'John', email: 'john@example.com'},
-			{name: 'Fred', email: 'fred@example.com'}
-		]
-		render() {
-			this.html = r`
-				<table style="table-layout: fixed; width: 150px">
-					<tbody>${
-						watch(this).users.map(user =>
-							r`<tr><td>${user.name}</td><td>${user.email}</td></tr>`
-						)}
-					</tbody>
-				</table>`
-		}
-	}
-	let table = new Table650
-	document.body.append(table)
-
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-			`<tr><td>John</td><td>john@example.com</td></tr>` +
-			`<tr><td>Fred</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></table-650>`)
-
-	// Watch one row, set property
-    watch(table).users[1].name = 'Barry'
-
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-			`<tr><td>John</td><td>john@example.com</td></tr>` +
-			`<tr><td>Barry</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></table-650>`)
-
-	// Watch one row, set property twice
-    watch(table).users[1].name = 'Bob'
-    watch(table).users[1].name = 'Rob'
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>Rob</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></table-650>`)
-
-
-	// Watch whole object, set property of one.
-    watch(table).users[1].name = 'Jim'
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>Jim</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></table-650>`)
-
-	// Update entire row object
-	watch(table).users[1] = {name: 'Ned', email: 'ned@example.com'}
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>Ned</td><td>ned@example.com</td></tr>` +
-		`</tbody></table></table-650>`)
-	
-	// Clear
-	watch(table).users = [];
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`</tbody></table></table-650>`)
-	
-	
-	// This gets the wrong value via NodeGroupManager b/c we never update exactKeys.
-	watch(table).users = [
-		{name: 'John', email: 'john@example.com'},
-		{name: 'Fred', email: 'fred@example.com'}
-	];
-	assert.eq(getHtml(table),
-		`<table-650><table style="table-layout: fixed; width: 150px"><tbody>`+
-			`<tr><td>John</td><td>john@example.com</td></tr>` +
-			`<tr><td>Fred</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></table-650>`)
-
-	table.remove();
-
-});
-
-Testimony.test('Solarite.watch2._forEachSpliceDelete', () => {
-
-	class W50 extends Solarite {
-		users = [
-			{name: 'John', email: 'john@example.com'},
-			{name: 'Fred', email: 'fred@example.com'},
-			{name: 'George', email: 'george@example.com'},
-			{name: 'Bill', email: 'bill@example.com'}
-		]
-		render() {
-			this.html = r`<table style="table-layout: fixed; width: 150px"><tbody>${watch(this).users.map(user => r`<tr><td>${user.name}</td><td>${user.email}</td></tr>`)}</tbody></table>`
-		}
-	}
-	let table = new W50
-	document.body.append(table)
-
-	assert.eq(getHtml(table),
-		`<w-50><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>Fred</td><td>fred@example.com</td></tr>` +
-		`<tr><td>George</td><td>george@example.com</td></tr>` +
-		`<tr><td>Bill</td><td>bill@example.com</td></tr>` +
-		`</tbody></table></w-50>`)
-
-
-	// Splice middle.
-	watch(table).users.splice(1, 2)
-	assert.eq(getHtml(table),
-		`<w-50><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>Bill</td><td>bill@example.com</td></tr>` +
-		`</tbody></table></w-50>`)
-	
-	
-	// Splice to remove all.
-	watch(table).users.splice(0, 2);
-	assert.eq(getHtml(table),
-		`<w-50><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`</tbody></table></w-50>`)
-	
-	table.remove();
-});
-
-Testimony.test('Solarite.watch2._forEachSpliceDeleteStart', () => {
-
-	class W55 extends Solarite {
-		users = [
-			{name: 'John', email: 'john@example.com'},
-			{name: 'Fred', email: 'fred@example.com'},
-			{name: 'George', email: 'george@example.com'},
-			{name: 'Bill', email: 'bill@example.com'}
-		]
-		render() {
-			this.html = r`${watch(this).users.map(user => r`<div>${user.name}|${user.email}</div>`)}`
-		}
-	}
-	let table = new W55
-	document.body.append(table)
-
-	assert.eq(getHtml(table),
-		`<w-55>`+
-		`<div>John|john@example.com</div>` +
-		`<div>Fred|fred@example.com</div>` +
-		`<div>George|george@example.com</div>` +
-		`<div>Bill|bill@example.com</div>` +
-		`</w-55>`)
-
-
-	// Splice start.
-	watch(table).users.splice(0, 1)
-	assert.eq(getHtml(table),
-		`<w-55>`+
-		`<div>Fred|fred@example.com</div>` +
-		`<div>George|george@example.com</div>` +
-		`<div>Bill|bill@example.com</div>` +
-		`</w-55>`)
-	
-	
-	// Splice start.
-	watch(table).users.splice(0, 1)
-	assert.eq(getHtml(table),
-		`<w-55>`+
-		`<div>George|george@example.com</div>` +
-		`<div>Bill|bill@example.com</div>` +
-		`</w-55>`)
-	
-	
-	watch(table).users.splice(0, 1)
-	assert.eq(getHtml(table),
-		`<w-55>`+
-		`<div>Bill|bill@example.com</div>` +
-		`</w-55>`)
-	
-	table.remove();
-});
-
-Testimony.test('Solarite.watch2._forEachSpliceDeleteEvent', () => {
-
-	class W57 extends Solarite {
-		users = [
-			{name: 'John', email: 'john@example.com'},
-			{name: 'Fred', email: 'fred@example.com'},
-			{name: 'George', email: 'george@example.com'},
-			{name: 'Bill', email: 'bill@example.com'}
-		]
-		
-		delete(user) {
-			let idx = this.users.indexOf(user);
-			assert(idx > 0)
-			this.users.splice(idx, 1);
-		}
-		
-		render() {
-			this.html = r`${watch(this).users.map(user => r`<div onclick="${()=>this.delete(user)}">${user.name}|${user.email}</div>`)}`
-		}
-	}
-	let table = new W57
-	document.body.append(table)
-
-	assert.eq(getHtml(table),
-		`<w-57>`+
-		`<div onclick="">John|john@example.com</div>` +
-		`<div onclick="">Fred|fred@example.com</div>` +
-		`<div onclick="">George|george@example.com</div>` +
-		`<div onclick="">Bill|bill@example.com</div>` +
-		`</w-57>`);
-
-	table.remove();
-});
-
-Testimony.test('Solarite.watch2._forEachSpliceInsert', () => {
-
-	class W60 extends Solarite {
-		users = [
-			{name: 'John', email: 'john@example.com'},
-			{name: 'Fred', email: 'fred@example.com'}
-		]
-		render() {
-			this.html = r`
-				<table style="table-layout: fixed; width: 150px">
-					<tbody>${watch(this).users.map(user =>
-						r`<tr><td>${user.name}</td><td>${user.email}</td></tr>`
-					)}
-					</tbody>
-				</table>`
-		}
-	}
-	let table = new W60
-	document.body.append(table)
-
-	assert.eq(getHtml(table),
-		`<w-60><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>Fred</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></w-60>`)
-
-
-	// Splice
-	watch(table).users.splice(1, 0, {name: 'George', email: 'george@example.com'})
-	assert.eq(getHtml(table),
-		`<w-60><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>George</td><td>george@example.com</td></tr>` +
-		`<tr><td>Fred</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></w-60>`)
-
-	// Splice to insert at end.
-	watch(table).users.splice(3, 0, {name: 'Bill', email: 'bill@example.com'})
-	assert.eq(getHtml(table),
-		`<w-60><table style="table-layout: fixed; width: 150px"><tbody>`+
-		`<tr><td>John</td><td>john@example.com</td></tr>` +
-		`<tr><td>George</td><td>george@example.com</td></tr>` +
-		`<tr><td>Fred</td><td>fred@example.com</td></tr>` +
-		`<tr><td>Bill</td><td>bill@example.com</td></tr>` +
-		`</tbody></table></w-60>`)
-
-	table.remove();
-});
-
-
-
-
-
-
-
 
 Testimony.test('Solarite.watch3.primitive', () => {
 

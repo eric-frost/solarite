@@ -23,8 +23,8 @@ function reset() {
 		rendered: new WeakSet(),
 
 		/**
-		 * Used by watch3 to see which expressions are being accessed.
-		 * Set in ExprPath.applyExact()
+		 * ExprPath.applyExact() sets this property when an expression is being accessed.
+		 * watch3() then adds the ExprPath to rootNg.watchedExprPaths so we know which expressions use which fields.
 		 * @type {ExprPath}*/
 		currentExprPath: null,
 
