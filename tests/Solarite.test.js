@@ -3601,7 +3601,7 @@ Testimony.test('Solarite.watch3.loop', `replace array elements`, () => {
 });
 
 
-Testimony.test('Solarite.watch3._loopPushPop', () => {
+Testimony.test('Solarite.watch3.loopPushPop', () => {
 
 	class W60 extends HTMLElement {
 
@@ -3624,7 +3624,7 @@ Testimony.test('Solarite.watch3._loopPushPop', () => {
 
 	a.items.push('cherry');
 	let modified = renderWatched(a);
-	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana</div><div>cherry</div></w-50>`);
+	assert.eq(getHtml(a), `<w-60><div>apple</div><div>banana</div><div>cherry</div></w-60>`);
 	assert.eq(modified, [a.children[2]]);
 
 

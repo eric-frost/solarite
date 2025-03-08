@@ -132,7 +132,8 @@ export default function watch3(root, field, value=unusedArg) {
 							// If we're not re-rendering the whole thing.
 							if (exprsToRender !== true)
 								for (let i=0; i<items.length; i++)
-									// TODO: Make sure we create NodeGroups for these new eprPaths.
+									// TODO: Make sure we create NodeGroups for these new exprPaths.
+									// We need to call applyExpr only for the new ones.
 									Util.mapArrayAdd(rootNg.exprsToRender, exprPath, [obj, obj.length+i, items[i]]);
 						}
 

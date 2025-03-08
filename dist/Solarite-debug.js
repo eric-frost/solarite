@@ -1275,36 +1275,39 @@ class ExprPath {
 	applyLoopItemUpdate(index, template) {
 		// At this point none of the nodes being used will be in nodeGroupsFree.
 		let oldNg = this.nodeGroups[index];
-		if (!oldNg) {
-			oldNg = new NodeGroup(template, this);
-
-			// TODO: This start/end position only works for push()
-			oldNg.startNode = this.nodeBefore.previousSibling;
-			oldNg.endNode = this.nodeBefore;
-			oldNg.exactKey = template.getExactKey();
-			oldNg.closeKey = template.getCloseKey();
-			this.nodeGroups.push(oldNg);
+		if (oldNg) {
+			this.nodeGroupsAttached.add(oldNg.exactKey, oldNg);
+			this.nodeGroupsAttached.add(oldNg.closeKey, oldNg);
 		}
-		this.nodeGroupsAttached.add(oldNg.exactKey, oldNg);
-		this.nodeGroupsAttached.add(oldNg.closeKey, oldNg);
 
+		// Find an exact match
 		let ng = this.getNodeGroup(template, true);
-		if (ng) {
+		if (ng)
 			return; // It's an exact match, so replace nothing.
+
+		// Find a close match
+		ng = this.getNodeGroup(template, false);
+		this.nodeGroups[index] = ng;
+
+		//
+		let startNode, parentNode;
+		if (oldNg) {
+			startNode = oldNg.startNode;
+			parentNode = startNode.parentNode;
 		}
 
-
-
-		ng = this.getNodeGroup(template, false);
-
-		this.nodeGroups[index] = ng;
+		// Inserting a new node
+		else {
+			startNode = this.nodeGroups[index-1].endNode.nextSibling;
+			parentNode = startNode.parentNode;
+		}
 
 		// Splice in the new nodes.
 		for (let node of ng.getNodes()) {
-			oldNg.startNode.parentNode.insertBefore(node, oldNg.startNode);
+			parentNode.insertBefore(node, startNode);
 		}
 
-		if (oldNg !== ng) {
+		if (oldNg && oldNg !== ng) {
 			for (let node of oldNg.getNodes())
 				node.remove();
 			oldNg.saveOrphans();
@@ -3619,7 +3622,8 @@ function watch3(root, field, value=unusedArg) {
 							// If we're not re-rendering the whole thing.
 							if (exprsToRender !== true)
 								for (let i=0; i<items.length; i++)
-									// TODO: Make sure we create NodeGroups for these new eprPaths.
+									// TODO: Make sure we create NodeGroups for these new exprPaths.
+									// We need to call applyExpr only for the new ones.
 									Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, [obj, obj.length+i, items[i]]);
 						}
 
