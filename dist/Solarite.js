@@ -1164,10 +1164,12 @@ class ExprPath {
 	}
 
 	/**
-	 * Used by watch() for inserting/removing/replacing individual loop items. */
-	applyLoopItemUpdate(index, template) {
+	 * Used by watch() for inserting/removing/replacing individual loop items.
+	 * @param op {ArrayOp}
+	 * @param template {Template} */
+	applyLoopItemUpdate(op, template) {
 		// At this point none of the nodes being used will be in nodeGroupsFree.
-		let oldNg = this.nodeGroups[index];
+		let oldNg = this.nodeGroups[op.index];
 		if (oldNg) {
 			this.nodeGroupsAttached.add(oldNg.exactKey, oldNg);
 			this.nodeGroupsAttached.add(oldNg.closeKey, oldNg);
@@ -1180,7 +1182,7 @@ class ExprPath {
 
 		// Find a close match
 		ng = this.getNodeGroup(template, false);
-		this.nodeGroups[index] = ng;
+		this.nodeGroups[op.index] = ng;
 
 		//
 		let startNode, parentNode;
@@ -1191,7 +1193,7 @@ class ExprPath {
 
 		// Inserting a new node
 		else {
-			startNode = this.nodeGroups[index-1].endNode.nextSibling;
+			startNode = this.nodeGroups[op.index-1].endNode.nextSibling;
 			parentNode = startNode.parentNode;
 		}
 
@@ -3341,6 +3343,7 @@ function watch3(root, field, value=unusedArg) {
 						}
 				}
 
+				// TODO: Create an object with all array functions, so they're not recreated each time.
 				if (isArray && prop === 'push') {
 					return function push(...items) {
 
@@ -3355,7 +3358,7 @@ function watch3(root, field, value=unusedArg) {
 								for (let i=0; i<items.length; i++)
 									// TODO: Make sure we create NodeGroups for these new exprPaths.
 									// We need to call applyExpr only for the new ones.
-									Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, [obj, obj.length+i, items[i]]);
+									Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArrayOp(ArrayOp.Replace, obj, obj.length+i, items[i]));
 						}
 
 						// Call original push() function
@@ -3406,7 +3409,7 @@ function watch3(root, field, value=unusedArg) {
 
 					// If we're not re-rendering the whole thing.
 					if (exprsToRender !== true)
-						Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, [obj, prop, val]);
+						Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArrayOp(ArrayOp.Replace, obj, prop, val));
 				}
 
 				// Reapply the whole expression.
@@ -3449,12 +3452,15 @@ function renderWatched(root) {
 
 		// Update a single NodeGroup created by array.map()
 		else {
-			for (let row of params) {
-				let [obj, prop, value] = row;
-				let template = exprPath.mapCallback(value);
-				exprPath.applyLoopItemUpdate(prop, template);
+			for (let arrayOp of params) {
 
-				modified.push(...exprPath.nodeGroups[prop].getNodes());
+				if (arrayOp.op === ArrayOp.Replace) {
+					//let [obj, prop, value] = row;
+					let template = exprPath.mapCallback(arrayOp.value);
+					exprPath.applyLoopItemUpdate(arrayOp, template);
+
+					modified.push(...exprPath.nodeGroups[arrayOp.index].getNodes());
+				}
 			}
 		}
 	}
@@ -3465,11 +3471,11 @@ function renderWatched(root) {
 }
 
 class ArrayOp {
-	constructor(op, array, index=null, values=null) {
+	constructor(op, array, index=null, value=null) {
 		this.op = op;
 		this.array = array;
 		this.index = index;
-		this.value = values;
+		this.value = value;
 	}
 }
 ArrayOp.WholeArray = 'WholeArray';

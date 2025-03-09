@@ -223,10 +223,12 @@ export default class ExprPath {
 	}
 
 	/**
-	 * Used by watch() for inserting/removing/replacing individual loop items. */
-	applyLoopItemUpdate(index, template) {
+	 * Used by watch() for inserting/removing/replacing individual loop items.
+	 * @param op {ArrayOp}
+	 * @param template {Template} */
+	applyLoopItemUpdate(op, template) {
 		// At this point none of the nodes being used will be in nodeGroupsFree.
-		let oldNg = this.nodeGroups[index];
+		let oldNg = this.nodeGroups[op.index];
 		if (oldNg) {
 			this.nodeGroupsAttached.add(oldNg.exactKey, oldNg);
 			this.nodeGroupsAttached.add(oldNg.closeKey, oldNg);
@@ -239,7 +241,7 @@ export default class ExprPath {
 
 		// Find a close match
 		ng = this.getNodeGroup(template, false);
-		this.nodeGroups[index] = ng;
+		this.nodeGroups[op.index] = ng;
 
 		//
 		let startNode, parentNode;
@@ -250,7 +252,7 @@ export default class ExprPath {
 
 		// Inserting a new node
 		else {
-			startNode = this.nodeGroups[index-1].endNode.nextSibling;
+			startNode = this.nodeGroups[op.index-1].endNode.nextSibling;
 			parentNode = startNode.parentNode;
 		}
 
