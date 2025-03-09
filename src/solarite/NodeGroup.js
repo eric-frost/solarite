@@ -571,7 +571,7 @@ export class RootNodeGroup extends NodeGroup {
 
 	/**
 	 * When we call renerWatched() we re-render these expressions, then clear this to a new Map()
-	 * @type {Map<ExprPath, NewValue|Array>} */
+	 * @type {Map<ExprPath, ArrayOp|Array>} */
 	exprsToRender = new Map();
 
 	/**

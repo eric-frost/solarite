@@ -190,7 +190,7 @@ export default function watch3(root, field, value=unusedArg) {
 
 				// Reapply the whole expression.
 				else
-					rootNg.exprsToRender.set(exprPath, new NewValue(val)); // True means to re-render the whole thing.
+					rootNg.exprsToRender.set(exprPath, new ArrayOp(ArrayOp.WholeArray, val)); // True means to re-render the whole thing.
 			}
 			return true;
 		}
@@ -213,11 +213,11 @@ export function renderWatched(root) {
 	for (let [exprPath, params] of rootNg.exprsToRender) {
 
 		// Reapply the whole expression.
-		if (params instanceof NewValue) {
+		if (params.op === ArrayOp.WholeArray) {
 
 			// So it doesn't use the old value inside the map callback in the get handler above.
 			// TODO: Find a more sensible way to pass newValue.
-			exprPath.watchFunction.newValue = params.value;
+			exprPath.watchFunction.newValue = params.array;
 			exprPath.apply([exprPath.watchFunction]);
 
 			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
@@ -243,10 +243,15 @@ export function renderWatched(root) {
 	return modified;
 }
 
-/**
- * Wrap a value in a way that tells renderWatched() to take the first path and reapply the whole expression. */
-class NewValue {
-	constructor(value) {
-		this.value = value;
+class ArrayOp {
+	constructor(op, array, index=null, values=null) {
+		this.op = op;
+		this.array = array;
+		this.index = index;
+		this.value = values;
 	}
 }
+ArrayOp.WholeArray = 'WholeArray';
+ArrayOp.Insert = 'Insert';
+ArrayOp.Remove = 'Remove';
+ArrayOp.Replace = 'Replace'; // TODO: Will we use this?

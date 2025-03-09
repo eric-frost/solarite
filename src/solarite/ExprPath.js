@@ -223,7 +223,7 @@ export default class ExprPath {
 	}
 
 	/**
-	 * Used by watch() for replacing individual loop items. */
+	 * Used by watch() for inserting/removing/replacing individual loop items. */
 	applyLoopItemUpdate(index, template) {
 		// At this point none of the nodes being used will be in nodeGroupsFree.
 		let oldNg = this.nodeGroups[index];
