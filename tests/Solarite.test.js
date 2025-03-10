@@ -3534,12 +3534,12 @@ Testimony.test('Solarite.watch3.object', () => {
 
 	a.user.name = 'Jim';
 	let modified = renderWatched(a);
-	console.log(modified);
+	//console.log(modified);
 	assert.eq(getHtml(a), `<w-30>Jim!</w-30>`);
 
 	a.user = {name: 'Bob'};
 	modified = renderWatched(a);
-	console.log(modified);
+	//console.log(modified);
 	//assert.eq(modified, a.children[1]);
 	assert.eq(getHtml(a), `<w-30>Bob!</w-30>`);
 
@@ -3569,24 +3569,24 @@ Testimony.test('Solarite.watch3.loop', `replace array elements`, () => {
 
 	a.items[1] = 'banana2';
 	let modified = renderWatched(a);
-	console.log(modified);
+	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana2</div><div>cherry</div></w-50>`);
 
 	a.items[1] = 'banana3';
 	modified = renderWatched(a);
-	console.log(modified);
+	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry</div></w-50>`);
 
 	a.items[2] = 'cherry2';
 	modified = renderWatched(a);
-	console.log(modified);
+	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry2</div></w-50>`);
 
 
 	a.items[0] = 'apple3';
 	a.items[2] = 'cherry3';
 	modified = renderWatched(a);
-	console.log(modified);
+	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple3</div><div>banana3</div><div>cherry3</div></w-50>`);
 	assert.eq(modified, [a.children[0], a.children[2]]);
 
@@ -3628,7 +3628,42 @@ Testimony.test('Solarite.watch3.loopPushPop', () => {
 	assert.eq(modified, [a.children[2]]);
 
 	// let item = a.items.pop();
-	// assert.eq(item, 'cherry'))
+	// assert.eq(item, 'cherry');
+	// assert.eq(getHtml(a), `<w-60><div>apple</div><div>banana</div></w-60>`);
+
+
+
+	//a.remove();
+});
+
+Testimony.test('Solarite.watch3.loopPush2', () => {
+
+	class W70 extends HTMLElement {
+
+		props = {items: ['apple', 'banana']};
+
+		constructor() {
+			super();
+			watch(this, 'props');
+			this.render();
+		}
+
+		render() {
+			r(this)`<w-70>${this.props.items.map(item => r`<div>${item}</div>`)}</w-70>`;
+		}
+	}
+	customElements.define('w-70', W70);
+
+	let a = new W70();
+	document.body.append(a);
+
+	a.props.items.push('cherry');
+	let modified = renderWatched(a);
+	assert.eq(getHtml(a), `<w-70><div>apple</div><div>banana</div><div>cherry</div></w-70>`);
+	assert.eq(modified, [a.children[2]]);
+
+	// let item = a.items.pop();
+	// assert.eq(item, 'cherry');
 	// assert.eq(getHtml(a), `<w-60><div>apple</div><div>banana</div></w-60>`);
 
 

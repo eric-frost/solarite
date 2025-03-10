@@ -986,7 +986,7 @@ function map(array, callback) {
  *
  *
  * @param root {HTMLElement} An instance of a Web Component that uses r() to render its content.
- * @param field {string}
+ * @param field {string} The name of a top-level property of root.
  * @param value {string|Symbol} The default value. */
 function watch3(root, field, value=unusedArg) {
 	// Store internal value used by get/set.
@@ -1026,27 +1026,13 @@ function watch3(root, field, value=unusedArg) {
 						}
 				}
 
-				// TODO: Create an object with all array functions, so they're not recreated each time.
-				if (isArray && prop === 'push') {
-					return function push(...items) {
-
-						let rootNg = Globals$1.nodeGroups.get(root);
-
-						// Mark all expressions affected by the push() to be re-rendered
-						for (let exprPath of rootNg.watchedExprPaths[field]) {
-							let exprsToRender = rootNg.exprsToRender.get(exprPath);
-
-							// If we're not re-rendering the whole thing.
-							if (exprsToRender !== true)
-								//for (let i=0; i<items.length; i++)
-									// TODO: Make sure we create NodeGroups for these new exprPaths.
-									// We need to call applyExpr only for the new ones.
-									Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, obj.length, 0, items));
-						}
-
-						// Call original push() function
-						Array.prototype.push.apply(obj, items);
-					}
+				if (prop === 'push') {
+					let rootNg = Globals$1.nodeGroups.get(root);
+					return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[field]).push;
+				}
+				else if (prop === 'pop') {
+					let rootNg = Globals$1.nodeGroups.get(root);
+					return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[field]).pop;
 				}
 			} // end if(isArray).
 
@@ -1103,6 +1089,52 @@ function watch3(root, field, value=unusedArg) {
 		get: () => handler.get(root, field, root),
 		set: (val) => handler.set(root, field, val, root)
 	});
+}
+
+/**
+ * Wrap an array so that functions that modify the array are intercepted.
+ * We then
+ * so that renderWatched() can
+ */
+class WatchedArray {
+
+	/**
+	 * @param array {Array}
+	 * @param rootNg {RootNodeGroup}
+	 * @param exprPaths {ExprPath[]} Expression paths that use this array. */
+	constructor(rootNg, array, exprPaths) {
+		this.rootNg = rootNg;
+		this.array = array;
+		this.exprPaths = exprPaths;
+		this.push = this.push.bind(this);
+		this.pop = this.pop.bind(this);
+	}
+
+	push(...items) {
+
+		// Mark all expressions affected by the push() to be re-rendered
+		for (let exprPath of this.exprPaths) {
+			let exprsToRender = this.rootNg.exprsToRender.get(exprPath);
+			if (!(exprsToRender instanceof WholeArrayOp)) // If we're not already going to re-render the whole array.
+				Util$1.mapArrayAdd(this.rootNg.exprsToRender, exprPath, new ArraySpliceOp(this.array, this.array.length, 0, items));
+		}
+
+		// Call original push() function
+		Array.prototype.push.apply(this.array, items);
+	}
+
+	pop() {
+
+		// Mark all expressions affected by the push() to be re-rendered
+		for (let exprPath of this.exprPaths) {
+			let exprsToRender = this.rootNg.exprsToRender.get(exprPath);
+			if (!(exprsToRender instanceof WholeArrayOp)) // If we're not already going to re-render the whole array.
+				Util$1.mapArrayAdd(this.rootNg.exprsToRender, exprPath, new ArraySpliceOp(this.array, this.array.length-1, 1));
+		}
+
+		// Call original push() function
+		Array.prototype.pop.apply(this.array);
+	}
 }
 
 /**
