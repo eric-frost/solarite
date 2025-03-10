@@ -1133,7 +1133,7 @@ class WatchedArray {
 		}
 
 		// Call original push() function
-		Array.prototype.pop.apply(this.array);
+		return Array.prototype.pop.apply(this.array);
 	}
 }
 
@@ -1178,7 +1178,7 @@ function renderWatched(root) {
 class ArrayOp {}
 
 class ArraySpliceOp extends ArrayOp {
-	constructor(array, index, deleteCount, items) {
+	constructor(array, index, deleteCount, items=[]) {
 		super();
 		this.array = array;
 		this.index = index*1;
@@ -1469,7 +1469,16 @@ class ExprPath {
 			}
 		}
 
-		if (deleteCount > 0) ; else {
+		if (deleteCount > 0) {
+
+			for (let i=0; i<deleteCount; i++) {
+				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
+				for (let node of oldNg.getNodes())
+					node.remove(); // Redundant since saveOrphans does the same.
+				oldNg.saveOrphans();
+			}
+
+		} else {
 
 			let newItems = op.items.slice(replaceCount);
 

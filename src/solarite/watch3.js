@@ -227,7 +227,7 @@ class WatchedArray {
 		}
 
 		// Call original push() function
-		Array.prototype.pop.apply(this.array);
+		return Array.prototype.pop.apply(this.array);
 	}
 }
 
@@ -272,7 +272,7 @@ export function renderWatched(root) {
 class ArrayOp {}
 
 export class ArraySpliceOp extends ArrayOp {
-	constructor(array, index, deleteCount, items) {
+	constructor(array, index, deleteCount, items=[]) {
 		super();
 		this.array = array;
 		this.index = index*1;

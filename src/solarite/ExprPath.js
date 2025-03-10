@@ -272,7 +272,12 @@ export default class ExprPath {
 
 		if (deleteCount > 0) {
 
-
+			for (let i=0; i<deleteCount; i++) {
+				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
+				for (let node of oldNg.getNodes())
+					node.remove(); // Redundant since saveOrphans does the same.
+				oldNg.saveOrphans();
+			}
 
 		} else {
 
