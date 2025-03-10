@@ -275,7 +275,7 @@ export class ArraySpliceOp extends ArrayOp {
 	constructor(array, index, deleteCount, items) {
 		super();
 		this.array = array;
-		this.index = index;
+		this.index = index*1;
 		this.deleteCount = deleteCount;
 		this.items = items;
 	}

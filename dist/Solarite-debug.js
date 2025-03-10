@@ -1288,7 +1288,7 @@ class ArraySpliceOp extends ArrayOp {
 	constructor(array, index, deleteCount, items) {
 		super();
 		this.array = array;
-		this.index = index;
+		this.index = index*1;
 		this.deleteCount = deleteCount;
 		this.items = items;
 	}
@@ -1536,48 +1536,66 @@ class ExprPath {
 	 * @param op {ArraySpliceOp} */
 	applyArrayOp(op) {
 
-
-		let template = this.mapCallback(op.items[0]);
-
-		// At this point none of the nodes being used will be in nodeGroupsFree.
-		let oldNg = this.nodeGroups[op.index];
-		if (oldNg) {
-			this.nodeGroupsAttached.add(oldNg.exactKey, oldNg);
-			this.nodeGroupsAttached.add(oldNg.closeKey, oldNg);
+		// Mark as available for use.
+		if (op.deleteCount > 0) {
+			for (let i=op.index; i<op.index+op.deleteCount; i++) {
+				let oldNg = this.nodeGroups[i];
+				this.nodeGroupsAttached.add(oldNg.exactKey, oldNg);
+				this.nodeGroupsAttached.add(oldNg.closeKey, oldNg);
+			}
 		}
 
-		// Find an exact match
-		let ng = this.getNodeGroup(template, true);
-		if (ng)
-			return; // It's an exact match, so replace nothing.
 
-		// Find a close match
-		ng = this.getNodeGroup(template, false);
-		this.nodeGroups[op.index] = ng;
+		let replaceCount = Math.min(op.deleteCount, op.items.length);
+		let deleteCount = op.deleteCount - replaceCount;
+		for (let i=0; i<replaceCount; i++) {
+			let oldNg = this.nodeGroups[op.index + i];
 
-		//
-		let startNode, parentNode;
-		if (oldNg) {
-			startNode = oldNg.startNode;
-			parentNode = startNode.parentNode;
+			// Try to find exact match
+			let template = this.mapCallback(op.items[i]);
+			let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
+			if (ng && ng === oldNg) ;
+			else {
+
+				// Find a close match or create a new node group
+				ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
+				this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
+
+
+				// Splice in the new nodes.
+				let startNode = oldNg.startNode;
+				for (let node of ng.getNodes())
+					startNode.parentNode.insertBefore(node, startNode);
+
+				// Remove the old nodes.
+				if (ng !== oldNg) {
+					for (let node of oldNg.getNodes())
+						node.remove(); // Redundant since saveOrphans does the same.
+					oldNg.saveOrphans();
+				}
+			}
 		}
 
-		// Inserting a new node
-		else {
-			startNode = this.nodeGroups[op.index-1].endNode.nextSibling;
-			parentNode = startNode.parentNode;
-		}
+		if (deleteCount > 0) ; else {
 
-		// Splice in the new nodes.
-		for (let node of ng.getNodes()) {
-			parentNode.insertBefore(node, startNode);
-		}
+			let newItems = op.items.slice(replaceCount);
 
-		// Remove old nodes.
-		if (oldNg && oldNg !== ng) {
-			for (let node of oldNg.getNodes())
-				node.remove();
-			oldNg.saveOrphans();
+			for (let i = 0; i < newItems.length; i++) {
+				let startNode = this.nodeGroups[op.index + replaceCount]?.startNode || this.nodeMarker;
+
+				// Try to find exact match
+				let template = this.mapCallback(newItems[i]);
+				let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
+				if (!ng) 	// Find a close match or create a new node group
+					ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
+
+				this.nodeGroups[op.index + replaceCount + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
+
+
+				// Splice in the new nodes.
+				for (let node of ng.getNodes())
+					startNode.parentNode.insertBefore(node, startNode);
+			}
 		}
 
 		// TODO: update or invalidate the nodes cache?
@@ -2095,6 +2113,7 @@ class ExprPath {
 	}
 
 	/**
+	 * TODO: Rename this to nodeGroupsInUse, nodeGroupsAvialableAttached and nodeGroupsAvailableDetached?
 	 * Nodes that have been used during the current render().
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * TODO: Use an array of WeakRef so the gc can collect them?
@@ -2117,6 +2136,7 @@ class ExprPath {
 
 	/**
 	 * Move everything from this.nodeGroupsRendered to this.nodeGroupsAttached and nodeGroupsDetached.
+	 * Called at the beginning of applyNodes() so it can have NodeGroups to use.
 	 * TODO: this could run as needed in getNodeGroup? */
 	freeNodeGroups() {
 		// old:
@@ -2135,10 +2155,10 @@ class ExprPath {
 
 		// Add nodes that were used during render() to nodeGroupsRendered.
 		this.nodeGroupsAttached = new MultiValueMap();
-		let ngr = this.nodeGroupsAttached;
+		let nga = this.nodeGroupsAttached;
 		for (let ng of this.nodeGroupsRendered) {
-			ngr.add(ng.exactKey, ng);
-			ngr.add(ng.closeKey, ng);
+			nga.add(ng.exactKey, ng);
+			nga.add(ng.closeKey, ng);
 		}
 
 		this.nodeGroupsRendered = [];
