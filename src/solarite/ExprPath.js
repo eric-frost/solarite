@@ -6,6 +6,7 @@ import Template from "./Template.js";
 import Globals from "./Globals.js";
 import MultiValueMap from "../util/MultiValueMap.js";
 import udomdiff from "./udomdiff.js";
+import {ArraySpliceOp} from "./watch3.js";
 
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup.
@@ -224,9 +225,12 @@ export default class ExprPath {
 
 	/**
 	 * Used by watch() for inserting/removing/replacing individual loop items.
-	 * @param op {ArrayOp}
-	 * @param template {Template} */
-	applyLoopItemUpdate(op, template) {
+	 * @param op {ArraySpliceOp} */
+	applyArrayOp(op) {
+
+
+		let template = this.mapCallback(op.items[0]);
+
 		// At this point none of the nodes being used will be in nodeGroupsFree.
 		let oldNg = this.nodeGroups[op.index];
 		if (oldNg) {
@@ -261,6 +265,7 @@ export default class ExprPath {
 			parentNode.insertBefore(node, startNode);
 		}
 
+		// Remove old nodes.
 		if (oldNg && oldNg !== ng) {
 			for (let node of oldNg.getNodes())
 				node.remove();
@@ -929,8 +934,6 @@ export default class ExprPath {
 	//#ENDIF
 }
 
-
-
 /**
  *
  * @param root
@@ -990,5 +993,3 @@ export function resolveNodePath(root, path) {
 		root = root.childNodes[path[i]];
 	return root;
 }
-
-

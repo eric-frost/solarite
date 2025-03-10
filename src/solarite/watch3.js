@@ -132,21 +132,17 @@ export default function watch3(root, field, value=unusedArg) {
 
 							// If we're not re-rendering the whole thing.
 							if (exprsToRender !== true)
-								for (let i=0; i<items.length; i++)
+								//for (let i=0; i<items.length; i++)
 									// TODO: Make sure we create NodeGroups for these new exprPaths.
 									// We need to call applyExpr only for the new ones.
-									Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArrayOp(ArrayOp.Replace, obj, obj.length+i, items[i]));
+									Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, obj.length, 0, items));
 						}
 
 						// Call original push() function
 						Array.prototype.push.apply(obj, items);
 					}
-
-
 				}
 			} // end if(isArray).
-
-
 
 
 			// Save the ExprPath that's currently accessing this variable.
@@ -186,12 +182,12 @@ export default function watch3(root, field, value=unusedArg) {
 
 					// If we're not re-rendering the whole thing.
 					if (exprsToRender !== true)
-						Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArrayOp(ArrayOp.Replace, obj, prop, val));
+						Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
 				}
 
 				// Reapply the whole expression.
 				else
-					rootNg.exprsToRender.set(exprPath, new ArrayOp(ArrayOp.WholeArray, val)); // True means to re-render the whole thing.
+					rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
 			}
 			return true;
 		}
@@ -202,6 +198,13 @@ export default function watch3(root, field, value=unusedArg) {
 		set: (val) => handler.set(root, field, val, root)
 	});
 }
+
+var ArrayOps = {
+
+	push(...items) {
+
+	}
+};
 
 /**
  * Render the ExprPaths that were added to rootNg.exprsToRender.
@@ -214,7 +217,7 @@ export function renderWatched(root) {
 	for (let [exprPath, params] of rootNg.exprsToRender) {
 
 		// Reapply the whole expression.
-		if (params.op === ArrayOp.WholeArray) {
+		if (params instanceof WholeArrayOp) {
 
 			// So it doesn't use the old value inside the map callback in the get handler above.
 			// TODO: Find a more sensible way to pass newValue.
@@ -227,17 +230,11 @@ export function renderWatched(root) {
 			modified.push(...exprPath.getNodes());
 		}
 
-		// Update a single NodeGroup created by array.map()
+		// Selectively update NodeGroups created by array.map()
 		else {
 			for (let arrayOp of params) {
-
-				if (arrayOp.op === ArrayOp.Replace) {
-					//let [obj, prop, value] = row;
-					let template = exprPath.mapCallback(arrayOp.value);
-					exprPath.applyLoopItemUpdate(arrayOp, template);
-
-					modified.push(...exprPath.nodeGroups[arrayOp.index].getNodes());
-				}
+				exprPath.applyArrayOp(arrayOp);
+				modified.push(...exprPath.nodeGroups[arrayOp.index].getNodes());
 			}
 		}
 	}
@@ -247,15 +244,36 @@ export function renderWatched(root) {
 	return modified;
 }
 
-class ArrayOp {
-	constructor(op, array, index=null, value=null) {
-		this.op = op;
+class ArrayOp {}
+
+export class ArraySpliceOp extends ArrayOp {
+	constructor(array, index, deleteCount, items) {
+		super();
 		this.array = array;
 		this.index = index;
+		this.deleteCount = deleteCount;
+		this.items = items;
+	}
+}
+
+class WholeArrayOp extends ArrayOp {
+	constructor(array, value) {
+		super();
+		this.array = array;
 		this.value = value;
 	}
 }
-ArrayOp.WholeArray = 'WholeArray';
-ArrayOp.Insert = 'Insert';
-ArrayOp.Remove = 'Remove';
-ArrayOp.Replace = 'Replace'; // TODO: Will we use this?
+//
+// export class ArrayOp {
+// 	constructor(op, array, index=null, value=null) {
+// 		this.op = op;
+// 		this.array = array;
+// 		this.index = index;
+// 		this.value = value;
+// 	}
+// }
+// ArrayOp.WholeArray = 'WholeArray';
+// ArrayOp.Splice = 'Splice';
+// ArrayOp.Insert = 'Insert';
+// ArrayOp.Remove = 'Remove';
+// ArrayOp.Replace = 'Replace'; // Only use this if there's an element to remove.  TODO: Will we use this?
