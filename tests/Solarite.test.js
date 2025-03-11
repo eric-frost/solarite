@@ -2683,7 +2683,6 @@ Testimony.test('Solarite.component.nestedExprEvent', () => {
 		}
 
 		render() {
-			console.log(arguments)
 			r(this)`
 			<b-530>				
 				<div>Name:</div><div>Fred</div>
@@ -3625,12 +3624,14 @@ Testimony.test('Solarite.watch3.loopPushPop', () => {
 	a.items.push('cherry');
 	let modified = renderWatched(a);
 	assert.eq(getHtml(a), `<w-60><div>apple</div><div>banana</div><div>cherry</div></w-60>`);
+	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
 	assert.eq(modified, [a.children[2]]);
 
 	let item = a.items.pop();
 	modified = renderWatched(a);
-	assert.eq(item, 'cherry');
 	assert.eq(getHtml(a), `<w-60><div>apple</div><div>banana</div></w-60>`);
+	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
+	assert.eq(item, 'cherry');
 
 
 
@@ -3661,12 +3662,14 @@ Testimony.test('Solarite.watch3.loopPush2', () => {
 	a.props.items.push('cherry');
 	let modified = renderWatched(a);
 	assert.eq(getHtml(a), `<w-70><div>apple</div><div>banana</div><div>cherry</div></w-70>`);
+	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
 	assert.eq(modified, [a.children[2]]);
 
-	// let item = a.items.pop();
-	// assert.eq(item, 'cherry');
-	// modified = renderWatched(a);
-	// assert.eq(getHtml(a), `<w-60><div>apple</div><div>banana</div></w-60>`);
+	let item = a.props.items.pop();
+	assert.eq(item, 'cherry');
+	modified = renderWatched(a);
+	assert.eq(getHtml(a), `<w-70><div>apple</div><div>banana</div></w-70>`);
+	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
 
 
 

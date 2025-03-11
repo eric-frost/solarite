@@ -1133,13 +1133,9 @@ function watch3(root, field, value=unusedArg) {
 						}
 				}
 
-				if (prop === 'push') {
+				else if (['push', 'pop', 'splice'].includes(prop)) {
 					let rootNg = Globals$1.nodeGroups.get(root);
-					return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[field]).push;
-				}
-				else if (prop === 'pop') {
-					let rootNg = Globals$1.nodeGroups.get(root);
-					return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[field]).pop;
+					return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[field])[prop];
 				}
 			} // end if(isArray).
 
@@ -1200,9 +1196,8 @@ function watch3(root, field, value=unusedArg) {
 
 /**
  * Wrap an array so that functions that modify the array are intercepted.
- * We then
- * so that renderWatched() can
- */
+ * We then add ArraySpliceOp's to the list of ops to run for each affected ExprPath.
+ * When renderWatched() is called it then applies those ops to the NodeGroups created by the map() function. */
 class WatchedArray {
 
 	/**
@@ -1217,30 +1212,30 @@ class WatchedArray {
 		this.pop = this.pop.bind(this);
 	}
 
-	push(...items) {
-
-		// Mark all expressions affected by the push() to be re-rendered
-		for (let exprPath of this.exprPaths) {
-			let exprsToRender = this.rootNg.exprsToRender.get(exprPath);
-			if (!(exprsToRender instanceof WholeArrayOp)) // If we're not already going to re-render the whole array.
-				Util$1.mapArrayAdd(this.rootNg.exprsToRender, exprPath, new ArraySpliceOp(this.array, this.array.length, 0, items));
-		}
-
-		// Call original push() function
-		Array.prototype.push.apply(this.array, items);
+	push(...args) {
+		return this.internalSplice('push', args, [this.array, this.array.length, 0, args]);
 	}
 
 	pop() {
+		return this.internalSplice('pop', [], [this.array, this.array.length-1, 1]);
+	}
 
+	splice() {
+		return this.internalSplice('pop', [], [this.array, this.array.length-1, 1]);
+	}
+
+	internalSplice(func, args, spliceArgs) {
 		// Mark all expressions affected by the push() to be re-rendered
 		for (let exprPath of this.exprPaths) {
 			let exprsToRender = this.rootNg.exprsToRender.get(exprPath);
 			if (!(exprsToRender instanceof WholeArrayOp)) // If we're not already going to re-render the whole array.
-				Util$1.mapArrayAdd(this.rootNg.exprsToRender, exprPath, new ArraySpliceOp(this.array, this.array.length-1, 1));
+				Util$1.mapArrayAdd(this.rootNg.exprsToRender, exprPath, new ArraySpliceOp(...spliceArgs));
 		}
 
 		// Call original push() function
-		return Array.prototype.pop.apply(this.array);
+		return Array.prototype[func].call(this.array, ...args);
+
+
 	}
 }
 
@@ -1524,7 +1519,7 @@ class ExprPath {
 
 			for (let ng of oldNodeGroups)
 				if (!ng.startNode.parentNode)
-					ng.saveOrphans();
+					ng.removeAndSaveOrphans();
 		}
 
 
@@ -1545,7 +1540,7 @@ class ExprPath {
 			}
 		}
 
-
+		// Replace NodeGroups
 		let replaceCount = Math.min(op.deleteCount, op.items.length);
 		let deleteCount = op.deleteCount - replaceCount;
 		for (let i=0; i<replaceCount; i++) {
@@ -1561,32 +1556,27 @@ class ExprPath {
 				ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
 				this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
 
-
 				// Splice in the new nodes.
 				let startNode = oldNg.startNode;
 				for (let node of ng.getNodes())
 					startNode.parentNode.insertBefore(node, startNode);
 
 				// Remove the old nodes.
-				if (ng !== oldNg) {
-					for (let node of oldNg.getNodes())
-						node.remove(); // Redundant since saveOrphans does the same.
-					oldNg.saveOrphans();
-				}
+				if (ng !== oldNg)
+					oldNg.removeAndSaveOrphans();
 			}
 		}
 
+		// Delete extra at the end.
 		if (deleteCount > 0) {
-
 			for (let i=0; i<deleteCount; i++) {
 				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
-				for (let node of oldNg.getNodes())
-					node.remove(); // Redundant since saveOrphans does the same.
-				oldNg.saveOrphans();
+				oldNg.removeAndSaveOrphans();
 			}
+		}
 
-		} else {
-
+		// Add extra at the end.
+		else {
 			let newItems = op.items.slice(replaceCount);
 
 			for (let i = 0; i < newItems.length; i++) {
@@ -1598,8 +1588,7 @@ class ExprPath {
 				if (!ng) 	// Find a close match or create a new node group
 					ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
 
-				this.nodeGroups[op.index + replaceCount + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
-
+				this.nodeGroups.push(ng);
 
 				// Splice in the new nodes.
 				for (let node of ng.getNodes())
@@ -3064,8 +3053,7 @@ class NodeGroup {
 
 	/**
 	 * Requires the nodeCache to be present. */
-	saveOrphans() {
-		/*#IFDEV*/assert(!this.startNode.parentNode);/*#ENDIF*/
+	removeAndSaveOrphans() {
 		/*#IFDEV*/assert(this.nodesCache);/*#ENDIF*/
 		let fragment = document.createDocumentFragment();
 		for (let node of this.getNodes())
