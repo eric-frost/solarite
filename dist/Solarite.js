@@ -998,6 +998,9 @@ function watch3(root, field, value=unusedArg) {
 
 	// use a single object for both defineProperty and new Proxy's handler.
 	const handler = {
+		path: [],
+
+
 		get(obj, prop, receiver) {
 
 			let result = (obj === receiver && field === prop)
@@ -1065,6 +1068,7 @@ function watch3(root, field, value=unusedArg) {
 			for (let exprPath of rootNg.watchedExprPaths[field]) {
 
 				// Update a single NodeGroup created by array.map()
+				// TODO: This doesn't trigger when setting the property of an object in an array.
 				if (Array.isArray(obj) && parseInt(prop) == prop) {
 					let exprsToRender = rootNg.exprsToRender.get(exprPath);
 
@@ -1074,8 +1078,10 @@ function watch3(root, field, value=unusedArg) {
 				}
 
 				// Reapply the whole expression.
-				else
+				else if (Array.isArray(Reflect.get(obj, prop)))
 					rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
+				else
+					rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
 			}
 			return true;
 		}
@@ -1110,7 +1116,8 @@ class WatchedArray {
 	}
 
 	pop() {
-		return this.internalSplice('pop', [], [this.array, this.array.length-1, 1]);
+		if (this.array.length)
+			return this.internalSplice('pop', [], [this.array, this.array.length-1, 1]);
 	}
 
 	splice() {
@@ -1140,14 +1147,23 @@ function renderWatched(root) {
 	let rootNg = Globals$1.nodeGroups.get(root);
 	let modified = [];
 
-	for (let [exprPath, params] of rootNg.exprsToRender) {
+	for (let [exprPath, ops] of rootNg.exprsToRender) {
 
 		// Reapply the whole expression.
-		if (params instanceof WholeArrayOp) {
+		if (ops instanceof WholeArrayOp) {
 
 			// So it doesn't use the old value inside the map callback in the get handler above.
 			// TODO: Find a more sensible way to pass newValue.
-			exprPath.watchFunction.newValue = params.array;
+			exprPath.watchFunction.newValue = ops.array;
+			exprPath.apply([exprPath.watchFunction]);
+
+			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
+			exprPath.freeNodeGroups();
+
+			modified.push(...exprPath.getNodes());
+		}
+		else if (ops instanceof ValueOp) {
+			exprPath.watchFunction.newValue = ops.value;
 			exprPath.apply([exprPath.watchFunction]);
 
 			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
@@ -1158,9 +1174,17 @@ function renderWatched(root) {
 
 		// Selectively update NodeGroups created by array.map()
 		else {
-			for (let arrayOp of params) {
+			for (let arrayOp of ops) {
+				if (arrayOp.deleteCount)
+					modified.push(
+						...exprPath.nodeGroups.slice(arrayOp.index, arrayOp.index + arrayOp.deleteCount).map(ng => ng.getNodes()).flat()
+					);
+
 				exprPath.applyArrayOp(arrayOp);
-				modified.push(...exprPath.nodeGroups[arrayOp.index].getNodes());
+				if (arrayOp.items.length)
+					modified.push(
+						...exprPath.nodeGroups.slice(arrayOp.index, arrayOp.index + arrayOp.items.length).map(ng => ng.getNodes()).flat()
+					);
 			}
 		}
 	}
@@ -1170,11 +1194,22 @@ function renderWatched(root) {
 	return modified;
 }
 
-class ArrayOp {}
+class WatchOp {}
 
-class ArraySpliceOp extends ArrayOp {
+class ArraySpliceOp extends WatchOp {
+
+
+	/**
+	 * Represents a splice operation (insertion, deletion, or replacement of elements)
+	 * to be applied to an array during rendering.
+	 *
+	 * @param array {Array} The array affected by the splice operation.
+	 * @param index {int} The starting index of the splice operation.
+	 * @param deleteCount {int} The number of elements to delete from the array.
+	 * @param items {Array} The elements to insert into the array at the starting index. */
 	constructor(array, index, deleteCount, items=[]) {
 		super();
+		
 		this.array = array;
 		this.index = index*1;
 		this.deleteCount = deleteCount;
@@ -1182,9 +1217,17 @@ class ArraySpliceOp extends ArrayOp {
 	}
 }
 
-class WholeArrayOp extends ArrayOp {
+class ValueOp extends WatchOp {
+	constructor(value) {
+		super();
+		this.value = value;
+	}
+}
+
+class WholeArrayOp extends WatchOp {
 	constructor(array, value) {
 		super();
+		
 		this.array = array;
 		this.value = value;
 	}
@@ -1450,9 +1493,9 @@ class ExprPath {
 				this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
 
 				// Splice in the new nodes.
-				let startNode = oldNg.startNode;
+				let insertBefore = oldNg.startNode;
 				for (let node of ng.getNodes())
-					startNode.parentNode.insertBefore(node, startNode);
+					insertBefore.parentNode.insertBefore(node, insertBefore);
 
 				// Remove the old nodes.
 				if (ng !== oldNg)
@@ -1466,14 +1509,16 @@ class ExprPath {
 				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
 				oldNg.removeAndSaveOrphans();
 			}
+			this.nodeGroups.splice(op.index + replaceCount, deleteCount);
 		}
 
 		// Add extra at the end.
 		else {
 			let newItems = op.items.slice(replaceCount);
 
-			for (let i = 0; i < newItems.length; i++) {
-				let startNode = this.nodeGroups[op.index + replaceCount]?.startNode || this.nodeMarker;
+			let insertBefore = this.nodeGroups[op.index + replaceCount]?.startNode || this.nodeMarker;
+			for (let i = 0; i < newItems.length; i++) { // We use nodeMarker if the subequent (or all) nodeGroups have been removed.
+
 
 				// Try to find exact match
 				let template = this.mapCallback(newItems[i]);
@@ -1485,9 +1530,11 @@ class ExprPath {
 
 				// Splice in the new nodes.
 				for (let node of ng.getNodes())
-					startNode.parentNode.insertBefore(node, startNode);
+					insertBefore.parentNode.insertBefore(node, insertBefore);
 			}
 		}
+
+		
 
 		// TODO: update or invalidate the nodes cache?
 		this.nodesCache = null;
@@ -1544,7 +1591,7 @@ class ExprPath {
 			Globals$1.currentExprPath = this; // Used by watch3()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			let result = expr();
+			let result = expr(); // As expr accesses watched variables, watch3() uses Globals.currentExprPath to mark where those watched variables are being used.
 			Globals$1.currentExprPath = null;
 
 			this.applyExact(result, newNodes, secondPass);
@@ -2549,8 +2596,6 @@ class NodeGroup {
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
 
-	currentComponentProps = {};
-	
 
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
@@ -2922,8 +2967,7 @@ class NodeGroup {
 	/**
 	 * @param root {HTMLElement}
 	 * @param shell {Shell}
-	 * @param pathOffset {int}
-	 * @param template {Template} */
+	 * @param pathOffset {int} */
 	activateEmbeds(root, shell, pathOffset=0) {
 
 		let rootEl = this.rootNg.root;
@@ -2986,14 +3030,13 @@ class RootNodeGroup extends NodeGroup {
 	root;
 
 	/**
-	 * Store the expressions that use this watched variable,
-	 * along with the functions used to get their values.
+	 * Store the ExprPaths that use each watched variable.
 	 * @type {Object<field:string, Set<ExprPath>>} */
 	watchedExprPaths = {};
 
 	/**
 	 * When we call renerWatched() we re-render these expressions, then clear this to a new Map()
-	 * @type {Map<ExprPath, ArrayOp|Array>} */
+	 * @type {Map<ExprPath, ValueOp|WholeArrayOp|ArraySpliceOp[]>} */
 	exprsToRender = new Map();
 
 	/**

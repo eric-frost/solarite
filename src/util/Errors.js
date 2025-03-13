@@ -6,4 +6,5 @@ export function assert(val) {
 		throw new Error('Assertion failed: ' + val);
 	}
 }
+
 //#ENDIF

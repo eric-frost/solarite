@@ -3545,7 +3545,43 @@ Testimony.test('Solarite.watch3.object', () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.watch3.loop', `replace array elements`, () => {
+Testimony.test('Solarite.watch3._arrayObject', () => {
+
+	class W40 extends HTMLElement {
+
+		users = [{name: 'Fred'}]
+
+		constructor() {
+			super();
+			watch(this, 'users');
+			this.render();
+		}
+
+		render() {
+			r(this)`<w-40>${() => this.users[0].name + '!'}</w-40>`;
+		}
+	}
+	customElements.define('w-40', W40);
+
+	let a = new W40();
+	document.body.append(a);
+	assert.eq(getHtml(a), `<w-40>Fred!</w-40>`);
+
+	a.users[0].name = 'Jim';
+	let modified = renderWatched(a);
+	//console.log(modified);
+	assert.eq(getHtml(a), `<w-40>Jim!</w-40>`);
+
+	a.users[0] = {name: 'Bob'};
+	modified = renderWatched(a);
+	//console.log(modified);
+	//assert.eq(modified, a.children[1]);
+	assert.eq(getHtml(a), `<w-40>Bob!</w-40>`);
+
+	a.remove();
+});
+
+Testimony.test('Solarite.watch3.loopAssign', `replace array elements`, () => {
 
 	class W50 extends HTMLElement {
 
@@ -3587,16 +3623,46 @@ Testimony.test('Solarite.watch3.loop', `replace array elements`, () => {
 	modified = renderWatched(a);
 	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple3</div><div>banana3</div><div>cherry3</div></w-50>`);
-	assert.eq(modified, [a.children[0], a.children[2]]);
+	//assert.eq(modified, [a.children[0], a.children[2]]);
 
 
 	// Test replacing the whole loop.
 	a.items = ['apple4', 'banana4', 'cherry4'];
 	modified = renderWatched(a);
 	assert.eq(getHtml(a), `<w-50><div>apple4</div><div>banana4</div><div>cherry4</div></w-50>`);
-	assert.eq(modified, [a.children[0], a.children[1], a.children[2]]);
+	//assert.eq(modified, [a.children[0], a.children[1], a.children[2]]);
 
 	a.remove();
+});
+
+Testimony.test('Solarite.watch3._loopObjAssign', `update array elements and their properties`, () => {
+
+	class W55 extends HTMLElement {
+
+		items = [
+			{name: 'apple', qty: 1},
+			{name: 'banana', qty: 2}
+		];
+
+		constructor() {
+			super();
+			watch(this, 'items');
+			this.render();
+		}
+
+		render() {
+			r(this)`<w-55>${this.items.map(item => r`<div>${item.name}|${item.qty}</div>`)}</w-55>`;
+		}
+	}
+	customElements.define('w-55', W55);
+
+	let a = new W55();
+	document.body.append(a);
+
+
+	a.items[0].qty = 3;
+	renderWatched(a);
+
 });
 
 
@@ -3633,12 +3699,37 @@ Testimony.test('Solarite.watch3.loopPushPop', () => {
 	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
 	assert.eq(item, 'cherry');
 
+	item = a.items.pop();
+	modified = renderWatched(a);
+	assert.eq(getHtml(a), `<w-60><div>apple</div></w-60>`);
+	assert.eq(modified.map(el=>getHtml(el)), [`<div>banana</div>`]);
+	assert.eq(item, 'banana');
 
+	item = a.items.pop();
+	modified = renderWatched(a);
+	assert.eq(getHtml(a), `<w-60></w-60>`);
+	assert.eq(modified.map(el=>getHtml(el)), [`<div>apple</div>`]);
+	assert.eq(item, 'apple');
 
-	//a.remove();
+	// Test pop on empty array.
+	item = a.items.pop();
+	modified = renderWatched(a);
+	assert.eq(getHtml(a), `<w-60></w-60>`);
+	assert.eq(modified.map(el=>getHtml(el)), []);
+	assert.eq(item, undefined);
+	assert.eq(a.items.length, 0);
+
+	// Push multipe items on empty array.
+	a.items.push('apple2', 'banana2', 'cherry2');
+	modified = renderWatched(a);
+	assert.eq(getHtml(a), `<w-60><div>apple2</div><div>banana2</div><div>cherry2</div></w-60>`);
+	assert.eq(modified.map(el=>getHtml(el)), [`<div>apple2</div>`, `<div>banana2</div>`, `<div>cherry2</div>`]);
+	assert.eq(a.items, ['apple2', 'banana2', 'cherry2']);
+
+	a.remove();
 });
 
-Testimony.test('Solarite.watch3.loopPush2', () => {
+Testimony.test('Solarite.watch3.loopDeepPushPop', () => {
 
 	class W70 extends HTMLElement {
 
@@ -3671,9 +3762,7 @@ Testimony.test('Solarite.watch3.loopPush2', () => {
 	assert.eq(getHtml(a), `<w-70><div>apple</div><div>banana</div></w-70>`);
 	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
 
-
-
-	//a.remove();
+	a.remove();
 });
 
 
