@@ -58,8 +58,6 @@ export default class NodeGroup {
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
 
-	currentComponentProps = {};
-	
 
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
@@ -377,8 +375,7 @@ export default class NodeGroup {
 
 	/**
 	 * Requires the nodeCache to be present. */
-	saveOrphans() {
-		/*#IFDEV*/assert(!this.startNode.parentNode);/*#ENDIF*/
+	removeAndSaveOrphans() {
 		/*#IFDEV*/assert(this.nodesCache);/*#ENDIF*/
 		let fragment = document.createDocumentFragment();
 		for (let node of this.getNodes())
@@ -500,8 +497,7 @@ export default class NodeGroup {
 	/**
 	 * @param root {HTMLElement}
 	 * @param shell {Shell}
-	 * @param pathOffset {int}
-	 * @param template {Template} */
+	 * @param pathOffset {int} */
 	activateEmbeds(root, shell, pathOffset=0) {
 
 		let rootEl = this.rootNg.root;
@@ -564,14 +560,13 @@ export class RootNodeGroup extends NodeGroup {
 	root;
 
 	/**
-	 * Store the expressions that use this watched variable,
-	 * along with the functions used to get their values.
+	 * Store the ExprPaths that use each watched variable.
 	 * @type {Object<field:string, Set<ExprPath>>} */
 	watchedExprPaths = {};
 
 	/**
 	 * When we call renerWatched() we re-render these expressions, then clear this to a new Map()
-	 * @type {Map<ExprPath, ArrayOp|Array>} */
+	 * @type {Map<ExprPath, ValueOp|WholeArrayOp|ArraySpliceOp[]>} */
 	exprsToRender = new Map();
 
 	/**

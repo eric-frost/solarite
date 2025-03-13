@@ -216,7 +216,7 @@ export default class ExprPath {
 
 			for (let ng of oldNodeGroups)
 				if (!ng.startNode.parentNode)
-					ng.saveOrphans();
+					ng.removeAndSaveOrphans();
 		}
 
 
@@ -237,7 +237,7 @@ export default class ExprPath {
 			}
 		}
 
-
+		// Replace NodeGroups
 		let replaceCount = Math.min(op.deleteCount, op.items.length);
 		let deleteCount = op.deleteCount - replaceCount;
 		for (let i=0; i<replaceCount; i++) {
@@ -255,36 +255,33 @@ export default class ExprPath {
 				ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
 				this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
 
-
 				// Splice in the new nodes.
-				let startNode = oldNg.startNode;
+				let insertBefore = oldNg.startNode;
 				for (let node of ng.getNodes())
-					startNode.parentNode.insertBefore(node, startNode);
+					insertBefore.parentNode.insertBefore(node, insertBefore);
 
 				// Remove the old nodes.
-				if (ng !== oldNg) {
-					for (let node of oldNg.getNodes())
-						node.remove(); // Redundant since saveOrphans does the same.
-					oldNg.saveOrphans();
-				}
+				if (ng !== oldNg)
+					oldNg.removeAndSaveOrphans();
 			}
 		}
 
+		// Delete extra at the end.
 		if (deleteCount > 0) {
-
 			for (let i=0; i<deleteCount; i++) {
 				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
-				for (let node of oldNg.getNodes())
-					node.remove(); // Redundant since saveOrphans does the same.
-				oldNg.saveOrphans();
+				oldNg.removeAndSaveOrphans();
 			}
+			this.nodeGroups.splice(op.index + replaceCount, deleteCount);
+		}
 
-		} else {
-
+		// Add extra at the end.
+		else {
 			let newItems = op.items.slice(replaceCount);
 
-			for (let i = 0; i < newItems.length; i++) {
-				let startNode = this.nodeGroups[op.index + replaceCount]?.startNode || this.nodeMarker;
+			let insertBefore = this.nodeGroups[op.index + replaceCount]?.startNode || this.nodeMarker;
+			for (let i = 0; i < newItems.length; i++) { // We use nodeMarker if the subequent (or all) nodeGroups have been removed.
+
 
 				// Try to find exact match
 				let template = this.mapCallback(newItems[i]);
@@ -292,14 +289,17 @@ export default class ExprPath {
 				if (!ng) 	// Find a close match or create a new node group
 					ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
 
-				this.nodeGroups[op.index + replaceCount + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
-
+				this.nodeGroups.push(ng);
 
 				// Splice in the new nodes.
 				for (let node of ng.getNodes())
-					startNode.parentNode.insertBefore(node, startNode);
+					insertBefore.parentNode.insertBefore(node, insertBefore);
 			}
 		}
+
+		//#IFDEV
+		assert(this.nodeGroups.length === op.array.length);
+		//#ENDIF
 
 		// TODO: update or invalidate the nodes cache?
 		this.nodesCache = null;
@@ -356,7 +356,7 @@ export default class ExprPath {
 			Globals.currentExprPath = this; // Used by watch3()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			let result = expr();
+			let result = expr(); // As expr accesses watched variables, watch3() uses Globals.currentExprPath to mark where those watched variables are being used.
 			Globals.currentExprPath = null;
 
 			this.applyExact(result, newNodes, secondPass);

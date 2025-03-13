@@ -51,6 +51,7 @@ a.items.push({name: 'Fred'});
 
 import Globals from "./Globals.js";
 import Util from "../util/Util.js";
+import {assert} from "../util/Errors.js";
 
 let unusedArg = Symbol('unusedArg');
 
@@ -92,6 +93,9 @@ export default function watch3(root, field, value=unusedArg) {
 
 	// use a single object for both defineProperty and new Proxy's handler.
 	const handler = {
+		path: [],
+
+
 		get(obj, prop, receiver) {
 
 			let result = (obj === receiver && field === prop)
@@ -120,13 +124,9 @@ export default function watch3(root, field, value=unusedArg) {
 						}
 				}
 
-				if (prop === 'push') {
+				else if (['push', 'pop', 'splice'].includes(prop)) {
 					let rootNg = Globals.nodeGroups.get(root);
-					return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[field]).push;
-				}
-				else if (prop === 'pop') {
-					let rootNg = Globals.nodeGroups.get(root);
-					return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[field]).pop;
+					return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[field])[prop];
 				}
 			} // end if(isArray).
 
@@ -163,6 +163,7 @@ export default function watch3(root, field, value=unusedArg) {
 			for (let exprPath of rootNg.watchedExprPaths[field]) {
 
 				// Update a single NodeGroup created by array.map()
+				// TODO: This doesn't trigger when setting the property of an object in an array.
 				if (Array.isArray(obj) && parseInt(prop) == prop) {
 					let exprsToRender = rootNg.exprsToRender.get(exprPath);
 
@@ -172,8 +173,10 @@ export default function watch3(root, field, value=unusedArg) {
 				}
 
 				// Reapply the whole expression.
-				else
+				else if (Array.isArray(Reflect.get(obj, prop)))
 					rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
+				else
+					rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
 			}
 			return true;
 		}
@@ -187,9 +190,8 @@ export default function watch3(root, field, value=unusedArg) {
 
 /**
  * Wrap an array so that functions that modify the array are intercepted.
- * We then
- * so that renderWatched() can
- */
+ * We then add ArraySpliceOp's to the list of ops to run for each affected ExprPath.
+ * When renderWatched() is called it then applies those ops to the NodeGroups created by the map() function. */
 class WatchedArray {
 
 	/**
@@ -204,30 +206,31 @@ class WatchedArray {
 		this.pop = this.pop.bind(this);
 	}
 
-	push(...items) {
-
-		// Mark all expressions affected by the push() to be re-rendered
-		for (let exprPath of this.exprPaths) {
-			let exprsToRender = this.rootNg.exprsToRender.get(exprPath);
-			if (!(exprsToRender instanceof WholeArrayOp)) // If we're not already going to re-render the whole array.
-				Util.mapArrayAdd(this.rootNg.exprsToRender, exprPath, new ArraySpliceOp(this.array, this.array.length, 0, items));
-		}
-
-		// Call original push() function
-		Array.prototype.push.apply(this.array, items);
+	push(...args) {
+		return this.internalSplice('push', args, [this.array, this.array.length, 0, args]);
 	}
 
 	pop() {
+		if (this.array.length)
+			return this.internalSplice('pop', [], [this.array, this.array.length-1, 1]);
+	}
 
+	splice() {
+		return this.internalSplice('pop', [], [this.array, this.array.length-1, 1]);
+	}
+
+	internalSplice(func, args, spliceArgs) {
 		// Mark all expressions affected by the push() to be re-rendered
 		for (let exprPath of this.exprPaths) {
 			let exprsToRender = this.rootNg.exprsToRender.get(exprPath);
 			if (!(exprsToRender instanceof WholeArrayOp)) // If we're not already going to re-render the whole array.
-				Util.mapArrayAdd(this.rootNg.exprsToRender, exprPath, new ArraySpliceOp(this.array, this.array.length-1, 1));
+				Util.mapArrayAdd(this.rootNg.exprsToRender, exprPath, new ArraySpliceOp(...spliceArgs));
 		}
 
 		// Call original push() function
-		return Array.prototype.pop.apply(this.array);
+		return Array.prototype[func].call(this.array, ...args);
+
+
 	}
 }
 
@@ -239,14 +242,23 @@ export function renderWatched(root) {
 	let rootNg = Globals.nodeGroups.get(root);
 	let modified = [];
 
-	for (let [exprPath, params] of rootNg.exprsToRender) {
+	for (let [exprPath, ops] of rootNg.exprsToRender) {
 
 		// Reapply the whole expression.
-		if (params instanceof WholeArrayOp) {
+		if (ops instanceof WholeArrayOp) {
 
 			// So it doesn't use the old value inside the map callback in the get handler above.
 			// TODO: Find a more sensible way to pass newValue.
-			exprPath.watchFunction.newValue = params.array;
+			exprPath.watchFunction.newValue = ops.array;
+			exprPath.apply([exprPath.watchFunction]);
+
+			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
+			exprPath.freeNodeGroups();
+
+			modified.push(...exprPath.getNodes());
+		}
+		else if (ops instanceof ValueOp) {
+			exprPath.watchFunction.newValue = ops.value;
 			exprPath.apply([exprPath.watchFunction]);
 
 			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
@@ -257,9 +269,17 @@ export function renderWatched(root) {
 
 		// Selectively update NodeGroups created by array.map()
 		else {
-			for (let arrayOp of params) {
+			for (let arrayOp of ops) {
+				if (arrayOp.deleteCount)
+					modified.push(
+						...exprPath.nodeGroups.slice(arrayOp.index, arrayOp.index + arrayOp.deleteCount).map(ng => ng.getNodes()).flat()
+					);
+
 				exprPath.applyArrayOp(arrayOp);
-				modified.push(...exprPath.nodeGroups[arrayOp.index].getNodes());
+				if (arrayOp.items.length)
+					modified.push(
+						...exprPath.nodeGroups.slice(arrayOp.index, arrayOp.index + arrayOp.items.length).map(ng => ng.getNodes()).flat()
+					);
 			}
 		}
 	}
@@ -269,11 +289,24 @@ export function renderWatched(root) {
 	return modified;
 }
 
-class ArrayOp {}
+class WatchOp {}
 
-export class ArraySpliceOp extends ArrayOp {
+export class ArraySpliceOp extends WatchOp {
+
+
+	/**
+	 * Represents a splice operation (insertion, deletion, or replacement of elements)
+	 * to be applied to an array during rendering.
+	 *
+	 * @param array {Array} The array affected by the splice operation.
+	 * @param index {int} The starting index of the splice operation.
+	 * @param deleteCount {int} The number of elements to delete from the array.
+	 * @param items {Array} The elements to insert into the array at the starting index. */
 	constructor(array, index, deleteCount, items=[]) {
 		super();
+		//#IFDEV
+		assert(Array.isArray(array));
+		//#ENDIF
 		this.array = array;
 		this.index = index*1;
 		this.deleteCount = deleteCount;
@@ -281,9 +314,19 @@ export class ArraySpliceOp extends ArrayOp {
 	}
 }
 
-class WholeArrayOp extends ArrayOp {
+class ValueOp extends WatchOp {
+	constructor(value) {
+		super();
+		this.value = value;
+	}
+}
+
+class WholeArrayOp extends WatchOp {
 	constructor(array, value) {
 		super();
+		//#IFDEV
+		assert(Array.isArray(array));
+		//#ENDIF
 		this.array = array;
 		this.value = value;
 	}
