@@ -99,11 +99,22 @@ class ProxyHandler {
 
 				// This outer function is so the ExprPath calls it as a function,
 				// instead of it being evaluated immediately when the Template is created.
+				// This allows ExprPath.apply() to set the Globals.currentExprPath before evaluating further.
 				return (callback) =>
 
 					// This is the new map function.
-					// TODO: Find a way to pass it a new obj when called from renderWatched
 					function mapFunction() {
+
+						// Save the ExprPaths that called the array used by .map()
+						if (Globals.currentExprPath) {
+							let path = JSON.stringify(handler.path);
+							let rootNg = Globals.nodeGroups.get(handler.root);
+							if (!rootNg.watchedExprPaths2[path])
+								rootNg.watchedExprPaths2[path] = new Set();
+							rootNg.watchedExprPaths2[path].add(Globals.currentExprPath);
+						}
+
+						// Apply the map function.
 						let newObj = mapFunction.newValue || obj;
 						Globals.currentExprPath.mapCallback = callback;
 						return map(new Proxy(newObj, handler), callback);
@@ -112,7 +123,7 @@ class ProxyHandler {
 
 			else if (['push', 'pop', 'splice'].includes(prop)) {
 				let rootNg = Globals.nodeGroups.get(this.root);
-				path = JSON.stringify([...this.path, prop]);
+				path = JSON.stringify(this.path);
 				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths2[path])[prop];
 			}
 		}

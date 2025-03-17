@@ -320,12 +320,6 @@ export default class ExprPath {
 	 * @param secondPass {Array} Locations within newNodes to evaluate later. */
 	applyExact(expr, newNodes, secondPass) {
 
-		// TODO: One ExprPath can have multiple expr functions.
-		// But if using it as a watch, it should only have one at the top level.
-		// So maybe this is ok.
-		Globals.currentExprPath = this; // Used by watch3()
-
-
 		if (expr instanceof Template) {
 
 			let ng = this.getNodeGroup(expr, true);
@@ -363,10 +357,14 @@ export default class ExprPath {
 				this.applyExact(subExpr, newNodes, secondPass);
 
 		else if (typeof expr === 'function') {
+			// TODO: One ExprPath can have multiple expr functions.
+			// But if using it as a watch, it should only have one at the top level.
+			// So maybe this is ok.
+			Globals.currentExprPath = this; // Used by watch3()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
 			let result = expr(); // As expr accesses watched variables, watch3() uses Globals.currentExprPath to mark where those watched variables are being used.
-
+			Globals.currentExprPath = null;
 
 			this.applyExact(result, newNodes, secondPass);
 		}
@@ -398,8 +396,6 @@ export default class ExprPath {
 					newNodes.push(this.nodeMarker.ownerDocument.createTextNode(text));
 			}
 		}
-
-		Globals.currentExprPath = null;
 	}
 
 	applyMultipleAttribs(node, expr) {
