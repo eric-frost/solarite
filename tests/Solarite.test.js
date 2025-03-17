@@ -3650,8 +3650,8 @@ Testimony.test('Solarite.watch3._loopObjAssign', `update array elements and thei
 			this.render();
 		}
 
-		render() {
-			r(this)`<w-55>${this.items.map(item => r`<div>${item.name}|${item.qty}</div>`)}</w-55>`;
+		render() { // TODO: It'd be really nice if there was a way to not need ()=> for lazy evaluation.
+			r(this)`<w-55>${this.items.map(item => r`<div>${()=>item.name}|${()=>item.qty}</div>`)}</w-55>`;
 		}
 	}
 	customElements.define('w-55', W55);
@@ -3661,7 +3661,9 @@ Testimony.test('Solarite.watch3._loopObjAssign', `update array elements and thei
 
 
 	a.items[0].qty = 3;
-	renderWatched(a);
+	let modified = renderWatched(a);
+	assert.eq(getHtml(a), `<w-55><div>apple|3</div><div>banana|2</div></w-55>`);
+	assert.eq(modified.map(n=>n.textContent), ['3']);
 
 });
 

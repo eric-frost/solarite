@@ -67,6 +67,136 @@ function map(array, callback) {
 	return result;
 }
 
+class ProxyHandler {
+	path = [];
+
+	constructor(root, field, value) {
+		this.root = root;
+		/** @deprecated */
+		this.field = field;
+		this.value = value;
+	}
+
+	clone(path) {
+		let result = new ProxyHandler(this.root, this.field, this.value);
+		result.path = [...this.path, path];
+		return result;
+	}
+
+	get(obj, prop, receiver) {
+		let handler = this;
+
+		let result = (obj === receiver && this.field === prop)
+			? this.value // top-level value.
+			: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
+
+		// We override the map() function the first time render() is called.
+		// But it's not re-overridden when we call renderWatched()
+		let path;
+		if (Array.isArray(obj)) {
+
+			if (prop === 'map') {
+
+				// This outer function is so the ExprPath calls it as a function,
+				// instead of it being evaluated immediately when the Template is created.
+				return (callback) =>
+
+					// This is the new map function.
+					// TODO: Find a way to pass it a new obj when called from renderWatched
+					function mapFunction() {
+						let newObj = mapFunction.newValue || obj;
+						Globals.currentExprPath.mapCallback = callback;
+						return map(new Proxy(newObj, handler), callback);
+					}
+			}
+
+			else if (['push', 'pop', 'splice'].includes(prop)) {
+				let rootNg = Globals.nodeGroups.get(this.root);
+				path = JSON.stringify([...this.path, prop]);
+				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths2[path])[prop];
+			}
+		}
+
+
+		// Save the ExprPath that's currently accessing this variable.
+		if (Globals.currentExprPath) {
+			let rootNg = Globals.nodeGroups.get(this.root);
+
+			// Init for field.
+			//rootNg.watchedExprPaths[this.field] = rootNg.watchedExprPaths[this.field] || new Set();
+			//rootNg.watchedExprPaths[this.field].add(Globals.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExact()
+
+			if (!path)
+				path = JSON.stringify([...this.path, prop]);
+			if (!rootNg.watchedExprPaths2[path])
+				rootNg.watchedExprPaths2[path] = new Set();
+			rootNg.watchedExprPaths2[path].add(Globals.currentExprPath);
+		}
+
+		// Accessing a sub-property
+		if (result && typeof result === 'object')
+			return new Proxy(result, this.clone(prop));
+
+		return result;
+	}
+
+
+	// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
+	// TODO: This won't update a component's expressions.
+	set(obj, prop, val, receiver) {
+
+		// 1. Set the value.
+		if (obj === receiver && this.field === prop)
+			this.value = val; // top-level value.
+		else // avoid infinite recursion.
+			Reflect.set(obj, prop, val, receiver);
+
+		// 2.
+		let path = JSON.stringify([...this.path, prop]);
+		let rootNg = Globals.nodeGroups.get(this.root);
+		for (let exprPath of rootNg.watchedExprPaths2[path]) {
+
+			// Update a single NodeGroup created by array.map()
+			// TODO: This doesn't trigger when setting the property of an object in an array.
+			if (Array.isArray(obj) && parseInt(prop) == prop) {
+				let exprsToRender = rootNg.exprsToRender.get(exprPath);
+
+				// If we're not re-rendering the whole thing.
+				if (!(exprsToRender instanceof WholeArrayOp)) // TODO: Check for WholeArrayOp instead of true.
+					Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
+			}
+
+			// Reapply the whole expression.
+			else if (Array.isArray(Reflect.get(obj, prop)))
+				rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
+			else
+				rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
+		}
+
+		//
+		// // 2. Add to the list of ExprPaths to re-render.
+		//
+		// for (let exprPath of rootNg.watchedExprPaths[this.field]) {
+		//
+		// 	// Update a single NodeGroup created by array.map()
+		// 	// TODO: This doesn't trigger when setting the property of an object in an array.
+		// 	if (Array.isArray(obj) && parseInt(prop) == prop) {
+		// 		let exprsToRender = rootNg.exprsToRender.get(exprPath);
+		//
+		// 		// If we're not re-rendering the whole thing.
+		// 		if (exprsToRender !== true) // TODO: Check for WholeArrayOp instead of true.
+		// 			Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
+		// 	}
+		//
+		// 	// Reapply the whole expression.
+		// 	else if (Array.isArray(Reflect.get(obj, prop)))
+		// 		rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
+		// 	else
+		// 		rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
+		// }
+		return true;
+	}
+}
 
 /**
  * This function markes a property of a web component to be watched for changes.
@@ -90,98 +220,8 @@ export default function watch3(root, field, value=unusedArg) {
 	else
 		value = root[field];
 
-
-	// use a single object for both defineProperty and new Proxy's handler.
-	const handler = {
-		path: [],
-
-
-		get(obj, prop, receiver) {
-
-			let result = (obj === receiver && field === prop)
-				? value // top-level value.
-				: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
-
-			let isArray = Array.isArray(obj);
-
-			// We override the map() function the first time render() is called.
-			// But it's not re-overridden when we call renderWatched()
-			if (isArray) {
-
-
-				if (prop === 'map') {
-
-					// This outer function is so the ExprPath calls it as a function,
-					// instead of it being evaluated immediately when the Template is created.
-					return (callback) =>
-
-						// This is the new map function.
-						// TODO: Find a way to pass it a new obj when called from renderWatched
-						function mapFunction() {
-							let newObj = mapFunction.newValue || obj;
-							Globals.currentExprPath.mapCallback = callback;
-							return map(new Proxy(newObj, handler), callback);
-						}
-				}
-
-				else if (['push', 'pop', 'splice'].includes(prop)) {
-					let rootNg = Globals.nodeGroups.get(root);
-					return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[field])[prop];
-				}
-			} // end if(isArray).
-
-
-			// Save the ExprPath that's currently accessing this variable.
-			if (Globals.currentExprPath) {
-				let rootNg = Globals.nodeGroups.get(root);
-
-				// Init for field.
-				rootNg.watchedExprPaths[field] = rootNg.watchedExprPaths[field] || new Set();
-				rootNg.watchedExprPaths[field].add(Globals.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExact()
-			}
-
-			// Accessing a sub-property
-			if (result && typeof result === 'object')
-				return new Proxy(result, handler);
-
-			return result;
-		},
-
-
-		// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
-		// TODO: This won't update a component's expressions.
-		set(obj, prop, val, receiver) {
-
-			// 1. Set the value.
-			if (obj === receiver && field === prop)
-				value = val; // top-level value.
-			else // avoid infinite recursion.
-				Reflect.set(obj, prop, val, receiver);
-
-			// 2. Add to the list of ExprPaths to re-render.
-			let rootNg = Globals.nodeGroups.get(root);
-			for (let exprPath of rootNg.watchedExprPaths[field]) {
-
-				// Update a single NodeGroup created by array.map()
-				// TODO: This doesn't trigger when setting the property of an object in an array.
-				if (Array.isArray(obj) && parseInt(prop) == prop) {
-					let exprsToRender = rootNg.exprsToRender.get(exprPath);
-
-					// If we're not re-rendering the whole thing.
-					if (exprsToRender !== true)
-						Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
-				}
-
-				// Reapply the whole expression.
-				else if (Array.isArray(Reflect.get(obj, prop)))
-					rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
-				else
-					rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
-			}
-			return true;
-		}
-	}
-
+	let handler = new ProxyHandler(root, field, value);
+	//handler.path.push(field);
 	Object.defineProperty(root, field, {
 		get: () => handler.get(root, field, root),
 		set: (val) => handler.set(root, field, val, root)
@@ -257,7 +297,11 @@ export function renderWatched(root) {
 
 			modified.push(...exprPath.getNodes());
 		}
+
+		// Update a single value in a map callback
 		else if (ops instanceof ValueOp) {
+			//exprPath = exprPath.mapCallback || exprPath;
+
 			exprPath.watchFunction.newValue = ops.value;
 			exprPath.apply([exprPath.watchFunction]);
 
