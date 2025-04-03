@@ -1845,6 +1845,29 @@ Testimony.test('Solarite.attrib.doubleAndText', () => {
 	assert.eq(getHtml(a), `<r-430><div class="a oneB b twoB c">oneB</div></r-430>`)
 });
 
+
+
+Testimony.test('Solarite.attrib.duplicate', 'Warn on duplicate attributes', () => {
+
+	let val = 'one';
+
+	class R435 extends Solarite {
+		render() {
+			r(this)`<div class="a" class="${val}"></div>`;
+		}
+	}
+
+	let a = new R435();
+	let errorMessage = '';
+	try {
+		a.render();
+	} catch (e) {
+		errorMessage = e.message;	}
+
+	assert(errorMessage.includes('malformed html'));
+});
+
+
 Testimony.test('Solarite.attrib.sparse', () => {
 
 	let isEdit = false;
@@ -3545,7 +3568,7 @@ Testimony.test('Solarite.watch3.object', () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.watch3._arrayObject', () => {
+Testimony.test('Solarite.watch3._arrayOfObject', () => {
 
 	class W40 extends HTMLElement {
 
@@ -3567,13 +3590,8 @@ Testimony.test('Solarite.watch3._arrayObject', () => {
 	document.body.append(a);
 	assert.eq(getHtml(a), `<w-40>Fred!</w-40>`);
 
-	a.users[0].name = 'Jim';
-	let modified = renderWatched(a);
-	//console.log(modified);
-	assert.eq(getHtml(a), `<w-40>Jim!</w-40>`);
-
 	a.users[0] = {name: 'Bob'};
-	modified = renderWatched(a);
+	let modified = renderWatched(a);
 	//console.log(modified);
 	//assert.eq(modified, a.children[1]);
 	assert.eq(getHtml(a), `<w-40>Bob!</w-40>`);

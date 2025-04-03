@@ -972,6 +972,147 @@ function map(array, callback) {
 	return result;
 }
 
+class ProxyHandler {
+	path = [];
+
+	constructor(root, field, value) {
+		this.root = root;
+		/** @deprecated */
+		this.field = field;
+		this.value = value;
+	}
+
+	clone(path) {
+		let result = new ProxyHandler(this.root, this.field, this.value);
+		result.path = [...this.path, path];
+		return result;
+	}
+
+	get(obj, prop, receiver) {
+		let handler = this;
+
+		let result = (obj === receiver && this.field === prop)
+			? this.value // top-level value.
+			: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
+
+		// We override the map() function the first time render() is called.
+		// But it's not re-overridden when we call renderWatched()
+		let path;
+		if (Array.isArray(obj)) {
+
+			if (prop === 'map') {
+
+				// This outer function is so the ExprPath calls it as a function,
+				// instead of it being evaluated immediately when the Template is created.
+				// This allows ExprPath.apply() to set the Globals.currentExprPath before evaluating further.
+				return (callback) =>
+
+					// This is the new map function.
+					function mapFunction() {
+
+						// Save the ExprPaths that called the array used by .map()
+						if (Globals$1.currentExprPath) {
+							let path = JSON.stringify(handler.path);
+							let rootNg = Globals$1.nodeGroups.get(handler.root);
+							if (!rootNg.watchedExprPaths2[path])
+								rootNg.watchedExprPaths2[path] = new Set();
+							rootNg.watchedExprPaths2[path].add(Globals$1.currentExprPath);
+						}
+
+						// Apply the map function.
+						let newObj = mapFunction.newValue || obj;
+						Globals$1.currentExprPath.mapCallback = callback;
+						return map(new Proxy(newObj, handler), callback);
+					}
+			}
+
+			else if (['push', 'pop', 'splice'].includes(prop)) {
+				let rootNg = Globals$1.nodeGroups.get(this.root);
+				path = JSON.stringify(this.path);
+				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths2[path])[prop];
+			}
+		}
+
+
+		// Save the ExprPath that's currently accessing this variable.
+		if (Globals$1.currentExprPath) {
+			let rootNg = Globals$1.nodeGroups.get(this.root);
+
+			// Init for field.
+			//rootNg.watchedExprPaths[this.field] = rootNg.watchedExprPaths[this.field] || new Set();
+			//rootNg.watchedExprPaths[this.field].add(Globals.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExact()
+
+			if (!path)
+				path = JSON.stringify([...this.path, prop]);
+			if (!rootNg.watchedExprPaths2[path])
+				rootNg.watchedExprPaths2[path] = new Set();
+			rootNg.watchedExprPaths2[path].add(Globals$1.currentExprPath);
+		}
+
+		// Accessing a sub-property
+		if (result && typeof result === 'object')
+			return new Proxy(result, this.clone(prop));
+
+		return result;
+	}
+
+
+	// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
+	// TODO: This won't update a component's expressions.
+	set(obj, prop, val, receiver) {
+
+		// 1. Set the value.
+		if (obj === receiver && this.field === prop)
+			this.value = val; // top-level value.
+		else // avoid infinite recursion.
+			Reflect.set(obj, prop, val, receiver);
+
+		// 2.
+		let path = JSON.stringify([...this.path, prop]);
+		let rootNg = Globals$1.nodeGroups.get(this.root);
+		for (let exprPath of rootNg.watchedExprPaths2[path]) {
+
+			// Update a single NodeGroup created by array.map()
+			// TODO: This doesn't trigger when setting the property of an object in an array.
+			if (Array.isArray(obj) && parseInt(prop) == prop) {
+				let exprsToRender = rootNg.exprsToRender.get(exprPath);
+
+				// If we're not re-rendering the whole thing.
+				if (!(exprsToRender instanceof WholeArrayOp)) // TODO: Check for WholeArrayOp instead of true.
+					Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
+			}
+
+			// Reapply the whole expression.
+			else if (Array.isArray(Reflect.get(obj, prop)))
+				rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
+			else
+				rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
+		}
+
+		//
+		// // 2. Add to the list of ExprPaths to re-render.
+		//
+		// for (let exprPath of rootNg.watchedExprPaths[this.field]) {
+		//
+		// 	// Update a single NodeGroup created by array.map()
+		// 	// TODO: This doesn't trigger when setting the property of an object in an array.
+		// 	if (Array.isArray(obj) && parseInt(prop) == prop) {
+		// 		let exprsToRender = rootNg.exprsToRender.get(exprPath);
+		//
+		// 		// If we're not re-rendering the whole thing.
+		// 		if (exprsToRender !== true) // TODO: Check for WholeArrayOp instead of true.
+		// 			Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
+		// 	}
+		//
+		// 	// Reapply the whole expression.
+		// 	else if (Array.isArray(Reflect.get(obj, prop)))
+		// 		rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
+		// 	else
+		// 		rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
+		// }
+		return true;
+	}
+}
 
 /**
  * This function markes a property of a web component to be watched for changes.
@@ -995,98 +1136,8 @@ function watch3(root, field, value=unusedArg) {
 	else
 		value = root[field];
 
-
-	// use a single object for both defineProperty and new Proxy's handler.
-	const handler = {
-		path: [],
-
-
-		get(obj, prop, receiver) {
-
-			let result = (obj === receiver && field === prop)
-				? value // top-level value.
-				: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
-
-			let isArray = Array.isArray(obj);
-
-			// We override the map() function the first time render() is called.
-			// But it's not re-overridden when we call renderWatched()
-			if (isArray) {
-
-
-				if (prop === 'map') {
-
-					// This outer function is so the ExprPath calls it as a function,
-					// instead of it being evaluated immediately when the Template is created.
-					return (callback) =>
-
-						// This is the new map function.
-						// TODO: Find a way to pass it a new obj when called from renderWatched
-						function mapFunction() {
-							let newObj = mapFunction.newValue || obj;
-							Globals$1.currentExprPath.mapCallback = callback;
-							return map(new Proxy(newObj, handler), callback);
-						}
-				}
-
-				else if (['push', 'pop', 'splice'].includes(prop)) {
-					let rootNg = Globals$1.nodeGroups.get(root);
-					return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[field])[prop];
-				}
-			} // end if(isArray).
-
-
-			// Save the ExprPath that's currently accessing this variable.
-			if (Globals$1.currentExprPath) {
-				let rootNg = Globals$1.nodeGroups.get(root);
-
-				// Init for field.
-				rootNg.watchedExprPaths[field] = rootNg.watchedExprPaths[field] || new Set();
-				rootNg.watchedExprPaths[field].add(Globals$1.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExact()
-			}
-
-			// Accessing a sub-property
-			if (result && typeof result === 'object')
-				return new Proxy(result, handler);
-
-			return result;
-		},
-
-
-		// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
-		// TODO: This won't update a component's expressions.
-		set(obj, prop, val, receiver) {
-
-			// 1. Set the value.
-			if (obj === receiver && field === prop)
-				value = val; // top-level value.
-			else // avoid infinite recursion.
-				Reflect.set(obj, prop, val, receiver);
-
-			// 2. Add to the list of ExprPaths to re-render.
-			let rootNg = Globals$1.nodeGroups.get(root);
-			for (let exprPath of rootNg.watchedExprPaths[field]) {
-
-				// Update a single NodeGroup created by array.map()
-				// TODO: This doesn't trigger when setting the property of an object in an array.
-				if (Array.isArray(obj) && parseInt(prop) == prop) {
-					let exprsToRender = rootNg.exprsToRender.get(exprPath);
-
-					// If we're not re-rendering the whole thing.
-					if (exprsToRender !== true)
-						Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
-				}
-
-				// Reapply the whole expression.
-				else if (Array.isArray(Reflect.get(obj, prop)))
-					rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
-				else
-					rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
-			}
-			return true;
-		}
-	};
-
+	let handler = new ProxyHandler(root, field, value);
+	//handler.path.push(field);
 	Object.defineProperty(root, field, {
 		get: () => handler.get(root, field, root),
 		set: (val) => handler.set(root, field, val, root)
@@ -1162,7 +1213,11 @@ function renderWatched(root) {
 
 			modified.push(...exprPath.getNodes());
 		}
+
+		// Update a single value in a map callback
 		else if (ops instanceof ValueOp) {
+			//exprPath = exprPath.mapCallback || exprPath;
+
 			exprPath.watchFunction.newValue = ops.value;
 			exprPath.apply([exprPath.watchFunction]);
 
@@ -1247,11 +1302,15 @@ class WholeArrayOp extends WatchOp {
 // ArrayOp.Remove = 'Remove';
 // ArrayOp.Replace = 'Replace'; // Only use this if there's an element to remove.  TODO: Will we use this?
 
+
+
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup.
  * Path is only valid until the expressions before it are evaluated.
  * TODO: Make this based on parent and node instead of path? */
 class ExprPath {
+
+	
 
 	/**
 	 * @type {ExprPathType} */
@@ -1597,7 +1656,7 @@ class ExprPath {
 			this.applyExact(result, newNodes, secondPass);
 		}
 
-		// Text
+		// String
 		else {
 			// Convert falsy values (but not 0) to empty string.
 			// Convert numbers to string so they compare the same.
@@ -2291,6 +2350,7 @@ class Shell {
 		// 3. Find placeholders
 		let node;
 		let toRemove = [];
+		let placeholdersUsed = 0;
 		const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
 		while (node = walker.nextNode()) {
 
@@ -2306,6 +2366,7 @@ class Shell {
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/);
 					if (matches) {
 						this.paths.push(new ExprPath(null, node, ExprPathType.Multiple));
+						placeholdersUsed ++;
 						node.removeAttribute(matches[0]);
 					}
 
@@ -2317,6 +2378,7 @@ class Shell {
 							let type = isEvent(attr.name) ? ExprPathType.Event : ExprPathType.Value;
 
 							this.paths.push(new ExprPath(null, node, type, attr.name, nonEmptyParts));
+							placeholdersUsed += parts.length - 1;
 							node.setAttribute(attr.name, parts.join(''));
 						}
 					}
@@ -2350,6 +2412,7 @@ class Shell {
 
 				let path = new ExprPath(nodeBefore, nodeMarker, ExprPathType.Content);
 				this.paths.push(path);
+				placeholdersUsed ++;
 			}
 
 			else if (node.nodeType === 3 && node.parentNode?.tagName === 'TEXTAREA' && node.textContent.includes('<!--!✨!-->'))
@@ -2367,6 +2430,7 @@ class Shell {
 					let path = new ExprPath(node.previousSibling, node);
 					path.type = ExprPathType.Comment;
 					this.paths.push(path);
+					placeholdersUsed ++;
 				}
 			}
 
@@ -2386,6 +2450,7 @@ class Shell {
 					for (let i=0, node; node=placeholders[i]; i++) {
 						let path = new ExprPath(node.previousSibling, node, ExprPathType.Content);
 						this.paths.push(path);
+						placeholdersUsed ++;
 
 						
 					}
@@ -2397,13 +2462,17 @@ class Shell {
 		}
 		toRemove.map(el => el.remove());
 
+		// Less than or equal because there can be one path to multiple expressions
+		// if those expressions are in the same attribute value.
+		if (placeholdersUsed !== html.length-1)
+			throw new Error(`Could not parse expressions in template.  Check for duplicate attributes or malformed html: ${html.join('${...}')}`);
+
 		// Handle solarite-placeholder's.
 
 		// Rename "is" attributes so the Web Components don't instantiate until we have the values of their PathExpr arguments.
 		// that happens in NodeGroup.applyComponentExprs()
-		for (let el of this.fragment.querySelectorAll('[is]')) {
+		for (let el of this.fragment.querySelectorAll('[is]'))
 			el.setAttribute('_is', el.getAttribute('is'));
-		}
 
 		for (let path of this.paths) {
 			if (path.nodeBefore)
@@ -2434,22 +2503,11 @@ class Shell {
 		function addToken(token, context) {
 
 			if (context === HtmlParser.Tag) {
-
-
 				// Find Solarite Components tags and append -solarite-placeholder to their tag names.
 				// This way we can gather their constructor arguments and their children before we call their constructor.
 				// Later, NodeGroup.createNewComponent() will replace them with the real components.
 				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 				token = token.replace(/^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i, match => match + '-solarite-placeholder');
-
-				// This was a path where I was going to grab the original case of the attribute names, to allow
-				// using them when passing arguments to the constructor.
-				// But I decided to convert dash-case to camelCase instead.
-				// token.replace(/(?<=\s)[a-z0-9-]+/gi, match => {
-				// 	console.log(match, '`' + token + '`')
-				// 	let path = getNodePath(el);
-				// 	this.componentAttribs.push({path, attribs: attributes});
-				// });
 			}
 			tokens.push(token);
 		}
@@ -3033,6 +3091,13 @@ class RootNodeGroup extends NodeGroup {
 	 * Store the ExprPaths that use each watched variable.
 	 * @type {Object<field:string, Set<ExprPath>>} */
 	watchedExprPaths = {};
+
+
+
+	/**
+	 * Store the ExprPaths that use each watched variable.
+	 * @type {Object<path:string, Set<ExprPath>>} */
+	watchedExprPaths2 = {};
 
 	/**
 	 * When we call renerWatched() we re-render these expressions, then clear this to a new Map()

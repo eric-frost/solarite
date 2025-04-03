@@ -65,6 +65,7 @@ export default class Shell {
 		// 3. Find placeholders
 		let node;
 		let toRemove = [];
+		let placeholdersUsed = 0;
 		const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
 		while (node = walker.nextNode()) {
 
@@ -80,6 +81,7 @@ export default class Shell {
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/)
 					if (matches) {
 						this.paths.push(new ExprPath(null, node, ExprPathType.Multiple));
+						placeholdersUsed ++;
 						node.removeAttribute(matches[0]);
 					}
 
@@ -91,6 +93,7 @@ export default class Shell {
 							let type = isEvent(attr.name) ? ExprPathType.Event : ExprPathType.Value;
 
 							this.paths.push(new ExprPath(null, node, type, attr.name, nonEmptyParts));
+							placeholdersUsed += parts.length - 1;
 							node.setAttribute(attr.name, parts.join(''));
 						}
 					}
@@ -124,6 +127,7 @@ export default class Shell {
 
 				let path = new ExprPath(nodeBefore, nodeMarker, ExprPathType.Content);
 				this.paths.push(path);
+				placeholdersUsed ++;
 			}
 
 			else if (node.nodeType === 3 && node.parentNode?.tagName === 'TEXTAREA' && node.textContent.includes('<!--!✨!-->'))
@@ -141,6 +145,7 @@ export default class Shell {
 					let path = new ExprPath(node.previousSibling, node)
 					path.type = ExprPathType.Comment;
 					this.paths.push(path);
+					placeholdersUsed ++;
 				}
 			}
 
@@ -160,6 +165,7 @@ export default class Shell {
 					for (let i=0, node; node=placeholders[i]; i++) {
 						let path = new ExprPath(node.previousSibling, node, ExprPathType.Content);
 						this.paths.push(path);
+						placeholdersUsed ++;
 
 						/*#IFDEV*/path.verify();/*#ENDIF*/
 					}
@@ -171,13 +177,17 @@ export default class Shell {
 		}
 		toRemove.map(el => el.remove());
 
+		// Less than or equal because there can be one path to multiple expressions
+		// if those expressions are in the same attribute value.
+		if (placeholdersUsed !== html.length-1)
+			throw new Error(`Could not parse expressions in template.  Check for duplicate attributes or malformed html: ${html.join('${...}')}`);
+
 		// Handle solarite-placeholder's.
 
 		// Rename "is" attributes so the Web Components don't instantiate until we have the values of their PathExpr arguments.
 		// that happens in NodeGroup.applyComponentExprs()
-		for (let el of this.fragment.querySelectorAll('[is]')) {
-			el.setAttribute('_is', el.getAttribute('is'))
-		}
+		for (let el of this.fragment.querySelectorAll('[is]'))
+			el.setAttribute('_is', el.getAttribute('is'));
 
 		for (let path of this.paths) {
 			if (path.nodeBefore)
@@ -204,27 +214,15 @@ export default class Shell {
 	 * @returns {string} */
 	static addPlaceholders(htmlChunks) {
 		let tokens = [];
-		let attributes={};
 
 		function addToken(token, context) {
 
 			if (context === HtmlParser.Tag) {
-
-
 				// Find Solarite Components tags and append -solarite-placeholder to their tag names.
 				// This way we can gather their constructor arguments and their children before we call their constructor.
 				// Later, NodeGroup.createNewComponent() will replace them with the real components.
 				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 				token = token.replace(/^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i, match => match + '-solarite-placeholder');
-
-				// This was a path where I was going to grab the original case of the attribute names, to allow
-				// using them when passing arguments to the constructor.
-				// But I decided to convert dash-case to camelCase instead.
-				// token.replace(/(?<=\s)[a-z0-9-]+/gi, match => {
-				// 	console.log(match, '`' + token + '`')
-				// 	let path = getNodePath(el);
-				// 	this.componentAttribs.push({path, attribs: attributes});
-				// });
 			}
 			tokens.push(token)
 		}
