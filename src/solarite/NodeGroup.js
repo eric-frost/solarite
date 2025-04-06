@@ -2,13 +2,10 @@ import {assert} from "../util/Errors.js";
 import ExprPath, {ExprPathType, resolveNodePath} from "./ExprPath.js";
 import {getObjectHash} from "./hash.js";
 import Shell from "./Shell.js";
-import udomdiff from "./udomdiff.js";
-import Util, {arraySame, flattenAndIndent, isEvent, nodeToArrayTree, setIndent} from "./Util.js";
+import Util, {flattenAndIndent, nodeToArrayTree, setIndent} from "./Util.js";
 //import NodeGroupManager from "./NodeGroupManager.js";
 import delve from "../util/delve.js";
 import Globals from "./Globals.js";
-import MultiValueMap from "../util/MultiValueMap.js";
-import {Solarite} from "./Solarite.js";
 
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */

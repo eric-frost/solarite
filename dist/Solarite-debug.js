@@ -134,7 +134,7 @@ function reset() {
 		rendered: new WeakSet(),
 
 		/**
-		 * ExprPath.applyExact() sets this property when an expression is being accessed.
+		 * ExprPath.applyExactNodes() sets this property when an expression is being accessed.
 		 * watch3() then adds the ExprPath to rootNg.watchedExprPaths so we know which expressions use which fields.
 		 * @type {ExprPath}*/
 		currentExprPath: null,
@@ -1148,7 +1148,7 @@ class ProxyHandler {
 
 			// Init for field.
 			//rootNg.watchedExprPaths[this.field] = rootNg.watchedExprPaths[this.field] || new Set();
-			//rootNg.watchedExprPaths[this.field].add(Globals.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExact()
+			//rootNg.watchedExprPaths[this.field].add(Globals.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExactNodes()
 
 			if (!path)
 				path = JSON.stringify([...this.path, prop]);
@@ -1568,8 +1568,8 @@ class ExprPath {
 		/*#IFDEV*/assert(!oldNodeGroups.includes(null));/*#ENDIF*/
 		let secondPass = []; // indices
 
-		path.nodeGroups = []; // Reset before applyExact and the code below rebuilds it.
-		path.applyExact(expr, newNodes, secondPass);
+		path.nodeGroups = []; // Reset before applyExactNodes and the code below rebuilds it.
+		path.applyExactNodes(expr, newNodes, secondPass);
 
 		this.existingTextNodes = null;
 
@@ -1719,11 +1719,15 @@ class ExprPath {
 
 
 	/**
-	 * Apply Nodes that are an exact match.
+	 * Try to apply Nodes that are an exact match, by finding existing nodes from the last render
+	 * that have the same value as created by the expr.
+	 * This is called from ExprPath.applyNodes().
+	 *
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]}
-	 * @param secondPass {Array} Locations within newNodes to evaluate later. */
-	applyExact(expr, newNodes, secondPass) {
+	 * @param secondPass {Array} Locations within newNodes for ExprPath.applyNodes() to evaluate later,
+	 *   when it tries to find partial matches. */
+	applyExactNodes(expr, newNodes, secondPass) {
 
 		if (expr instanceof Template) {
 
@@ -1744,7 +1748,7 @@ class ExprPath {
 			}
 		}
 
-		// Node created by an expression.
+		// Node(s) created by an expression.
 		else if (expr instanceof Node) {
 
 			// DocumentFragment created by an expression.
@@ -1759,7 +1763,7 @@ class ExprPath {
 		// but that consistently made the js-framework-benchmarks a few percentage points slower.
 		else if (Array.isArray(expr))
 			for (let subExpr of expr)
-				this.applyExact(subExpr, newNodes, secondPass);
+				this.applyExactNodes(subExpr, newNodes, secondPass);
 
 		else if (typeof expr === 'function') {
 			// TODO: One ExprPath can have multiple expr functions.
@@ -1771,12 +1775,16 @@ class ExprPath {
 			let result = expr(); // As expr accesses watched variables, watch3() uses Globals.currentExprPath to mark where those watched variables are being used.
 			Globals$1.currentExprPath = null;
 
-			this.applyExact(result, newNodes, secondPass);
+			this.applyExactNodes(result, newNodes, secondPass);
 		}
 
 		// String
 		else {
-			// Convert falsy values (but not 0) to empty string.
+			// New!
+			//expr = new Template([expr], []);
+			//return this.applyExistingNodes(expr, newNodes, secondPass);
+
+			// Convert undefiend|false|null (but not numeric 0) to empty string.
 			// Convert numbers to string so they compare the same.
 			let text = Util.isFalsy(expr) ? '' : (expr + '');
 
@@ -2152,7 +2160,8 @@ class ExprPath {
 		return result;
 	}
 
-	getParentNode() { // Same as this.parentNode
+	/** @return {HTMLElement|ParentNode} */
+	getParentNode() {
 		return this.nodeMarker.parentNode
 	}
 

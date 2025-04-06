@@ -756,6 +756,25 @@ Testimony.test('Solarite.expr.textareaChild', 'Make sure we throw if an expressi
 /* ┌─────────────────╮
  * | Loop            |
  * └─────────────────╯*/
+Testimony.test('Solarite.loop.strings2', () => { // temporary, delete later
+	class A extends Solarite {
+		fruits = ['Apple', 'Banana'];
+
+		render() {
+			r(this)`${this.fruits.map(fruit => fruit)}`
+		}
+	}
+	customElements.define('r-201', A);
+	let a = new A();
+	document.body.append(a);
+
+	let apple = a.childNodes[1];
+	a.fruits.pop();
+	a.render();
+	assert.eq(getHtml(a), '<r-201>Apple</r-201>');
+	assert.eq(a.childNodes[1], apple); // Make sure it wasn't replaced.
+});
+
 Testimony.test('Solarite.loop.strings', () => {
 	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
@@ -766,6 +785,7 @@ Testimony.test('Solarite.loop.strings', () => {
 	}
 	customElements.define('r-200', A);
 	let a = new A();
+	document.body.append(a);
 
 	a.render();
 	assert.eq(getHtml(a), '<r-200>AppleBanana</r-200>');
@@ -774,9 +794,11 @@ Testimony.test('Solarite.loop.strings', () => {
 	a.render();
 	assert.eq(getHtml(a), '<r-200>AppleBananaCherry</r-200>');
 
+	let apple = a.childNodes[1];
 	a.fruits.pop();
 	a.render();
 	assert.eq(getHtml(a), '<r-200>AppleBanana</r-200>');
+	assert.eq(a.childNodes[1], apple); // Make sure it wasn't replaced.
 
 	a.fruits.shift();
 	a.render();

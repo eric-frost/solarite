@@ -135,7 +135,7 @@ class ProxyHandler {
 
 			// Init for field.
 			//rootNg.watchedExprPaths[this.field] = rootNg.watchedExprPaths[this.field] || new Set();
-			//rootNg.watchedExprPaths[this.field].add(Globals.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExact()
+			//rootNg.watchedExprPaths[this.field].add(Globals.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExactNodes()
 
 			if (!path)
 				path = JSON.stringify([...this.path, prop]);
