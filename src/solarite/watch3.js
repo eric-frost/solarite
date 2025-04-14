@@ -288,10 +288,14 @@ class WatchedArray {
 /**
  * Render the ExprPaths that were added to rootNg.exprsToRender.
  * @param root {HTMLElement}
+ * @param trackModified {boolean}
  * @returns {Node[]} Modified elements.  */
-export function renderWatched(root) {
+export function renderWatched(root, trackModified=false) {
 	let rootNg = Globals.nodeGroups.get(root);
-	let modified = [];
+	let modified;
+
+	if (trackModified)
+		modified = new Set();
 
 	for (let [exprPath, ops] of rootNg.exprsToRender) {
 
@@ -306,7 +310,8 @@ export function renderWatched(root) {
 			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
 			exprPath.freeNodeGroups();
 
-			modified.push(...exprPath.getNodes());
+			if (trackModified)
+				modified.add(...exprPath.getNodes());
 		}
 
 		// Update a single value in a map callback
@@ -319,29 +324,33 @@ export function renderWatched(root) {
 			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
 			exprPath.freeNodeGroups();
 
-			modified.push(...exprPath.getNodes());
+			if (trackModified)
+				modified.add(...exprPath.getNodes());
 		}
 
 		// Selectively update NodeGroups created by array.map()
 		else {
 			for (let arrayOp of ops) {
-				if (arrayOp.deleteCount)
-					modified.push(
+				if (trackModified && arrayOp.deleteCount)
+					modified.add(
 						...exprPath.nodeGroups.slice(arrayOp.index, arrayOp.index + arrayOp.deleteCount).map(ng => ng.getNodes()).flat()
 					);
 
 				exprPath.applyArrayOp(arrayOp);
-				if (arrayOp.items.length)
-					modified.push(
-						...exprPath.nodeGroups.slice(arrayOp.index, arrayOp.index + arrayOp.items.length).map(ng => ng.getNodes()).flat()
-					);
+
+				if (trackModified && arrayOp.items.length) {
+					let nodes = exprPath.nodeGroups.slice(arrayOp.index, arrayOp.index + arrayOp.items.length).map(ng => ng.getNodes()).flat();
+					for (let node of nodes)
+						modified.add(node);
+				}
 			}
 		}
 	}
 
 	rootNg.exprsToRender = new Map(); // clear
 
-	return modified;
+	if (trackModified)
+		return [...modified];
 }
 
 class WatchOp {}

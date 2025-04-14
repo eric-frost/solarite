@@ -58,6 +58,13 @@ function reset() {
 		 * @type {WeakMap<string[], Shell>} */
 		shells: new WeakMap(),
 
+		/**
+		 * A map of individual untagged strings to their Templates.
+		 * This way we don't keep creating new Templates for the same string when re-rendering.
+		 * This is used by ExprPath.applyExactNodes()
+		 * @type {Object<string, Template>} */
+		stringTemplates: {},
+
 		reset,
 	};
 }

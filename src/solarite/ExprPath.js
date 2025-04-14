@@ -38,8 +38,6 @@ export default class ExprPath {
 	 * @type {Set<string>} Used for type=AttribType.Multiple to remember the attributes that were added. */
 	attrNames;
 
-
-
 	/**
 	 * @type {Node} Node that occurs before this ExprPath's first Node.
 	 * This is necessary because udomdiff() can steal nodes from another ExprPath.
@@ -164,7 +162,7 @@ export default class ExprPath {
 		path.nodeGroups = []; // Reset before applyExactNodes and the code below rebuilds it.
 		path.applyExactNodes(expr, newNodes, secondPass);
 
-		this.existingTextNodes = null;
+		//this.existingTextNodes = null;
 
 		// TODO: Create an array of old vs Nodes and NodeGroups together.
 		// If they're all the same, skip the next steps.
@@ -248,28 +246,36 @@ export default class ExprPath {
 		let replaceCount = Math.min(op.deleteCount, op.items.length);
 		let deleteCount = op.deleteCount - replaceCount;
 		for (let i=0; i<replaceCount; i++) {
-			let oldNg = this.nodeGroups[op.index + i];
+			let oldNg = this.nodeGroups[op.index + i]; // TODO: One expr can create multiple nodegroups.
 
 			// Try to find exact match
-			let template = this.mapCallback(op.items[i]);
-			let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
-			if (ng && ng === oldNg) {
-				// It's an exact match, so replace nothing.
-			}
-			else {
+			let func = this.mapCallback || this.watchFunction;
+			let expr = func(op.items[i]);
 
-				// Find a close match or create a new node group
-				ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
-				this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
+			// TODO: if the result of func isn't a template, conver it to a template.
+			let templates = [];
+			this.exprToTemplates(expr, template => templates.push(template));
+			for (let template of templates) {
 
-				// Splice in the new nodes.
-				let insertBefore = oldNg.startNode;
-				for (let node of ng.getNodes())
-					insertBefore.parentNode.insertBefore(node, insertBefore);
+				let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
+				if (ng && ng === oldNg) {
+					// It's an exact match, so replace nothing.
+					// TODO: What if the found NodeGroup as at a differnet place?
+				} else {
 
-				// Remove the old nodes.
-				if (ng !== oldNg)
-					oldNg.removeAndSaveOrphans();
+					// Find a close match or create a new node group
+					ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
+					this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
+
+					// Splice in the new nodes.
+					let insertBefore = oldNg.startNode;
+					for (let node of ng.getNodes())
+						insertBefore.parentNode.insertBefore(node, insertBefore);
+
+					// Remove the old nodes.
+					if (ng !== oldNg)
+						oldNg.removeAndSaveOrphans();
+				}
 			}
 		}
 
@@ -313,19 +319,60 @@ export default class ExprPath {
 	}
 
 
+	exprToTemplates(expr, callback) {
+		if (Array.isArray(expr))
+			for (let subExpr of expr)
+				this.exprToTemplates(subExpr, callback);
+
+		else if (typeof expr === 'function') {
+			// TODO: One ExprPath can have multiple expr functions.
+			// But if using it as a watch, it should only have one at the top level.
+			// So maybe this is ok.
+			Globals.currentExprPath = this; // Used by watch3()
+
+			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
+			let result = expr(); // As expr accesses watched variables, watch3() uses Globals.currentExprPath to mark where those watched variables are being used.
+			Globals.currentExprPath = null;
+
+			this.exprToTemplates(result, callback);
+		}
+
+		// String/Number/Date/Boolean
+		else if (!(expr instanceof Template) && !(expr instanceof Node)){
+			// Convert expression to a string.
+			let stringExpr = expr;
+			if (Util.isFalsy(expr))
+				stringExpr = '';
+			else if (typeof expr !== 'string')
+				stringExpr = expr + '';
+
+			// Get the same Template for the same string each time.
+			let template = Globals.stringTemplates[stringExpr];
+			if (!template) {
+				template = new Template([stringExpr], []);
+				Globals.stringTemplates[stringExpr] = template;
+			}
+
+			// Recurse.
+			this.exprToTemplates(template, callback);
+		}
+		else
+			callback(expr);
+	}
+
+
 	/**
 	 * Try to apply Nodes that are an exact match, by finding existing nodes from the last render
 	 * that have the same value as created by the expr.
 	 * This is called from ExprPath.applyNodes().
 	 *
 	 * @param expr {Template|Node|Array|function|*}
-	 * @param newNodes {(Node|Template)[]}
-	 * @param secondPass {Array} Locations within newNodes for ExprPath.applyNodes() to evaluate later,
+	 * @param newNodes {(Node|Template)[]} An inout parameter; we add the nodes here as we go.
+	 * @param secondPass {[int, int][]} Locations within newNodes for ExprPath.applyNodes() to evaluate later,
 	 *   when it tries to find partial matches. */
 	applyExactNodes(expr, newNodes, secondPass) {
 
 		if (expr instanceof Template) {
-
 			let ng = this.getNodeGroup(expr, true);
 			if (ng) {
 
@@ -375,34 +422,22 @@ export default class ExprPath {
 
 		// String
 		else {
-			// New!
-			//expr = new Template([expr], []);
-			//return this.applyExistingNodes(expr, newNodes, secondPass);
+			// Convert expression to a string.
+			let stringExpr = expr;
+			if (Util.isFalsy(expr))
+				stringExpr = '';
+			else if (typeof expr !== 'string')
+				stringExpr = expr + '';
 
-			// Convert undefiend|false|null (but not numeric 0) to empty string.
-			// Convert numbers to string so they compare the same.
-			let text = Util.isFalsy(expr) ? '' : (expr + '');
-
-			// Fast path for updating the text of a single text node.
-			let first = this.nodeBefore.nextSibling;
-			if (first.nodeType === 3 && first.nextSibling === this.nodeMarker && !newNodes.includes(first)) {
-				if (first.textContent !== text)
-					first.textContent = text;
-
-				newNodes.push(first);
+			// Get the same Template for the same string each time.
+			let template = Globals.stringTemplates[stringExpr];
+			if (!template) {
+				template = new Template([stringExpr], []);
+				Globals.stringTemplates[stringExpr] = template;
 			}
 
-			else {
-				// TODO: Optimize this into a Set or Map or something?
-				if (!this.existingTextNodes)
-					this.existingTextNodes = this.getNodes().filter(n => n.nodeType === 3);
-
-				let idx = this.existingTextNodes.findIndex(n => n.textContent === text);
-				if (idx !== -1)
-					newNodes.push(...this.existingTextNodes.splice(idx, 1))
-				else
-					newNodes.push(this.nodeMarker.ownerDocument.createTextNode(text));
-			}
+			// Recurse.
+			this.applyExactNodes(template, newNodes, secondPass);
 		}
 	}
 

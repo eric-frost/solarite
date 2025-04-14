@@ -756,25 +756,6 @@ Testimony.test('Solarite.expr.textareaChild', 'Make sure we throw if an expressi
 /* ┌─────────────────╮
  * | Loop            |
  * └─────────────────╯*/
-Testimony.test('Solarite.loop.strings2', () => { // temporary, delete later
-	class A extends Solarite {
-		fruits = ['Apple', 'Banana'];
-
-		render() {
-			r(this)`${this.fruits.map(fruit => fruit)}`
-		}
-	}
-	customElements.define('r-201', A);
-	let a = new A();
-	document.body.append(a);
-
-	let apple = a.childNodes[1];
-	a.fruits.pop();
-	a.render();
-	assert.eq(getHtml(a), '<r-201>Apple</r-201>');
-	assert.eq(a.childNodes[1], apple); // Make sure it wasn't replaced.
-});
-
 Testimony.test('Solarite.loop.strings', () => {
 	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
@@ -790,11 +771,14 @@ Testimony.test('Solarite.loop.strings', () => {
 	a.render();
 	assert.eq(getHtml(a), '<r-200>AppleBanana</r-200>');
 
+
+	let apple = a.childNodes[1];
 	a.fruits.push('Cherry');
 	a.render();
 	assert.eq(getHtml(a), '<r-200>AppleBananaCherry</r-200>');
+	assert.eq(a.childNodes[1], apple);
 
-	let apple = a.childNodes[1];
+	apple = a.childNodes[1];
 	a.fruits.pop();
 	a.render();
 	assert.eq(getHtml(a), '<r-200>AppleBanana</r-200>');
@@ -3518,7 +3502,7 @@ Testimony.test('Solarite.watch3.primitive', () => {
 	assert.eq(getHtml(a), `<w-10>Fred!</w-10>`);
 
 	a.name = 'Jim';
-	let modified = renderWatched(a);
+	let modified = renderWatched(a, true);
 	assert.eq(modified.length, 1);
 	//console.log(modified);
 	assert.eq(getHtml(a), `<w-10>Jim!</w-10>`);
@@ -3547,7 +3531,7 @@ Testimony.test('Solarite.watch3.primitive2', `One primitive variable used twice.
 	assert.eq(getHtml(a), `<w-20>Fred.<br>Fred!</w-20>`);
 
 	a.name = 'Jim';
-	let modified = renderWatched(a);
+	let modified = renderWatched(a, true);
 	assert.eq(2, modified.length);
 	assert.neq(modified[0], modified[1]);
 	//console.log(modified);
@@ -3577,12 +3561,12 @@ Testimony.test('Solarite.watch3.object', () => {
 	assert.eq(getHtml(a), `<w-30>Fred!</w-30>`);
 
 	a.user.name = 'Jim';
-	let modified = renderWatched(a);
+	let modified = renderWatched(a, true);
 	//console.log(modified);
 	assert.eq(getHtml(a), `<w-30>Jim!</w-30>`);
 
 	a.user = {name: 'Bob'};
-	modified = renderWatched(a);
+	modified = renderWatched(a, true);
 	//console.log(modified);
 	//assert.eq(modified, a.children[1]);
 	assert.eq(getHtml(a), `<w-30>Bob!</w-30>`);
@@ -3590,7 +3574,7 @@ Testimony.test('Solarite.watch3.object', () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.watch3._arrayOfObject', () => {
+Testimony.test('Solarite.watch3.arrayOfObject', () => {
 
 	class W40 extends HTMLElement {
 
@@ -3613,7 +3597,7 @@ Testimony.test('Solarite.watch3._arrayOfObject', () => {
 	assert.eq(getHtml(a), `<w-40>Fred!</w-40>`);
 
 	a.users[0] = {name: 'Bob'};
-	let modified = renderWatched(a);
+	let modified = renderWatched(a, true);
 	//console.log(modified);
 	//assert.eq(modified, a.children[1]);
 	assert.eq(getHtml(a), `<w-40>Bob!</w-40>`);
@@ -3643,24 +3627,24 @@ Testimony.test('Solarite.watch3.loopAssign', `replace array elements`, () => {
 	document.body.append(a);
 
 	a.items[1] = 'banana2';
-	let modified = renderWatched(a);
+	let modified = renderWatched(a, true);
 	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana2</div><div>cherry</div></w-50>`);
 
 	a.items[1] = 'banana3';
-	modified = renderWatched(a);
+	modified = renderWatched(a, true);
 	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry</div></w-50>`);
 
 	a.items[2] = 'cherry2';
-	modified = renderWatched(a);
+	modified = renderWatched(a, true);
 	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry2</div></w-50>`);
 
 
 	a.items[0] = 'apple3';
 	a.items[2] = 'cherry3';
-	modified = renderWatched(a);
+	modified = renderWatched(a, true);
 	//console.log(modified);
 	assert.eq(getHtml(a), `<w-50><div>apple3</div><div>banana3</div><div>cherry3</div></w-50>`);
 	//assert.eq(modified, [a.children[0], a.children[2]]);
@@ -3668,14 +3652,14 @@ Testimony.test('Solarite.watch3.loopAssign', `replace array elements`, () => {
 
 	// Test replacing the whole loop.
 	a.items = ['apple4', 'banana4', 'cherry4'];
-	modified = renderWatched(a);
+	modified = renderWatched(a, true);
 	assert.eq(getHtml(a), `<w-50><div>apple4</div><div>banana4</div><div>cherry4</div></w-50>`);
 	//assert.eq(modified, [a.children[0], a.children[1], a.children[2]]);
 
 	a.remove();
 });
 
-Testimony.test('Solarite.watch3._loopObjAssign', `update array elements and their properties`, () => {
+Testimony.test('Solarite.watch3.loopObjAssign', `update array elements and their properties`, () => {
 
 	class W55 extends HTMLElement {
 
@@ -3701,9 +3685,15 @@ Testimony.test('Solarite.watch3._loopObjAssign', `update array elements and thei
 
 
 	a.items[0].qty = 3;
-	let modified = renderWatched(a);
+	let modified = renderWatched(a, true);
 	assert.eq(getHtml(a), `<w-55><div>apple|3</div><div>banana|2</div></w-55>`);
-	assert.eq(modified.map(n=>n.textContent), ['3']);
+	assert.eq([...modified].map(n=>n.textContent), ['3']);
+
+
+	a.items[0] = {name: 'cherry', qty: 3}
+	modified = renderWatched(a, true);
+	assert.eq(getHtml(a), `<w-55><div>cherry|3</div><div>banana|2</div></w-55>`);
+	assert.eq([...modified].map(getHtml), [`<div>cherry|3</div>`]);
 
 });
 
@@ -3730,32 +3720,32 @@ Testimony.test('Solarite.watch3.loopPushPop', () => {
 	document.body.append(a);
 
 	a.items.push('cherry');
-	let modified = renderWatched(a);
+	let modified = renderWatched(a, true);
 	assert.eq(getHtml(a), `<w-60><div>apple</div><div>banana</div><div>cherry</div></w-60>`);
 	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
 	assert.eq(modified, [a.children[2]]);
 
 	let item = a.items.pop();
-	modified = renderWatched(a);
+	modified = renderWatched(a, true);
 	assert.eq(getHtml(a), `<w-60><div>apple</div><div>banana</div></w-60>`);
 	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
 	assert.eq(item, 'cherry');
 
 	item = a.items.pop();
-	modified = renderWatched(a);
+	modified = renderWatched(a, true);
 	assert.eq(getHtml(a), `<w-60><div>apple</div></w-60>`);
 	assert.eq(modified.map(el=>getHtml(el)), [`<div>banana</div>`]);
 	assert.eq(item, 'banana');
 
 	item = a.items.pop();
-	modified = renderWatched(a);
+	modified = renderWatched(a, true);
 	assert.eq(getHtml(a), `<w-60></w-60>`);
 	assert.eq(modified.map(el=>getHtml(el)), [`<div>apple</div>`]);
 	assert.eq(item, 'apple');
 
 	// Test pop on empty array.
 	item = a.items.pop();
-	modified = renderWatched(a);
+	modified = renderWatched(a, true);
 	assert.eq(getHtml(a), `<w-60></w-60>`);
 	assert.eq(modified.map(el=>getHtml(el)), []);
 	assert.eq(item, undefined);
@@ -3763,7 +3753,7 @@ Testimony.test('Solarite.watch3.loopPushPop', () => {
 
 	// Push multipe items on empty array.
 	a.items.push('apple2', 'banana2', 'cherry2');
-	modified = renderWatched(a);
+	modified = renderWatched(a, true);
 	assert.eq(getHtml(a), `<w-60><div>apple2</div><div>banana2</div><div>cherry2</div></w-60>`);
 	assert.eq(modified.map(el=>getHtml(el)), [`<div>apple2</div>`, `<div>banana2</div>`, `<div>cherry2</div>`]);
 	assert.eq(a.items, ['apple2', 'banana2', 'cherry2']);
@@ -3793,14 +3783,14 @@ Testimony.test('Solarite.watch3.loopDeepPushPop', () => {
 	document.body.append(a);
 
 	a.props.items.push('cherry');
-	let modified = renderWatched(a);
+	let modified = renderWatched(a, true);
 	assert.eq(getHtml(a), `<w-70><div>apple</div><div>banana</div><div>cherry</div></w-70>`);
 	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
 	assert.eq(modified, [a.children[2]]);
 
 	let item = a.props.items.pop();
 	assert.eq(item, 'cherry');
-	modified = renderWatched(a);
+	modified = renderWatched(a, true);
 	assert.eq(getHtml(a), `<w-70><div>apple</div><div>banana</div></w-70>`);
 	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
 
