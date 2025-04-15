@@ -2093,6 +2093,7 @@ Testimony.test('Solarite.attrib.property', () => {
 	// Make sure manually checking it doesn't break it..
 	input.checked = true;
 
+	window.debug = true;
 	a.enabled = false;
 	a.render();
 	assert.eq(input.checked, false);
@@ -2100,6 +2101,37 @@ Testimony.test('Solarite.attrib.property', () => {
 	input.click();
 	assert.eq(input.checked, true);
 	assert.eq(a.enabled, false); // It's not updated because we're not using two-way binding.  See the binding tests for that.
+});
+
+Testimony.test('Solarite.attrib.property2', 'same as above, but with disabled attrib', () => {
+	class R531 extends Solarite {
+		enabled;
+		render() {
+			r(this)`<r-531><button disabled=${!this.enabled}>Button</button></r-531>`;
+		}
+	}
+
+	let a = new R531();
+	a.render();
+	document.body.append(a);
+
+	let button = a.firstElementChild;
+	assert.eq(button.disabled, true);
+
+	a.enabled = true;
+	a.render();
+	assert.eq(button.disabled, false);
+
+	// Make sure manually checking it doesn't break it..
+	button.disabled = false;
+
+	a.enabled = true;
+	a.render();
+	assert.eq(button.disabled, false);
+
+	button.click();
+	assert.eq(button.disabled, false);
+	assert.eq(a.enabled, true); // It's not updated because we're not using two-way binding.  See the binding tests for that.
 });
 
 
@@ -2393,6 +2425,41 @@ Testimony.test('Solarite.r.standalone3', () => {
 
 	assert.eq(getHtml(list), `<div><div><input placeholder="Name" value="name"><input type="number" value="2"><button onclick="">x</button></div></div>`);
 });
+
+
+// TODO: This one fails because "this" isn't pointing to the right object when passed as part of a web component constructor:
+/*
+ r({
+
+		onTableSelect(table, tableList) {
+			this.select.value = table;
+			this.select.close();
+			this.render();
+			tableList.render();
+		},
+		onViewSelect(table, tableList) {
+			this.select.close();
+			tableList.render();
+		},
+
+		render() {
+
+			r(this)`
+				<div class="group">
+					<select-box-2 data-id="select" focusopen filter select class="input rem14" placeholder="Select table" value=${binding}>
+						<table-list db=${DB} tables=${tables} access-level=${2} actions=${
+							{
+								onTableSelect: this.onTableSelect,
+								onViewSelect: this.onViewSelect
+							}
+						}></table-list>
+					</select-box-2>
+					<file-button class="button primary row center-v" style="cursor: pointer !important" disabled=${this.select && !this.select.value}
+						onchange=${(e, el) => onFileChange(e,this.select.value)}>Upload</file-button>
+				</div>`
+		}
+	})
+ */
 
 Testimony.test('Solarite.r.standaloneChild', () => {
 

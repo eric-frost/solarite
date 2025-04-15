@@ -65,11 +65,11 @@ export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.S
 			return isNaN(result) ? fallback : result;
 		case ArgType.String:
 			return [undefined, null, false].includes(val) ? '' : val+'';
-		case ArgType.JSON:
+		case ArgType.Json:
 		case ArgType.Eval:
 			if (typeof val === 'string' && val.length)
 				try {
-					if (type === ArgType.JSON)
+					if (type === ArgType.Json)
 						return JSON.parse(val);
 					else
 						return eval(`(${val})`);
@@ -97,12 +97,15 @@ var ArgType = {
 	Int: 'Int',
 	Float: 'Float',
 	String: 'String',
-	
+
+	/** @deprecated for Json */
+	JSON: 'Json',
+
 	/**
 	 * Parse the string value as JSON.
 	 * If it's not parsable, return the value as a string. */
-	JSON: 'JSON',
-	
+	Json: 'Json',
+
 	/**
 	 * Evaluate the string as JavaScript using the eval() function.
 	 * If it can't be evaluated, return the original string. */

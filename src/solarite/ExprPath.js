@@ -130,7 +130,7 @@ export default class ExprPath {
 			case 6: // PathType.Event:
 				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
 				break;
-			default: // TODO: Is this sitll used?
+			default: // TODO: Is this still used?  Lots of tests fail without it.
 				// One attribute value may have multiple expressions.  Here we apply them all at once.
 				this.applyValueAttrib(this.nodeMarker, exprs);
 				break;
@@ -318,7 +318,7 @@ export default class ExprPath {
 		this.nodesCache = null;
 	}
 
-
+  // TODO: have applyExactNodes() use thsi function.
 	exprToTemplates(expr, callback) {
 		if (Array.isArray(expr))
 			for (let subExpr of expr)
@@ -544,8 +544,11 @@ export default class ExprPath {
 			if (existing)
 				node.removeEventListener(eventName, existingBound, capture);
 
-			let originalFunc = func;
+			if (typeof func !== 'function')
+				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}]}> because it's not a function.`);
 
+			let originalFunc = func;
+			
 			// BoundFunc sets the "this" variable to be the current Solarite component.
 			let boundFunc = (event) => {
 				let args = nodeEvent[2];
@@ -622,7 +625,15 @@ export default class ExprPath {
 		else {
 			// TODO: Cache this on ExprPath.isProp when Shell creates the props.  Have ExprPath.clone() copy .isProp
 			// Or make it a new PathType.
-			let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
+			//if (this.attrName === 'disabled')
+			//	debugger;
+
+			// hasOwnProperty() checks only the object, not the parents
+			// this.attrName in node checks the node and the parents.
+			// This version checks the html element it extends from, to see if has a setter set:
+			//     Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set
+			//let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
+      	let isProp = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
 			if (!this.attrValue && Util.isFalsy(expr)) {

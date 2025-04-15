@@ -1,6 +1,20 @@
 import Globals from "./Globals.js";
+import delve from "../util/delve.js";
 
 let Util = {
+
+	bindId(root, el) {
+		let id = el.getAttribute('data-id') || el.getAttribute('id');
+		if (id) { // If something hasn't removed the id.
+
+			// Don't allow overwriting existing class properties if they already have a non-Node value.
+			if (root[id] && !(root[id] instanceof Node))
+				throw new Error(`${root.constructor.name}.${id} already has a value.  ` +
+					`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
+
+			delve(root, id.split(/\./g), el);
+		}
+	},
 
 	/**
 	 * @param style {HTMLStyleElement}
@@ -129,13 +143,30 @@ let Util = {
 		return node.value; // String
 	},
 
+	isHtmlProp(el, prop) {
+		let proto = Object.getPrototypeOf(el);
+		while (proto) {
+			const ctorName = proto.constructor.name;
+			if (ctorName.startsWith('HTML') && ctorName.endsWith('Element'))
+				break
+			proto = Object.getPrototypeOf(proto);
+		}
+		if (!proto)
+			return false;
+
+		return !!Object.getOwnPropertyDescriptor(proto, prop)?.set;
+
+	},
+
 	/**
 	 * Is it an array and a path that can be evaluated by delve() ?
 	 * We allow the first element to be null/undefined so binding can report errors.
 	 * @param arr {Array|*}
 	 * @returns {boolean} */
 	isPath(arr) {
-		return Array.isArray(arr) && arr.length >=2 && (typeof arr[0] === 'object' || typeof arr[0] === 'undefined') && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
+		return Array.isArray(arr) && arr.length >=2  // An array of two elements.
+			&& (typeof arr[0] === 'object' || typeof arr[0] === 'undefined') // Where the first element is an object, null, or undefined.
+			&& !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number'); // Path 1..x is only numbers and strings.
 	},
 
 	isFalsy(val) {

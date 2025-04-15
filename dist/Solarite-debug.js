@@ -183,7 +183,64 @@ reset();
 
 var Globals$1 = Globals;
 
+/**
+ * Follow a path into an object.
+ * @param obj {object}
+ * @param path {string[]}
+ * @param createVal {*}  If set, non-existent paths will be created and value at path will be set to createVal.
+ * @return {*} The value, or undefined if it can't be reached. */
+function delve(obj, path, createVal = delveDontCreate) {
+	let isCreate = createVal !== delveDontCreate;
+
+	let len = path.length;
+	if (!obj && !isCreate && len)
+		return undefined;
+
+	let i = 0;
+	for (let srcProp of path) {
+
+		// If the path is undefined and we're not to the end yet:
+		if (obj[srcProp] === undefined) {
+
+			// If the next index is an integer or integer string.
+			if (isCreate) {
+				if (i < len - 1) {
+					// If next level path is a number, create as an array
+					let isArray = (path[i + 1] + '').match(/^\d+$/);
+					obj[srcProp] = isArray ? [] : {};
+				}
+			} else
+				return undefined; // can't traverse
+		}
+
+		// If last item in path
+		if (isCreate && i === len - 1)
+			obj[srcProp] = createVal;
+
+		// Traverse deeper along destination object.
+		obj = obj[srcProp];
+		i++;
+	}
+
+	return obj;
+}
+
+let delveDontCreate = {};
+
 let Util = {
+
+	bindId(root, el) {
+		let id = el.getAttribute('data-id') || el.getAttribute('id');
+		if (id) { // If something hasn't removed the id.
+
+			// Don't allow overwriting existing class properties if they already have a non-Node value.
+			if (root[id] && !(root[id] instanceof Node))
+				throw new Error(`${root.constructor.name}.${id} already has a value.  ` +
+					`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
+
+			delve(root, id.split(/\./g), el);
+		}
+	},
 
 	/**
 	 * @param style {HTMLStyleElement}
@@ -312,13 +369,30 @@ let Util = {
 		return node.value; // String
 	},
 
+	isHtmlProp(el, prop) {
+		let proto = Object.getPrototypeOf(el);
+		while (proto) {
+			const ctorName = proto.constructor.name;
+			if (ctorName.startsWith('HTML') && ctorName.endsWith('Element'))
+				break
+			proto = Object.getPrototypeOf(proto);
+		}
+		if (!proto)
+			return false;
+
+		return !!Object.getOwnPropertyDescriptor(proto, prop)?.set;
+
+	},
+
 	/**
 	 * Is it an array and a path that can be evaluated by delve() ?
 	 * We allow the first element to be null/undefined so binding can report errors.
 	 * @param arr {Array|*}
 	 * @returns {boolean} */
 	isPath(arr) {
-		return Array.isArray(arr) && arr.length >=2 && (typeof arr[0] === 'object' || typeof arr[0] === 'undefined') && !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number');
+		return Array.isArray(arr) && arr.length >=2  // An array of two elements.
+			&& (typeof arr[0] === 'object' || typeof arr[0] === 'undefined') // Where the first element is an object, null, or undefined.
+			&& !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number'); // Path 1..x is only numbers and strings.
 	},
 
 	isFalsy(val) {
@@ -508,11 +582,11 @@ function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, 
 			return isNaN(result) ? fallback : result;
 		case ArgType.String:
 			return [undefined, null, false].includes(val) ? '' : val+'';
-		case ArgType.JSON:
+		case ArgType.Json:
 		case ArgType.Eval:
 			if (typeof val === 'string' && val.length)
 				try {
-					if (type === ArgType.JSON)
+					if (type === ArgType.Json)
 						return JSON.parse(val);
 					else
 						return eval(`(${val})`);
@@ -540,12 +614,15 @@ var ArgType = {
 	Int: 'Int',
 	Float: 'Float',
 	String: 'String',
-	
+
+	/** @deprecated for Json */
+	JSON: 'Json',
+
 	/**
 	 * Parse the string value as JSON.
 	 * If it's not parsable, return the value as a string. */
-	JSON: 'JSON',
-	
+	Json: 'Json',
+
 	/**
 	 * Evaluate the string as JavaScript using the eval() function.
 	 * If it can't be evaluated, return the original string. */
@@ -650,50 +727,6 @@ function getObjectHashCircular(obj) {
 		return value;
 	});
 }
-
-/**
- * Follow a path into an object.
- * @param obj {object}
- * @param path {string[]}
- * @param createVal {*}  If set, non-existent paths will be created and value at path will be set to createVal.
- * @return {*} The value, or undefined if it can't be reached. */
-function delve(obj, path, createVal = delveDontCreate) {
-	let isCreate = createVal !== delveDontCreate;
-
-	let len = path.length;
-	if (!obj && !isCreate && len)
-		return undefined;
-
-	let i = 0;
-	for (let srcProp of path) {
-
-		// If the path is undefined and we're not to the end yet:
-		if (obj[srcProp] === undefined) {
-
-			// If the next index is an integer or integer string.
-			if (isCreate) {
-				if (i < len - 1) {
-					// If next level path is a number, create as an array
-					let isArray = (path[i + 1] + '').match(/^\d+$/);
-					obj[srcProp] = isArray ? [] : {};
-				}
-			} else
-				return undefined; // can't traverse
-		}
-
-		// If last item in path
-		if (isCreate && i === len - 1)
-			obj[srcProp] = createVal;
-
-		// Traverse deeper along destination object.
-		obj = obj[srcProp];
-		i++;
-	}
-
-	return obj;
-}
-
-let delveDontCreate = {};
 
 class MultiValueMap {
 
@@ -1182,7 +1215,7 @@ class ProxyHandler {
 		else // avoid infinite recursion.
 			Reflect.set(obj, prop, val, receiver);
 
-		// 2.
+		// 2. Add to the list of ExprPaths to re-render.
 		let path = JSON.stringify([...this.path, prop]);
 		let rootNg = Globals$1.nodeGroups.get(this.root);
 		for (let exprPath of rootNg.watchedExprPaths2[path]) {
@@ -1203,28 +1236,6 @@ class ProxyHandler {
 			else
 				rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
 		}
-
-		//
-		// // 2. Add to the list of ExprPaths to re-render.
-		//
-		// for (let exprPath of rootNg.watchedExprPaths[this.field]) {
-		//
-		// 	// Update a single NodeGroup created by array.map()
-		// 	// TODO: This doesn't trigger when setting the property of an object in an array.
-		// 	if (Array.isArray(obj) && parseInt(prop) == prop) {
-		// 		let exprsToRender = rootNg.exprsToRender.get(exprPath);
-		//
-		// 		// If we're not re-rendering the whole thing.
-		// 		if (exprsToRender !== true) // TODO: Check for WholeArrayOp instead of true.
-		// 			Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
-		// 	}
-		//
-		// 	// Reapply the whole expression.
-		// 	else if (Array.isArray(Reflect.get(obj, prop)))
-		// 		rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
-		// 	else
-		// 		rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
-		// }
 		return true;
 	}
 }
@@ -1300,8 +1311,6 @@ class WatchedArray {
 
 		// Call original push() function
 		return Array.prototype[func].call(this.array, ...args);
-
-
 	}
 }
 
@@ -1415,20 +1424,6 @@ class WholeArrayOp extends WatchOp {
 		this.value = value;
 	}
 }
-//
-// export class ArrayOp {
-// 	constructor(op, array, index=null, value=null) {
-// 		this.op = op;
-// 		this.array = array;
-// 		this.index = index;
-// 		this.value = value;
-// 	}
-// }
-// ArrayOp.WholeArray = 'WholeArray';
-// ArrayOp.Splice = 'Splice';
-// ArrayOp.Insert = 'Insert';
-// ArrayOp.Remove = 'Remove';
-// ArrayOp.Replace = 'Replace'; // Only use this if there's an element to remove.  TODO: Will we use this?
 
 //#IFDEV
 var exprPathId = 0;
@@ -1553,7 +1548,7 @@ class ExprPath {
 			case 6: // PathType.Event:
 				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
 				break;
-			default: // TODO: Is this sitll used?
+			default: // TODO: Is this still used?  Lots of tests fail without it.
 				// One attribute value may have multiple expressions.  Here we apply them all at once.
 				this.applyValueAttrib(this.nodeMarker, exprs);
 				break;
@@ -1738,7 +1733,7 @@ class ExprPath {
 		this.nodesCache = null;
 	}
 
-
+  // TODO: have applyExactNodes() use thsi function.
 	exprToTemplates(expr, callback) {
 		if (Array.isArray(expr))
 			for (let subExpr of expr)
@@ -1961,8 +1956,11 @@ class ExprPath {
 			if (existing)
 				node.removeEventListener(eventName, existingBound, capture);
 
-			let originalFunc = func;
+			if (typeof func !== 'function')
+				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}]}> because it's not a function.`);
 
+			let originalFunc = func;
+			
 			// BoundFunc sets the "this" variable to be the current Solarite component.
 			let boundFunc = (event) => {
 				let args = nodeEvent[2];
@@ -2039,7 +2037,15 @@ class ExprPath {
 		else {
 			// TODO: Cache this on ExprPath.isProp when Shell creates the props.  Have ExprPath.clone() copy .isProp
 			// Or make it a new PathType.
-			let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
+			//if (this.attrName === 'disabled')
+			//	debugger;
+
+			// hasOwnProperty() checks only the object, not the parents
+			// this.attrName in node checks the node and the parents.
+			// This version checks the html element it extends from, to see if has a setter set:
+			//     Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set
+			//let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
+      	let isProp = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
 			if (!this.attrValue && Util.isFalsy(expr)) {
@@ -3360,16 +3366,7 @@ class NodeGroup {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
 					let el = resolveNodePath(root, path);
-					let id = el.getAttribute('data-id') || el.getAttribute('id');
-					if (id) { // If something hasn't removed the id.
-
-						// Don't allow overwriting existing class properties if they already have a non-Node value.
-						if (rootEl[id] && !(rootEl[id] instanceof Node))
-							throw new Error(`${rootEl.constructor.name}.${id} already has a value.  ` +
-								`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
-
-						delve(rootEl, id.split(/\./g), el);
-					}
+					Util.bindId(rootEl, el);
 				}
 
 			// styles
@@ -3799,10 +3796,16 @@ function r(htmlStrings=undefined, ...exprs) {
 
 
 	// 9. Create dynamic element with render() function.
+	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (typeof htmlStrings === 'object') {
 		let obj = htmlStrings;
 
+		if (obj.constructor.name !== 'Object') 
+			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
+      
+
 		// Special rebound render path, called by normal path.
+		// Intercepts the main r`...` function call inside render().
 		if (Globals$1.objToEl.has(obj)) {
 			return function(...args) {
 			   let template = r(...args);
@@ -3820,9 +3823,19 @@ function r(htmlStrings=undefined, ...exprs) {
 
 			for (let name in obj)
 				if (typeof obj[name] === 'function')
-					el[name] = obj[name].bind(el);
+					el[name] = obj[name].bind(el);  // Make the "this" of functions be el.
+					// TODO: But this doesn't work for passing an object with functions as a constructor arg via an attribute:
+					// <my-element arg=${{myFunc() { return this }}}
 				else
 					el[name] = obj[name];
+
+			// Bind id's
+			// This doesn't work for id's referenced by attributes.
+			// for (let idEl of el.querySelectorAll('[id],[data-id]')) {
+			// 	Util.bindId(el, idEl);
+			// 	Util.bindId(obj, idEl);
+			// }
+			// TODO: Bind styles
 
 			return el;
 		}

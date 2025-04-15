@@ -506,16 +506,7 @@ export default class NodeGroup {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
 					let el = resolveNodePath(root, path);
-					let id = el.getAttribute('data-id') || el.getAttribute('id');
-					if (id) { // If something hasn't removed the id.
-
-						// Don't allow overwriting existing class properties if they already have a non-Node value.
-						if (rootEl[id] && !(rootEl[id] instanceof Node))
-							throw new Error(`${rootEl.constructor.name}.${id} already has a value.  ` +
-								`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
-
-						delve(rootEl, id.split(/\./g), el);
-					}
+					Util.bindId(rootEl, el);
 				}
 
 			// styles

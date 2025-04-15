@@ -119,10 +119,16 @@ export default function r(htmlStrings=undefined, ...exprs) {
 
 
 	// 9. Create dynamic element with render() function.
+	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (typeof htmlStrings === 'object') {
 		let obj = htmlStrings;
 
+		if (obj.constructor.name !== 'Object') 
+			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
+      
+
 		// Special rebound render path, called by normal path.
+		// Intercepts the main r`...` function call inside render().
 		if (Globals.objToEl.has(obj)) {
 			return function(...args) {
 			   let template = r(...args);
@@ -140,9 +146,19 @@ export default function r(htmlStrings=undefined, ...exprs) {
 
 			for (let name in obj)
 				if (typeof obj[name] === 'function')
-					el[name] = obj[name].bind(el);
+					el[name] = obj[name].bind(el);  // Make the "this" of functions be el.
+					// TODO: But this doesn't work for passing an object with functions as a constructor arg via an attribute:
+					// <my-element arg=${{myFunc() { return this }}}
 				else
 					el[name] = obj[name];
+
+			// Bind id's
+			// This doesn't work for id's referenced by attributes.
+			// for (let idEl of el.querySelectorAll('[id],[data-id]')) {
+			// 	Util.bindId(el, idEl);
+			// 	Util.bindId(obj, idEl);
+			// }
+			// TODO: Bind styles
 
 			return el;
 		}

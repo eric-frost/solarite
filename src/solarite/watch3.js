@@ -162,7 +162,7 @@ class ProxyHandler {
 		else // avoid infinite recursion.
 			Reflect.set(obj, prop, val, receiver);
 
-		// 2.
+		// 2. Add to the list of ExprPaths to re-render.
 		let path = JSON.stringify([...this.path, prop]);
 		let rootNg = Globals.nodeGroups.get(this.root);
 		for (let exprPath of rootNg.watchedExprPaths2[path]) {
@@ -183,28 +183,6 @@ class ProxyHandler {
 			else
 				rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
 		}
-
-		//
-		// // 2. Add to the list of ExprPaths to re-render.
-		//
-		// for (let exprPath of rootNg.watchedExprPaths[this.field]) {
-		//
-		// 	// Update a single NodeGroup created by array.map()
-		// 	// TODO: This doesn't trigger when setting the property of an object in an array.
-		// 	if (Array.isArray(obj) && parseInt(prop) == prop) {
-		// 		let exprsToRender = rootNg.exprsToRender.get(exprPath);
-		//
-		// 		// If we're not re-rendering the whole thing.
-		// 		if (exprsToRender !== true) // TODO: Check for WholeArrayOp instead of true.
-		// 			Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
-		// 	}
-		//
-		// 	// Reapply the whole expression.
-		// 	else if (Array.isArray(Reflect.get(obj, prop)))
-		// 		rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
-		// 	else
-		// 		rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
-		// }
 		return true;
 	}
 }
@@ -280,8 +258,6 @@ class WatchedArray {
 
 		// Call original push() function
 		return Array.prototype[func].call(this.array, ...args);
-
-
 	}
 }
 
@@ -395,17 +371,3 @@ class WholeArrayOp extends WatchOp {
 		this.value = value;
 	}
 }
-//
-// export class ArrayOp {
-// 	constructor(op, array, index=null, value=null) {
-// 		this.op = op;
-// 		this.array = array;
-// 		this.index = index;
-// 		this.value = value;
-// 	}
-// }
-// ArrayOp.WholeArray = 'WholeArray';
-// ArrayOp.Splice = 'Splice';
-// ArrayOp.Insert = 'Insert';
-// ArrayOp.Remove = 'Remove';
-// ArrayOp.Replace = 'Replace'; // Only use this if there's an element to remove.  TODO: Will we use this?
