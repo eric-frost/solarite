@@ -35,7 +35,7 @@ window.getHtml = (item, includeComments=false) => {
 		if (!includeComments)
 			item = item.filter(n => n.nodeType !==8)
 
-		result = item.map(n => n.nodeType === 8 ? `<!--${n.textContent}-->` : n.outerHTML || n.textContent).join('|');
+		result = item.map(n => n.nodeType === 8 ? `<!--${n.textContent}-->` : (n.outerHTML || n.textContent)).join('|');
 	}
 	else
 		result = item.outerHTML || item.textContent
@@ -3724,6 +3724,48 @@ Testimony.test('Solarite.watch3.loopAssign', `replace array elements`, () => {
 	//assert.eq(modified, [a.children[0], a.children[1], a.children[2]]);
 
 	a.remove();
+});
+
+Testimony.test('Solarite.watch3.loopSwap', `swap array elements`, () => {
+
+	class W52 extends HTMLElement {
+
+		items = ['apple', 'banana', 'cherry', 'dragonfruit', 'elderberry'];
+
+		constructor() {
+			super();
+			watch(this, 'items');
+			this.render();
+		}
+
+		render() {
+			r(this)`<w-52>${this.items.map(item => r`<p>${item}</p>`)}</w-52>`;
+		}
+	}
+	customElements.define('w-52', W52);
+
+	let a = new W52();
+	document.body.append(a);
+
+	// Swap
+	let temp = a.items[1];
+	a.items[1] = a.items[3];
+	a.items[3] = temp;
+
+	let modified = renderWatched(a, true);
+	assert.eq(getHtml(a), `<w-52><p>apple</p><p>dragonfruit</p><p>cherry</p><p>banana</p><p>elderberry</p></w-52>`);
+	assert.eq([...modified].map(el => getHtml(el)), [`<p>dragonfruit</p>`, `<p>banana</p>`]);
+
+	// Swap back
+	temp = a.items[1];
+	a.items[1] = a.items[3];
+	a.items[3] = temp;
+
+	modified = renderWatched(a, true);
+	assert.eq(getHtml(a), `<w-52><p>apple</p><p>banana</p><p>cherry</p><p>dragonfruit</p><p>elderberry</p></w-52>`);
+	assert.eq([...modified].map(el => getHtml(el)), [`<p>banana</p>`, `<p>dragonfruit</p>`]);
+
+	//a.remove();
 });
 
 Testimony.test('Solarite.watch3.loopObjAssign', `update array elements and their properties`, () => {

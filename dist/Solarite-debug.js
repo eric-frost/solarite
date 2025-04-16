@@ -3516,7 +3516,7 @@ class RootNodeGroup extends NodeGroup {
 		// So we find them first, then call activateStaticComponents() after their children have been created.
 		let staticComponents = this.findStaticComponents(root, shell, offset);
 
-		this.activateEmbeds(root, shell, offset, template);
+		this.activateEmbeds(root, shell, offset);
 
 		// Apply exprs
 		this.applyExprs(template.exprs);

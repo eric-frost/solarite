@@ -25,13 +25,13 @@ http://localhost:8080/webdriver-ts-results/table.html
 ### Run every test I care about:
 
 ```
-npm run bench non-keyed/solarite-naive keyed/solarite-naive keyed/redcomponent keyed/vanillajs keyed/inferno keyed/solid keyed/svelte keyed/vue keyed/lit keyed/preact keyed/react keyed/angular keyed/ember keyed/knockout keyed/alpine non-keyed/mikado non-keyed/delorean non-keyed/vanillajs non-keyed/vanillajs-1 non-keyed/inferno non-keyed/lit non-keyed/redcomponent non-keyed/svelte non-keyed/vue non-keyed/react
+npm run bench non-keyed/solarite-naive keyed/solarite-naive keyed/solarite keyed/vanillajs keyed/inferno keyed/solid keyed/svelte keyed/vue keyed/lit keyed/preact keyed/react keyed/angular keyed/ember keyed/knockout keyed/alpine non-keyed/mikado non-keyed/delorean non-keyed/vanillajs non-keyed/vanillajs-1 non-keyed/inferno non-keyed/lit non-keyed/solarite non-keyed/svelte non-keyed/vue non-keyed/react
 ```
 
 ### Run a single benchmark within a test (partialUpdate below - numbers start with 01_)
 ```
 cd webdriver-ts
-npm run bench -- --framework keyed/redcomponent --benchmark 09_
+npm run bench -- --framework keyed/solarite --benchmark 09_
 cd ../webdriver-ts-results
 npm ci
 cd ../webdriver-ts
@@ -39,10 +39,10 @@ npm run results
 ```
 
 ### To see if it's keyed:
-npm run isKeyed keyed/redcomponent
+npm run isKeyed keyed/solarite
 
 ### Run Instance for testing
-From the keyed/redcomponent folder:
+From the keyed/solarite folder:
 `npm run build-prod`
-http://localhost:8080/frameworks/non-keyed/redcomponent/index.html
+http://localhost:8080/frameworks/non-keyed/solarite/index.html
 
