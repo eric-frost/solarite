@@ -1824,6 +1824,8 @@ class ExprPath {
 		if (!nodeEvent)
 			nodeEvents[key] = nodeEvent = new Array(3);
 
+		if (typeof func !== 'function')
+			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}]}> because it's not a function.`);
 
 		// If function has changed, remove and rebind the event.
 		if (nodeEvent[0] !== func) {
@@ -1834,9 +1836,6 @@ class ExprPath {
 			let [existing, existingBound, _] = nodeEvent;
 			if (existing)
 				node.removeEventListener(eventName, existingBound, capture);
-
-			if (typeof func !== 'function')
-				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}]}> because it's not a function.`);
 
 			let originalFunc = func;
 			

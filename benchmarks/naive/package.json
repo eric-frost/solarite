@@ -14,7 +14,7 @@
   },
   "keywords": [],
   "author": "Eric Frost",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "homepage": "https://github.com/krausest/js-framework-benchmark",
   "repository": {
     "type": "git",
