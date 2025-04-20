@@ -248,7 +248,7 @@ export default class ExprPath {
 		for (let i=0; i<replaceCount; i++) {
 			let oldNg = this.nodeGroups[op.index + i]; // TODO: One expr can create multiple nodegroups.
 
-			// Try to find exact match
+			// Try to find an exact match
 			let func = this.mapCallback || this.watchFunction;
 			let expr = func(op.items[i]);
 
@@ -318,7 +318,16 @@ export default class ExprPath {
 		this.nodesCache = null;
 	}
 
-  // TODO: have applyExactNodes() use thsi function.
+	/**
+	 * Recursively traverse expr.
+	 * If a value is a function, evaluate it.
+	 * If a value is an array, recurse on each item.
+	 * If it's a primitive, convert it to a Template.
+	 * Otherwise pass the item (which is now either a Template or a Node) to callback.
+	 * @param expr
+	 * @param callback {function(Node|Template)}
+	 *
+	 * TODO: have applyExactNodes() use this function. */
 	exprToTemplates(expr, callback) {
 		if (Array.isArray(expr))
 			for (let subExpr of expr)
@@ -635,12 +644,12 @@ export default class ExprPath {
       	let isProp = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
+			expr = Util.makePrimitive(expr);
 			if (!this.attrValue && Util.isFalsy(expr)) {
 				if (isProp)
 					node[this.attrName] = false;
 				node.removeAttribute(this.attrName);
 			}
-
 			else if (!this.attrValue && expr === true) {
 				if (isProp)
 					node[this.attrName] = true;
@@ -650,20 +659,24 @@ export default class ExprPath {
 			// A non-toggled attribute
 			else {
 
+				// If it's a series of expressions among strings, join them together.
 				let joinedValue;
 				if (this.attrValue) {
 					let value = [];
 					for (let i = 0; i < this.attrValue.length; i++) {
 						value.push(this.attrValue[i]);
 						if (i < this.attrValue.length - 1) {
-							let val = exprs[i];
-							if (!Util.isFalsy(val) && Util.isPrimitive(val))
+							let val = Util.makePrimitive(exprs[i]);
+							if (!Util.isFalsy(val))
 								value.push(val);
 						}
 					}
 					joinedValue = value.join('')
-				} else
-					joinedValue = Util.isPrimitive(expr) ? expr : '';
+				}
+
+				// If the attribute is one expression with no strings:
+				else
+					joinedValue = expr;
 
 				// Only update attributes if the value has changed.
 				// This is needed for setting input.value, .checked, option.selected, etc.

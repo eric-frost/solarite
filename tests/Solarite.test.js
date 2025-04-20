@@ -1785,6 +1785,53 @@ Testimony.test('Solarite.attrib.singleAndText', () => {
 	assert.eq(getHtml(a), `<r-410><div class="before  after"></div></r-410>`);
 });
 
+Testimony.test('Solarite.attrib.function', () => {
+
+	let val = 'one';
+
+	class R413 extends Solarite {
+		render() {
+			r(this)`<div class="${()=>val}">${val}</div>`;
+		}
+	}
+
+	let a = new R413();
+	a.render();
+
+	assert.eq(getHtml(a), `<r-413><div class="one">one</div></r-413>`)
+
+
+	val = 'two';
+	a.render();
+	assert.eq(getHtml(a), `<r-413><div class="two">two</div></r-413>`)
+});
+
+Testimony.test('Solarite.attrib.functionAndText', () => {
+
+	let val = 'one';
+
+	class R415 extends Solarite {
+		render() {
+			r(this)`<div class="before ${()=>val} after">${val}</div>`;
+		}
+	}
+
+	let a = new R415();
+	a.render();
+
+	assert.eq(getHtml(a), `<r-415><div class="before one after">one</div></r-415>`);
+
+
+	val = 'two';
+	a.render();
+	assert.eq(getHtml(a), `<r-415><div class="before two after">two</div></r-415>`);
+
+
+	val = false;
+	a.render();
+	assert.eq(getHtml(a), `<r-415><div class="before  after"></div></r-415>`);
+});
+
 Testimony.test('Solarite.attrib.double', () => {
 
 	let val1 = 'one';
@@ -1941,6 +1988,29 @@ Testimony.test('Solarite.attrib.toggle', () => {
 	isEdit = false
 	a.render();
 	assert.eq(getHtml(a), `<r-460><div></div></r-460>`)
+});
+
+Testimony.test('Solarite.attrib.toggleFunction', () => {
+
+	let isEdit = false;
+
+	class R465 extends Solarite {
+		render() {
+			r(this)`<div contenteditable=${()=>isEdit}>${isEdit && 'Editable!'}</div>`;
+		}
+	}
+
+	let a = new R465();
+	a.render();
+	assert.eq(getHtml(a), `<r-465><div></div></r-465>`)
+
+	isEdit = true
+	a.render();
+	assert.eq(getHtml(a), `<r-465><div contenteditable="">Editable!</div></r-465>`)
+
+	isEdit = false
+	a.render();
+	assert.eq(getHtml(a), `<r-465><div></div></r-465>`)
 });
 
 Testimony.test('Solarite.attrib.pseudoRoot', () => {

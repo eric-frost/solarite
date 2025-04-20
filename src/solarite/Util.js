@@ -178,6 +178,22 @@ let Util = {
 	},
 
 	/**
+	 * If val is a function, evaluate it recursively until the result is not a function.
+	 * If it's an array or an object, convert it to Json.
+	 * If it's a Date, format it as Y-m-d H:i:s
+	 * @param val
+	 * @returns {string|number|boolean} */
+	makePrimitive(val) {
+		if (typeof val === 'function')
+			return Util.makePrimitive(val());
+		if (val instanceof Date)
+			return val.toISOString().replace(/T/, ' ');
+		if (Array.isArray(val) || typeof val === 'object')
+			return ''; // JSON.stringify(val);
+		return val;
+	},
+
+	/**
 	 * Remove nodes from the beginning and end that are not:
 	 * 1.  Elements.
 	 * 2.  Non-whitespace text nodes.
