@@ -644,13 +644,15 @@ export default class ExprPath {
       	let isProp = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
-			expr = Util.makePrimitive(expr);
-			if (!this.attrValue && Util.isFalsy(expr)) {
+			let multiple = this.attrValue;
+			if (!multiple)
+				expr = Util.makePrimitive(expr);
+			if (!multiple && Util.isFalsy(expr)) {
 				if (isProp)
 					node[this.attrName] = false;
 				node.removeAttribute(this.attrName);
 			}
-			else if (!this.attrValue && expr === true) {
+			else if (!multiple && expr === true) {
 				if (isProp)
 					node[this.attrName] = true;
 				node.setAttribute(this.attrName, '');
@@ -661,7 +663,7 @@ export default class ExprPath {
 
 				// If it's a series of expressions among strings, join them together.
 				let joinedValue;
-				if (this.attrValue) {
+				if (multiple) {
 					let value = [];
 					for (let i = 0; i < this.attrValue.length; i++) {
 						value.push(this.attrValue[i]);
