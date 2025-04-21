@@ -549,15 +549,8 @@ export class RootNodeGroup extends NodeGroup {
 
 	/**
 	 * Store the ExprPaths that use each watched variable.
-	 * @type {Object<field:string, Set<ExprPath>>} */
-	watchedExprPaths = {};
-
-
-
-	/**
-	 * Store the ExprPaths that use each watched variable.
 	 * @type {Object<path:string, Set<ExprPath>>} */
-	watchedExprPaths2 = {};
+	watchedExprPaths = {};
 
 	/**
 	 * When we call renerWatched() we re-render these expressions, then clear this to a new Map()

@@ -410,8 +410,9 @@ let Util = {
 	 * @param val
 	 * @returns {string|number|boolean} */
 	makePrimitive(val) {
-		if (typeof val === 'function')
+		if (typeof val === 'function') {
 			return Util.makePrimitive(val());
+		}
 		if (val instanceof Date)
 			return val.toISOString().replace(/T/, ' ');
 		if (Array.isArray(val) || typeof val === 'object')
@@ -1070,9 +1071,9 @@ class ProxyHandler {
 						if (Globals$1.currentExprPath) {
 							let path = JSON.stringify(handler.path);
 							let rootNg = Globals$1.nodeGroups.get(handler.root);
-							if (!rootNg.watchedExprPaths2[path])
-								rootNg.watchedExprPaths2[path] = new Set();
-							rootNg.watchedExprPaths2[path].add(Globals$1.currentExprPath);
+							if (!rootNg.watchedExprPaths[path])
+								rootNg.watchedExprPaths[path] = new Set();
+							rootNg.watchedExprPaths[path].add(Globals$1.currentExprPath);
 						}
 
 						// Apply the map function.
@@ -1085,7 +1086,7 @@ class ProxyHandler {
 			else if (['push', 'pop', 'splice'].includes(prop)) {
 				let rootNg = Globals$1.nodeGroups.get(this.root);
 				path = JSON.stringify(this.path);
-				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths2[path])[prop];
+				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[path])[prop];
 			}
 		}
 
@@ -1100,9 +1101,9 @@ class ProxyHandler {
 
 			if (!path)
 				path = JSON.stringify([...this.path, prop]);
-			if (!rootNg.watchedExprPaths2[path])
-				rootNg.watchedExprPaths2[path] = new Set();
-			rootNg.watchedExprPaths2[path].add(Globals$1.currentExprPath);
+			if (!rootNg.watchedExprPaths[path])
+				rootNg.watchedExprPaths[path] = new Set();
+			rootNg.watchedExprPaths[path].add(Globals$1.currentExprPath);
 		}
 
 		// Accessing a sub-property
@@ -1126,7 +1127,7 @@ class ProxyHandler {
 		// 2. Add to the list of ExprPaths to re-render.
 		let path = JSON.stringify([...this.path, prop]);
 		let rootNg = Globals$1.nodeGroups.get(this.root);
-		for (let exprPath of rootNg.watchedExprPaths2[path]) {
+		for (let exprPath of rootNg.watchedExprPaths[path]) {
 
 			// Update a single NodeGroup created by array.map()
 			// TODO: This doesn't trigger when setting the property of an object in an array.
@@ -1134,7 +1135,7 @@ class ProxyHandler {
 				let exprsToRender = rootNg.exprsToRender.get(exprPath);
 
 				// If we're not re-rendering the whole thing.
-				if (!(exprsToRender instanceof WholeArrayOp)) // TODO: Check for WholeArrayOp instead of true.
+				if (!(exprsToRender instanceof WholeArrayOp)) // TODO: Check for WholeArrayOp instead of true.  TODO: use val.$unproxied
 					Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
 			}
 
@@ -1952,8 +1953,11 @@ class ExprPath {
 
 			// Values to toggle an attribute
 			let multiple = this.attrValue;
-			if (!multiple)
+			if (!multiple) {
+				Globals$1.currentExprPath = this; // Used by watch3()
 				expr = Util.makePrimitive(expr);
+				Globals$1.currentExprPath = null;
+			}
 			if (!multiple && Util.isFalsy(expr)) {
 				if (isProp)
 					node[this.attrName] = false;
@@ -1975,7 +1979,9 @@ class ExprPath {
 					for (let i = 0; i < this.attrValue.length; i++) {
 						value.push(this.attrValue[i]);
 						if (i < this.attrValue.length - 1) {
+							Globals$1.currentExprPath = this; // Used by watch3()
 							let val = Util.makePrimitive(exprs[i]);
+							Globals$1.currentExprPath = null;
 							if (!Util.isFalsy(val))
 								value.push(val);
 						}
@@ -2204,7 +2210,7 @@ class ExprPath {
 	nodeGroupsRendered = [];
 
 	/**
-	 * Nodes that were used during the last render()
+	 * Nodes that were used during the last render() but are available to be used again.
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
 	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
@@ -3175,15 +3181,8 @@ class RootNodeGroup extends NodeGroup {
 
 	/**
 	 * Store the ExprPaths that use each watched variable.
-	 * @type {Object<field:string, Set<ExprPath>>} */
-	watchedExprPaths = {};
-
-
-
-	/**
-	 * Store the ExprPaths that use each watched variable.
 	 * @type {Object<path:string, Set<ExprPath>>} */
-	watchedExprPaths2 = {};
+	watchedExprPaths = {};
 
 	/**
 	 * When we call renerWatched() we re-render these expressions, then clear this to a new Map()

@@ -184,8 +184,9 @@ let Util = {
 	 * @param val
 	 * @returns {string|number|boolean} */
 	makePrimitive(val) {
-		if (typeof val === 'function')
+		if (typeof val === 'function') {
 			return Util.makePrimitive(val());
+		}
 		if (val instanceof Date)
 			return val.toISOString().replace(/T/, ' ');
 		if (Array.isArray(val) || typeof val === 'object')

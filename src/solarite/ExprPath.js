@@ -645,8 +645,11 @@ export default class ExprPath {
 
 			// Values to toggle an attribute
 			let multiple = this.attrValue;
-			if (!multiple)
+			if (!multiple) {
+				Globals.currentExprPath = this; // Used by watch3()
 				expr = Util.makePrimitive(expr);
+				Globals.currentExprPath = null;
+			}
 			if (!multiple && Util.isFalsy(expr)) {
 				if (isProp)
 					node[this.attrName] = false;
@@ -668,7 +671,9 @@ export default class ExprPath {
 					for (let i = 0; i < this.attrValue.length; i++) {
 						value.push(this.attrValue[i]);
 						if (i < this.attrValue.length - 1) {
+							Globals.currentExprPath = this; // Used by watch3()
 							let val = Util.makePrimitive(exprs[i]);
+							Globals.currentExprPath = null;
 							if (!Util.isFalsy(val))
 								value.push(val);
 						}
@@ -918,7 +923,7 @@ export default class ExprPath {
 	nodeGroupsRendered = [];
 
 	/**
-	 * Nodes that were used during the last render()
+	 * Nodes that were used during the last render() but are available to be used again.
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
 	 * @type {MultiValueMap<key:string, value:NodeGroup>} */

@@ -109,9 +109,9 @@ class ProxyHandler {
 						if (Globals.currentExprPath) {
 							let path = JSON.stringify(handler.path);
 							let rootNg = Globals.nodeGroups.get(handler.root);
-							if (!rootNg.watchedExprPaths2[path])
-								rootNg.watchedExprPaths2[path] = new Set();
-							rootNg.watchedExprPaths2[path].add(Globals.currentExprPath);
+							if (!rootNg.watchedExprPaths[path])
+								rootNg.watchedExprPaths[path] = new Set();
+							rootNg.watchedExprPaths[path].add(Globals.currentExprPath);
 						}
 
 						// Apply the map function.
@@ -124,7 +124,7 @@ class ProxyHandler {
 			else if (['push', 'pop', 'splice'].includes(prop)) {
 				let rootNg = Globals.nodeGroups.get(this.root);
 				path = JSON.stringify(this.path);
-				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths2[path])[prop];
+				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[path])[prop];
 			}
 		}
 
@@ -139,9 +139,9 @@ class ProxyHandler {
 
 			if (!path)
 				path = JSON.stringify([...this.path, prop]);
-			if (!rootNg.watchedExprPaths2[path])
-				rootNg.watchedExprPaths2[path] = new Set();
-			rootNg.watchedExprPaths2[path].add(Globals.currentExprPath);
+			if (!rootNg.watchedExprPaths[path])
+				rootNg.watchedExprPaths[path] = new Set();
+			rootNg.watchedExprPaths[path].add(Globals.currentExprPath);
 		}
 
 		// Accessing a sub-property
@@ -165,7 +165,7 @@ class ProxyHandler {
 		// 2. Add to the list of ExprPaths to re-render.
 		let path = JSON.stringify([...this.path, prop]);
 		let rootNg = Globals.nodeGroups.get(this.root);
-		for (let exprPath of rootNg.watchedExprPaths2[path]) {
+		for (let exprPath of rootNg.watchedExprPaths[path]) {
 
 			// Update a single NodeGroup created by array.map()
 			// TODO: This doesn't trigger when setting the property of an object in an array.
@@ -173,7 +173,7 @@ class ProxyHandler {
 				let exprsToRender = rootNg.exprsToRender.get(exprPath);
 
 				// If we're not re-rendering the whole thing.
-				if (!(exprsToRender instanceof WholeArrayOp)) // TODO: Check for WholeArrayOp instead of true.
+				if (!(exprsToRender instanceof WholeArrayOp)) // TODO: Check for WholeArrayOp instead of true.  TODO: use val.$unproxied
 					Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
 			}
 
