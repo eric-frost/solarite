@@ -6,7 +6,7 @@ import Template from "./Template.js";
 import Globals from "./Globals.js";
 import MultiValueMap from "../util/MultiValueMap.js";
 import udomdiff from "./udomdiff.js";
-import {ArraySpliceOp} from "./watch3.js";
+import {ArraySpliceOp} from "./watch.js";
 //#IFDEV
 var exprPathId = 0;
 //#ENDIF

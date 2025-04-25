@@ -8,7 +8,7 @@ import HtmlParser from "../src/solarite/HtmlParser.js";
 import {getArg, r, renderWatched, Solarite} from '../src/solarite/Solarite.js';
 //import {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 //import {watch} from "../src/solarite/watch2.js";
-import watch from "../src/solarite/watch3.js";
+import watch from "../src/solarite/watch.js";
 //import NodeGroupManager from "../src/solarite/NodeGroupManager.js";
 import NodeGroup from "../src/solarite/NodeGroup.js";
 import Template from "../src/solarite/Template.js";

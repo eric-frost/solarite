@@ -1272,7 +1272,7 @@ class ProxyHandler {
  * @param root {HTMLElement} An instance of a Web Component that uses r() to render its content.
  * @param field {string} The name of a top-level property of root.
  * @param value {string|Symbol} The default value. */
-function watch3(root, field, value=unusedArg) {
+function watch(root, field, value=unusedArg) {
 	// Store internal value used by get/set.
 	if (value !== unusedArg)
 		root[field] = value;
@@ -4054,4 +4054,4 @@ let Solarite = new Proxy(createSolarite(), {
 let getInputValue = Util.getInputValue;
  // unfinished
 
-export { ArgType, Globals$1 as Globals, Solarite, Template, delve, getArg, getInputValue, r, renderWatched, watch3 as watch };
+export { ArgType, Globals$1 as Globals, Solarite, Template, delve, getArg, getInputValue, r, renderWatched, watch };
