@@ -24,7 +24,7 @@ function reset() {
 
 		/**
 		 * ExprPath.applyExactNodes() sets this property when an expression is being accessed.
-		 * watch3() then adds the ExprPath to rootNg.watchedExprPaths so we know which expressions use which fields.
+		 * watch() then adds the ExprPath to rootNg.watchedExprPaths so we know which expressions use which fields.
 		 * @type {ExprPath}*/
 		currentExprPath: null,
 

@@ -3618,7 +3618,7 @@ Testimony.test('Solarite.binding.loop', 'similar to the loop.continuity2 test ab
  * | Watch           |
  * └─────────────────╯*/
 
-Testimony.test('Solarite.watch3.primitive', () => {
+Testimony.test('Solarite.watch.primitive', () => {
 
 	class W10 extends HTMLElement {
 
@@ -3641,7 +3641,6 @@ Testimony.test('Solarite.watch3.primitive', () => {
 	a.name = 'Jim';
 	let modified = renderWatched(a, true);
 	assert.eq(modified.length, 1);
-	//console.log(modified);
 	assert.eq(getHtml(a), `<w-10>Jim!</w-10>`);
 
 	let ng = Globals.nodeGroups.get(a);
@@ -3654,10 +3653,9 @@ Testimony.test('Solarite.watch3.primitive', () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.watch3.primitive2', `One primitive variable used twice.`, () => {
+Testimony.test('Solarite.watch.primitive2', `One primitive variable used twice.`, () => {
 
 	class W20 extends Solarite {
-
 		constructor() {
 			super();
 			this.name = 'Fred';
@@ -3678,11 +3676,10 @@ Testimony.test('Solarite.watch3.primitive2', `One primitive variable used twice.
 	let modified = renderWatched(a, true);
 	assert.eq(2, modified.length);
 	assert.neq(modified[0], modified[1]);
-	//console.log(modified);
 	assert.eq(getHtml(a), `<w-20>Jim.<br>Jim!</w-20>`);
 });
 
-Testimony.test('Solarite.watch3.object', () => {
+Testimony.test('Solarite.watch.object', () => {
 
 	class W30 extends HTMLElement {
 
@@ -3718,7 +3715,7 @@ Testimony.test('Solarite.watch3.object', () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.watch3.arrayOfObject', () => {
+Testimony.test('Solarite.watch.arrayOfObject', () => {
 
 	class W40 extends HTMLElement {
 
@@ -3749,7 +3746,7 @@ Testimony.test('Solarite.watch3.arrayOfObject', () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.watch3.loopAssign', `replace array elements`, () => {
+Testimony.test('Solarite.watch.loopAssign', `replace array elements`, () => {
 
 	class W50 extends HTMLElement {
 
@@ -3803,7 +3800,7 @@ Testimony.test('Solarite.watch3.loopAssign', `replace array elements`, () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.watch3.loopSwap', `swap array elements`, () => {
+Testimony.test('Solarite.watch.loopSwap', `swap array elements`, () => {
 
 	class W52 extends HTMLElement {
 
@@ -3845,7 +3842,7 @@ Testimony.test('Solarite.watch3.loopSwap', `swap array elements`, () => {
 	//a.remove();
 });
 
-Testimony.test('Solarite.watch3.loopObjAssign', `update array elements and their properties`, () => {
+Testimony.test('Solarite.watch.loopObjAssign', `update array elements and their properties`, () => {
 
 	class W55 extends HTMLElement {
 
@@ -3884,7 +3881,7 @@ Testimony.test('Solarite.watch3.loopObjAssign', `update array elements and their
 });
 
 
-Testimony.test('Solarite.watch3.loopPushPop', () => {
+Testimony.test('Solarite.watch.loopPushPop', () => {
 
 	class W60 extends HTMLElement {
 
@@ -3947,7 +3944,7 @@ Testimony.test('Solarite.watch3.loopPushPop', () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.watch3.loopDeepPushPop', () => {
+Testimony.test('Solarite.watch.loopDeepPushPop', () => {
 
 	class W70 extends HTMLElement {
 

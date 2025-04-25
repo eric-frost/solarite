@@ -82,7 +82,7 @@ var Util = {
 
 	/**
 	 * Use an array as the value of a map, appending to it when we add.
-	 * Used by watch3.js.
+	 * Used by watch.js.
 	 * @param map {Map|WeakMap|Object}
 	 * @param key
 	 * @param value */

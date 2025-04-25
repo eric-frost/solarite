@@ -337,10 +337,10 @@ export default class ExprPath {
 			// TODO: One ExprPath can have multiple expr functions.
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
-			Globals.currentExprPath = this; // Used by watch3()
+			Globals.currentExprPath = this; // Used by watch()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			let result = expr(); // As expr accesses watched variables, watch3() uses Globals.currentExprPath to mark where those watched variables are being used.
+			let result = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
 			Globals.currentExprPath = null;
 
 			this.exprToTemplates(result, callback);
@@ -420,10 +420,10 @@ export default class ExprPath {
 			// TODO: One ExprPath can have multiple expr functions.
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
-			Globals.currentExprPath = this; // Used by watch3()
+			Globals.currentExprPath = this; // Used by watch()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			let result = expr(); // As expr accesses watched variables, watch3() uses Globals.currentExprPath to mark where those watched variables are being used.
+			let result = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
 			Globals.currentExprPath = null;
 
 			this.applyExactNodes(result, newNodes, secondPass);
@@ -646,7 +646,7 @@ export default class ExprPath {
 			// Values to toggle an attribute
 			let multiple = this.attrValue;
 			if (!multiple) {
-				Globals.currentExprPath = this; // Used by watch3()
+				Globals.currentExprPath = this; // Used by watch()
 				expr = Util.makePrimitive(expr);
 				Globals.currentExprPath = null;
 			}
@@ -671,7 +671,7 @@ export default class ExprPath {
 					for (let i = 0; i < this.attrValue.length; i++) {
 						value.push(this.attrValue[i]);
 						if (i < this.attrValue.length - 1) {
-							Globals.currentExprPath = this; // Used by watch3()
+							Globals.currentExprPath = this; // Used by watch()
 							let val = Util.makePrimitive(exprs[i]);
 							Globals.currentExprPath = null;
 							if (!Util.isFalsy(val))

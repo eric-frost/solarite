@@ -191,7 +191,7 @@ class ProxyHandler {
  * This function markes a property of a web component to be watched for changes.
  *
  * Here is how watches work:
- * 1.  When we call watch3() it creates properties on the root object that return Proxies to watch when values are set.
+ * 1.  When we call watch() it creates properties on the root object that return Proxies to watch when values are set.
  * 2.  When they are set, we add their paths to the rootNodeGroup.exprsToRender that keeps track of what to re-render.
  * 3.  Then we call renderWatched() to re-render only those parts.
  *

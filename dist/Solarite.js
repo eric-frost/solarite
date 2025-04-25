@@ -79,7 +79,7 @@ var Util$1 = {
 
 	/**
 	 * Use an array as the value of a map, appending to it when we add.
-	 * Used by watch3.js.
+	 * Used by watch.js.
 	 * @param map {Map|WeakMap|Object}
 	 * @param key
 	 * @param value */
@@ -135,7 +135,7 @@ function reset() {
 
 		/**
 		 * ExprPath.applyExactNodes() sets this property when an expression is being accessed.
-		 * watch3() then adds the ExprPath to rootNg.watchedExprPaths so we know which expressions use which fields.
+		 * watch() then adds the ExprPath to rootNg.watchedExprPaths so we know which expressions use which fields.
 		 * @type {ExprPath}*/
 		currentExprPath: null,
 
@@ -1153,7 +1153,7 @@ class ProxyHandler {
  * This function markes a property of a web component to be watched for changes.
  *
  * Here is how watches work:
- * 1.  When we call watch3() it creates properties on the root object that return Proxies to watch when values are set.
+ * 1.  When we call watch() it creates properties on the root object that return Proxies to watch when values are set.
  * 2.  When they are set, we add their paths to the rootNodeGroup.exprsToRender that keeps track of what to re-render.
  * 3.  Then we call renderWatched() to re-render only those parts.
  *
@@ -1651,10 +1651,10 @@ class ExprPath {
 			// TODO: One ExprPath can have multiple expr functions.
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
-			Globals$1.currentExprPath = this; // Used by watch3()
+			Globals$1.currentExprPath = this; // Used by watch()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			let result = expr(); // As expr accesses watched variables, watch3() uses Globals.currentExprPath to mark where those watched variables are being used.
+			let result = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
 			Globals$1.currentExprPath = null;
 
 			this.exprToTemplates(result, callback);
@@ -1734,10 +1734,10 @@ class ExprPath {
 			// TODO: One ExprPath can have multiple expr functions.
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
-			Globals$1.currentExprPath = this; // Used by watch3()
+			Globals$1.currentExprPath = this; // Used by watch()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			let result = expr(); // As expr accesses watched variables, watch3() uses Globals.currentExprPath to mark where those watched variables are being used.
+			let result = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
 			Globals$1.currentExprPath = null;
 
 			this.applyExactNodes(result, newNodes, secondPass);
@@ -1954,7 +1954,7 @@ class ExprPath {
 			// Values to toggle an attribute
 			let multiple = this.attrValue;
 			if (!multiple) {
-				Globals$1.currentExprPath = this; // Used by watch3()
+				Globals$1.currentExprPath = this; // Used by watch()
 				expr = Util.makePrimitive(expr);
 				Globals$1.currentExprPath = null;
 			}
@@ -1979,7 +1979,7 @@ class ExprPath {
 					for (let i = 0; i < this.attrValue.length; i++) {
 						value.push(this.attrValue[i]);
 						if (i < this.attrValue.length - 1) {
-							Globals$1.currentExprPath = this; // Used by watch3()
+							Globals$1.currentExprPath = this; // Used by watch()
 							let val = Util.makePrimitive(exprs[i]);
 							Globals$1.currentExprPath = null;
 							if (!Util.isFalsy(val))
