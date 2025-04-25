@@ -165,7 +165,7 @@ class ProxyHandler {
 		// 2. Add to the list of ExprPaths to re-render.
 		let path = JSON.stringify([...this.path, prop]);
 		let rootNg = Globals.nodeGroups.get(this.root);
-		for (let exprPath of rootNg.watchedExprPaths[path]) {
+		for (let exprPath of rootNg.watchedExprPaths[path] || []) {
 
 			// Update a single NodeGroup created by array.map()
 			// TODO: This doesn't trigger when setting the property of an object in an array.

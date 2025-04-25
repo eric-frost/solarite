@@ -3644,6 +3644,13 @@ Testimony.test('Solarite.watch3.primitive', () => {
 	//console.log(modified);
 	assert.eq(getHtml(a), `<w-10>Jim!</w-10>`);
 
+	let ng = Globals.nodeGroups.get(a);
+
+	// Make sure that render() clears the nodegroups to render.
+	a.name = 'Bob';
+	a.render();
+	assert.eq(ng.exprsToRender.size, 0);
+
 	a.remove();
 });
 

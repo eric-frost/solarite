@@ -98,6 +98,7 @@ export default class Template {
 			}
 		}
 
+		ng.exprsToRender = new Map();
 		return el;
 	}
 
