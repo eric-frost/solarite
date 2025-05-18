@@ -1,7 +1,7 @@
 import {Solarite, r} from './Solarite.min.js';
 //import {Solarite, r} from '../../src/solarite/Solarite.js';
 let debug2 = window.location.search.includes('debug');
-let benchmark = (new URL(window.location.href)).searchParams.get('benchmark');
+let benchmark = window.location.search.includes('benchmark');
 
 if (debug2) {
 	window.getHtml = (item, includeComments=false) => {
@@ -69,7 +69,7 @@ class JSFrameworkBenchmark extends Solarite {
 
 	// quickly mimic what the js-framework-benchmark does.
 	// This is useful to see if performance changes after code modifications.
-	benchmark(runs=1) {
+	async benchmark(runs=1) {
 		let times = [];
 		let results = [];
 
@@ -78,80 +78,41 @@ class JSFrameworkBenchmark extends Solarite {
 			return Math.pow(arr.reduce((a, b) => (a || .1) * (b || .1), 1), 1 / arr.length);
 		};
 
+		const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+		const run = async (name, callback) => {
+			const start = performance.now();
+			callback();
+			const time = performance.now() - start;
+			times.push(time);
+			console.log(`${name}: ${time.toFixed(1)}ms.`);
+			await sleep(20); // wait for render
+		}
+
 		// Time the creation of rows
 		for (let i=0; i<runs; i++) {
-			let start = performance.now();
-			this.data = buildData(1000);
-			this.render();
-			times.push(performance.now() - start);
-			if (runs===1) console.log(`Create rows: ${times[times.length - 1]}ms`);
+			times = [];
 
-			// Time replacing all rows
-			start = performance.now();
-			this.data = buildData(1000);
-			this.render();
-			times.push(performance.now() - start);
-			if (runs===1) console.log(`Replace all rows: ${times[times.length - 1]}ms`);
+			// Helper function to calculate geometric mean
+			const geometricMean = (arr) => {
+				return Math.pow(arr.reduce((a, b) => (a || .1) * (b||.1), 1), 1 / arr.length);
+			};
 
-			// Time the partial update
-			start = performance.now();
-			let len = this.data.length;
-			for (let i = 0; i < len; i += 10) {
-				this.data[i].label += ' !!!';
-			}
-			this.render();
-			times.push(performance.now() - start);
-			if (runs===1) console.log(`Partial update: ${times[times.length - 1]}ms`);
-
-			// Time selecting a row
-			start = performance.now();
-			this.data[1].selected = !this.data[1].selected;
-			let modifications = this.render();
-			times.push(performance.now() - start);
-			if (runs===1) console.log(`Select row: ${times[times.length - 1]}ms`);
-
-			// Time swapping rows
-			start = performance.now();
-			let temp = this.data[1];
-			this.data[1] = this.data[998];
-			this.data[998] = temp;
-			this.render();
-			times.push(performance.now() - start);
-			if (runs===1) console.log(`Swap rows: ${times[times.length - 1]}ms`);
-
-			// Time removing a row
-			start = performance.now();
-			this.data.splice(1, 1);
-			this.render();
-			times.push(performance.now() - start);
-			if (runs===1) console.log(`Remove row: ${times[times.length - 1]}ms`);
-
-			// Time creating many rows
-			start = performance.now();
-			this.data = buildData(10_000);
-			this.render();
-			times.push(performance.now() - start);
-			if (runs===1) console.log(`Create many rows: ${times[times.length - 1]}ms`);
-
-			// Time appending rows to large table
-			start = performance.now();
-			this.data.push(...buildData(1000));
-			this.render();
-			times.push(performance.now() - start);
-			if (runs===1) console.log(`Append rows: ${times[times.length - 1]}ms`);
-
-			// Time clearing rows
-			start = performance.now();
-			this.data = [];
-			this.render();
-			times.push(performance.now() - start);
-			if (runs===1) console.log(`Clear rows: ${times[times.length - 1]}ms`);
+			await run('Create Rows', () => this.run());
+			await run('Replace All Rows', () => this.run());
+			await run('Partial Update', () => this.update());
+			await run('Select Row', () => this.setSelected(this.data[1]));
+			await run('Swap Rows', () => this.swapRows());
+			await run('Remove Row', () => this.remove(this.data[1].id));
+			await run('Clear Rows', () => this.clear());
+			await run('Create Many Rows', () => this.runLots());
+			await run('Append Rows', () => this.add());
+			await run('Clear Rows', () => this.clear());
 
 			// Log the geometric mean of all steps
 			const geoMean = geometricMean(times);
 			results.push(geoMean);
-			console.log(`Geometric mean: ${geoMean}ms`);
-			times = [];
+			console.log(`Geometric mean: ${geoMean.toFixed(2)}ms`);
 		}
 
 		if (runs > 1) {
@@ -161,62 +122,31 @@ class JSFrameworkBenchmark extends Solarite {
 			console.log(`Max: ${Math.max(...results)}ms`);
 			console.log(`Avg: ${avg}ms`);
 		}
-
-
 	}
 
 	run() {
-		if (debug2)
-			var start = performance.now();
 		this.data = buildData(1000);
 		let modifications = this.render()
-
-		if (debug2) {
-			console.log(performance.now() - start)
-		}
 	}
 
 	runLots() {
-		if (debug2)
-			var start = performance.now();
 		this.data = buildData(10_000);
 		let modifications = this.render()
-
-		if (debug2) {
-			console.log(performance.now() - start)
-		}
 	}
 
 	add() {
-		if (debug2)
-			var start = performance.now();
-
 		this.data.push(...buildData(1000));
 		let modifications = this.render();
-
-		if (debug2) {
-			console.log(performance.now() - start)
-		}
 	}
 
 	update() {
-		if (debug2)
-			var start = performance.now();
 		let len = this.data.length;
 		for (let i=0; i<len; i+=10)
 			this.data[i].label += ' !!!';
-
 		this.render()
-
-		if (debug2) {
-			console.log(performance.now() - start)
-		}
 	}
 
 	swapRows() {
-		if (debug2)
-			var start = performance.now();
-
 		if (this.data.length > 998) {
 
 			let temp = this.data[1];
@@ -224,50 +154,25 @@ class JSFrameworkBenchmark extends Solarite {
 			this.data[998] = temp;
 			var modifications = this.render()
 		}
-
-		if (debug2) {
-			console.log(performance.now() - start)
-		}
 	}
 
 	clear() {
-		if (debug2)
-			var start = performance.now();
 		this.data = [];
 		let modifications = this.render()
-
-		if (debug2) {
-			console.log(performance.now() - start)
-		}
 	}
 
 	remove(id) {
-		if (debug2)
-			var start = performance.now();
-
 		let index = this.data.findIndex(row=>row.id===id);
 
 		this.data.splice(index, 1);
 		let modifications = this.render();
-
-		if (debug2) {
-			console.log(performance.now() - start)
-		}
 	}
 
 	setSelected(row) {
-		if (debug2)
-			var start = performance.now();
-
 		// row.selected = !row.selected;
 		// let modifications = this.render();
-
 		row.selected = !row.selected;
 		let modifications = this.render();
-
-		if (debug2) {
-			console.log(performance.now() - start)
-		}
 	}
 
 	render() {
@@ -335,5 +240,5 @@ document.body.append(app);
 
 
 if (benchmark)
-	app.benchmark(benchmark*1);
+	app.benchmark(1);
 
