@@ -32,8 +32,8 @@ function defineClass(Class, tagName, extendsTag) {
  * Reasons to inherit from this instead of HTMLElement.  None of these are all that useful.
  * 1.  customElements.define() is called automatically when you create the first instance.
  * 2.  Calls render() when added to the DOM, if it hasn't been called already.
- * 3.  Child elements are added before constructor is called.  But they're also passed to the constructor.
- * 4.  We can use this.html = r`...` to set html.
+ * 3.  Child elements are added before constructor is called.  But they're also passed to the constructor. (deprecated?)
+ * 4.  We can use this.html = r`...` to set html. (deprecated)
  * 5.  We have the onConnect, onFirstConnect, and onDisconnect methods.
  *     Can't figure out how to have these work standalone though, and still be synchronous.
  * 6.  Can we extend from other element types like TR?

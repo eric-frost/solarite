@@ -117,6 +117,8 @@ class ProxyHandler {
 						// Apply the map function.
 						let newObj = mapFunction.newValue || obj;
 						Globals.currentExprPath.mapCallback = callback;
+						// If new Proxy fails b/c newObj isn't an object, make sure the expression is a function.
+						// TODO: Find a way to warn about this automatically.
 						return map(new Proxy(newObj, handler), callback);
 					}
 			}
@@ -229,10 +231,14 @@ class WatchedArray {
 	 * @param exprPaths {ExprPath[]} Expression paths that use this array. */
 	constructor(rootNg, array, exprPaths) {
 		this.rootNg = rootNg;
+		//#IFDEV
+		assert(Array.isArray(array));
+		//#ENDIF
 		this.array = array;
 		this.exprPaths = exprPaths;
 		this.push = this.push.bind(this);
 		this.pop = this.pop.bind(this);
+		this.splice = this.splice.bind(this);
 	}
 
 	push(...args) {
@@ -244,8 +250,8 @@ class WatchedArray {
 			return this.internalSplice('pop', [], [this.array, this.array.length-1, 1]);
 	}
 
-	splice() {
-		return this.internalSplice('pop', [], [this.array, this.array.length-1, 1]);
+	splice(...args) {
+		return this.internalSplice('splice', args, [this.array, ...args]);
 	}
 
 	internalSplice(func, args, spliceArgs) {

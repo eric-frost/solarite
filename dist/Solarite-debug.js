@@ -1187,6 +1187,8 @@ class ProxyHandler {
 						// Apply the map function.
 						let newObj = mapFunction.newValue || obj;
 						Globals$1.currentExprPath.mapCallback = callback;
+						// If new Proxy fails b/c newObj isn't an object, make sure the expression is a function.
+						// TODO: Find a way to warn about this automatically.
 						return map(new Proxy(newObj, handler), callback);
 					}
 			}
@@ -1299,10 +1301,14 @@ class WatchedArray {
 	 * @param exprPaths {ExprPath[]} Expression paths that use this array. */
 	constructor(rootNg, array, exprPaths) {
 		this.rootNg = rootNg;
+		//#IFDEV
+		assert(Array.isArray(array));
+		//#ENDIF
 		this.array = array;
 		this.exprPaths = exprPaths;
 		this.push = this.push.bind(this);
 		this.pop = this.pop.bind(this);
+		this.splice = this.splice.bind(this);
 	}
 
 	push(...args) {
@@ -1314,8 +1320,8 @@ class WatchedArray {
 			return this.internalSplice('pop', [], [this.array, this.array.length-1, 1]);
 	}
 
-	splice() {
-		return this.internalSplice('pop', [], [this.array, this.array.length-1, 1]);
+	splice(...args) {
+		return this.internalSplice('splice', args, [this.array, ...args]);
 	}
 
 	internalSplice(func, args, spliceArgs) {
@@ -1514,7 +1520,7 @@ class ExprPath {
 	nodeMarkerPath;
 
 
-	/** @type {?function} A function called by renderWatched() to update the value of this expression.  */
+	/** @type {?function} A function called by renderWatched() to update the value of this expression. */
 	watchFunction
 
 	/**
@@ -2076,6 +2082,8 @@ class ExprPath {
 			let multiple = this.attrValue;
 			if (!multiple) {
 				Globals$1.currentExprPath = this; // Used by watch()
+				if (typeof expr === 'function')
+					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
 				expr = Util.makePrimitive(expr);
 				Globals$1.currentExprPath = null;
 			}
@@ -2225,6 +2233,10 @@ class ExprPath {
 		// for (let ng of this.nodeGroups)
 		// 	result2.push(...ng.getNodes())
 		// return result2;
+
+		if (this.type === ExprPathType.Value || this.type === ExprPathType.Component) {
+			return [this.nodeMarker];
+		}
 
 
 		let result;
@@ -3902,8 +3914,8 @@ function defineClass(Class, tagName, extendsTag) {
  * Reasons to inherit from this instead of HTMLElement.  None of these are all that useful.
  * 1.  customElements.define() is called automatically when you create the first instance.
  * 2.  Calls render() when added to the DOM, if it hasn't been called already.
- * 3.  Child elements are added before constructor is called.  But they're also passed to the constructor.
- * 4.  We can use this.html = r`...` to set html.
+ * 3.  Child elements are added before constructor is called.  But they're also passed to the constructor. (deprecated?)
+ * 4.  We can use this.html = r`...` to set html. (deprecated)
  * 5.  We have the onConnect, onFirstConnect, and onDisconnect methods.
  *     Can't figure out how to have these work standalone though, and still be synchronous.
  * 6.  Can we extend from other element types like TR?

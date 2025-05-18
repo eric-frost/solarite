@@ -79,7 +79,7 @@ export default class ExprPath {
 	nodeMarkerPath;
 
 
-	/** @type {?function} A function called by renderWatched() to update the value of this expression.  */
+	/** @type {?function} A function called by renderWatched() to update the value of this expression. */
 	watchFunction
 
 	/**
@@ -647,6 +647,8 @@ export default class ExprPath {
 			let multiple = this.attrValue;
 			if (!multiple) {
 				Globals.currentExprPath = this; // Used by watch()
+				if (typeof expr === 'function')
+					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
 				expr = Util.makePrimitive(expr);
 				Globals.currentExprPath = null;
 			}
@@ -810,6 +812,10 @@ export default class ExprPath {
 		// for (let ng of this.nodeGroups)
 		// 	result2.push(...ng.getNodes())
 		// return result2;
+
+		if (this.type === ExprPathType.Value || this.type === ExprPathType.Component) {
+			return [this.nodeMarker];
+		}
 
 
 		let result
