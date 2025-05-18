@@ -1778,6 +1778,13 @@ class ExprPath {
 		let oldNames = this.attrNames;
 		this.attrNames = new Set();
 		if (expr) {
+			if (typeof expr === 'function') {
+				Globals$1.currentExprPath = this; // Used by watch()
+				this.watchFunction = expr; // used by renderWatched()
+				expr = expr();
+				Globals$1.currentExprPath = null;
+			}
+
 			let attrs = (expr +'') // Split string into multiple attributes.
 				.split(/([\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s]+))/g)
 				.map(text => text.trim())
@@ -2106,7 +2113,7 @@ class ExprPath {
 		// 	result2.push(...ng.getNodes())
 		// return result2;
 
-		if (this.type === ExprPathType.Value || this.type === ExprPathType.Component) {
+		if (this.type === ExprPathType.Value || this.type === ExprPathType.Multiple || this.type === ExprPathType.Component) {
 			return [this.nodeMarker];
 		}
 

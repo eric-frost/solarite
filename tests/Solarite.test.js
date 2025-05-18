@@ -3674,9 +3674,9 @@ Testimony.test('Solarite.watch.primitive2', `One primitive variable used twice.`
 
 	a.name = 'Jim';
 	let modified = renderWatched(a, true);
+	assert.eq(getHtml(a), `<w-20>Jim.<br>Jim!</w-20>`);
 	assert.eq(2, modified.length);
 	assert.neq(modified[0], modified[1]);
-	assert.eq(getHtml(a), `<w-20>Jim.<br>Jim!</w-20>`);
 });
 
 Testimony.test('Solarite.watch.attrib', () => {
@@ -3698,8 +3698,40 @@ Testimony.test('Solarite.watch.attrib', () => {
 
 	a.name = 'Jim';
 	let modified = renderWatched(a, true);
-	assert.eq(modified.length, 1);
 	assert.eq(getHtml(a), `<w-23><p title="Jim!"></p></w-23>`);
+	assert.eq(modified.length, 1);
+
+	let ng = Globals.nodeGroups.get(a);
+
+	// Make sure that render() clears the nodegroups to render.
+	a.name = 'Bob';
+	a.render();
+	assert.eq(ng.exprsToRender.size, 0);
+
+	a.remove();
+});
+
+Testimony.test('Solarite.watch.mutliAttrib', () => {
+
+	class W24 extends Solarite {
+		constructor() {
+			super();
+			watch(this, 'name', 'Fred');
+		}
+
+		render() {
+			r(this)`<w-24><p ${() => `title=${this.name}!`}></p></w-24>`;
+		}
+	}
+
+	let a = new W24();
+	document.body.append(a);
+	assert.eq(getHtml(a), `<w-24><p title="Fred!"></p></w-24>`);
+
+	a.name = 'Jim';
+	let modified = renderWatched(a, true);
+	assert.eq(getHtml(a), `<w-24><p title="Jim!"></p></w-24>`);
+	assert.eq(modified.length, 1);
 
 	let ng = Globals.nodeGroups.get(a);
 
