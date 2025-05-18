@@ -1542,7 +1542,7 @@ class ExprPath {
 		this.type = type;
 		this.attrName = attrName;
 		this.attrValue = attrValue;
-		if (type === ExprPathType.Multiple)
+		if (type === ExprPathType.AttribMultiple)
 			this.attrNames = new Set();
 	}
 
@@ -1889,7 +1889,7 @@ class ExprPath {
 	}
 
 	applyMultipleAttribs(node, expr) {
-		/*#IFDEV*/assert(this.type === ExprPathType.Multiple);/*#ENDIF*/
+		/*#IFDEV*/assert(this.type === ExprPathType.AttribMultiple);/*#ENDIF*/
 
 		if (Array.isArray(expr))
 			expr = expr.flat().join(' ');  // flat and join so we can accept arrays of arrays of strings.
@@ -2241,7 +2241,7 @@ class ExprPath {
 		// 	result2.push(...ng.getNodes())
 		// return result2;
 
-		if (this.type === ExprPathType.Value || this.type === ExprPathType.Multiple || this.type === ExprPathType.Component) {
+		if (this.type === ExprPathType.AttribValue || this.type === ExprPathType.AttribMultiple || this.type === ExprPathType.ComponentAttribValue) {
 			return [this.nodeMarker];
 		}
 
@@ -2344,7 +2344,7 @@ class ExprPath {
 	isComponent() {
 		// Events won't have type===Component.
 		// TODO: Have a special flag for components instead of it being on the type?
-		return this.type === ExprPathType.Component || (this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
+		return this.type === ExprPathType.ComponentAttribValue || (this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
 	}
 
 	/**
@@ -2466,13 +2466,13 @@ const ExprPathType = {
 	Content: 1,
 	
 	/** One or more whole attributes */
-	Multiple: 2,
+	AttribMultiple: 2,
 	
 	/** Value of an attribute. */
-	Value: 3,
+	AttribValue: 3,
 	
 	/** Value of an attribute being passed to a component. */
-	Component: 4,
+	ComponentAttribValue: 4,
 	
 	/** Expressions inside Html comments. */
 	Comment: 5,
@@ -2673,7 +2673,7 @@ class Shell {
 					// Whole attribute
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/);
 					if (matches) {
-						this.paths.push(new ExprPath(null, node, ExprPathType.Multiple));
+						this.paths.push(new ExprPath(null, node, ExprPathType.AttribMultiple));
 						placeholdersUsed ++;
 						node.removeAttribute(matches[0]);
 					}
@@ -2683,7 +2683,7 @@ class Shell {
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
-							let type = isEvent(attr.name) ? ExprPathType.Event : ExprPathType.Value;
+							let type = isEvent(attr.name) ? ExprPathType.Event : ExprPathType.AttribValue;
 
 							this.paths.push(new ExprPath(null, node, type, attr.name, nonEmptyParts));
 							placeholdersUsed += parts.length - 1;
@@ -2788,9 +2788,9 @@ class Shell {
 			path.nodeMarkerPath = getNodePath(path.nodeMarker);
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
-			if (path.type === ExprPathType.Value && path.nodeMarker.nodeType === 1 &&
+			if (path.type === ExprPathType.AttribValue && path.nodeMarker.nodeType === 1 &&
 				(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
-				path.type = ExprPathType.Component;
+				path.type = ExprPathType.ComponentAttribValue;
 			}
 		}
 

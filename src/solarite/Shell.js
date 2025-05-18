@@ -80,7 +80,7 @@ export default class Shell {
 					// Whole attribute
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/)
 					if (matches) {
-						this.paths.push(new ExprPath(null, node, ExprPathType.Multiple));
+						this.paths.push(new ExprPath(null, node, ExprPathType.AttribMultiple));
 						placeholdersUsed ++;
 						node.removeAttribute(matches[0]);
 					}
@@ -90,7 +90,7 @@ export default class Shell {
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
-							let type = isEvent(attr.name) ? ExprPathType.Event : ExprPathType.Value;
+							let type = isEvent(attr.name) ? ExprPathType.Event : ExprPathType.AttribValue;
 
 							this.paths.push(new ExprPath(null, node, type, attr.name, nonEmptyParts));
 							placeholdersUsed += parts.length - 1;
@@ -195,9 +195,9 @@ export default class Shell {
 			path.nodeMarkerPath = getNodePath(path.nodeMarker)
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
-			if (path.type === ExprPathType.Value && path.nodeMarker.nodeType === 1 &&
+			if (path.type === ExprPathType.AttribValue && path.nodeMarker.nodeType === 1 &&
 				(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
-				path.type = ExprPathType.Component;
+				path.type = ExprPathType.ComponentAttribValue;
 			}
 		}
 

@@ -101,7 +101,7 @@ export default class ExprPath {
 		this.type = type;
 		this.attrName = attrName;
 		this.attrValue = attrValue;
-		if (type === ExprPathType.Multiple)
+		if (type === ExprPathType.AttribMultiple)
 			this.attrNames = new Set();
 	}
 
@@ -451,7 +451,7 @@ export default class ExprPath {
 	}
 
 	applyMultipleAttribs(node, expr) {
-		/*#IFDEV*/assert(this.type === ExprPathType.Multiple);/*#ENDIF*/
+		/*#IFDEV*/assert(this.type === ExprPathType.AttribMultiple);/*#ENDIF*/
 
 		if (Array.isArray(expr))
 			expr = expr.flat().join(' ');  // flat and join so we can accept arrays of arrays of strings.
@@ -820,7 +820,7 @@ export default class ExprPath {
 		// 	result2.push(...ng.getNodes())
 		// return result2;
 
-		if (this.type === ExprPathType.Value || this.type === ExprPathType.Multiple || this.type === ExprPathType.Component) {
+		if (this.type === ExprPathType.AttribValue || this.type === ExprPathType.AttribMultiple || this.type === ExprPathType.ComponentAttribValue) {
 			return [this.nodeMarker];
 		}
 
@@ -923,7 +923,7 @@ export default class ExprPath {
 	isComponent() {
 		// Events won't have type===Component.
 		// TODO: Have a special flag for components instead of it being on the type?
-		return this.type === ExprPathType.Component || (this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
+		return this.type === ExprPathType.ComponentAttribValue || (this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
 	}
 
 	/**
@@ -1079,13 +1079,13 @@ export const ExprPathType = {
 	Content: 1,
 	
 	/** One or more whole attributes */
-	Multiple: 2,
+	AttribMultiple: 2,
 	
 	/** Value of an attribute. */
-	Value: 3,
+	AttribValue: 3,
 	
 	/** Value of an attribute being passed to a component. */
-	Component: 4,
+	ComponentAttribValue: 4,
 	
 	/** Expressions inside Html comments. */
 	Comment: 5,
