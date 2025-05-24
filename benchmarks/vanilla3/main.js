@@ -100,6 +100,6 @@ if (benchmark) {
 
 		// Log the geometric mean of all steps
 		const geoMean = geometricMean(times);
-		console.log(`Geometric mean of all steps: ${geoMean}ms`);
+		console.log(`Geometric mean: ${geoMean}ms`);
 	})();
 }

@@ -1029,26 +1029,36 @@ function map(array, callback) {
 	return result;
 }
 
+/**
+ * Passed as an argument when creating a new Proxy().
+ * Handles getting and setting properties on the proxied object. */
 class ProxyHandler {
 	path = [];
 
-	constructor(root, field, value) {
+	constructor(root, value, path=[]) {
+
+		/** @type {Object} The top level object being proxied. */
 		this.root = root;
-		/** @deprecated */
-		this.field = field;
+
+		/** @type {string[]} Path from the root? */
+		this.path = path;
+
+		/** @type {*} the value found when starting at root and following the path? */
 		this.value = value;
 	}
 
+	/**
+	 * Clone this handler and add to the path.
+	 * @param path {string}
+	 * @returns {ProxyHandler} */
 	clone(path) {
-		let result = new ProxyHandler(this.root, this.field, this.value);
-		result.path = [...this.path, path];
-		return result;
+		return new ProxyHandler(this.root, this.value, [...this.path, path]);
 	}
 
 	get(obj, prop, receiver) {
 		let handler = this;
 
-		let result = (obj === receiver && this.field === prop)
+		let result = (obj === receiver)
 			? this.value // top-level value.
 			: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
 
@@ -1097,10 +1107,6 @@ class ProxyHandler {
 		if (Globals$1.currentExprPath) {
 			let rootNg = Globals$1.nodeGroups.get(this.root);
 
-			// Init for field.
-			//rootNg.watchedExprPaths[this.field] = rootNg.watchedExprPaths[this.field] || new Set();
-			//rootNg.watchedExprPaths[this.field].add(Globals.currentExprPath); // Globals.currentExprPath is set in ExprPath.applyExactNodes()
-
 			if (!path)
 				path = JSON.stringify([...this.path, prop]);
 			if (!rootNg.watchedExprPaths[path])
@@ -1121,9 +1127,9 @@ class ProxyHandler {
 	set(obj, prop, val, receiver) {
 
 		// 1. Set the value.
-		if (obj === receiver && this.field === prop)
+		if (obj === receiver)
 			this.value = val; // top-level value.
-		else // avoid infinite recursion.
+		else // Set the value while avoiding infinite recursion.
 			Reflect.set(obj, prop, val, receiver);
 
 		// 2. Add to the list of ExprPaths to re-render.
@@ -1173,7 +1179,7 @@ function watch(root, field, value=unusedArg) {
 	else
 		value = root[field];
 
-	let handler = new ProxyHandler(root, field, value);
+	let handler = new ProxyHandler(root, value);
 	//handler.path.push(field);
 	Object.defineProperty(root, field, {
 		get: () => handler.get(root, field, root),
@@ -1298,7 +1304,6 @@ function renderWatched(root, trackModified=false) {
 class WatchOp {}
 
 class ArraySpliceOp extends WatchOp {
-
 
 	/**
 	 * Represents a splice operation (insertion, deletion, or replacement of elements)

@@ -1,39 +1,7 @@
-import {Solarite, r, watch, renderWatched} from './Solarite.min.js';
-//import {Solarite, r, watch, renderWatched, Globals} from '../../src/solarite/Solarite.js';
+//import {Solarite, r, watch, renderWatched} from './Solarite.min.js';
+import {Solarite, r, watch, renderWatched, Globals} from '../../src/solarite/Solarite.js';
 let debug2 = window.location.search.includes('debug');
 let benchmark = window.location.search.includes('benchmark');
-
-if (debug2) {
-	window.getHtml = (item, includeComments=false) => {
-		if (!item)
-			return item;
-
-		if (item.fragment)
-			item = item.fragment; // Shell
-		if (item instanceof DocumentFragment)
-			item = [...item.childNodes]
-
-		else if (item.getNodes)
-			item = item.getNodes()
-
-		let result;
-		if (Array.isArray(item)) {
-			if (!includeComments)
-				item = item.filter(n => n.nodeType !==8)
-
-			result = item.map(n => n.nodeType === 8 ? `<!--${n.textContent}-->` : n.outerHTML || n.textContent).join('|')
-		}
-		else
-			result = item.outerHTML || item.textContent
-
-		if (!includeComments)
-			result = result.replace(/(<|\x3C)!--(.*?)-->/g, '')
-
-		return result;
-	}
-}
-
-
 
 let idCounter = 1;
 const adjectives = ["pretty", "large", "big", "small", "tall", "short", "long", "handsome", "plain", "quaint", "clean", "elegant", "easy", "angry", "crazy", "helpful", "mushy", "odd", "unsightly", "adorable", "important", "inexpensive", "cheap", "expensive", "fancy"],
@@ -155,6 +123,7 @@ class JSFrameworkBenchmark extends Solarite {
 	// Swap the 2nd and 998th rows
 	swapRows() {
 		if (this.data.length > 998) {
+			debugger;
 			let temp = this.data[1];
 			this.data[1] = this.data[998];
 			this.data[998] = temp;
