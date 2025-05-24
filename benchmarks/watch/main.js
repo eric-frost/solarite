@@ -1,5 +1,5 @@
-//import {Solarite, r, watch, renderWatched} from './Solarite.min.js';
-import {Solarite, r, watch, renderWatched, Globals} from '../../src/solarite/Solarite.js';
+import {Solarite, r, watch, renderWatched} from './Solarite.min.js';
+//import {Solarite, r, watch, renderWatched, Globals} from '../../src/solarite/Solarite.js';
 let debug2 = window.location.search.includes('debug');
 let benchmark = window.location.search.includes('benchmark');
 
@@ -123,7 +123,6 @@ class JSFrameworkBenchmark extends Solarite {
 	// Swap the 2nd and 998th rows
 	swapRows() {
 		if (this.data.length > 998) {
-			debugger;
 			let temp = this.data[1];
 			this.data[1] = this.data[998];
 			this.data[998] = temp;

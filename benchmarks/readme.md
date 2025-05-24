@@ -1,6 +1,9 @@
 These are implementations for krausest's  https://github.com/krausest/js-framework-benchmark.
 
-To use them, either copy them or symbolic link these folders into the frameworks/keyed and frameworks/non-keyed folders.
+To use them, either copy them or symbolic link these folders into the frameworks/keyed and frameworks/non-keyed folders:
+
+From within the keyed folder:
+mklink /J solarite "../../../lib/solarite/benchmarks/watch"
 
 
 ## How to run the js-framework-benchmark tests
@@ -12,7 +15,7 @@ in another command window:
 
 ```
 cd webdriver-ts
-npm run bench non-keyed/solarite-naive keyed/solarite-naive
+npm run bench non-keyed/solarite keyed/solarite
 cd ../webdriver-ts-results
 npm ci
 cd ../webdriver-ts
@@ -29,9 +32,10 @@ npm run bench non-keyed/solarite-naive keyed/solarite-naive keyed/solarite keyed
 ```
 
 ### Run a single benchmark within a test (partialUpdate below - numbers start with 01_)
+This doesn't seem to work.
 ```
 cd webdriver-ts
-npm run bench -- --framework keyed/solarite --benchmark 09_
+npm run bench -- --framework keyed/solarite --benchmark 04_
 cd ../webdriver-ts-results
 npm ci
 cd ../webdriver-ts

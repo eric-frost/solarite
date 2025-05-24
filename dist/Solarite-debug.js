@@ -1155,14 +1155,6 @@ class ProxyHandler {
 		this.value = value;
 	}
 
-	/**
-	 * Clone this handler and add to the path.
-	 * @param path {string}
-	 * @returns {ProxyHandler} */
-	clone(path) {
-		return new ProxyHandler(this.root, this.value, [...this.path, path]);
-	}
-
 	get(obj, prop, receiver) {
 		let handler = this;
 
@@ -1210,7 +1202,7 @@ class ProxyHandler {
 			}
 		}
 
-
+ 
 		// Save the ExprPath that's currently accessing this variable.
 		if (Globals$1.currentExprPath) {
 			let rootNg = Globals$1.nodeGroups.get(this.root);
@@ -1223,8 +1215,8 @@ class ProxyHandler {
 		}
 
 		// Accessing a sub-property
-		if (result && typeof result === 'object')
-			return new Proxy(result, this.clone(prop));
+		if (result && typeof result === 'object') // Clone this handler and append prop to the path.
+			return new Proxy(result, new ProxyHandler(this.root, this.value, [...this.path, prop]));
 
 		return result;
 	}
@@ -1247,7 +1239,7 @@ class ProxyHandler {
 
 			// Update a single NodeGroup created by array.map()
 			// TODO: This doesn't trigger when setting the property of an object in an array.
-			if (Array.isArray(obj) && parseInt(prop) == prop) {
+			if (Array.isArray(obj) && Number.isInteger(+prop)) {
 				let exprsToRender = rootNg.exprsToRender.get(exprPath);
 
 				// If we're not re-rendering the whole thing.
