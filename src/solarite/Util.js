@@ -155,7 +155,6 @@ let Util = {
 			return false;
 
 		return !!Object.getOwnPropertyDescriptor(proto, prop)?.set;
-
 	},
 
 	/**
@@ -184,12 +183,11 @@ let Util = {
 	 * @param val
 	 * @returns {string|number|boolean} */
 	makePrimitive(val) {
-		if (typeof val === 'function') {
+		if (typeof val === 'function')
 			return Util.makePrimitive(val());
-		}
-		if (val instanceof Date)
+		else if (val instanceof Date)
 			return val.toISOString().replace(/T/, ' ');
-		if (Array.isArray(val) || typeof val === 'object')
+		else if (Array.isArray(val) || typeof val === 'object')
 			return ''; // JSON.stringify(val);
 		return val;
 	},

@@ -1,4 +1,4 @@
-import {Solarite, r, watch, renderWatched} from './Solarite.min.js';
+import {Solarite, r, watch, renderWatched, renderUnwatched} from './Solarite.min.js';
 //import {Solarite, r, watch, renderWatched, Globals} from '../../src/solarite/Solarite.js';
 let debug2 = window.location.search.includes('debug');
 let benchmark = window.location.search.includes('benchmark');
@@ -15,10 +15,15 @@ function _random (max) {
 function buildData(count) {
 	let data = new Array(count);
 	for (let i = 0; i < count; i++) {
-		data[i] = {
+		let row = {
 			id: idCounter++,
-			label: `${adjectives[_random(adjectives.length)]} ${colours[_random(colours.length)]} ${nouns[_random(nouns.length)]}`
+			label: `${adjectives[_random(adjectives.length)]} ${colours[_random(colours.length)]} ${nouns[_random(nouns.length)]}`,
+			selected: false,
+			getLabel() { return row.label},
+			getId() { return row.id},
+			getClass() { return row.selected ? 'danger' : ''},
 		}
+		data[i] = row;
 	}
 	return data;
 }
@@ -96,9 +101,12 @@ class JSFrameworkBenchmark extends Solarite {
 
 	// Create 1000 rows
 	run() {
-		this.data = buildData(1000);
-		//renderWatched(this); // Makes swap fail!
-		this.render()
+		//renderUnwatched(() => {
+		//debugger;
+			this.data = buildData(1000); // setting this.data is fast.
+		//	renderWatched(this); // Makes swap fail!
+			this.render()
+		//});
 	}
 
 	// Create 10,000 rows
@@ -146,9 +154,8 @@ class JSFrameworkBenchmark extends Solarite {
 	}
 
 	setSelected(row) {
-		// row.selected = !row.selected;
-		// this.render();
 		row.selected = !row.selected;
+		//this.render();
 		renderWatched(this);
 	}
 
@@ -196,10 +203,10 @@ class JSFrameworkBenchmark extends Solarite {
 			</div>
 			<table class="table table-hover table-striped test-data"><tbody>
 				${this.data.map(row =>
-					r`<tr class="${() => row.selected ? 'danger' : ''}">
-						<td class="col-md-1">${()=>row.id}</td>
+					r`<tr class=${row.getClass}>
+						<td class="col-md-1">${row.getId}</td>
 						<td class="col-md-4">
-							<a onclick=${[this.setSelected, row]}>${()=>row.label}</a></td>
+							<a onclick=${[this.setSelected, row]}>${row.getLabel}</a></td>
 						<td class="col-md-1">
 							<a onclick=${[this.remove, row.id]}>
 								<span class="glyphicon glyphicon-remove" aria-hidden="true"></span></a>

@@ -86,11 +86,12 @@ class ProxyHandler {
 	}
 
 	get(obj, prop, receiver) {
-		let handler = this;
 
 		let result = (obj === receiver)
 			? this.value // top-level value.
 			: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
+		if (!Globals.watch)
+			return result;
 
 		// We override the map() function the first time render() is called.
 		// But it's not re-overridden when we call renderWatched()
@@ -98,6 +99,8 @@ class ProxyHandler {
 		if (Array.isArray(obj)) {
 
 			if (prop === 'map') {
+
+				let handler = this;
 
 				// This outer function is so the ExprPath calls it as a function,
 				// instead of it being evaluated immediately when the Template is created.
@@ -132,7 +135,7 @@ class ProxyHandler {
 			}
 		}
 
- 
+
 		// Save the ExprPath that's currently accessing this variable.
 		if (Globals.currentExprPath) {
 			let rootNg = Globals.nodeGroups.get(this.root);
@@ -161,6 +164,8 @@ class ProxyHandler {
 			this.value = val; // top-level value.
 		else // Set the value while avoiding infinite recursion.
 			Reflect.set(obj, prop, val, receiver);
+		if (!Globals.watch)
+			return true;
 
 		// 2. Add to the list of ExprPaths to re-render.
 		let path = JSON.stringify([...this.path, prop]);
@@ -285,7 +290,7 @@ export function renderWatched(root, trackModified=false) {
 			// So it doesn't use the old value inside the map callback in the get handler above.
 			// TODO: Find a more sensible way to pass newValue.
 			exprPath.watchFunction.newValue = ops.array;
-			exprPath.apply([exprPath.watchFunction]);
+			exprPath.apply([exprPath.watchFunction], true);
 
 			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
 			exprPath.freeNodeGroups();
@@ -331,6 +336,14 @@ export function renderWatched(root, trackModified=false) {
 
 	if (trackModified)
 		return [...modified];
+}
+
+Globals.watch = true;
+
+export function renderUnwatched(callback) {
+	Globals.watch = false;
+	callback();
+	Globals.watch = true;
 }
 
 class WatchOp {}

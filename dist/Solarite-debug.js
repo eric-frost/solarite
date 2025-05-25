@@ -381,7 +381,6 @@ let Util = {
 			return false;
 
 		return !!Object.getOwnPropertyDescriptor(proto, prop)?.set;
-
 	},
 
 	/**
@@ -410,12 +409,11 @@ let Util = {
 	 * @param val
 	 * @returns {string|number|boolean} */
 	makePrimitive(val) {
-		if (typeof val === 'function') {
+		if (typeof val === 'function')
 			return Util.makePrimitive(val());
-		}
-		if (val instanceof Date)
+		else if (val instanceof Date)
 			return val.toISOString().replace(/T/, ' ');
-		if (Array.isArray(val) || typeof val === 'object')
+		else if (Array.isArray(val) || typeof val === 'object')
 			return ''; // JSON.stringify(val);
 		return val;
 	},
@@ -1156,11 +1154,12 @@ class ProxyHandler {
 	}
 
 	get(obj, prop, receiver) {
-		let handler = this;
 
 		let result = (obj === receiver)
 			? this.value // top-level value.
 			: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
+		if (!Globals$1.watch)
+			return result;
 
 		// We override the map() function the first time render() is called.
 		// But it's not re-overridden when we call renderWatched()
@@ -1168,6 +1167,8 @@ class ProxyHandler {
 		if (Array.isArray(obj)) {
 
 			if (prop === 'map') {
+
+				let handler = this;
 
 				// This outer function is so the ExprPath calls it as a function,
 				// instead of it being evaluated immediately when the Template is created.
@@ -1202,7 +1203,7 @@ class ProxyHandler {
 			}
 		}
 
- 
+
 		// Save the ExprPath that's currently accessing this variable.
 		if (Globals$1.currentExprPath) {
 			let rootNg = Globals$1.nodeGroups.get(this.root);
@@ -1231,6 +1232,8 @@ class ProxyHandler {
 			this.value = val; // top-level value.
 		else // Set the value while avoiding infinite recursion.
 			Reflect.set(obj, prop, val, receiver);
+		if (!Globals$1.watch)
+			return true;
 
 		// 2. Add to the list of ExprPaths to re-render.
 		let path = JSON.stringify([...this.path, prop]);
@@ -1355,7 +1358,7 @@ function renderWatched(root, trackModified=false) {
 			// So it doesn't use the old value inside the map callback in the get handler above.
 			// TODO: Find a more sensible way to pass newValue.
 			exprPath.watchFunction.newValue = ops.array;
-			exprPath.apply([exprPath.watchFunction]);
+			exprPath.apply([exprPath.watchFunction], true);
 
 			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
 			exprPath.freeNodeGroups();
@@ -1401,6 +1404,14 @@ function renderWatched(root, trackModified=false) {
 
 	if (trackModified)
 		return [...modified];
+}
+
+Globals$1.watch = true;
+
+function renderUnwatched(callback) {
+	Globals$1.watch = false;
+	callback();
+	Globals$1.watch = true;
 }
 
 class WatchOp {}
@@ -1554,10 +1565,10 @@ class ExprPath {
 	 * setAttribute() once all the pieces are in place.
 	 *
 	 * @param exprs {Expr[]}*/
-	apply(exprs) {
+	apply(exprs, dontFree=false) {
 		switch (this.type) {
 			case 1: // PathType.Content:
-				this.applyNodes(exprs[0]);
+				this.applyNodes(exprs[0], dontFree);
 				break;
 			case 2: // PathType.Multiple:
 				this.applyMultipleAttribs(this.nodeMarker, exprs[0]);
@@ -1581,13 +1592,14 @@ class ExprPath {
 	 * This function is recursive, as the functions it calls also call it.
 	 * @param expr {Expr}
 	 * @return {Node[]} New Nodes created. */
-	applyNodes(expr) {
+	applyNodes(expr, dontFree=false) {
 		let path = this;
 
 		// This can be done at the beginning or the end of this function.
 		// If at the end, we may get rendering done faster.
 		// But when at the beginning, it leaves all the nodes in-use so we can do a renderWatched().
-		path.freeNodeGroups();
+		//if (!dontFree)
+			path.freeNodeGroups();
 
 		/*#IFDEV*/path.verify();/*#ENDIF*/
 
@@ -1995,7 +2007,7 @@ class ExprPath {
 				node.removeEventListener(eventName, existingBound, capture);
 
 			let originalFunc = func;
-			
+
 			// BoundFunc sets the "this" variable to be the current Solarite component.
 			let boundFunc = (event) => {
 				let args = nodeEvent[2];
@@ -2086,12 +2098,15 @@ class ExprPath {
 			let multiple = this.attrValue;
 			if (!multiple) {
 				Globals$1.currentExprPath = this; // Used by watch()
-				if (typeof expr === 'function')
+				if (typeof expr === 'function') {
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
-				expr = Util.makePrimitive(expr);
+					expr = Util.makePrimitive(expr); // skip slower Util.makePrimitive()
+				}
+				else
+					expr = Util.makePrimitive(expr);
 				Globals$1.currentExprPath = null;
 			}
-			if (!multiple && Util.isFalsy(expr)) {
+			if (!multiple && (expr === undefined || expr === false || expr === null)) { // Util.isFalsy() inlined.
 				if (isProp)
 					node[this.attrName] = false;
 				node.removeAttribute(this.attrName);
@@ -2129,7 +2144,9 @@ class ExprPath {
 				// Only update attributes if the value has changed.
 				// This is needed for setting input.value, .checked, option.selected, etc.
 
-				let oldVal = isProp ? node[this.attrName] : node.getAttribute(this.attrName);
+				let oldVal = isProp
+					? node[this.attrName]
+					: node.getAttribute(this.attrName);
 				if (oldVal !== joinedValue) {
 
 					// <textarea value=${expr}></textarea>
@@ -2397,7 +2414,7 @@ class ExprPath {
 	}
 
 	//#IFDEV
-	
+
 	get debug() {
 		return [
 			`parentNode: ${this.nodeBefore.parentNode?.tagName?.toLowerCase()}`,
@@ -2410,7 +2427,7 @@ class ExprPath {
 			}), 1).flat()
 		]
 	}
-	
+
 	get debugNodes() {
 		// Clear nodesCache so that getNodes() manually gets the nodes.
 		let nc = this.nodesCache;
@@ -2419,7 +2436,7 @@ class ExprPath {
 		this.nodesCache = nc;
 		return result;
 	}
-	
+
 	verify() {
 		if (!window.verify)
 			return;
@@ -2450,7 +2467,7 @@ class ExprPath {
 		// Make sure the nodesCache matches the nodes.
 		this.checkNodesCache();
 	}
-	
+
 	checkNodesCache() {
 		return;
 	}
@@ -2461,16 +2478,16 @@ class ExprPath {
 const ExprPathType = {
 	/** Child of a node */
 	Content: 1,
-	
+
 	/** One or more whole attributes */
 	AttribMultiple: 2,
-	
+
 	/** Value of an attribute. */
 	AttribValue: 3,
-	
+
 	/** Value of an attribute being passed to a component. */
 	ComponentAttribValue: 4,
-	
+
 	/** Expressions inside Html comments. */
 	Comment: 5,
 
@@ -4112,4 +4129,4 @@ let Solarite = new Proxy(createSolarite(), {
 let getInputValue = Util.getInputValue;
  // unfinished
 
-export { ArgType, Globals$1 as Globals, Solarite, Template, delve, getArg, getInputValue, r, renderWatched, watch };
+export { ArgType, Globals$1 as Globals, Solarite, Template, delve, getArg, getInputValue, r, renderUnwatched, renderWatched, watch };
