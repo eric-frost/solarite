@@ -97,8 +97,8 @@ class JSFrameworkBenchmark extends Solarite {
 	// Create 1000 rows
 	run() {
 		this.data = buildData(1000);
-		renderWatched(this);
-		//this.render()
+		//renderWatched(this); // Makes swap fail!
+		this.render()
 	}
 
 	// Create 10,000 rows
@@ -111,8 +111,8 @@ class JSFrameworkBenchmark extends Solarite {
 	// Append 1,000 rows
 	add() {
 		this.data.push(...buildData(1000));
-		renderWatched(this);
-		//this.render();
+		//renderWatched(this); // fails!
+		this.render();
 	}
 
 	// Update every 10th row
