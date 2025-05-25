@@ -7,7 +7,6 @@ import Util, {flattenAndIndent, nodeToArrayTree, setIndent} from "./Util.js";
 import delve from "../util/delve.js";
 import Globals from "./Globals.js";
 
-
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
 /**
@@ -62,22 +61,41 @@ export default class NodeGroup {
 	 * @param parentPath {?ExprPath} */
 	constructor(template, parentPath=null) {
 		if (!(this instanceof RootNodeGroup)) {
-			let [fragment, shell] = this.init(template, parentPath);
 
-			this.updatePaths(fragment, shell.paths);
+			// If it's just a text node, skip a bunch of unnecessary steps.
+			if (!template.exprs.length && !template.html[0].includes('<')) {
+				this.parentPath = parentPath;
+				this.rootNg = parentPath?.parentNg?.rootNg || this;
+				let doc = this.rootNg.startNode?.ownerDocument || document;
+				let textNode = doc.createTextNode(template.html[0]);
 
-			// Static web components can sometimes have children created via expressions.
-			// But calling applyExprs() will mess up the shell's path to them.
-			// So we find them first, then call activateStaticComponents() after their children have been created.
-			let staticComponents = this.findStaticComponents(fragment, shell);
 
-			this.activateEmbeds(fragment, shell);
 
-			// Apply exprs
-			this.applyExprs(template.exprs);
 
-			this.activateStaticComponents(staticComponents);
+				this.startNode = this.endNode = textNode;
+			}
 
+			// Create a shell
+			else {
+
+				let [fragment, shell] = this.init(template, parentPath);
+
+				if (template.exprs.length) {
+					this.updatePaths(fragment, shell.paths);
+
+					// Static web components can sometimes have children created via expressions.
+					// But calling applyExprs() will mess up the shell's path to them.
+					// So we find them first, then call activateStaticComponents() after their children have been created.
+					let staticComponents = this.findStaticComponents(fragment, shell);
+
+					this.activateEmbeds(fragment, shell);
+
+					// Apply exprs
+					this.applyExprs(template.exprs);
+
+					this.activateStaticComponents(staticComponents);
+				}
+			}
 		}
 	}
 

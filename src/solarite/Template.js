@@ -103,8 +103,12 @@ export default class Template {
 	}
 
 	getExactKey() {
-		if (!this.exactKey)
-			this.exactKey = getObjectHash(this); // calls this.toJSON().
+		if (!this.exactKey) {
+			if (this.exprs.length)
+				this.exactKey = getObjectHash(this);// calls this.toJSON().
+			else // Don't hash plain html.
+				this.exactKey = this.html[0];
+		}
 		return this.exactKey;
 	}
 

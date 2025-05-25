@@ -14,7 +14,7 @@ import HtmlParser from "./HtmlParser.js";
 export default class Shell {
 
 	/**
-	 * @type {DocumentFragment} DOM parent of the shell nodes. */
+	 * @type {DocumentFragment} DOM parent of the shell's nodes. */
 	fragment;
 
 	/** @type {ExprPath[]} Paths to where expressions should go. */
@@ -49,7 +49,7 @@ export default class Shell {
 			return;
 
 		//#IFDEV
-		this.html = html.join('');
+		this._html = html.join('');
 		//#ENDIF
 
 		// 1.  Add placeholders
@@ -58,15 +58,15 @@ export default class Shell {
 		let template = document.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
 		if (joinedHtml)
 			template.innerHTML = joinedHtml;
-      else // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
-         template.content.append(document.createTextNode(''))
+		else // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
+			template.content.append(document.createTextNode(''))
 		this.fragment = template.content;
 
-		// 3. Find placeholders
+		// 2. Find placeholders
 		let node;
 		let toRemove = [];
 		let placeholdersUsed = 0;
-		const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
+		const walker = document.createTreeWalker(this.fragment, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
 		while (node = walker.nextNode()) {
 
 			// Remove previous after each iteration, so paths will still be calculated correctly.
@@ -184,7 +184,7 @@ export default class Shell {
 
 		// Handle solarite-placeholder's.
 
-		// Rename "is" attributes so the Web Components don't instantiate until we have the values of their PathExpr arguments.
+		// 3. Rename "is" attributes so the Web Components don't instantiate until we have the values of their PathExpr arguments.
 		// that happens in NodeGroup.applyComponentExprs()
 		for (let el of this.fragment.querySelectorAll('[is]'))
 			el.setAttribute('_is', el.getAttribute('is'));

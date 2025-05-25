@@ -2604,7 +2604,7 @@ HtmlParser.Tag = 'Tag';
 class Shell {
 
 	/**
-	 * @type {DocumentFragment} DOM parent of the shell nodes. */
+	 * @type {DocumentFragment} DOM parent of the shell's nodes. */
 	fragment;
 
 	/** @type {ExprPath[]} Paths to where expressions should go. */
@@ -2639,7 +2639,7 @@ class Shell {
 			return;
 
 		//#IFDEV
-		this.html = html.join('');
+		this._html = html.join('');
 		//#ENDIF
 
 		// 1.  Add placeholders
@@ -2648,15 +2648,15 @@ class Shell {
 		let template = document.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
 		if (joinedHtml)
 			template.innerHTML = joinedHtml;
-      else // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
-         template.content.append(document.createTextNode(''));
+		else // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
+			template.content.append(document.createTextNode(''));
 		this.fragment = template.content;
 
-		// 3. Find placeholders
+		// 2. Find placeholders
 		let node;
 		let toRemove = [];
 		let placeholdersUsed = 0;
-		const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
+		const walker = document.createTreeWalker(this.fragment, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
 		while (node = walker.nextNode()) {
 
 			// Remove previous after each iteration, so paths will still be calculated correctly.
@@ -2774,7 +2774,7 @@ class Shell {
 
 		// Handle solarite-placeholder's.
 
-		// Rename "is" attributes so the Web Components don't instantiate until we have the values of their PathExpr arguments.
+		// 3. Rename "is" attributes so the Web Components don't instantiate until we have the values of their PathExpr arguments.
 		// that happens in NodeGroup.applyComponentExprs()
 		for (let el of this.fragment.querySelectorAll('[is]'))
 			el.setAttribute('_is', el.getAttribute('is'));
@@ -2974,22 +2974,41 @@ class NodeGroup {
 	 * @param parentPath {?ExprPath} */
 	constructor(template, parentPath=null) {
 		if (!(this instanceof RootNodeGroup)) {
-			let [fragment, shell] = this.init(template, parentPath);
 
-			this.updatePaths(fragment, shell.paths);
+			// If it's just a text node, skip a bunch of unnecessary steps.
+			if (!template.exprs.length && !template.html[0].includes('<')) {
+				this.parentPath = parentPath;
+				this.rootNg = parentPath?.parentNg?.rootNg || this;
+				let doc = this.rootNg.startNode?.ownerDocument || document;
+				let textNode = doc.createTextNode(template.html[0]);
 
-			// Static web components can sometimes have children created via expressions.
-			// But calling applyExprs() will mess up the shell's path to them.
-			// So we find them first, then call activateStaticComponents() after their children have been created.
-			let staticComponents = this.findStaticComponents(fragment, shell);
 
-			this.activateEmbeds(fragment, shell);
 
-			// Apply exprs
-			this.applyExprs(template.exprs);
 
-			this.activateStaticComponents(staticComponents);
+				this.startNode = this.endNode = textNode;
+			}
 
+			// Create a shell
+			else {
+
+				let [fragment, shell] = this.init(template, parentPath);
+
+				if (template.exprs.length) {
+					this.updatePaths(fragment, shell.paths);
+
+					// Static web components can sometimes have children created via expressions.
+					// But calling applyExprs() will mess up the shell's path to them.
+					// So we find them first, then call activateStaticComponents() after their children have been created.
+					let staticComponents = this.findStaticComponents(fragment, shell);
+
+					this.activateEmbeds(fragment, shell);
+
+					// Apply exprs
+					this.applyExprs(template.exprs);
+
+					this.activateStaticComponents(staticComponents);
+				}
+			}
 		}
 	}
 
@@ -3697,8 +3716,12 @@ class Template {
 	}
 
 	getExactKey() {
-		if (!this.exactKey)
-			this.exactKey = getObjectHash(this); // calls this.toJSON().
+		if (!this.exactKey) {
+			if (this.exprs.length)
+				this.exactKey = getObjectHash(this);// calls this.toJSON().
+			else // Don't hash plain html.
+				this.exactKey = this.html[0];
+		}
 		return this.exactKey;
 	}
 
