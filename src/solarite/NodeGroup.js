@@ -64,7 +64,7 @@ export default class NodeGroup {
 
 			let [fragment, shell] = this.init(template, parentPath);
 
-			if (fragment && template.exprs.length) {
+			if (fragment) {
 				this.updatePaths(fragment, shell.paths);
 
 				// Static web components can sometimes have children created via expressions.
@@ -79,6 +79,8 @@ export default class NodeGroup {
 
 				this.activateStaticComponents(staticComponents);
 			}
+			else
+				this.activateEmbeds(fragment, shell);
 		}
 	}
 

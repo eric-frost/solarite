@@ -2642,10 +2642,10 @@ class Shell {
 		this._html = html.join('');
 		//#ENDIF
 
-		if (html.length === 1 && !html[0].match(/[<&]/)) {
-			this.fragment = document.createTextNode(html[0]);
-			return;
-		}
+		// if (html.length === 1 && !html[0].match(/[<&]/)) {
+		// 	this.fragment = document.createTextNode(html[0]);
+		// 	return;
+		// }
 
 
 		// 1.  Add placeholders
@@ -2983,7 +2983,7 @@ class NodeGroup {
 
 			let [fragment, shell] = this.init(template, parentPath);
 
-			if (fragment && template.exprs.length) {
+			if (fragment) {
 				this.updatePaths(fragment, shell.paths);
 
 				// Static web components can sometimes have children created via expressions.
@@ -2998,6 +2998,8 @@ class NodeGroup {
 
 				this.activateStaticComponents(staticComponents);
 			}
+			else
+				this.activateEmbeds(fragment, shell);
 		}
 	}
 
