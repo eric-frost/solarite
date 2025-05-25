@@ -657,7 +657,7 @@ export default class ExprPath {
 				Globals.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
-					expr = Util.makePrimitive(expr); // skip slower Util.makePrimitive()
+					expr = Util.makePrimitive(expr);
 				}
 				else
 					expr = Util.makePrimitive(expr);

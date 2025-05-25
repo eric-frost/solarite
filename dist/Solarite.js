@@ -1021,9 +1021,10 @@ let unusedArg = Symbol('unusedArg');
  * @param callback {function}
  * @returns {*[]} */
 function map(array, callback) {
-	let result = [];
-	for (let i=0; i<array.length; i++)
-		result.push(callback(array[i], i, array));
+	let length = array.length;
+	const result = new Array(length);
+	for (let i = 0; i < length; i++)
+		result[i] = callback(array[i], i, array);
 	return result;
 }
 
@@ -1977,7 +1978,7 @@ class ExprPath {
 				Globals$1.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
-					expr = Util.makePrimitive(expr); // skip slower Util.makePrimitive()
+					expr = Util.makePrimitive(expr);
 				}
 				else
 					expr = Util.makePrimitive(expr);

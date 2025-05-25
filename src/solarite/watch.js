@@ -61,9 +61,10 @@ let unusedArg = Symbol('unusedArg');
  * @param callback {function}
  * @returns {*[]} */
 function map(array, callback) {
-	let result = [];
-	for (let i=0; i<array.length; i++)
-		result.push(callback(array[i], i, array));
+	let length = array.length;
+	const result = new Array(length);
+	for (let i = 0; i < length; i++)
+		result[i] = callback(array[i], i, array);
 	return result;
 }
 

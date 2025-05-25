@@ -203,14 +203,10 @@ class JSFrameworkBenchmark extends Solarite {
 			</div>
 			<table class="table table-hover table-striped test-data"><tbody>
 				${this.data.map(row =>
-					r`<tr class=${row.getClass}>
-						<td class="col-md-1">${row.getId}</td>
-						<td class="col-md-4">
-							<a onclick=${[this.setSelected, row]}>${row.getLabel}</a></td>
-						<td class="col-md-1">
-							<a onclick=${[this.remove, row.id]}>
-								<span class="glyphicon glyphicon-remove" aria-hidden="true"></span></a>
-						</td>
+					r`<tr class="${() => row.selected ? 'danger' : ''}">
+						<td class="col-md-1">${() => row.id}</td>
+						<td class="col-md-4"><a onclick=${[this.setSelected, row]}>${() => row.label}</a></td>
+						<td class="col-md-1"><a onclick=${[this.remove, row.id]}><span class="glyphicon glyphicon-remove" aria-hidden="true"></span></a></td>
 						<td class="col-md-6"/>
 					</tr>`
 				)}
