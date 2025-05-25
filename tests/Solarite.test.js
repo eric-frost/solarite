@@ -289,7 +289,7 @@ Testimony.test('Solarite.basic.empty2', () => {
 Testimony.test('Solarite.basic.text', () => {
 	class A extends Solarite {
 		render() {
-			r(this)`Here's Solarite &lt;Component&gt;` // apostophe, <>, and and unicode.
+			r(this)`Here's Solarite &lt;Component&gt;` // apostophe, <>.
 		}
 	}
 	customElements.define('r-15', A);

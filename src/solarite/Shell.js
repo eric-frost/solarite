@@ -14,7 +14,7 @@ import HtmlParser from "./HtmlParser.js";
 export default class Shell {
 
 	/**
-	 * @type {DocumentFragment} DOM parent of the shell's nodes. */
+	 * @type {DocumentFragment|Text} DOM parent of the shell's nodes. */
 	fragment;
 
 	/** @type {ExprPath[]} Paths to where expressions should go. */
@@ -51,6 +51,12 @@ export default class Shell {
 		//#IFDEV
 		this._html = html.join('');
 		//#ENDIF
+
+		if (html.length === 1 && !html[0].match(/[<&]/)) {
+			this.fragment = document.createTextNode(html[0]);
+			return;
+		}
+
 
 		// 1.  Add placeholders
 		let joinedHtml = Shell.addPlaceholders(html);

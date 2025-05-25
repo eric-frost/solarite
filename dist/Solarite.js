@@ -2416,7 +2416,7 @@ HtmlParser.Tag = 'Tag';
 class Shell {
 
 	/**
-	 * @type {DocumentFragment} DOM parent of the shell's nodes. */
+	 * @type {DocumentFragment|Text} DOM parent of the shell's nodes. */
 	fragment;
 
 	/** @type {ExprPath[]} Paths to where expressions should go. */
@@ -2451,6 +2451,12 @@ class Shell {
 			return;
 
 		
+
+		if (html.length === 1 && !html[0].match(/[<&]/)) {
+			this.fragment = document.createTextNode(html[0]);
+			return;
+		}
+
 
 		// 1.  Add placeholders
 		let joinedHtml = Shell.addPlaceholders(html);
@@ -2777,39 +2783,22 @@ class NodeGroup {
 	constructor(template, parentPath=null) {
 		if (!(this instanceof RootNodeGroup)) {
 
-			// If it's just a text node, skip a bunch of unnecessary steps.
-			if (!template.exprs.length && !template.html[0].includes('<')) {
-				this.parentPath = parentPath;
-				this.rootNg = parentPath?.parentNg?.rootNg || this;
-				let doc = this.rootNg.startNode?.ownerDocument || document;
-				let textNode = doc.createTextNode(template.html[0]);
+			let [fragment, shell] = this.init(template, parentPath);
 
+			if (fragment && template.exprs.length) {
+				this.updatePaths(fragment, shell.paths);
 
+				// Static web components can sometimes have children created via expressions.
+				// But calling applyExprs() will mess up the shell's path to them.
+				// So we find them first, then call activateStaticComponents() after their children have been created.
+				let staticComponents = this.findStaticComponents(fragment, shell);
 
+				this.activateEmbeds(fragment, shell);
 
-				this.startNode = this.endNode = textNode;
-			}
+				// Apply exprs
+				this.applyExprs(template.exprs);
 
-			// Create a shell
-			else {
-
-				let [fragment, shell] = this.init(template, parentPath);
-
-				if (template.exprs.length) {
-					this.updatePaths(fragment, shell.paths);
-
-					// Static web components can sometimes have children created via expressions.
-					// But calling applyExprs() will mess up the shell's path to them.
-					// So we find them first, then call activateStaticComponents() after their children have been created.
-					let staticComponents = this.findStaticComponents(fragment, shell);
-
-					this.activateEmbeds(fragment, shell);
-
-					// Apply exprs
-					this.applyExprs(template.exprs);
-
-					this.activateStaticComponents(staticComponents);
-				}
+				this.activateStaticComponents(staticComponents);
 			}
 		}
 	}
@@ -2838,14 +2827,30 @@ class NodeGroup {
 		template.nodeGroup = this;
 
 		// Get a cached version of the parsed and instantiated html, and ExprPaths.
-		let shell = Shell.get(template.html);
-		let fragment = shell.fragment.cloneNode(true);
 
-		let childNodes = fragment.childNodes;
-		this.startNode = childNodes[0];
-		this.endNode = childNodes[childNodes.length - 1];
+		// If it's just a text node, skip a bunch of unnecessary steps.
+		// if (!(this instanceof RootNodeGroup) && !template.exprs.length && !template.html[0].includes('<')) {
+		// 	let doc = this.rootNg.startNode?.ownerDocument || document;
+		// 	let textNode = doc.createTextNode(template.html[0]);
+		//
+		// 	this.startNode = this.endNode = textNode;
+		// 	return [];
+		// }
+		// else {
 
-		return [fragment, shell];
+			let shell = Shell.get(template.html);
+			let fragment = shell.fragment.cloneNode(true);
+
+			if (fragment instanceof DocumentFragment) {
+				let childNodes = fragment.childNodes;
+				this.startNode = childNodes[0];
+				this.endNode = childNodes[childNodes.length - 1];
+			}
+			else {
+				this.startNode = this.endNode = fragment;
+			}
+			return [fragment, shell];
+		//}
 	}
 
 	/**
@@ -2965,7 +2970,7 @@ class NodeGroup {
 
 		Globals$1.componentArgsHash.set(el, newHash);
 	}
-	
+
 	/**
 	 * We swap the placeholder element for the real element so we can pass its dynamic attributes
 	 * to its constructor.
@@ -2979,7 +2984,7 @@ class NodeGroup {
 	createNewComponent(el, isPreHtmlElement=undefined, props=undefined) {
 		if (isPreHtmlElement === undefined)
 			isPreHtmlElement = !el.hasAttribute('_is');
-		
+
 		let tagName = (isPreHtmlElement
 			? el.tagName.slice(0, -21) // Remove -SOLARITE-PLACEHOLDER
 			: el.getAttribute('is')).toLowerCase();
@@ -2993,7 +2998,7 @@ class NodeGroup {
 		let args = {};
 		for (let name in props || {})
 			args[Util.dashesToCamel(name)] = props[name];
-		
+
 		// Pass other attribs to constructor, since otherwise they're not yet set on the element,
 		// and the constructor would otherwise have no way to see them.
 		if (el.attributes.length) {
@@ -3019,8 +3024,8 @@ class NodeGroup {
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
 		if (id)
 			delve(this.getRootNode(), id.split(/\./g), newEl);
-		
-		
+
+
 		// Update paths to use replaced element.
 		for (let path of this.paths) {
 			if (path.nodeMarker === el)
@@ -3032,8 +3037,8 @@ class NodeGroup {
 			this.startNode = newEl;
 		if (this.endNode === el)
 			this.endNode = newEl;
-		
-		
+
+
 		// applyComponentExprs() is called because we're rendering.
 		// So we want to render the sub-component also.
 		if (newEl.renderFirstTime)
@@ -3056,7 +3061,7 @@ class NodeGroup {
 			else if (['number', 'bigint', 'string'].includes(typeof val))
 				newEl.setAttribute(name, val);
 		}
-		
+
 		return newEl;
 	}
 
@@ -3236,90 +3241,102 @@ class RootNodeGroup extends NodeGroup {
 		this.rootNg = this;
 		let [fragment, shell] = this.init(template);
 
-		// If adding NodeGroup to an element.
-		let offset = 0;
-		let root = fragment; // TODO: Rename so it's not confused with this.root.
-		if (el) {
-			Globals$1.nodeGroups.set(el, this);
+		if (fragment instanceof Text) {
 
-			// Save slot children
-			let slotChildren;
-			if (el.childNodes.length) {
-				slotChildren = document.createDocumentFragment();
-				slotChildren.append(...el.childNodes);
+			if (el) {
+				this.startNode = el;
+				this.endNode = el;
+				if (fragment.nodeValue.length)
+					el.append(fragment);
+				this.root = el;
 			}
-
-			this.root = el;
-
-			// If el should replace the root node of the fragment.
-			if (isReplaceEl(fragment, el)) {
-				el.append(...fragment.children[0].childNodes);
-
-				// Copy attributes
-				for (let attrib of fragment.children[0].attributes)
-					if (!el.hasAttribute(attrib.name))
-						el.setAttribute(attrib.name, attrib.value);
-
-				// Go one level deeper into all of shell's paths.
-				offset = 1;
-			}
-			else {
-				let isEmpty = fragment.childNodes.length === 1 && fragment.childNodes[0].nodeType === 3 && fragment.childNodes[0].textContent === '';
-				if (!isEmpty)
-					el.append(...fragment.childNodes);
-			}
-
-			// Setup children
-			if (slotChildren) {
-
-				// Named slots
-				for (let slot of el.querySelectorAll('slot[name]')) {
-					let name = slot.getAttribute('name');
-					if (name) {
-						let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
-						slot.append(...slotChildren2);
-					}
-				}
-
-				// Unnamed slots
-				let unamedSlot = el.querySelector('slot:not([name])');
-				if (unamedSlot)
-					unamedSlot.append(slotChildren);
-
-				// No slots
-				else
-					el.append(slotChildren);
-			}
-
-			root = el;
-
-			this.startNode = el;
-			this.endNode = el;
+			Globals$1.nodeGroups.set(this.root, this);
 		}
 		else {
-			let singleEl = getSingleEl(fragment);
-			this.root = singleEl || fragment; // We return the whole fragment when calling r() with a collection of nodes.
 
-			Globals$1.nodeGroups.set(this.root, this);
-			if (singleEl) {
-				root = singleEl;
-				offset = 1;
+			// If adding NodeGroup to an element.
+			let offset = 0;
+			let root = fragment; // TODO: Rename so it's not confused with this.root.
+			if (el) {
+				Globals$1.nodeGroups.set(el, this);
+
+				// Save slot children
+				let slotChildren;
+				if (el.childNodes.length) {
+					slotChildren = document.createDocumentFragment();
+					slotChildren.append(...el.childNodes);
+				}
+
+				this.root = el;
+
+				// If el should replace the root node of the fragment.
+				if (isReplaceEl(fragment, el)) {
+					el.append(...fragment.children[0].childNodes);
+
+					// Copy attributes
+					for (let attrib of fragment.children[0].attributes)
+						if (!el.hasAttribute(attrib.name))
+							el.setAttribute(attrib.name, attrib.value);
+
+					// Go one level deeper into all of shell's paths.
+					offset = 1;
+				} else {
+					let isEmpty = fragment.childNodes.length === 1 && fragment.childNodes[0].nodeType === 3 && fragment.childNodes[0].textContent === '';
+					if (!isEmpty)
+						el.append(...fragment.childNodes);
+				}
+
+				// Setup children
+				if (slotChildren) {
+
+					// Named slots
+					for (let slot of el.querySelectorAll('slot[name]')) {
+						let name = slot.getAttribute('name');
+						if (name) {
+							let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
+							slot.append(...slotChildren2);
+						}
+					}
+
+					// Unnamed slots
+					let unamedSlot = el.querySelector('slot:not([name])');
+					if (unamedSlot)
+						unamedSlot.append(slotChildren);
+
+					// No slots
+					else
+						el.append(slotChildren);
+				}
+
+				root = el;
+
+				this.startNode = el;
+				this.endNode = el;
+			} else {
+				let singleEl = getSingleEl(fragment);
+				this.root = singleEl || fragment; // We return the whole fragment when calling r() with a collection of nodes.
+
+				Globals$1.nodeGroups.set(this.root, this);
+				if (singleEl) {
+					root = singleEl;
+					offset = 1;
+				}
 			}
+
+			this.updatePaths(root, shell.paths, offset);
+
+			// Static web components can sometimes have children created via expressions.
+			// But calling applyExprs() will mess up the shell's path to them.
+			// So we find them first, then call activateStaticComponents() after their children have been created.
+			let staticComponents = this.findStaticComponents(root, shell, offset);
+
+			this.activateEmbeds(root, shell, offset);
+
+			// Apply exprs
+			this.applyExprs(template.exprs);
+
+			this.activateStaticComponents(staticComponents);
 		}
-
-		this.updatePaths(root, shell.paths, offset);
-
-		// Static web components can sometimes have children created via expressions.
-		// But calling applyExprs() will mess up the shell's path to them.
-		// So we find them first, then call activateStaticComponents() after their children have been created.
-		let staticComponents = this.findStaticComponents(root, shell, offset);
-
-		this.activateEmbeds(root, shell, offset);
-
-		// Apply exprs
-		this.applyExprs(template.exprs);
-
-		this.activateStaticComponents(staticComponents);
 	}
 
 	clearRenderWatched() {
@@ -3345,8 +3362,8 @@ function getSingleEl(fragment) {
  * @param el {HTMLElement}
  * @returns {boolean} */
 function isReplaceEl(fragment, el) {
-	return el.tagName.includes('-')
-		&& fragment.children.length===1
+	return fragment.children.length===1
+		&& el.tagName.includes('-')
 		&& fragment.children[0].tagName.replace('-SOLARITE-PLACEHOLDER', '') === el.tagName;
 }
 
