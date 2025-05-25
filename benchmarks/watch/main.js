@@ -97,19 +97,22 @@ class JSFrameworkBenchmark extends Solarite {
 	// Create 1000 rows
 	run() {
 		this.data = buildData(1000);
-		let modifications = this.render()
+		renderWatched(this);
+		//this.render()
 	}
 
 	// Create 10,000 rows
 	runLots() {
 		this.data = buildData(10_000);
-		let modifications = this.render()
+		renderWatched(this);
+		//this.render()
 	}
 
 	// Append 1,000 rows
 	add() {
 		this.data.push(...buildData(1000));
-		let modifications = this.render();
+		renderWatched(this);
+		//this.render();
 	}
 
 	// Update every 10th row
@@ -126,13 +129,14 @@ class JSFrameworkBenchmark extends Solarite {
 			let temp = this.data[1];
 			this.data[1] = this.data[998];
 			this.data[998] = temp;
-			let modifications = renderWatched(this);
+			renderWatched(this);
 		}
 	}
 
 	clear() {
 		this.data = [];
-		this.render()
+		renderWatched(this);
+		//this.render()
 	}
 
 	remove(id) {
@@ -143,7 +147,7 @@ class JSFrameworkBenchmark extends Solarite {
 
 	setSelected(row) {
 		// row.selected = !row.selected;
-		// let modifications = this.render();
+		// this.render();
 		row.selected = !row.selected;
 		renderWatched(this);
 	}

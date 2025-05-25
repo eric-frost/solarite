@@ -2642,10 +2642,10 @@ class Shell {
 		this._html = html.join('');
 		//#ENDIF
 
-		// if (html.length === 1 && !html[0].match(/[<&]/)) {
-		// 	this.fragment = document.createTextNode(html[0]);
-		// 	return;
-		// }
+		if (html.length === 1 && !html[0].match(/[<&]/)) {
+			this.fragment = document.createTextNode(html[0]);
+			return;
+		}
 
 
 		// 1.  Add placeholders
