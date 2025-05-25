@@ -56,19 +56,6 @@ import {assert} from "../util/Errors.js";
 let unusedArg = Symbol('unusedArg');
 
 /**
- * Custom map function that triggers the get() Proxy.
- * @param array {Array}
- * @param callback {function}
- * @returns {*[]} */
-function map(array, callback) {
-	let length = array.length;
-	const result = new Array(length);
-	for (let i = 0; i < length; i++)
-		result[i] = callback(array[i], i, array);
-	return result;
-}
-
-/**
  * Passed as an argument when creating a new Proxy().
  * Handles getting and setting properties on the proxied object. */
 class ProxyHandler {
@@ -125,11 +112,11 @@ class ProxyHandler {
 						Globals.currentExprPath.mapCallback = callback;
 						// If new Proxy fails b/c newObj isn't an object, make sure the expression is a function.
 						// TODO: Find a way to warn about this automatically.
-						return map(new Proxy(newObj, handler), callback);
+						return Array.prototype.map.call(new Proxy(newObj, handler), callback);
 					}
 			}
 
-			else if (['push', 'pop', 'splice'].includes(prop)) {
+			else if (prop === 'push' || prop==='pop' || prop === 'splice') {
 				let rootNg = Globals.nodeGroups.get(this.root);
 				path = JSON.stringify(this.path);
 				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[path])[prop];
@@ -155,7 +142,6 @@ class ProxyHandler {
 		return result;
 	}
 
-
 	// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
 	// TODO: This won't update a component's expressions.
 	set(obj, prop, val, receiver) {
@@ -171,6 +157,7 @@ class ProxyHandler {
 		// 2. Add to the list of ExprPaths to re-render.
 		let path = JSON.stringify([...this.path, prop]);
 		let rootNg = Globals.nodeGroups.get(this.root);
+
 		for (let exprPath of rootNg.watchedExprPaths[path] || []) {
 
 			// Update a single NodeGroup created by array.map()
