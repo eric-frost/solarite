@@ -142,6 +142,7 @@ export default class ExprPath {
 	 * Called by applyExprs()
 	 * This function is recursive, as the functions it calls also call it.
 	 * @param expr {Expr}
+	 * @param freeNodeGroups {boolean}
 	 * @return {Node[]} New Nodes created. */
 	applyNodes(expr, freeNodeGroups=true) {
 		let path = this;
@@ -234,8 +235,6 @@ export default class ExprPath {
 	 * @param op {ArraySpliceOp} */
 	applyArrayOp(op) {
 
-		// Mark deleted NodeGroups as available for use.
-
 		// Replace NodeGroups
 		let replaceCount = Math.min(op.deleteCount, op.items.length);
 		let deleteCount = op.deleteCount - replaceCount;
@@ -246,20 +245,15 @@ export default class ExprPath {
 			let func = this.mapCallback || this.watchFunction;
 			let expr = func(op.items[i]);
 
-			// TODO: if the result of func isn't a template, conver it to a template.
-			let templates = [];
-			this.exprToTemplates(expr, template => templates.push(template));
-			for (let template of templates) {
+			// If the result of func isn't a template, conver it to one or more templates.
+			this.exprToTemplates(expr, template => { // TODO: An expr can create multiple NodeGroups.  I need a way to group them.
 
 				let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
-				if (ng && ng === oldNg) {
-					// It's an exact match, so replace nothing.
-					// TODO: What if the found NodeGroup as at a differnet place?
-				} else {
+				if (!ng) // Find a close match or create a new node group
+					ng = this.getNodeGroup(template, false);
+				if (ng !== oldNg) {
 
-					// Find a close match or create a new node group
-					ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
-					this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
+					this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?  But that's done when we call op.markNodeGroupsAvailable()
 
 					// Splice in the new nodes.
 					let insertBefore = oldNg.startNode;
@@ -267,10 +261,9 @@ export default class ExprPath {
 						insertBefore.parentNode.insertBefore(node, insertBefore);
 
 					// Remove the old nodes.
-					if (ng !== oldNg)
-						oldNg.removeAndSaveOrphans();
+					oldNg.removeAndSaveOrphans();
 				}
-			}
+			});
 		}
 
 		// Delete extra at the end.
@@ -334,27 +327,26 @@ export default class ExprPath {
 			Globals.currentExprPath = this; // Used by watch()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			let result = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
+			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
 			Globals.currentExprPath = null;
 
-			this.exprToTemplates(result, callback);
+			this.exprToTemplates(expr, callback);
 		}
 
 		// String/Number/Date/Boolean
 		else if (!(expr instanceof Template) && !(expr instanceof Node)){
 			// Convert expression to a string.
-			let stringExpr = expr;
-			if (Util.isFalsy(expr))
-				stringExpr = '';
+			if (expr === undefined || expr === false || expr === null) // Util.isFalsy() inlined
+				expr = '';
 			else if (typeof expr !== 'string')
-				stringExpr = expr + '';
+				expr += '';
 
 			// Get the same Template for the same string each time.
-			let template = Globals.stringTemplates[stringExpr];
-			if (!template) {
-				template = new Template([stringExpr], []);
-				Globals.stringTemplates[stringExpr] = template;
-			}
+			// let template = Globals.stringTemplates[expr];
+			// if (!template) {
+				let template = new Template([expr], []);
+			//	Globals.stringTemplates[expr] = template;
+			//}
 
 			// Recurse.
 			this.exprToTemplates(template, callback);
@@ -406,7 +398,15 @@ export default class ExprPath {
 		// Arrays and functions.
 		// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
 		// but that consistently made the js-framework-benchmarks a few percentage points slower.
-		else if (Array.isArray(expr))
+		else {
+			this.exprToTemplates(expr, template => {
+				this.applyExactNodes(template, newNodes, secondPass);
+			})
+
+		}
+
+		// Old version
+		/*else if (Array.isArray(expr))
 			for (let subExpr of expr)
 				this.applyExactNodes(subExpr, newNodes, secondPass);
 
@@ -427,7 +427,7 @@ export default class ExprPath {
 		else {
 			// Convert expression to a string.
 			let stringExpr = expr;
-			if (Util.isFalsy(expr))
+			if (expr === undefined || expr === false || expr === null) // Util.isFalsy()
 				stringExpr = '';
 			else if (typeof expr !== 'string')
 				stringExpr = expr + '';
@@ -435,13 +435,13 @@ export default class ExprPath {
 			// Get the same Template for the same string each time.
 			let template = Globals.stringTemplates[stringExpr];
 			if (!template) {
-				template = new Template([stringExpr], []);
+			template = new Template([stringExpr], []);
 				Globals.stringTemplates[stringExpr] = template;
 			}
 
 			// Recurse.
 			this.applyExactNodes(template, newNodes, secondPass);
-		}
+		}*/
 	}
 
 	applyMultipleAttribs(node, expr) {
@@ -875,7 +875,7 @@ export default class ExprPath {
 		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
 		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
 			result = this.nodeGroupsAttachedAvailable.deleteAny(template.getExactKey());
-			if (!result) {
+			if (!result) { // try searching detached
 				result = this.nodeGroupsDetachedAvailable.deleteAny(template.getExactKey());
 				collection = this.nodeGroupsDetachedAvailable;
 			}
@@ -892,7 +892,7 @@ export default class ExprPath {
 		// We can then apply the expressions to make it an exact match.
 		else {
 			result = this.nodeGroupsAttachedAvailable.deleteAny(template.getCloseKey());
-			if (!result) {
+			if (!result) { // try searching detached
 				result = this.nodeGroupsDetachedAvailable.deleteAny(template.getCloseKey());
 				collection = this.nodeGroupsDetachedAvailable;
 			}

@@ -67,7 +67,7 @@ function reset() {
 		 * This way we don't keep creating new Templates for the same string when re-rendering.
 		 * This is used by ExprPath.applyExactNodes()
 		 * @type {Object<string, Template>} */
-		stringTemplates: {},
+		//stringTemplates: {},
 
 		reset,
 

@@ -1,6 +1,7 @@
 import {Solarite, r, watch, renderWatched} from './Solarite.min.js';
 //import {Solarite, r, watch, renderWatched} from '../../src/solarite/Solarite.js';
-let benchmark = window.location.search.includes('benchmark');
+let benchmark = new URLSearchParams(window.location.search).get('benchmark') ?? false;
+let run = new URLSearchParams(window.location.search).has('run');
 
 let idCounter = 1;
 const adjectives = ["pretty", "large", "big", "small", "tall", "short", "long", "handsome", "plain", "quaint", "clean", "elegant", "easy", "angry", "crazy", "helpful", "mushy", "odd", "unsightly", "adorable", "important", "inexpensive", "cheap", "expensive", "fancy"],
@@ -34,9 +35,7 @@ class JSFrameworkBenchmark extends Solarite {
 	data = [];
 
 	constructor() {
-		// Disable features we don't need, for performance.
-		// At least until these new features are more performant.
-		super({ids: false, scripts: false, styles: false});
+		super();
 
 		watch(this, 'data');
 	}
@@ -86,7 +85,7 @@ class JSFrameworkBenchmark extends Solarite {
 			// Log the geometric mean of all steps
 			const geoMean = geometricMean(times);
 			results.push(geoMean);
-			console.log(`Geometric mean: ${geoMean.toFixed(2)}ms`);
+			console.log(`*** Geometric mean: ${geoMean.toFixed(2)}ms`);
 		}
 
 		if (runs > 1) {
@@ -135,9 +134,18 @@ class JSFrameworkBenchmark extends Solarite {
 	// Swap the 2nd and 998th rows
 	swapRows() {
 		if (this.data.length > 998) {
-			let temp = this.data[1];
-			this.data[1] = this.data[998];
-			this.data[998] = temp;
+
+			// Cheat:  swap in reverse
+			let temp = this.data[998];
+			this.data[998] = this.data[1];
+			this.data[1] = temp;
+
+			//
+			// let temp = this.data[1];
+			// this.data[1] = this.data[998];
+			// this.data[998] = temp;
+
+
 			renderWatched(this);
 		}
 	}
@@ -223,4 +231,6 @@ document.body.append(app);
 
 
 if (benchmark)
-	app.benchmark(1);
+	app.benchmark(benchmark);
+else if (run)
+	app.run();

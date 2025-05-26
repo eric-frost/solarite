@@ -257,14 +257,14 @@ class WatchedArray {
 	}
 
 	internalSplice(func, args, spliceArgs) {
-		// Mark all expressions affected by the push() to be re-rendered
+		// Mark all expressions affected by the array function to be re-rendered
 		for (let exprPath of this.exprPaths) {
 			let exprsToRender = this.rootNg.exprsToRender.get(exprPath);
 			if (!(exprsToRender instanceof WholeArrayOp)) // If we're not already going to re-render the whole array.
 				Util.mapArrayAdd(this.rootNg.exprsToRender, exprPath, new ArraySpliceOp(...spliceArgs));
 		}
 
-		// Call original push() function
+		// Call original array function
 		return Array.prototype[func].call(this.array, ...args);
 	}
 }
@@ -333,6 +333,12 @@ export function renderWatched(root, trackModified=false) {
 
 		// Selectively update NodeGroups created by array.map()
 		else { // Array Slice Op
+
+			// This fails when swapping two elements, because swapping messes up the indices of subsequent array ops.
+			// Unless we reverse the order that we assign the swapped elements.
+			//for (let op of ops)
+			//	op.markNodeGroupsAvailable(exprPath);
+
 			for (let op of ops) {
 				if (trackModified && op.deleteCount)
 					modified.add(
@@ -343,9 +349,10 @@ export function renderWatched(root, trackModified=false) {
 				exprPath.applyArrayOp(op);
 
 				if (trackModified && op.items.length) {
-					let nodes = exprPath.nodeGroups.slice(op.index, op.index + op.items.length).map(ng => ng.getNodes()).flat();
-					for (let node of nodes)
-						modified.add(node);
+					exprPath.nodeGroups.slice(op.index, op.index + op.items.length)
+						.map(ng => ng.getNodes())
+						.flat()
+						.map(n => modified.add(n));
 				}
 			}
 		}

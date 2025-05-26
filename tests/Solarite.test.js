@@ -3917,6 +3917,16 @@ Testimony.test('Solarite.watch.loopSwap', `swap array elements`, () => {
 	let a = new W52();
 	document.body.append(a);
 
+	let apple = a.childNodes[1];
+	let banana = a.childNodes[2];
+	let cherry = a.childNodes[3];
+	let dragonfruit = a.childNodes[4];
+
+	let appleText = apple.childNodes[1];
+	let bananaText = banana.childNodes[1];
+	let cherryText = cherry.childNodes[1];
+	let dragonfruitText = dragonfruit.childNodes[1];
+
 	// Swap
 	let temp = a.items[1];
 	a.items[1] = a.items[3];
@@ -3924,7 +3934,13 @@ Testimony.test('Solarite.watch.loopSwap', `swap array elements`, () => {
 
 	let modified = renderWatched(a, true);
 	assert.eq(getHtml(a), `<w-52><p>apple</p><p>dragonfruit</p><p>cherry</p><p>banana</p><p>elderberry</p></w-52>`);
-	assert.eq([...modified].map(el => getHtml(el)), [`<p>dragonfruit</p>`, `<p>banana</p>`]);
+	assert.eq([...modified], [banana, dragonfruit]);
+	
+	// Make sure we moved instead of recreating the text nodes.
+	// assert.eq(apple.childNodes[1], appleText);
+	// assert.eq(banana.childNodes[1], dragonfruitText);
+	// assert.eq(cherry.childNodes[1], cherryText);
+	// assert.eq(dragonfruit.childNodes[1], bananaText);
 
 	// Swap back
 	temp = a.items[1];
@@ -3935,7 +3951,7 @@ Testimony.test('Solarite.watch.loopSwap', `swap array elements`, () => {
 	assert.eq(getHtml(a), `<w-52><p>apple</p><p>banana</p><p>cherry</p><p>dragonfruit</p><p>elderberry</p></w-52>`);
 	assert.eq([...modified].map(el => getHtml(el)), [`<p>banana</p>`, `<p>dragonfruit</p>`]);
 
-	//a.remove();
+	a.remove();
 });
 
 Testimony.test('Solarite.watch.loopObjAssign', `update array elements and their properties`, () => {
