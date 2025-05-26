@@ -284,10 +284,21 @@ export function renderWatched(root, trackModified=false) {
 		modified = new Set();
 
 	// Mark NodeGroups of expressionpaths as freed.
-	// for (let [exprPath, ops] of rootNg.exprsToRender) {
-	//
-	//
-	// }
+	for (let [exprPath, ops] of rootNg.exprsToRender) {
+
+
+		if (ops instanceof WholeArrayOp) {
+
+
+		}
+		else if (ops instanceof ValueOp) {
+
+
+		}
+		else { // Array Slice Op
+
+		}
+	}
 
 	for (let [exprPath, ops] of rootNg.exprsToRender) {
 
@@ -296,6 +307,7 @@ export function renderWatched(root, trackModified=false) {
 
 			// So it doesn't use the old value inside the map callback in the get handler above.
 			// TODO: Find a more sensible way to pass newValue.
+			ops.markNodeGroupsAvailable(exprPath);
 			exprPath.watchFunction.newValue = ops.array;
 			exprPath.apply([exprPath.watchFunction], false);
 
@@ -311,7 +323,7 @@ export function renderWatched(root, trackModified=false) {
 			// TODO: I need to only free node groups of watched expressions.
 
 			exprPath.watchFunction.newValue = ops.value;
-			exprPath.apply([exprPath.watchFunction], false); // False to not free nodeGroups, since we do above.
+			exprPath.apply([exprPath.watchFunction], false); // False to not free nodeGroups.
 
 			//exprPath.freeNodeGroups();
 
@@ -320,17 +332,18 @@ export function renderWatched(root, trackModified=false) {
 		}
 
 		// Selectively update NodeGroups created by array.map()
-		else {
-			for (let arrayOp of ops) {
-				if (trackModified && arrayOp.deleteCount)
+		else { // Array Slice Op
+			for (let op of ops) {
+				if (trackModified && op.deleteCount)
 					modified.add(
-						...exprPath.nodeGroups.slice(arrayOp.index, arrayOp.index + arrayOp.deleteCount).map(ng => ng.getNodes()).flat()
+						...exprPath.nodeGroups.slice(op.index, op.index + op.deleteCount).map(ng => ng.getNodes()).flat()
 					);
 
-				exprPath.applyArrayOp(arrayOp);
+				op.markNodeGroupsAvailable(exprPath);
+				exprPath.applyArrayOp(op);
 
-				if (trackModified && arrayOp.items.length) {
-					let nodes = exprPath.nodeGroups.slice(arrayOp.index, arrayOp.index + arrayOp.items.length).map(ng => ng.getNodes()).flat();
+				if (trackModified && op.items.length) {
+					let nodes = exprPath.nodeGroups.slice(op.index, op.index + op.items.length).map(ng => ng.getNodes()).flat();
 					for (let node of nodes)
 						modified.add(node);
 				}
@@ -374,12 +387,26 @@ export class ArraySpliceOp extends WatchOp {
 		this.deleteCount = deleteCount;
 		this.items = items;
 	}
+
+	markNodeGroupsAvailable(exprPath) {
+		if (this.deleteCount > 0) {
+			let count = this.index+this.deleteCount;
+			for (let i=this.index; i<count; i++) {
+				let oldNg = exprPath.nodeGroups[i];
+				exprPath.nodeGroupsAttachedAvailable.add(oldNg.exactKey, oldNg);
+				exprPath.nodeGroupsAttachedAvailable.add(oldNg.closeKey, oldNg);
+			}
+		}
+	}
 }
 
 class ValueOp extends WatchOp {
 	constructor(value) {
 		super();
 		this.value = value;
+	}
+
+	markNodeGroupsAvailable(exprPath) {
 	}
 }
 
@@ -391,5 +418,13 @@ class WholeArrayOp extends WatchOp {
 		//#ENDIF
 		this.array = array;
 		this.value = value;
+	}
+
+	markNodeGroupsAvailable(exprPath) {
+		for (let i=0; i<this.array.length; i++) {
+			let oldNg = exprPath.nodeGroups[i];
+			exprPath.nodeGroupsAttachedAvailable.add(oldNg.exactKey, oldNg);
+			exprPath.nodeGroupsAttachedAvailable.add(oldNg.closeKey, oldNg);
+		}
 	}
 }

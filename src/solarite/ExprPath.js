@@ -234,14 +234,7 @@ export default class ExprPath {
 	 * @param op {ArraySpliceOp} */
 	applyArrayOp(op) {
 
-		// Mark as available for use.
-		if (op.deleteCount > 0) {
-			for (let i=op.index; i<op.index+op.deleteCount; i++) {
-				let oldNg = this.nodeGroups[i];
-				this.nodeGroupsAttached.add(oldNg.exactKey, oldNg);
-				this.nodeGroupsAttached.add(oldNg.closeKey, oldNg);
-			}
-		}
+		// Mark deleted NodeGroups as available for use.
 
 		// Replace NodeGroups
 		let replaceCount = Math.min(op.deleteCount, op.items.length);
@@ -877,14 +870,14 @@ export default class ExprPath {
 	getNodeGroup(template, exact=true) {
 
 		let result;
-		let collection = this.nodeGroupsAttached;
+		let collection = this.nodeGroupsAttachedAvailable;
 
 		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
 		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
-			result = this.nodeGroupsAttached.deleteAny(template.getExactKey());
+			result = this.nodeGroupsAttachedAvailable.deleteAny(template.getExactKey());
 			if (!result) {
-				result = this.nodeGroupsDetached.deleteAny(template.getExactKey());
-				collection = this.nodeGroupsDetached;
+				result = this.nodeGroupsDetachedAvailable.deleteAny(template.getExactKey());
+				collection = this.nodeGroupsDetachedAvailable;
 			}
 
 			if (result) // also delete the matching close key.
@@ -898,10 +891,10 @@ export default class ExprPath {
 		// This is a match that has matching html, but different expressions applied.
 		// We can then apply the expressions to make it an exact match.
 		else {
-			result = this.nodeGroupsAttached.deleteAny(template.getCloseKey());
+			result = this.nodeGroupsAttachedAvailable.deleteAny(template.getCloseKey());
 			if (!result) {
-				result = this.nodeGroupsDetached.deleteAny(template.getCloseKey());
-				collection = this.nodeGroupsDetached;
+				result = this.nodeGroupsDetachedAvailable.deleteAny(template.getCloseKey());
+				collection = this.nodeGroupsDetachedAvailable;
 			}
 
 			if (result) {
@@ -944,12 +937,12 @@ export default class ExprPath {
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
 	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
-	nodeGroupsAttached = new MultiValueMap();
+	nodeGroupsAttachedAvailable = new MultiValueMap();
 
 	/**
-	 * Nodes that were not added to the web component during the last render().
+	 * Nodes that were not added to the web component during the last render(), and available to be used again.
 	 * @type {MultiValueMap} */
-	nodeGroupsDetached = new MultiValueMap();
+	nodeGroupsDetachedAvailable = new MultiValueMap();
 
 
 	/**
@@ -958,8 +951,8 @@ export default class ExprPath {
 	 * TODO: this could run as needed in getNodeGroup? */
 	freeNodeGroups() {
 		// Add nodes that weren't used during render() to nodeGroupsDetached
-		let previouslyAttached = this.nodeGroupsAttached.data;
-		let detached = this.nodeGroupsDetached.data;
+		let previouslyAttached = this.nodeGroupsAttachedAvailable.data;
+		let detached = this.nodeGroupsDetachedAvailable.data;
 		for (let key in previouslyAttached) {
 			let set = detached[key];
 			if (!set)
@@ -970,8 +963,8 @@ export default class ExprPath {
 		}
 
 		// Add nodes that were used during render() to nodeGroupsRendered.
-		this.nodeGroupsAttached = new MultiValueMap();
-		let nga = this.nodeGroupsAttached;
+		this.nodeGroupsAttachedAvailable = new MultiValueMap();
+		let nga = this.nodeGroupsAttachedAvailable;
 		for (let ng of this.nodeGroupsRendered) {
 			nga.add(ng.exactKey, ng);
 			nga.add(ng.closeKey, ng);

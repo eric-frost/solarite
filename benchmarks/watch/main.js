@@ -1,6 +1,5 @@
-import {Solarite, r, watch, renderWatched, renderUnwatched} from './Solarite.min.js';
-//import {Solarite, r, watch, renderWatched, Globals} from '../../src/solarite/Solarite.js';
-let debug2 = window.location.search.includes('debug');
+import {Solarite, r, watch, renderWatched} from './Solarite.min.js';
+//import {Solarite, r, watch, renderWatched} from '../../src/solarite/Solarite.js';
 let benchmark = window.location.search.includes('benchmark');
 
 let idCounter = 1;
@@ -19,9 +18,9 @@ function buildData(count) {
 			id: idCounter++,
 			label: `${adjectives[_random(adjectives.length)]} ${colours[_random(colours.length)]} ${nouns[_random(nouns.length)]}`,
 			selected: false,
-			getLabel() { return row.label},
-			getId() { return row.id},
-			getClass() { return row.selected ? 'danger' : ''},
+			// getLabel() { return row.label},
+			// getId() { return row.id},
+			// getClass() { return row.selected ? 'danger' : ''},
 		}
 		data[i] = row;
 	}
@@ -42,7 +41,7 @@ class JSFrameworkBenchmark extends Solarite {
 		watch(this, 'data');
 	}
 
-	// quickly mimic what the js-framework-benchmark does.
+	// Mimic what the js-framework-benchmark does.
 	// This is useful to see if performance changes after code modifications.
 	async benchmark(runs=1) {
 		let times = [];
@@ -61,7 +60,7 @@ class JSFrameworkBenchmark extends Solarite {
 			const time = performance.now() - start;
 			times.push(time);
 			console.log(`${name}: ${time.toFixed(1)}ms.`);
-			await sleep(20); // wait for render
+			await sleep(20); // wait for render before starting next test.
 		}
 
 		// Time the creation of rows
