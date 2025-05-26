@@ -136,14 +136,14 @@ class JSFrameworkBenchmark extends Solarite {
 		if (this.data.length > 998) {
 
 			// Cheat:  swap in reverse
-			let temp = this.data[998];
-			this.data[998] = this.data[1];
-			this.data[1] = temp;
+			// let temp = this.data[998];
+			// this.data[998] = this.data[1];
+			// this.data[1] = temp;
 
 			//
-			// let temp = this.data[1];
-			// this.data[1] = this.data[998];
-			// this.data[998] = temp;
+			let temp = this.data[1];
+			this.data[1] = this.data[998];
+			this.data[998] = temp;
 
 
 			renderWatched(this);

@@ -60,6 +60,7 @@ let unusedArg = Symbol('unusedArg');
  * Handles getting and setting properties on the proxied object. */
 class ProxyHandler {
 	path = [];
+	proxies = {}
 
 	constructor(root, value, path='') {
 
@@ -74,6 +75,20 @@ class ProxyHandler {
 
 		/** @type {RootNodeGroup} Cached, to save time on lookups. */
 		this.rootNodeGroup = null;
+	}
+
+	/**
+	 * Get a cached proxy of a sub-property.
+	 * @param prop {string}
+	 * @param val {*}
+	 * @returns {Proxy} */
+	getProxy(prop, val) {
+		let result = this.proxies[prop];
+		if (!result) {
+			let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+			result = this.proxies[prop] = new Proxy(val, new ProxyHandler(this.root, this.value, path));
+		}
+		return result;
 	}
 
 	get(obj, prop, receiver) {
@@ -134,20 +149,15 @@ class ProxyHandler {
 				this.rootNodeGroup = Globals.nodeGroups.get(this.root);
 			let watchedExprPaths = this.rootNodeGroup.watchedExprPaths;
 			path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
-			if (!watchedExprPaths[path]) {
+			if (!watchedExprPaths[path])
 				watchedExprPaths[path] = new Set([currExpr]);
-			}
-			else {
+			else
 				watchedExprPaths[path].add(currExpr);
-			}
 		}
 
 		// Accessing a sub-property
-		if (result && typeof result === 'object') {// Clone this handler and append prop to the path.
-			if (!path)
-				path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
-			return new Proxy(result, new ProxyHandler(this.root, this.value, path));
-		}
+		if (result && typeof result === 'object')
+			return this.getProxy(prop, result);  // Clone this handler and append prop to the path.
 
 		return result;
 	}
@@ -163,6 +173,10 @@ class ProxyHandler {
 			Reflect.set(obj, prop, val, receiver);
 		if (!Globals.watch)
 			return true;
+
+		// Value changed, so reset cached proxy.
+		if (val && typeof val === 'object')
+			delete this.proxies[prop];
 
 		// 2. Add to the list of ExprPaths to re-render.
 		let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
@@ -284,21 +298,11 @@ export function renderWatched(root, trackModified=false) {
 		modified = new Set();
 
 	// Mark NodeGroups of expressionpaths as freed.
-	for (let [exprPath, ops] of rootNg.exprsToRender) {
-
-
-		if (ops instanceof WholeArrayOp) {
-
-
-		}
-		else if (ops instanceof ValueOp) {
-
-
-		}
-		else { // Array Slice Op
-
-		}
-	}
+	// for (let [exprPath, ops] of rootNg.exprsToRender) {
+	// 	if (ops instanceof WholeArrayOp) {}
+	// 	else if (ops instanceof ValueOp) {}
+	// 	else {} // Array Slice Op
+	// }
 
 	for (let [exprPath, ops] of rootNg.exprsToRender) {
 
