@@ -249,11 +249,15 @@ export default class ExprPath {
 			this.exprToTemplates(expr, template => { // TODO: An expr can create multiple NodeGroups.  I need a way to group them.
 
 				let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
-				if (!ng) // Find a close match or create a new node group
-					ng = this.getNodeGroup(template, false);
-				if (ng !== oldNg) {
+				if (ng && ng === oldNg) {
+					// It's an exact match, so replace nothing.
+					// TODO: What if the found NodeGroup as at a differnet place?
+				} else {
 
-					this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?  But that's done when we call op.markNodeGroupsAvailable()
+					// Find a close match or create a new node group
+					if (!ng)
+						ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
+					this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
 
 					// Splice in the new nodes.
 					let insertBefore = oldNg.startNode;
@@ -261,7 +265,8 @@ export default class ExprPath {
 						insertBefore.parentNode.insertBefore(node, insertBefore);
 
 					// Remove the old nodes.
-					oldNg.removeAndSaveOrphans();
+					if (ng !== oldNg)
+						oldNg.removeAndSaveOrphans();
 				}
 			});
 		}
@@ -880,7 +885,7 @@ export default class ExprPath {
 		// Find a close match.
 		// This is a match that has matching html, but different expressions applied.
 		// We can then apply the expressions to make it an exact match.
-		else {
+		else if (template.exprs.length) {
 			result = this.nodeGroupsAttachedAvailable.deleteAny(template.getCloseKey());
 			if (!result) { // try searching detached
 				result = this.nodeGroupsDetachedAvailable.deleteAny(template.getCloseKey());
