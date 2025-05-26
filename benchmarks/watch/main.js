@@ -1,7 +1,12 @@
 import {Solarite, r, watch, renderWatched} from './Solarite.min.js';
 //import {Solarite, r, watch, renderWatched} from '../../src/solarite/Solarite.js';
-let benchmark = new URLSearchParams(window.location.search).get('benchmark') ?? false;
-let run = new URLSearchParams(window.location.search).has('run');
+
+let urlParams = new URLSearchParams(window.location.search);
+let benchmark = urlParams.get('benchmark');
+if (benchmark === '')
+	benchmark = 1;
+let run = urlParams.has('run');
+
 
 let idCounter = 1;
 const adjectives = ["pretty", "large", "big", "small", "tall", "short", "long", "handsome", "plain", "quaint", "clean", "elegant", "easy", "angry", "crazy", "helpful", "mushy", "odd", "unsightly", "adorable", "important", "inexpensive", "cheap", "expensive", "fancy"],
@@ -167,6 +172,21 @@ class JSFrameworkBenchmark extends Solarite {
 		//this.render();
 		renderWatched(this);
 	}
+
+	// If we used this, we'd be penalized: https://github.com/krausest/js-framework-benchmark/issues/801
+	/*
+	onClick(event) {
+		if (event.target.tagName === 'A') {
+			let tbody = this.querySelector('tbody');
+			let index = Array.prototype.indexOf.call(tbody.children, event.target.parentNode.parentNode);
+			this.setSelected(this.data[index]);
+		}
+		else if (event.target.tagName ==='SPAN') {
+			let tbody = this.querySelector('tbody');
+			let index = Array.prototype.indexOf.call(tbody.children, event.target.parentNode.parentNode);
+			this.remove(this.data[index].id);
+		}
+	}*/
 
 	render() {
 		// Disable features we don't need, for performance.

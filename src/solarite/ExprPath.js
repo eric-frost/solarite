@@ -497,28 +497,18 @@ export default class ExprPath {
 
 		let eventName = this.attrName.slice(2); // remove "on-" prefix.
 		let func;
+		let args = [];
 
 		// Convert array to function.
-		let args = [];
-		if (Array.isArray(expr)) {
-
-			// oninput=${[this.doSomething, 'meow']}
-			if (typeof expr[0] === 'function') {
-				func = expr[0];
-				args = expr.slice(1);
-			}
-
-			// oninput=${[this, 'value']}
-			else {
-				throw new Error('is this ever used?');
-				func = setValue;
-				args = [expr[0], expr.slice(1), node]
-				node.value = delve(expr[0], expr.slice(1));
-				// root.render(); // TODO: This causes infinite recursion.
-			}
+		// oninput=${[this.doSomething, 'meow']}
+		if (Array.isArray(expr) && typeof expr[0] === 'function') {
+			func = expr[0];
+			args = expr.slice(1);
 		}
-		else
+		else if (typeof expr === 'function')
 			func = expr;
+		else
+			throw new Error(`Invalid event binding: <${node.tagName.toLowerCase()} ${this.attrName}=\${${JSON.stringify(expr)}}>`);
 
 		this.bindEvent(node, root, eventName, eventName, func, args);
 	}
@@ -544,7 +534,7 @@ export default class ExprPath {
 			nodeEvents[key] = nodeEvent = new Array(3);
 
 		if (typeof func !== 'function')
-			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}]}> because it's not a function.`);
+			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
 
 		// If function has changed, remove and rebind the event.
 		if (nodeEvent[0] !== func) {

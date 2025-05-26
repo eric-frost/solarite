@@ -1127,14 +1127,101 @@ const udomdiff = (parentNode, a, b, before) => {
 /**
  *
  *
- * Trying to be able to automatically watch primitive values.
  * TODO:
- * 1.  Have get() return Proxies for nested updates.
- * 2.  Override .map() for loops to capture changes.
- * 3.  Rename so we have watch.add() and watch.render() ?
+ * 1. Have option to automatically render?
+ * 2. Rename so we have watch.add() and watch.render() ?
+ *
+ * Limitations:
+ * 1.  If we use one path to get a property during render, but a different path to set it, it will not be marked for rendering.
+ *
  */
 
 let unusedArg = Symbol('unusedArg');
+
+
+
+/**
+ * Render the ExprPaths that were added to rootNg.exprsToRender.
+ * @param root {HTMLElement}
+ * @param trackModified {boolean}
+ * @returns {Node[]} Modified elements.  */
+function renderWatched(root, trackModified=false) {
+	let rootNg = Globals$1.nodeGroups.get(root);
+	let modified;
+
+	if (trackModified)
+		modified = new Set();
+
+	// Mark NodeGroups of expressionpaths as freed.
+	// for (let [exprPath, ops] of rootNg.exprsToRender) {
+	// 	if (ops instanceof WholeArrayOp) {}
+	// 	else if (ops instanceof ValueOp) {}
+	// 	else {} // Array Slice Op
+	// }
+
+	for (let [exprPath, ops] of rootNg.exprsToRender) {
+
+		// Reapply the whole expression.
+		if (ops instanceof WholeArrayOp) {
+
+			// So it doesn't use the old value inside the map callback in the get handler above.
+			// TODO: Find a more sensible way to pass newValue.
+			ops.markNodeGroupsAvailable(exprPath);
+			exprPath.watchFunction.newValue = ops.array;
+			exprPath.apply([exprPath.watchFunction], false);
+
+			//exprPath.freeNodeGroups();
+
+			if (trackModified)
+				modified.add(...exprPath.getNodes());
+		}
+
+		// Update a single value in a map callback
+		else if (ops instanceof ValueOp) {
+
+			// TODO: I need to only free node groups of watched expressions.
+
+			exprPath.watchFunction.newValue = ops.value;
+			exprPath.apply([exprPath.watchFunction], false); // False to not free nodeGroups.
+
+			//exprPath.freeNodeGroups();
+
+			if (trackModified)
+				modified.add(...exprPath.getNodes());
+		}
+
+		// Selectively update NodeGroups created by array.map()
+		else { // Array Slice Op
+
+			// This fails when swapping two elements, because swapping messes up the indices of subsequent array ops.
+			// Unless we reverse the order that we assign the swapped elements.
+			//for (let op of ops)
+			//	op.markNodeGroupsAvailable(exprPath);
+
+			for (let op of ops) {
+				if (trackModified && op.deleteCount)
+					modified.add(
+						...exprPath.nodeGroups.slice(op.index, op.index + op.deleteCount).map(ng => ng.getNodes()).flat()
+					);
+
+				op.markNodeGroupsAvailable(exprPath);
+				exprPath.applyArrayOp(op);
+
+				if (trackModified && op.items.length) {
+					exprPath.nodeGroups.slice(op.index, op.index + op.items.length)
+						.map(ng => ng.getNodes())
+						.flat()
+						.map(n => modified.add(n));
+				}
+			}
+		}
+	}
+
+	rootNg.exprsToRender = new Map(); // clear
+
+	if (trackModified)
+		return [...modified];
+}
 
 /**
  * Passed as an argument when creating a new Proxy().
@@ -1364,98 +1451,12 @@ class WatchedArray {
 	}
 }
 
-
-
-/**
- * Render the ExprPaths that were added to rootNg.exprsToRender.
- * @param root {HTMLElement}
- * @param trackModified {boolean}
- * @returns {Node[]} Modified elements.  */
-function renderWatched(root, trackModified=false) {
-	let rootNg = Globals$1.nodeGroups.get(root);
-	let modified;
-
-	if (trackModified)
-		modified = new Set();
-
-	// Mark NodeGroups of expressionpaths as freed.
-	// for (let [exprPath, ops] of rootNg.exprsToRender) {
-	// 	if (ops instanceof WholeArrayOp) {}
-	// 	else if (ops instanceof ValueOp) {}
-	// 	else {} // Array Slice Op
-	// }
-
-	for (let [exprPath, ops] of rootNg.exprsToRender) {
-
-		// Reapply the whole expression.
-		if (ops instanceof WholeArrayOp) {
-
-			// So it doesn't use the old value inside the map callback in the get handler above.
-			// TODO: Find a more sensible way to pass newValue.
-			ops.markNodeGroupsAvailable(exprPath);
-			exprPath.watchFunction.newValue = ops.array;
-			exprPath.apply([exprPath.watchFunction], false);
-
-			//exprPath.freeNodeGroups();
-
-			if (trackModified)
-				modified.add(...exprPath.getNodes());
-		}
-
-		// Update a single value in a map callback
-		else if (ops instanceof ValueOp) {
-
-			// TODO: I need to only free node groups of watched expressions.
-
-			exprPath.watchFunction.newValue = ops.value;
-			exprPath.apply([exprPath.watchFunction], false); // False to not free nodeGroups.
-
-			//exprPath.freeNodeGroups();
-
-			if (trackModified)
-				modified.add(...exprPath.getNodes());
-		}
-
-		// Selectively update NodeGroups created by array.map()
-		else { // Array Slice Op
-
-			// This fails when swapping two elements, because swapping messes up the indices of subsequent array ops.
-			// Unless we reverse the order that we assign the swapped elements.
-			//for (let op of ops)
-			//	op.markNodeGroupsAvailable(exprPath);
-
-			for (let op of ops) {
-				if (trackModified && op.deleteCount)
-					modified.add(
-						...exprPath.nodeGroups.slice(op.index, op.index + op.deleteCount).map(ng => ng.getNodes()).flat()
-					);
-
-				op.markNodeGroupsAvailable(exprPath);
-				exprPath.applyArrayOp(op);
-
-				if (trackModified && op.items.length) {
-					exprPath.nodeGroups.slice(op.index, op.index + op.items.length)
-						.map(ng => ng.getNodes())
-						.flat()
-						.map(n => modified.add(n));
-				}
-			}
-		}
-	}
-
-	rootNg.exprsToRender = new Map(); // clear
-
-	if (trackModified)
-		return [...modified];
-}
-
 Globals$1.watch = true;
-
-function renderUnwatched(callback) {
-	Globals$1.watch = false;
-	callback();
-	Globals$1.watch = true;
-}
+// export function renderUnwatched(callback) {
+// 	Globals.watch = false;
+// 	callback();
+// 	Globals.watch = true;
+// }
 
 class WatchOp {}
 
@@ -2011,25 +2012,18 @@ class ExprPath {
 
 		let eventName = this.attrName.slice(2); // remove "on-" prefix.
 		let func;
+		let args = [];
 
 		// Convert array to function.
-		let args = [];
-		if (Array.isArray(expr)) {
-
-			// oninput=${[this.doSomething, 'meow']}
-			if (typeof expr[0] === 'function') {
-				func = expr[0];
-				args = expr.slice(1);
-			}
-
-			// oninput=${[this, 'value']}
-			else {
-				throw new Error('is this ever used?');
-				// root.render(); // TODO: This causes infinite recursion.
-			}
+		// oninput=${[this.doSomething, 'meow']}
+		if (Array.isArray(expr) && typeof expr[0] === 'function') {
+			func = expr[0];
+			args = expr.slice(1);
 		}
-		else
+		else if (typeof expr === 'function')
 			func = expr;
+		else
+			throw new Error(`Invalid event binding: <${node.tagName.toLowerCase()} ${this.attrName}=\${${JSON.stringify(expr)}}>`);
 
 		this.bindEvent(node, root, eventName, eventName, func, args);
 	}
@@ -2055,7 +2049,7 @@ class ExprPath {
 			nodeEvents[key] = nodeEvent = new Array(3);
 
 		if (typeof func !== 'function')
-			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}]}> because it's not a function.`);
+			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
 
 		// If function has changed, remove and rebind the event.
 		if (nodeEvent[0] !== func) {
@@ -4193,4 +4187,4 @@ let Solarite = new Proxy(createSolarite(), {
 let getInputValue = Util.getInputValue;
  // unfinished
 
-export { ArgType, Globals$1 as Globals, Solarite, Template, delve, getArg, getInputValue, r, renderUnwatched, renderWatched, watch };
+export { ArgType, Globals$1 as Globals, Solarite, Template, delve, getArg, getInputValue, r, renderWatched, watch };
