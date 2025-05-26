@@ -752,9 +752,8 @@ class MultiValueMap {
 	/**
 	 * Remove one value from a key, and return it.
 	 * @param key {string}
-	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
 	 * @returns {*|undefined} The deleted item. */
-	deleteAny(key, val=undefined) {
+	deleteAny(key) {
 		let data = this.data;
 		let result;
 		let set = data[key];
@@ -1130,7 +1129,6 @@ class ProxyHandler {
 	// TODO: This won't update a component's expressions.
 	set(obj, prop, val, receiver) {
 
-
 		// 1. Set the value.
 		if (obj === receiver)
 			this.value = val; // top-level value.
@@ -1256,6 +1254,12 @@ function renderWatched(root, trackModified=false) {
 	if (trackModified)
 		modified = new Set();
 
+	// Mark NodeGroups of expressionpaths as freed.
+	// for (let [exprPath, ops] of rootNg.exprsToRender) {
+	//
+	//
+	// }
+
 	for (let [exprPath, ops] of rootNg.exprsToRender) {
 
 		// Reapply the whole expression.
@@ -1264,10 +1268,9 @@ function renderWatched(root, trackModified=false) {
 			// So it doesn't use the old value inside the map callback in the get handler above.
 			// TODO: Find a more sensible way to pass newValue.
 			exprPath.watchFunction.newValue = ops.array;
-			exprPath.apply([exprPath.watchFunction], true);
+			exprPath.apply([exprPath.watchFunction], false);
 
-			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
-			exprPath.freeNodeGroups();
+			//exprPath.freeNodeGroups();
 
 			if (trackModified)
 				modified.add(...exprPath.getNodes());
@@ -1275,13 +1278,13 @@ function renderWatched(root, trackModified=false) {
 
 		// Update a single value in a map callback
 		else if (ops instanceof ValueOp) {
-			//exprPath = exprPath.mapCallback || exprPath;
+
+			// TODO: I need to only free node groups of watched expressions.
 
 			exprPath.watchFunction.newValue = ops.value;
-			exprPath.apply([exprPath.watchFunction]);
+			exprPath.apply([exprPath.watchFunction], false); // False to not free nodeGroups, since we do above.
 
-			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
-			exprPath.freeNodeGroups();
+			//exprPath.freeNodeGroups();
 
 			if (trackModified)
 				modified.add(...exprPath.getNodes());
@@ -1463,10 +1466,10 @@ class ExprPath {
 	 * setAttribute() once all the pieces are in place.
 	 *
 	 * @param exprs {Expr[]}*/
-	apply(exprs, dontFree=false) {
+	apply(exprs, freeNodeGroups=true) {
 		switch (this.type) {
 			case 1: // PathType.Content:
-				this.applyNodes(exprs[0], dontFree);
+				this.applyNodes(exprs[0], freeNodeGroups);
 				break;
 			case 2: // PathType.Multiple:
 				this.applyMultipleAttribs(this.nodeMarker, exprs[0]);
@@ -1490,13 +1493,13 @@ class ExprPath {
 	 * This function is recursive, as the functions it calls also call it.
 	 * @param expr {Expr}
 	 * @return {Node[]} New Nodes created. */
-	applyNodes(expr, dontFree=false) {
+	applyNodes(expr, freeNodeGroups=true) {
 		let path = this;
 
 		// This can be done at the beginning or the end of this function.
 		// If at the end, we may get rendering done faster.
 		// But when at the beginning, it leaves all the nodes in-use so we can do a renderWatched().
-		//if (!dontFree)
+		if (freeNodeGroups)
 			path.freeNodeGroups();
 
 		
@@ -2190,9 +2193,6 @@ class ExprPath {
 	 *         or createa  new NodeGroup from the template.
 	 * @return {NodeGroup} */
 	getNodeGroup(template, exact=true) {
-		// This makes the benchmark 10x slower!
-		//if (exact && this.nodeGroupsFree.isEmpty())
-		//	return null;
 
 		let result;
 		let collection = this.nodeGroupsAttached;
@@ -2258,14 +2258,14 @@ class ExprPath {
 	nodeGroupsRendered = [];
 
 	/**
-	 * Nodes that were used during the last render() but are available to be used again.
+	 * Nodes that were added to the web component during the last render(), but are available to be used again.
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
 	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
 	nodeGroupsAttached = new MultiValueMap();
 
 	/**
-	 * Nodes that were not used during the last render().
+	 * Nodes that were not added to the web component during the last render().
 	 * @type {MultiValueMap} */
 	nodeGroupsDetached = new MultiValueMap();
 
@@ -2275,8 +2275,6 @@ class ExprPath {
 	 * Called at the beginning of applyNodes() so it can have NodeGroups to use.
 	 * TODO: this could run as needed in getNodeGroup? */
 	freeNodeGroups() {
-		// old:
-
 		// Add nodes that weren't used during render() to nodeGroupsDetached
 		let previouslyAttached = this.nodeGroupsAttached.data;
 		let detached = this.nodeGroupsDetached.data;

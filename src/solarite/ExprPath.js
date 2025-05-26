@@ -116,10 +116,10 @@ export default class ExprPath {
 	 * setAttribute() once all the pieces are in place.
 	 *
 	 * @param exprs {Expr[]}*/
-	apply(exprs, dontFree=false) {
+	apply(exprs, freeNodeGroups=true) {
 		switch (this.type) {
 			case 1: // PathType.Content:
-				this.applyNodes(exprs[0], dontFree);
+				this.applyNodes(exprs[0], freeNodeGroups);
 				break;
 			case 2: // PathType.Multiple:
 				this.applyMultipleAttribs(this.nodeMarker, exprs[0]);
@@ -143,13 +143,13 @@ export default class ExprPath {
 	 * This function is recursive, as the functions it calls also call it.
 	 * @param expr {Expr}
 	 * @return {Node[]} New Nodes created. */
-	applyNodes(expr, dontFree=false) {
+	applyNodes(expr, freeNodeGroups=true) {
 		let path = this;
 
 		// This can be done at the beginning or the end of this function.
 		// If at the end, we may get rendering done faster.
 		// But when at the beginning, it leaves all the nodes in-use so we can do a renderWatched().
-		//if (!dontFree)
+		if (freeNodeGroups)
 			path.freeNodeGroups();
 
 		/*#IFDEV*/path.verify();/*#ENDIF*/
@@ -875,9 +875,6 @@ export default class ExprPath {
 	 *         or createa  new NodeGroup from the template.
 	 * @return {NodeGroup} */
 	getNodeGroup(template, exact=true) {
-		// This makes the benchmark 10x slower!
-		//if (exact && this.nodeGroupsFree.isEmpty())
-		//	return null;
 
 		let result;
 		let collection = this.nodeGroupsAttached;
@@ -943,14 +940,14 @@ export default class ExprPath {
 	nodeGroupsRendered = [];
 
 	/**
-	 * Nodes that were used during the last render() but are available to be used again.
+	 * Nodes that were added to the web component during the last render(), but are available to be used again.
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
 	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
 	nodeGroupsAttached = new MultiValueMap();
 
 	/**
-	 * Nodes that were not used during the last render().
+	 * Nodes that were not added to the web component during the last render().
 	 * @type {MultiValueMap} */
 	nodeGroupsDetached = new MultiValueMap();
 
@@ -960,8 +957,6 @@ export default class ExprPath {
 	 * Called at the beginning of applyNodes() so it can have NodeGroups to use.
 	 * TODO: this could run as needed in getNodeGroup? */
 	freeNodeGroups() {
-		// old:
-
 		// Add nodes that weren't used during render() to nodeGroupsDetached
 		let previouslyAttached = this.nodeGroupsAttached.data;
 		let detached = this.nodeGroupsDetached.data;

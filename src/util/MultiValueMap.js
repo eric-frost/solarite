@@ -61,9 +61,8 @@ export default class MultiValueMap {
 	/**
 	 * Remove one value from a key, and return it.
 	 * @param key {string}
-	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
 	 * @returns {*|undefined} The deleted item. */
-	deleteAny(key, val=undefined) {
+	deleteAny(key) {
 		let data = this.data;
 		let result;
 		let set = data[key];

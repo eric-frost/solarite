@@ -156,7 +156,6 @@ class ProxyHandler {
 	// TODO: This won't update a component's expressions.
 	set(obj, prop, val, receiver) {
 
-
 		// 1. Set the value.
 		if (obj === receiver)
 			this.value = val; // top-level value.
@@ -284,6 +283,12 @@ export function renderWatched(root, trackModified=false) {
 	if (trackModified)
 		modified = new Set();
 
+	// Mark NodeGroups of expressionpaths as freed.
+	// for (let [exprPath, ops] of rootNg.exprsToRender) {
+	//
+	//
+	// }
+
 	for (let [exprPath, ops] of rootNg.exprsToRender) {
 
 		// Reapply the whole expression.
@@ -292,10 +297,9 @@ export function renderWatched(root, trackModified=false) {
 			// So it doesn't use the old value inside the map callback in the get handler above.
 			// TODO: Find a more sensible way to pass newValue.
 			exprPath.watchFunction.newValue = ops.array;
-			exprPath.apply([exprPath.watchFunction], true);
+			exprPath.apply([exprPath.watchFunction], false);
 
-			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
-			exprPath.freeNodeGroups();
+			//exprPath.freeNodeGroups();
 
 			if (trackModified)
 				modified.add(...exprPath.getNodes());
@@ -303,13 +307,13 @@ export function renderWatched(root, trackModified=false) {
 
 		// Update a single value in a map callback
 		else if (ops instanceof ValueOp) {
-			//exprPath = exprPath.mapCallback || exprPath;
+
+			// TODO: I need to only free node groups of watched expressions.
 
 			exprPath.watchFunction.newValue = ops.value;
-			exprPath.apply([exprPath.watchFunction]);
+			exprPath.apply([exprPath.watchFunction], false); // False to not free nodeGroups, since we do above.
 
-			// TODO: freeNodeGroups() could be skipped if we updated ExprPath.apply() to never marked them as rendered.
-			exprPath.freeNodeGroups();
+			//exprPath.freeNodeGroups();
 
 			if (trackModified)
 				modified.add(...exprPath.getNodes());
