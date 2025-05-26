@@ -113,8 +113,13 @@ export default class Template {
 	}
 
 	getCloseKey() {
-		if (!this.closeKey)
-			this.closeKey = '@'+this.toJSON()[0];
+		//console.log(this.exprs.length)
+		if (!this.closeKey) {
+			if (this.exprs.length)
+				this.closeKey = /*'@' + */this.toJSON()[0];
+			else
+				this.closeKey = this.html[0];
+		}
 		// Use the joined html when debugging?  But it breaks some tests.
 		//return '@'+this.html.join('|')
 

@@ -731,7 +731,8 @@ export default class ExprPath {
 		let nodeMarker, nodeBefore;
 		let root = newRoot;
 		let path = pathOffset ? this.nodeMarkerPath.slice(0, -pathOffset) : this.nodeMarkerPath;
-		for (let i=path.length-1; i>0; i--) // Resolve the path.
+		let length = path.length-1;
+		for (let i=length; i>0; i--) // Resolve the path.
 			root = root.childNodes[path[i]];
 		let childNodes = root.childNodes;
 

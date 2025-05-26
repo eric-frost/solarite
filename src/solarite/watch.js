@@ -61,16 +61,19 @@ let unusedArg = Symbol('unusedArg');
 class ProxyHandler {
 	path = [];
 
-	constructor(root, value, path=[]) {
+	constructor(root, value, path='') {
 
 		/** @type {Object} The top level object being proxied. */
 		this.root = root;
 
-		/** @type {string[]} Path from the root? */
+		/** @type {string} Path from the root */
 		this.path = path;
 
 		/** @type {*} the value found when starting at root and following the path? */
 		this.value = value;
+
+		/** @type {RootNodeGroup} Cached, to save time on lookups. */
+		this.rootNodeGroup = null;
 	}
 
 	get(obj, prop, receiver) {
@@ -99,7 +102,7 @@ class ProxyHandler {
 
 						// Save the ExprPaths that called the array used by .map()
 						if (Globals.currentExprPath) {
-							let path = handler.path.join('\f');
+							let path = handler.path;
 							let rootNg = Globals.nodeGroups.get(handler.root);
 							if (!rootNg.watchedExprPaths[path])
 								rootNg.watchedExprPaths[path] = new Set();
@@ -117,7 +120,7 @@ class ProxyHandler {
 
 			else if (prop === 'push' || prop==='pop' || prop === 'splice') {
 				const rootNg = Globals.nodeGroups.get(this.root);
-				const path = this.path.join('\f');
+				const path = this.path;
 				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[path])[prop];
 			}
 		}
@@ -125,22 +128,25 @@ class ProxyHandler {
 
 		// Save the ExprPath that's currently accessing this variable.
 		let path;
-		if (Globals.currentExprPath) {
-			const rootNg = Globals.nodeGroups.get(this.root);
-
-			path = this.path.length === 0 ? prop : this.path.join('\f') + '\f' + prop;
-			let watchedExprPaths = rootNg.watchedExprPaths;
-			if (!watchedExprPaths[path])
-				watchedExprPaths[path] = new Set([Globals.currentExprPath]);
-			else
-				watchedExprPaths[path].add(Globals.currentExprPath);
+		let currExpr = Globals.currentExprPath;
+		if (currExpr) {
+			if (!this.rootNodeGroup)
+				this.rootNodeGroup = Globals.nodeGroups.get(this.root);
+			let watchedExprPaths = this.rootNodeGroup.watchedExprPaths;
+			path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+			if (!watchedExprPaths[path]) {
+				watchedExprPaths[path] = new Set([currExpr]);
+			}
+			else {
+				watchedExprPaths[path].add(currExpr);
+			}
 		}
 
 		// Accessing a sub-property
 		if (result && typeof result === 'object') {// Clone this handler and append prop to the path.
-
-
-			return new Proxy(result, new ProxyHandler(this.root, this.value, [...this.path, prop]));
+			if (!path)
+				path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+			return new Proxy(result, new ProxyHandler(this.root, this.value, path));
 		}
 
 		return result;
@@ -149,6 +155,7 @@ class ProxyHandler {
 	// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
 	// TODO: This won't update a component's expressions.
 	set(obj, prop, val, receiver) {
+
 
 		// 1. Set the value.
 		if (obj === receiver)
@@ -159,7 +166,7 @@ class ProxyHandler {
 			return true;
 
 		// 2. Add to the list of ExprPaths to re-render.
-		let path = this.path.length === 0 ? prop : this.path.join('\f') + '\f' + prop;
+		let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
 		let rootNg = Globals.nodeGroups.get(this.root);
 
 		for (let exprPath of rootNg.watchedExprPaths[path] || []) {
@@ -207,12 +214,13 @@ export default function watch(root, field, value=unusedArg) {
 		value = root[field];
 
 	let handler = new ProxyHandler(root, value);
-	//handler.path.push(field);
 	Object.defineProperty(root, field, {
 		get: () => handler.get(root, field, root),
 		set: (val) => handler.set(root, field, val, root)
 	});
 }
+
+
 
 /**
  * Wrap an array so that functions that modify the array are intercepted.
@@ -261,6 +269,8 @@ class WatchedArray {
 		return Array.prototype[func].call(this.array, ...args);
 	}
 }
+
+
 
 /**
  * Render the ExprPaths that were added to rootNg.exprsToRender.

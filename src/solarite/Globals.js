@@ -70,6 +70,8 @@ function reset() {
 		stringTemplates: {},
 
 		reset,
+
+		count: 0
 	};
 }
 reset();

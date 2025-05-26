@@ -401,8 +401,9 @@ export default class NodeGroup {
 
 	updatePaths(fragment, paths, offset) {
 		// Update paths to point to the fragment.
-		this.paths.length = paths.length;
-		for (let i=0; i<paths.length; i++) {
+		let pathLength = paths.length;
+		this.paths.length = pathLength;
+		for (let i=0; i<pathLength; i++) {
 			let path = paths[i].clone(fragment, offset)
 			path.parentNg = this;
 			this.paths[i] = path;

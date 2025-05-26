@@ -181,6 +181,8 @@ function reset() {
 		stringTemplates: {},
 
 		reset,
+
+		count: 0
 	};
 }
 reset();
@@ -1033,16 +1035,19 @@ let unusedArg = Symbol('unusedArg');
 class ProxyHandler {
 	path = [];
 
-	constructor(root, value, path=[]) {
+	constructor(root, value, path='') {
 
 		/** @type {Object} The top level object being proxied. */
 		this.root = root;
 
-		/** @type {string[]} Path from the root? */
+		/** @type {string} Path from the root */
 		this.path = path;
 
 		/** @type {*} the value found when starting at root and following the path? */
 		this.value = value;
+
+		/** @type {RootNodeGroup} Cached, to save time on lookups. */
+		this.rootNodeGroup = null;
 	}
 
 	get(obj, prop, receiver) {
@@ -1071,7 +1076,7 @@ class ProxyHandler {
 
 						// Save the ExprPaths that called the array used by .map()
 						if (Globals$1.currentExprPath) {
-							let path = handler.path.join('\f');
+							let path = handler.path;
 							let rootNg = Globals$1.nodeGroups.get(handler.root);
 							if (!rootNg.watchedExprPaths[path])
 								rootNg.watchedExprPaths[path] = new Set();
@@ -1089,7 +1094,7 @@ class ProxyHandler {
 
 			else if (prop === 'push' || prop==='pop' || prop === 'splice') {
 				const rootNg = Globals$1.nodeGroups.get(this.root);
-				const path = this.path.join('\f');
+				const path = this.path;
 				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[path])[prop];
 			}
 		}
@@ -1097,22 +1102,25 @@ class ProxyHandler {
 
 		// Save the ExprPath that's currently accessing this variable.
 		let path;
-		if (Globals$1.currentExprPath) {
-			const rootNg = Globals$1.nodeGroups.get(this.root);
-
-			path = this.path.length === 0 ? prop : this.path.join('\f') + '\f' + prop;
-			let watchedExprPaths = rootNg.watchedExprPaths;
-			if (!watchedExprPaths[path])
-				watchedExprPaths[path] = new Set([Globals$1.currentExprPath]);
-			else
-				watchedExprPaths[path].add(Globals$1.currentExprPath);
+		let currExpr = Globals$1.currentExprPath;
+		if (currExpr) {
+			if (!this.rootNodeGroup)
+				this.rootNodeGroup = Globals$1.nodeGroups.get(this.root);
+			let watchedExprPaths = this.rootNodeGroup.watchedExprPaths;
+			path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+			if (!watchedExprPaths[path]) {
+				watchedExprPaths[path] = new Set([currExpr]);
+			}
+			else {
+				watchedExprPaths[path].add(currExpr);
+			}
 		}
 
 		// Accessing a sub-property
 		if (result && typeof result === 'object') {// Clone this handler and append prop to the path.
-
-
-			return new Proxy(result, new ProxyHandler(this.root, this.value, [...this.path, prop]));
+			if (!path)
+				path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+			return new Proxy(result, new ProxyHandler(this.root, this.value, path));
 		}
 
 		return result;
@@ -1121,6 +1129,7 @@ class ProxyHandler {
 	// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
 	// TODO: This won't update a component's expressions.
 	set(obj, prop, val, receiver) {
+
 
 		// 1. Set the value.
 		if (obj === receiver)
@@ -1131,7 +1140,7 @@ class ProxyHandler {
 			return true;
 
 		// 2. Add to the list of ExprPaths to re-render.
-		let path = this.path.length === 0 ? prop : this.path.join('\f') + '\f' + prop;
+		let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
 		let rootNg = Globals$1.nodeGroups.get(this.root);
 
 		for (let exprPath of rootNg.watchedExprPaths[path] || []) {
@@ -1179,12 +1188,13 @@ function watch(root, field, value=unusedArg) {
 		value = root[field];
 
 	let handler = new ProxyHandler(root, value);
-	//handler.path.push(field);
 	Object.defineProperty(root, field, {
 		get: () => handler.get(root, field, root),
 		set: (val) => handler.set(root, field, val, root)
 	});
 }
+
+
 
 /**
  * Wrap an array so that functions that modify the array are intercepted.
@@ -1231,6 +1241,8 @@ class WatchedArray {
 		return Array.prototype[func].call(this.array, ...args);
 	}
 }
+
+
 
 /**
  * Render the ExprPaths that were added to rootNg.exprsToRender.
@@ -2055,7 +2067,8 @@ class ExprPath {
 		let nodeMarker, nodeBefore;
 		let root = newRoot;
 		let path = pathOffset ? this.nodeMarkerPath.slice(0, -pathOffset) : this.nodeMarkerPath;
-		for (let i=path.length-1; i>0; i--) // Resolve the path.
+		let length = path.length-1;
+		for (let i=length; i>0; i--) // Resolve the path.
 			root = root.childNodes[path[i]];
 		let childNodes = root.childNodes;
 
@@ -3140,8 +3153,9 @@ class NodeGroup {
 
 	updatePaths(fragment, paths, offset) {
 		// Update paths to point to the fragment.
-		this.paths.length = paths.length;
-		for (let i=0; i<paths.length; i++) {
+		let pathLength = paths.length;
+		this.paths.length = pathLength;
+		for (let i=0; i<pathLength; i++) {
 			let path = paths[i].clone(fragment, offset);
 			path.parentNg = this;
 			this.paths[i] = path;
@@ -3492,8 +3506,13 @@ class Template {
 	}
 
 	getCloseKey() {
-		if (!this.closeKey)
-			this.closeKey = '@'+this.toJSON()[0];
+		//console.log(this.exprs.length)
+		if (!this.closeKey) {
+			if (this.exprs.length)
+				this.closeKey = /*'@' + */this.toJSON()[0];
+			else
+				this.closeKey = this.html[0];
+		}
 		// Use the joined html when debugging?  But it breaks some tests.
 		//return '@'+this.html.join('|')
 
