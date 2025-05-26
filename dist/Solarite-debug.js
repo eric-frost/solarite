@@ -125,23 +125,20 @@ function reset() {
 		 * @type {WeakSet<HTMLElement>} */
 		connected: new WeakSet(),
 
-		div: document.createElement("div"),
-
-		/**
-		 * Elements that have been rendered to by r() at least once.
-		 * This is used by the Solarite class to know when to call onFirstConnect()
-		 * @type {WeakSet<HTMLElement>} */
-		rendered: new WeakSet(),
-
 		/**
 		 * ExprPath.applyExactNodes() sets this property when an expression is being accessed.
 		 * watch() then adds the ExprPath to rootNg.watchedExprPaths so we know which expressions use which fields.
 		 * @type {ExprPath}*/
 		currentExprPath: null,
 
+		div: document.createElement("div"),
+
 		/**
 		 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
 		elementClasses: {},
+
+		/** @type {Object<string, boolean>} Key is tag-name.propName.  Value is whether it's an attribute.*/
+		htmlProps: {},
 
 		/**
 		 * Used by ExprPath.applyEventAttrib()
@@ -158,6 +155,13 @@ function reset() {
 		objToEl: new WeakMap(),
 
 		//pendingChildren: [],
+
+
+		/**
+		 * Elements that have been rendered to by r() at least once.
+		 * This is used by the Solarite class to know when to call onFirstConnect()
+		 * @type {WeakSet<HTMLElement>} */
+		rendered: new WeakSet(),
 
 		/**
 		 * Elements that are currently rendering via the r() function.
@@ -369,18 +373,26 @@ let Util = {
 		return node.value; // String
 	},
 
+	/**
+	 * @param el {HTMLElement}
+	 * @param prop {string}
+	 * @returns {boolean} */
 	isHtmlProp(el, prop) {
-		let proto = Object.getPrototypeOf(el);
-		while (proto) {
-			const ctorName = proto.constructor.name;
-			if (ctorName.startsWith('HTML') && ctorName.endsWith('Element'))
-				break
-			proto = Object.getPrototypeOf(proto);
+		let key = el.tagName + '.' + prop;
+		let result = Globals$1.htmlProps[key];
+		if (result === undefined) { // Caching just barely makes this slightly faster.
+			let proto = Object.getPrototypeOf(el);
+			while (proto) {
+				const ctorName = proto.constructor.name;
+				if (ctorName.startsWith('HTML') && ctorName.endsWith('Element'))
+					break
+				proto = Object.getPrototypeOf(proto);
+			}
+			Globals$1.htmlProps[key] = result = (proto
+				? !!Object.getOwnPropertyDescriptor(proto, prop)?.set
+				: false);
 		}
-		if (!proto)
-			return false;
-
-		return !!Object.getOwnPropertyDescriptor(proto, prop)?.set;
+		return result;
 	},
 
 	/**
@@ -1151,7 +1163,6 @@ class ProxyHandler {
 
 		// We override the map() function the first time render() is called.
 		// But it's not re-overridden when we call renderWatched()
-		let path;
 		if (Array.isArray(obj)) {
 
 			if (prop === 'map') {
@@ -1168,7 +1179,7 @@ class ProxyHandler {
 
 						// Save the ExprPaths that called the array used by .map()
 						if (Globals$1.currentExprPath) {
-							let path = JSON.stringify(handler.path);
+							let path = handler.path.join('\f');
 							let rootNg = Globals$1.nodeGroups.get(handler.root);
 							if (!rootNg.watchedExprPaths[path])
 								rootNg.watchedExprPaths[path] = new Set();
@@ -1185,27 +1196,32 @@ class ProxyHandler {
 			}
 
 			else if (prop === 'push' || prop==='pop' || prop === 'splice') {
-				let rootNg = Globals$1.nodeGroups.get(this.root);
-				path = JSON.stringify(this.path);
+				const rootNg = Globals$1.nodeGroups.get(this.root);
+				const path = this.path.join('\f');
 				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[path])[prop];
 			}
 		}
 
 
 		// Save the ExprPath that's currently accessing this variable.
+		let path;
 		if (Globals$1.currentExprPath) {
-			let rootNg = Globals$1.nodeGroups.get(this.root);
+			const rootNg = Globals$1.nodeGroups.get(this.root);
 
-			if (!path)
-				path = JSON.stringify([...this.path, prop]);
-			if (!rootNg.watchedExprPaths[path])
-				rootNg.watchedExprPaths[path] = new Set();
-			rootNg.watchedExprPaths[path].add(Globals$1.currentExprPath);
+			path = this.path.length === 0 ? prop : this.path.join('\f') + '\f' + prop;
+			let watchedExprPaths = rootNg.watchedExprPaths;
+			if (!watchedExprPaths[path])
+				watchedExprPaths[path] = new Set([Globals$1.currentExprPath]);
+			else
+				watchedExprPaths[path].add(Globals$1.currentExprPath);
 		}
 
 		// Accessing a sub-property
-		if (result && typeof result === 'object') // Clone this handler and append prop to the path.
+		if (result && typeof result === 'object') {// Clone this handler and append prop to the path.
+
+
 			return new Proxy(result, new ProxyHandler(this.root, this.value, [...this.path, prop]));
+		}
 
 		return result;
 	}
@@ -1223,7 +1239,7 @@ class ProxyHandler {
 			return true;
 
 		// 2. Add to the list of ExprPaths to re-render.
-		let path = JSON.stringify([...this.path, prop]);
+		let path = this.path.length === 0 ? prop : this.path.join('\f') + '\f' + prop;
 		let rootNg = Globals$1.nodeGroups.get(this.root);
 
 		for (let exprPath of rootNg.watchedExprPaths[path] || []) {
@@ -3492,6 +3508,7 @@ class RootNodeGroup extends NodeGroup {
 
 	/**
 	 * Store the ExprPaths that use each watched variable.
+	 * The path string is the path array joined on \f, because that's faster than sending it to JSON.stringify()
 	 * @type {Object<path:string, Set<ExprPath>>} */
 	watchedExprPaths = {};
 

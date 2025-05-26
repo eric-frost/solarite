@@ -568,6 +568,7 @@ export class RootNodeGroup extends NodeGroup {
 
 	/**
 	 * Store the ExprPaths that use each watched variable.
+	 * The path string is the path array joined on \f, because that's faster than sending it to JSON.stringify()
 	 * @type {Object<path:string, Set<ExprPath>>} */
 	watchedExprPaths = {};
 

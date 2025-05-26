@@ -143,18 +143,26 @@ let Util = {
 		return node.value; // String
 	},
 
+	/**
+	 * @param el {HTMLElement}
+	 * @param prop {string}
+	 * @returns {boolean} */
 	isHtmlProp(el, prop) {
-		let proto = Object.getPrototypeOf(el);
-		while (proto) {
-			const ctorName = proto.constructor.name;
-			if (ctorName.startsWith('HTML') && ctorName.endsWith('Element'))
-				break
-			proto = Object.getPrototypeOf(proto);
+		let key = el.tagName + '.' + prop;
+		let result = Globals.htmlProps[key];
+		if (result === undefined) { // Caching just barely makes this slightly faster.
+			let proto = Object.getPrototypeOf(el);
+			while (proto) {
+				const ctorName = proto.constructor.name;
+				if (ctorName.startsWith('HTML') && ctorName.endsWith('Element'))
+					break
+				proto = Object.getPrototypeOf(proto);
+			}
+			Globals.htmlProps[key] = result = (proto
+				? !!Object.getOwnPropertyDescriptor(proto, prop)?.set
+				: false);
 		}
-		if (!proto)
-			return false;
-
-		return !!Object.getOwnPropertyDescriptor(proto, prop)?.set;
+		return result;
 	},
 
 	/**

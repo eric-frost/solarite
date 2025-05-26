@@ -111,16 +111,18 @@ class JSFrameworkBenchmark extends Solarite {
 
 	// Create 10,000 rows
 	runLots() {
-		this.data = buildData(10_000);
-		renderWatched(this);
-		//this.render()
+		//renderUnwatched(() => {
+			this.data = buildData(10_000);
+			//renderWatched(this);
+			this.render();
+		//});
 	}
 
 	// Append 1,000 rows
 	add() {
 		this.data.push(...buildData(1000));
-		//renderWatched(this); // fails!
-		this.render();
+		renderWatched(this); // fails!
+		//this.render();
 	}
 
 	// Update every 10th row

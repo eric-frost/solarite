@@ -14,23 +14,20 @@ function reset() {
 		 * @type {WeakSet<HTMLElement>} */
 		connected: new WeakSet(),
 
-		div: document.createElement("div"),
-
-		/**
-		 * Elements that have been rendered to by r() at least once.
-		 * This is used by the Solarite class to know when to call onFirstConnect()
-		 * @type {WeakSet<HTMLElement>} */
-		rendered: new WeakSet(),
-
 		/**
 		 * ExprPath.applyExactNodes() sets this property when an expression is being accessed.
 		 * watch() then adds the ExprPath to rootNg.watchedExprPaths so we know which expressions use which fields.
 		 * @type {ExprPath}*/
 		currentExprPath: null,
 
+		div: document.createElement("div"),
+
 		/**
 		 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
 		elementClasses: {},
+
+		/** @type {Object<string, boolean>} Key is tag-name.propName.  Value is whether it's an attribute.*/
+		htmlProps: {},
 
 		/**
 		 * Used by ExprPath.applyEventAttrib()
@@ -47,6 +44,13 @@ function reset() {
 		objToEl: new WeakMap(),
 
 		//pendingChildren: [],
+
+
+		/**
+		 * Elements that have been rendered to by r() at least once.
+		 * This is used by the Solarite class to know when to call onFirstConnect()
+		 * @type {WeakSet<HTMLElement>} */
+		rendered: new WeakSet(),
 
 		/**
 		 * Elements that are currently rendering via the r() function.
