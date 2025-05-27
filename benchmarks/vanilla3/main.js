@@ -74,7 +74,7 @@ if (benchmark) {
 			callback();
 			const time = performance.now() - start;
 			times.push(time);
-			console.log(`${name}: ${time.toFixed(1)}ms.`);
+			console.log(`${name}: ${time.toFixed(2)}ms.`);
 			await sleep(20); // wait for render
 		}
 

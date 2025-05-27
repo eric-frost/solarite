@@ -31,7 +31,8 @@ export default class NodeGroup {
 	startNode;
 
 	/** @type {Node|HTMLElement} A node that never changes that this NodeGroup should always insert its nodes before.
-	 * An empty text node will be created to insertBefore if there's no other NodeMarker and this isn't at the last position.*/
+	 * An empty text node will be created to insertBefore if there's no other NodeMarker and this isn't at the last position.
+	 * TODO: But sometimes startNode and endNode point to the same node.  Document htis inconsistency. */
 	endNode;
 
 	/** @type {ExprPath[]} */
@@ -64,7 +65,7 @@ export default class NodeGroup {
 
 			let [fragment, shell] = this.init(template, parentPath);
 
-			if (fragment) {
+			if (fragment && template.exprs.length) {
 				this.updatePaths(fragment, shell.paths);
 
 				// Static web components can sometimes have children created via expressions.
@@ -79,7 +80,7 @@ export default class NodeGroup {
 
 				this.activateStaticComponents(staticComponents);
 			}
-			else
+			else if (shell)
 				this.activateEmbeds(fragment, shell);
 		}
 	}
@@ -110,15 +111,14 @@ export default class NodeGroup {
 		// Get a cached version of the parsed and instantiated html, and ExprPaths.
 
 		// If it's just a text node, skip a bunch of unnecessary steps.
-		// if (!(this instanceof RootNodeGroup) && !template.exprs.length && !template.html[0].includes('<')) {
-		// 	let doc = this.rootNg.startNode?.ownerDocument || document;
-		// 	let textNode = doc.createTextNode(template.html[0]);
-		//
-		// 	this.startNode = this.endNode = textNode;
-		// 	return [];
-		// }
-		// else {
+		if (!(this instanceof RootNodeGroup) && !template.exprs.length && !template.html[0].includes('<')) {
+			//let doc = this.rootNg.startNode?.ownerDocument || document;
+			let textNode = document.createTextNode(template.html[0]);
 
+			this.startNode = this.endNode = textNode;
+			return [];
+		}
+		else {
 			let shell = Shell.get(template.html);
 			let fragment = shell.fragment.cloneNode(true);
 
@@ -131,7 +131,7 @@ export default class NodeGroup {
 				this.startNode = this.endNode = fragment;
 			}
 			return [fragment, shell];
-		//}
+		}
 	}
 
 	/**

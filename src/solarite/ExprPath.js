@@ -637,7 +637,7 @@ export default class ExprPath {
 			// This version checks the html element it extends from, to see if has a setter set:
 			//     Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set
 			//let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
-      	let isProp = Util.isHtmlProp(node, this.attrName);
+			let isProp = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
 			let multiple = this.attrValue;
@@ -645,7 +645,7 @@ export default class ExprPath {
 				Globals.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
-					expr = Util.makePrimitive(expr);
+					expr = expr();
 				}
 				else
 					expr = Util.makePrimitive(expr);
@@ -869,10 +869,10 @@ export default class ExprPath {
 
 		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
 		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
-			result = this.nodeGroupsAttachedAvailable.deleteAny(template.getExactKey());
+			result = collection.deleteAny(template.getExactKey());
 			if (!result) { // try searching detached
-				result = this.nodeGroupsDetachedAvailable.deleteAny(template.getExactKey());
 				collection = this.nodeGroupsDetachedAvailable;
+				result = collection.deleteAny(template.getExactKey());
 			}
 
 			if (result) // also delete the matching close key.
@@ -885,11 +885,12 @@ export default class ExprPath {
 		// Find a close match.
 		// This is a match that has matching html, but different expressions applied.
 		// We can then apply the expressions to make it an exact match.
+		// If the template has no expressions, the key is the html, and we've already searched for an exact match.  There won't be an inexact match.
 		else if (template.exprs.length) {
-			result = this.nodeGroupsAttachedAvailable.deleteAny(template.getCloseKey());
+			result = collection.deleteAny(template.getCloseKey());
 			if (!result) { // try searching detached
-				result = this.nodeGroupsDetachedAvailable.deleteAny(template.getCloseKey());
 				collection = this.nodeGroupsDetachedAvailable;
+				result = collection.deleteAny(template.getCloseKey());
 			}
 
 			if (result) {

@@ -1140,6 +1140,12 @@ let unusedArg = Symbol('unusedArg');
 
 
 
+function removeProxy(obj) {
+	if (obj && obj.$removeProxy)
+		return obj.$removeProxy;
+	return obj;
+}
+
 /**
  * Render the ExprPaths that were added to rootNg.exprsToRender.
  * @param root {HTMLElement}
@@ -1151,6 +1157,24 @@ function renderWatched(root, trackModified=false) {
 
 	if (trackModified)
 		modified = new Set();
+
+	// Find ArraySpliceOps
+	for (let [_, ops] of rootNg.exprsToRender) {
+		if (Array.isArray(ops)) {
+			let opsLength = ops.length;
+			for (let i=1; i<opsLength; i++) {
+				let prevOp = ops[i-1];
+				let op = ops[i];
+
+				// If two Adjacent ArraySpliceOps that swap eachother's items.
+				if (prevOp instanceof ArraySpliceOp && prevOp.deleteCount ===1 && prevOp.items.length === 1
+					&& op instanceof ArraySpliceOp && op.deleteCount ===1 && op.items.length === 1) {
+					ops[i-1] = new ArraySwapOp(op.array, prevOp.index, op.index);
+					ops[i] = undefined;
+				}
+			}
+		}
+	}
 
 	// Mark NodeGroups of expressionpaths as freed.
 	// for (let [exprPath, ops] of rootNg.exprsToRender) {
@@ -1191,7 +1215,7 @@ function renderWatched(root, trackModified=false) {
 		}
 
 		// Selectively update NodeGroups created by array.map()
-		else { // Array Slice Op
+		else { // ArraySpliceOp
 
 			// This fails when swapping two elements, because swapping messes up the indices of subsequent array ops.
 			// Unless we reverse the order that we assign the swapped elements.
@@ -1199,19 +1223,46 @@ function renderWatched(root, trackModified=false) {
 			//	op.markNodeGroupsAvailable(exprPath);
 
 			for (let op of ops) {
-				if (trackModified && op.deleteCount)
-					modified.add(
-						...exprPath.nodeGroups.slice(op.index, op.index + op.deleteCount).map(ng => ng.getNodes()).flat()
-					);
+				if (!op)
+					continue; // Removed when ArraySwapOp was added.
 
-				op.markNodeGroupsAvailable(exprPath);
-				exprPath.applyArrayOp(op);
+				if (op instanceof ArraySpliceOp) {
 
-				if (trackModified && op.items.length) {
-					exprPath.nodeGroups.slice(op.index, op.index + op.items.length)
-						.map(ng => ng.getNodes())
-						.flat()
-						.map(n => modified.add(n));
+					if (trackModified && op.deleteCount)
+						modified.add(
+							...exprPath.nodeGroups.slice(op.index, op.index + op.deleteCount).map(ng => ng.getNodes()).flat()
+						);
+
+					op.markNodeGroupsAvailable(exprPath);
+					exprPath.applyArrayOp(op);
+
+					if (trackModified && op.items.length) {
+						exprPath.nodeGroups.slice(op.index, op.index + op.items.length)
+							.map(ng => ng.getNodes())
+							.flat()
+							.map(n => modified.add(n));
+					}
+				}
+				// ArraySwapOp
+				else {
+					let nga = exprPath.nodeGroups[op.index1];
+					let ngb = exprPath.nodeGroups[op.index2];
+
+					// Swap the nodegroup nga and ngb node positions
+					let nextA = nga.endNode.nextSibling;
+					let nextB = ngb.endNode.nextSibling;
+					for (let node of nga.getNodes())
+						node.parentNode.insertBefore(node, nextB);
+					for (let node of ngb.getNodes())
+						node.parentNode.insertBefore(node, nextA);
+
+					exprPath.nodeGroups[op.index1] = ngb;
+					exprPath.nodeGroups[op.index2] = nga;
+
+					if (trackModified) {
+						nga.getNodes().map(n => modified.add(n));
+						ngb.getNodes().map(n => modified.add(n));
+					}
 				}
 			}
 		}
@@ -1261,11 +1312,12 @@ class ProxyHandler {
 
 	get(obj, prop, receiver) {
 
+		if (prop === '$removeProxy')
+			return obj;
+
 		let result = (obj === receiver)
 			? this.value // top-level value.
 			: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
-		if (!Globals$1.watch)
-			return result;
 
 		// We override the map() function the first time render() is called.
 		// But it's not re-overridden when we call renderWatched()
@@ -1334,13 +1386,13 @@ class ProxyHandler {
 	// TODO: This won't update a component's expressions.
 	set(obj, prop, val, receiver) {
 
+		val = removeProxy(val);
+
 		// 1. Set the value.
 		if (obj === receiver)
 			this.value = val; // top-level value.
 		else // Set the value while avoiding infinite recursion.
 			Reflect.set(obj, prop, val, receiver);
-		if (!Globals$1.watch)
-			return true;
 
 		// Value changed, so reset cached proxy.
 		if (val && typeof val === 'object')
@@ -1348,7 +1400,9 @@ class ProxyHandler {
 
 		// 2. Add to the list of ExprPaths to re-render.
 		let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
-		let rootNg = Globals$1.nodeGroups.get(this.root);
+		if (!this.rootNodeGroup)
+			this.rootNodeGroup = Globals$1.nodeGroups.get(this.root);
+		let rootNg = this.rootNodeGroup;
 
 		for (let exprPath of rootNg.watchedExprPaths[path] || []) {
 
@@ -1451,12 +1505,7 @@ class WatchedArray {
 	}
 }
 
-Globals$1.watch = true;
-// export function renderUnwatched(callback) {
-// 	Globals.watch = false;
-// 	callback();
-// 	Globals.watch = true;
-// }
+
 
 class WatchOp {}
 
@@ -1500,6 +1549,18 @@ class ValueOp extends WatchOp {
 	}
 
 	markNodeGroupsAvailable(exprPath) {
+	}
+}
+
+class ArraySwapOp extends WatchOp {
+	constructor(array, index1, index2) {
+		super();
+		//#IFDEV
+		assert(Array.isArray(array));
+		//#ENDIF
+		this.array = array;
+		this.index1 = index1;
+		this.index2 = index2;
 	}
 }
 
@@ -2149,7 +2210,7 @@ class ExprPath {
 			// This version checks the html element it extends from, to see if has a setter set:
 			//     Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set
 			//let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
-      	let isProp = Util.isHtmlProp(node, this.attrName);
+			let isProp = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
 			let multiple = this.attrValue;
@@ -2157,7 +2218,7 @@ class ExprPath {
 				Globals$1.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
-					expr = Util.makePrimitive(expr);
+					expr = expr();
 				}
 				else
 					expr = Util.makePrimitive(expr);
@@ -2367,10 +2428,10 @@ class ExprPath {
 
 		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
 		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
-			result = this.nodeGroupsAttachedAvailable.deleteAny(template.getExactKey());
+			result = collection.deleteAny(template.getExactKey());
 			if (!result) { // try searching detached
-				result = this.nodeGroupsDetachedAvailable.deleteAny(template.getExactKey());
 				collection = this.nodeGroupsDetachedAvailable;
+				result = collection.deleteAny(template.getExactKey());
 			}
 
 			if (result) // also delete the matching close key.
@@ -2383,11 +2444,12 @@ class ExprPath {
 		// Find a close match.
 		// This is a match that has matching html, but different expressions applied.
 		// We can then apply the expressions to make it an exact match.
+		// If the template has no expressions, the key is the html, and we've already searched for an exact match.  There won't be an inexact match.
 		else if (template.exprs.length) {
-			result = this.nodeGroupsAttachedAvailable.deleteAny(template.getCloseKey());
+			result = collection.deleteAny(template.getCloseKey());
 			if (!result) { // try searching detached
-				result = this.nodeGroupsDetachedAvailable.deleteAny(template.getCloseKey());
 				collection = this.nodeGroupsDetachedAvailable;
+				result = collection.deleteAny(template.getCloseKey());
 			}
 
 			if (result) {
@@ -3020,7 +3082,8 @@ class NodeGroup {
 	startNode;
 
 	/** @type {Node|HTMLElement} A node that never changes that this NodeGroup should always insert its nodes before.
-	 * An empty text node will be created to insertBefore if there's no other NodeMarker and this isn't at the last position.*/
+	 * An empty text node will be created to insertBefore if there's no other NodeMarker and this isn't at the last position.
+	 * TODO: But sometimes startNode and endNode point to the same node.  Document htis inconsistency. */
 	endNode;
 
 	/** @type {ExprPath[]} */
@@ -3053,7 +3116,7 @@ class NodeGroup {
 
 			let [fragment, shell] = this.init(template, parentPath);
 
-			if (fragment) {
+			if (fragment && template.exprs.length) {
 				this.updatePaths(fragment, shell.paths);
 
 				// Static web components can sometimes have children created via expressions.
@@ -3068,7 +3131,7 @@ class NodeGroup {
 
 				this.activateStaticComponents(staticComponents);
 			}
-			else
+			else if (shell)
 				this.activateEmbeds(fragment, shell);
 		}
 	}
@@ -3099,15 +3162,14 @@ class NodeGroup {
 		// Get a cached version of the parsed and instantiated html, and ExprPaths.
 
 		// If it's just a text node, skip a bunch of unnecessary steps.
-		// if (!(this instanceof RootNodeGroup) && !template.exprs.length && !template.html[0].includes('<')) {
-		// 	let doc = this.rootNg.startNode?.ownerDocument || document;
-		// 	let textNode = doc.createTextNode(template.html[0]);
-		//
-		// 	this.startNode = this.endNode = textNode;
-		// 	return [];
-		// }
-		// else {
+		if (!(this instanceof RootNodeGroup) && !template.exprs.length && !template.html[0].includes('<')) {
+			//let doc = this.rootNg.startNode?.ownerDocument || document;
+			let textNode = document.createTextNode(template.html[0]);
 
+			this.startNode = this.endNode = textNode;
+			return [];
+		}
+		else {
 			let shell = Shell.get(template.html);
 			let fragment = shell.fragment.cloneNode(true);
 
@@ -3120,7 +3182,7 @@ class NodeGroup {
 				this.startNode = this.endNode = fragment;
 			}
 			return [fragment, shell];
-		//}
+		}
 	}
 
 	/**
