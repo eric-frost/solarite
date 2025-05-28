@@ -15,7 +15,7 @@ in another command window:
 
 ```
 cd webdriver-ts
-npm run bench non-keyed/solarite-naive keyed/solarite-naive
+npm run bench non-keyed/solarite keyed/solarite non-keyed/solarite-naive keyed/solarite-naive
 cd ../webdriver-ts-results
 npm ci
 cd ../webdriver-ts

@@ -1159,6 +1159,7 @@ function renderWatched(root, trackModified=false) {
 		modified = new Set();
 
 	// Find ArraySpliceOps
+	// TODO: Combine this into the loop over ArraySpliceOps below.
 	for (let [_, ops] of rootNg.exprsToRender) {
 		if (Array.isArray(ops)) {
 			let opsLength = ops.length;
@@ -1168,7 +1169,11 @@ function renderWatched(root, trackModified=false) {
 
 				// If two Adjacent ArraySpliceOps that swap eachother's items.
 				if (prevOp instanceof ArraySpliceOp && prevOp.deleteCount ===1 && prevOp.items.length === 1
-					&& op instanceof ArraySpliceOp && op.deleteCount ===1 && op.items.length === 1) {
+					&& op instanceof ArraySpliceOp && op.deleteCount ===1 && op.items.length === 1
+					&& prevOp.array[prevOp.index] === op.firstDeleted // And they're swapping eachother.
+					&& op.array[op.index] === prevOp.firstDeleted
+				) {
+
 					ops[i-1] = new ArraySwapOp(op.array, prevOp.index, op.index);
 					ops[i] = undefined;
 				}
@@ -1191,7 +1196,7 @@ function renderWatched(root, trackModified=false) {
 			// So it doesn't use the old value inside the map callback in the get handler above.
 			// TODO: Find a more sensible way to pass newValue.
 			ops.markNodeGroupsAvailable(exprPath);
-			exprPath.watchFunction.newValue = ops.array;
+			exprPath.watchFunction.newValue = ops.array; // TODO: Is this ever used?
 			exprPath.apply([exprPath.watchFunction], false);
 
 			//exprPath.freeNodeGroups();
@@ -1201,6 +1206,7 @@ function renderWatched(root, trackModified=false) {
 		}
 
 		// Update a single value in a map callback
+		// TODO: Why is this not an array of ops?
 		else if (ops instanceof ValueOp) {
 
 			// TODO: I need to only free node groups of watched expressions.
@@ -1215,13 +1221,9 @@ function renderWatched(root, trackModified=false) {
 		}
 
 		// Selectively update NodeGroups created by array.map()
-		else { // ArraySpliceOp
+		else {
 
-			// This fails when swapping two elements, because swapping messes up the indices of subsequent array ops.
-			// Unless we reverse the order that we assign the swapped elements.
-			//for (let op of ops)
-			//	op.markNodeGroupsAvailable(exprPath);
-
+			// ArraySpliceOp
 			for (let op of ops) {
 				if (!op)
 					continue; // Removed when ArraySwapOp was added.
@@ -1388,16 +1390,6 @@ class ProxyHandler {
 
 		val = removeProxy(val);
 
-		// 1. Set the value.
-		if (obj === receiver)
-			this.value = val; // top-level value.
-		else // Set the value while avoiding infinite recursion.
-			Reflect.set(obj, prop, val, receiver);
-
-		// Value changed, so reset cached proxy.
-		if (val && typeof val === 'object')
-			delete this.proxies[prop];
-
 		// 2. Add to the list of ExprPaths to re-render.
 		let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
 		if (!this.rootNodeGroup)
@@ -1412,16 +1404,27 @@ class ProxyHandler {
 				let exprsToRender = rootNg.exprsToRender.get(exprPath);
 
 				// If we're not re-rendering the whole thing.
-				if (!(exprsToRender instanceof WholeArrayOp)) // TODO: Check for WholeArrayOp instead of true.  TODO: use val.$unproxied
+				if (!(exprsToRender instanceof WholeArrayOp))
 					Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
 			}
 
 			// Reapply the whole expression.
-			else if (Array.isArray(Reflect.get(obj, prop)))
+			else if (Array.isArray(val /*Reflect.get(obj, prop)*/)) // TODO: Just use val instead of Reflect.get(obj, prop)?
 				rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
 			else
 				rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
 		}
+
+		// 1. Set the value.
+		if (obj === receiver)
+			this.value = val; // top-level value.
+		else // Set the value while avoiding infinite recursion.
+			Reflect.set(obj, prop, val, receiver);
+
+		// Value changed, so reset cached proxy.
+		if (val && typeof val === 'object')
+			delete this.proxies[prop];
+
 		return true;
 	}
 }
@@ -1524,10 +1527,13 @@ class ArraySpliceOp extends WatchOp {
 		//#IFDEV
 		assert(Array.isArray(array));
 		//#ENDIF
-		this.array = array;
+		this.array = array; // This is never used other than the lenght.
 		this.index = index*1;
 		this.deleteCount = deleteCount;
-		this.items = items;
+		this.items = items; // This is never used, only the length.
+
+		// Save the first item deleted so we can see if this should be turned into an ArraySwapOp later.
+		this.firstDeleted = deleteCount===1 ? array[index] : undefined;
 	}
 
 	markNodeGroupsAvailable(exprPath) {
