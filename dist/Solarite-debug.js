@@ -1515,7 +1515,7 @@ class ArraySpliceOp extends WatchOp {
 		this.array = array;
 		this.index = index*1;
 		this.deleteCount = deleteCount;
-		this.items = items; // This is never used, only the length.
+		this.items = items;
 
 		// Save the first item deleted so we can see if this should be turned into an ArraySwapOp later.
 		this.firstDeleted = deleteCount===1 ? array[index] : undefined;
@@ -1566,7 +1566,7 @@ class WholeArrayOp extends WatchOp {
 	}
 
 	markNodeGroupsAvailable(exprPath) {
-		for (let i=0; i<this.array.length; i++) {
+		for (let i=0; i<exprPath.nodeGroups.length; i++) {
 			let oldNg = exprPath.nodeGroups[i];
 			exprPath.nodeGroupsAttachedAvailable.add(oldNg.exactKey, oldNg);
 			exprPath.nodeGroupsAttachedAvailable.add(oldNg.closeKey, oldNg);
@@ -2987,7 +2987,6 @@ class Shell {
 		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => getNodePath(el));
 
 		let idEls = this.fragment.querySelectorAll('[id],[data-id]');
-		
 
 		// Check for valid id names.
 		for (let el of idEls) {
@@ -2996,15 +2995,9 @@ class Shell {
 				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement id property.`)
 		}
 
-
 		this.ids = Array.prototype.map.call(idEls, el => getNodePath(el));
 
 		for (let el of this.fragment.querySelectorAll('*')) {
-			// Events (not yet used)
-			// for (let attrib of el.attributes)
-			// 	if (isEvent(attrib.name))
-			// 		this.events.push([attrib.name, getNodePath(el)])
-
 			if (el.tagName.includes('-') || el.hasAttribute('_is'))
 
 				// Dynamic components are components that have attributes with expression values.
@@ -3013,7 +3006,6 @@ class Shell {
 				if (!this.paths.find(path => path.nodeMarker === el))
 					this.staticComponents.push(getNodePath(el));
 		}
-
 	}
 
 	/**
@@ -3561,18 +3553,20 @@ class NodeGroup {
 
 		let rootEl = this.rootNg.root;
 		if (rootEl) {
+			let options = this.rootNg.options;
 
 			// ids
-			if (this.options?.ids !== false)
+			if (options?.ids !== false) {
 				for (let path of shell.ids) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
 					let el = resolveNodePath(root, path);
 					Util.bindId(rootEl, el);
 				}
+				}
 
 			// styles
-			if (this.options?.styles !== false) {
+			if (options?.styles !== false) {
 				if (shell.styles.length)
 					this.styles = new Map();
 				for (let path of shell.styles) {
@@ -3589,7 +3583,7 @@ class NodeGroup {
 
 			}
 			// scripts
-			if (this.options?.scripts !== false) {
+			if (options?.scripts !== false) {
 				for (let path of shell.scripts) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);

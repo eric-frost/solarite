@@ -519,18 +519,20 @@ export default class NodeGroup {
 
 		let rootEl = this.rootNg.root;
 		if (rootEl) {
+			let options = this.rootNg.options;
 
 			// ids
-			if (this.options?.ids !== false)
+			if (options?.ids !== false) {
 				for (let path of shell.ids) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
 					let el = resolveNodePath(root, path);
 					Util.bindId(rootEl, el);
 				}
+				}
 
 			// styles
-			if (this.options?.styles !== false) {
+			if (options?.styles !== false) {
 				if (shell.styles.length)
 					this.styles = new Map();
 				for (let path of shell.styles) {
@@ -547,7 +549,7 @@ export default class NodeGroup {
 
 			}
 			// scripts
-			if (this.options?.scripts !== false) {
+			if (options?.scripts !== false) {
 				for (let path of shell.scripts) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);

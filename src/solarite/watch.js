@@ -434,7 +434,7 @@ export class ArraySpliceOp extends WatchOp {
 		this.array = array;
 		this.index = index*1;
 		this.deleteCount = deleteCount;
-		this.items = items; // This is never used, only the length.
+		this.items = items;
 
 		// Save the first item deleted so we can see if this should be turned into an ArraySwapOp later.
 		this.firstDeleted = deleteCount===1 ? array[index] : undefined;
@@ -485,7 +485,7 @@ class WholeArrayOp extends WatchOp {
 	}
 
 	markNodeGroupsAvailable(exprPath) {
-		for (let i=0; i<this.array.length; i++) {
+		for (let i=0; i<exprPath.nodeGroups.length; i++) {
 			let oldNg = exprPath.nodeGroups[i];
 			exprPath.nodeGroupsAttachedAvailable.add(oldNg.exactKey, oldNg);
 			exprPath.nodeGroupsAttachedAvailable.add(oldNg.closeKey, oldNg);

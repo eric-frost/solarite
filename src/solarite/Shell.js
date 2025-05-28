@@ -274,7 +274,6 @@ export default class Shell {
 		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => getNodePath(el))
 
 		let idEls = this.fragment.querySelectorAll('[id],[data-id]');
-		
 
 		// Check for valid id names.
 		for (let el of idEls) {
@@ -283,15 +282,9 @@ export default class Shell {
 				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement id property.`)
 		}
 
-
 		this.ids = Array.prototype.map.call(idEls, el => getNodePath(el))
 
 		for (let el of this.fragment.querySelectorAll('*')) {
-			// Events (not yet used)
-			// for (let attrib of el.attributes)
-			// 	if (isEvent(attrib.name))
-			// 		this.events.push([attrib.name, getNodePath(el)])
-
 			if (el.tagName.includes('-') || el.hasAttribute('_is'))
 
 				// Dynamic components are components that have attributes with expression values.
@@ -300,7 +293,6 @@ export default class Shell {
 				if (!this.paths.find(path => path.nodeMarker === el))
 					this.staticComponents.push(getNodePath(el));
 		}
-
 	}
 
 	/**
