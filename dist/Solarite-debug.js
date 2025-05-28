@@ -1158,28 +1158,6 @@ function renderWatched(root, trackModified=false) {
 	if (trackModified)
 		modified = new Set();
 
-	// Find ArraySpliceOps
-	// TODO: Combine this into the loop over ArraySpliceOps below.
-	for (let [_, ops] of rootNg.exprsToRender) {
-		if (Array.isArray(ops)) {
-			let opsLength = ops.length;
-			for (let i=1; i<opsLength; i++) {
-				let prevOp = ops[i-1];
-				let op = ops[i];
-
-				// If two Adjacent ArraySpliceOps that swap eachother's items.
-				if (prevOp instanceof ArraySpliceOp && prevOp.deleteCount ===1 && prevOp.items.length === 1
-					&& op instanceof ArraySpliceOp && op.deleteCount ===1 && op.items.length === 1
-					&& prevOp.array[prevOp.index] === op.firstDeleted // And they're swapping eachother.
-					&& op.array[op.index] === prevOp.firstDeleted
-				) {
-
-					ops[i-1] = new ArraySwapOp(op.array, prevOp.index, op.index);
-					ops[i] = undefined;
-				}
-			}
-		}
-	}
 
 	// Mark NodeGroups of expressionpaths as freed.
 	// for (let [exprPath, ops] of rootNg.exprsToRender) {
@@ -1196,7 +1174,7 @@ function renderWatched(root, trackModified=false) {
 			// So it doesn't use the old value inside the map callback in the get handler above.
 			// TODO: Find a more sensible way to pass newValue.
 			ops.markNodeGroupsAvailable(exprPath);
-			exprPath.watchFunction.newValue = ops.array; // TODO: Is this ever used?
+			exprPath.watchFunction.newValue = ops.array;
 			exprPath.apply([exprPath.watchFunction], false);
 
 			//exprPath.freeNodeGroups();
@@ -1205,12 +1183,11 @@ function renderWatched(root, trackModified=false) {
 				modified.add(...exprPath.getNodes());
 		}
 
-		// Update a single value in a map callback
+			// Update a single value in a map callback
 		// TODO: Why is this not an array of ops?
 		else if (ops instanceof ValueOp) {
 
 			// TODO: I need to only free node groups of watched expressions.
-
 			exprPath.watchFunction.newValue = ops.value;
 			exprPath.apply([exprPath.watchFunction], false); // False to not free nodeGroups.
 
@@ -1223,12 +1200,40 @@ function renderWatched(root, trackModified=false) {
 		// Selectively update NodeGroups created by array.map()
 		else {
 
-			// ArraySpliceOp
-			for (let op of ops) {
-				if (!op)
-					continue; // Removed when ArraySwapOp was added.
+			for (let i = 0; i < ops.length; i++) {
+				let op = ops[i];
+				let nextOp = ops[i + 1];
 
-				if (op instanceof ArraySpliceOp) {
+				// If two Adjacent ArraySpliceOps that swap eachother's items.
+				if (nextOp instanceof ArraySpliceOp && nextOp.deleteCount === 1 && nextOp.items.length === 1
+					&& op instanceof ArraySpliceOp && op.deleteCount === 1 && op.items.length === 1
+					&& nextOp.array[nextOp.index] === op.firstDeleted
+					&& op.array[op.index] === nextOp.firstDeleted
+				) {
+
+					let nga = exprPath.nodeGroups[op.index];
+					let ngb = exprPath.nodeGroups[nextOp.index];
+
+					// Swap the nodegroup nga and ngb node positions
+					let nextA = nga.endNode.nextSibling;
+					let nextB = ngb.endNode.nextSibling;
+					for (let node of nga.getNodes())
+						node.parentNode.insertBefore(node, nextB);
+					for (let node of ngb.getNodes())
+						node.parentNode.insertBefore(node, nextA);
+
+					exprPath.nodeGroups[op.index] = ngb;
+					exprPath.nodeGroups[nextOp.index] = nga;
+
+					if (trackModified) {
+						nga.getNodes().map(n => modified.add(n));
+						ngb.getNodes().map(n => modified.add(n));
+					}
+					i++;// skip next op
+				}
+
+				// ArraySpliceOp
+				else { // (op instanceof ArraySpliceOp) {
 
 					if (trackModified && op.deleteCount)
 						modified.add(
@@ -1245,36 +1250,16 @@ function renderWatched(root, trackModified=false) {
 							.map(n => modified.add(n));
 					}
 				}
-				// ArraySwapOp
-				else {
-					let nga = exprPath.nodeGroups[op.index1];
-					let ngb = exprPath.nodeGroups[op.index2];
-
-					// Swap the nodegroup nga and ngb node positions
-					let nextA = nga.endNode.nextSibling;
-					let nextB = ngb.endNode.nextSibling;
-					for (let node of nga.getNodes())
-						node.parentNode.insertBefore(node, nextB);
-					for (let node of ngb.getNodes())
-						node.parentNode.insertBefore(node, nextA);
-
-					exprPath.nodeGroups[op.index1] = ngb;
-					exprPath.nodeGroups[op.index2] = nga;
-
-					if (trackModified) {
-						nga.getNodes().map(n => modified.add(n));
-						ngb.getNodes().map(n => modified.add(n));
-					}
-				}
 			}
 		}
 	}
-
 	rootNg.exprsToRender = new Map(); // clear
 
 	if (trackModified)
 		return [...modified];
 }
+
+
 
 /**
  * Passed as an argument when creating a new Proxy().
@@ -1390,7 +1375,7 @@ class ProxyHandler {
 
 		val = removeProxy(val);
 
-		// 2. Add to the list of ExprPaths to re-render.
+		// 1. Add to the list of ExprPaths to re-render.
 		let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
 		if (!this.rootNodeGroup)
 			this.rootNodeGroup = Globals$1.nodeGroups.get(this.root);
@@ -1409,13 +1394,13 @@ class ProxyHandler {
 			}
 
 			// Reapply the whole expression.
-			else if (Array.isArray(val /*Reflect.get(obj, prop)*/)) // TODO: Just use val instead of Reflect.get(obj, prop)?
+			else if (Array.isArray(val /*Reflect.get(obj, prop)*/))
 				rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
 			else
 				rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
 		}
 
-		// 1. Set the value.
+		// 2. Set the value.
 		if (obj === receiver)
 			this.value = val; // top-level value.
 		else // Set the value while avoiding infinite recursion.
@@ -1527,7 +1512,7 @@ class ArraySpliceOp extends WatchOp {
 		//#IFDEV
 		assert(Array.isArray(array));
 		//#ENDIF
-		this.array = array; // This is never used other than the lenght.
+		this.array = array;
 		this.index = index*1;
 		this.deleteCount = deleteCount;
 		this.items = items; // This is never used, only the length.
@@ -1558,17 +1543,17 @@ class ValueOp extends WatchOp {
 	}
 }
 
-class ArraySwapOp extends WatchOp {
-	constructor(array, index1, index2) {
-		super();
-		//#IFDEV
-		assert(Array.isArray(array));
-		//#ENDIF
-		this.array = array;
-		this.index1 = index1;
-		this.index2 = index2;
-	}
-}
+// class ArraySwapOp extends WatchOp {
+// 	constructor(array, index1, index2) {
+// 		super();
+// 		//#IFDEV
+// 		assert(Array.isArray(array));
+// 		//#ENDIF
+// 		this.array = array;
+// 		this.index1 = index1;
+// 		this.index2 = index2;
+// 	}
+// }
 
 class WholeArrayOp extends WatchOp {
 	constructor(array, value) {
