@@ -168,9 +168,11 @@ class JSFrameworkBenchmark extends Solarite {
 	}
 
 	setSelected(row) {
+		//for (let i=0; i<100; i++) {
 		row.selected = !row.selected;
 		//this.render();
 		renderWatched(this);
+		//}
 	}
 
 	// If we used this, we'd be penalized: https://github.com/krausest/js-framework-benchmark/issues/801

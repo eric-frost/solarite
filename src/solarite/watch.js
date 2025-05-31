@@ -141,6 +141,21 @@ export function renderWatched(root, trackModified=false) {
 					for (let node of ngb.getNodes())
 						node.parentNode.insertBefore(node, nextA);
 
+					/*
+					// replaceWidth version:
+					let nextB = ngb.endNode.nextSibling;
+
+					let ngaNodes = nga.getNodes();
+					let ngbNodes = ngb.getNodes();
+					let len = Math.min(ngaNodes.length, ngbNodes.length);
+
+					for (let i=0; i< len; i++)
+						ngaNodes[i].replaceWith(ngbNodes[i]);
+					// TODO: Insert additional nodes here.
+					for (let node of nga.getNodes())
+						nextB.parentNode.insertBefore(node, nextB);
+					*/
+
 					exprPath.nodeGroups[op.index] = ngb;
 					exprPath.nodeGroups[nextOp.index] = nga;
 
@@ -210,7 +225,7 @@ class ProxyHandler {
 	getProxy(prop, val) {
 		let result = this.proxies[prop];
 		if (!result) {
-			let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+			const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
 			result = this.proxies[prop] = new Proxy(val, new ProxyHandler(this.root, this.value, path));
 		}
 		return result;
@@ -221,7 +236,7 @@ class ProxyHandler {
 		if (prop === '$removeProxy')
 			return obj;
 
-		let result = (obj === receiver)
+		const result = (obj === receiver)
 			? this.value // top-level value.
 			: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
 
@@ -231,7 +246,7 @@ class ProxyHandler {
 
 			if (prop === 'map') {
 
-				let handler = this;
+				const handler = this;
 
 				// This outer function is so the ExprPath calls it as a function,
 				// instead of it being evaluated immediately when the Template is created.
@@ -242,16 +257,19 @@ class ProxyHandler {
 					function mapFunction() {
 
 						// Save the ExprPaths that called the array used by .map()
-						if (Globals.currentExprPath) {
-							let path = handler.path;
-							let rootNg = Globals.nodeGroups.get(handler.root);
-							if (!rootNg.watchedExprPaths[path])
-								rootNg.watchedExprPaths[path] = new Set();
-							rootNg.watchedExprPaths[path].add(Globals.currentExprPath);
+
+						const currExprPath = Globals.currentExprPath;
+						if (currExprPath) {
+							const path = handler.path;
+							const rootNg = Globals.nodeGroups.get(handler.root);
+							let watchedPaths = rootNg.watchedExprPaths[path];
+							if (!watchedPaths)
+								rootNg.watchedExprPaths[path] = watchedPaths = new Set();
+							watchedPaths.add(currExprPath);
 						}
 
 						// Apply the map function.
-						let newObj = mapFunction.newValue || obj;
+						const newObj = mapFunction.newValue || obj;
 						Globals.currentExprPath.mapCallback = callback;
 						// If new Proxy fails b/c newObj isn't an object, make sure the expression is a function.
 						// TODO: Find a way to warn about this automatically.
@@ -268,17 +286,17 @@ class ProxyHandler {
 
 
 		// Save the ExprPath that's currently accessing this variable.
-		let path;
-		let currExpr = Globals.currentExprPath;
+		const currExpr = Globals.currentExprPath;
 		if (currExpr) {
 			if (!this.rootNodeGroup)
 				this.rootNodeGroup = Globals.nodeGroups.get(this.root);
-			let watchedExprPaths = this.rootNodeGroup.watchedExprPaths;
-			path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
-			if (!watchedExprPaths[path])
+			const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+			const watchedExprPaths = this.rootNodeGroup.watchedExprPaths;
+			const pathSet = watchedExprPaths[path];
+			if (!pathSet)
 				watchedExprPaths[path] = new Set([currExpr]);
 			else
-				watchedExprPaths[path].add(currExpr);
+				pathSet.add(currExpr);
 		}
 
 		// Accessing a sub-property
@@ -295,17 +313,17 @@ class ProxyHandler {
 		val = removeProxy(val);
 
 		// 1. Add to the list of ExprPaths to re-render.
-		let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+		const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
 		if (!this.rootNodeGroup)
 			this.rootNodeGroup = Globals.nodeGroups.get(this.root);
-		let rootNg = this.rootNodeGroup
+		const rootNg = this.rootNodeGroup
 
 		for (let exprPath of rootNg.watchedExprPaths[path] || []) {
 
 			// Update a single NodeGroup created by array.map()
 			// TODO: This doesn't trigger when setting the property of an object in an array.
 			if (Array.isArray(obj) && Number.isInteger(+prop)) {
-				let exprsToRender = rootNg.exprsToRender.get(exprPath);
+				const exprsToRender = rootNg.exprsToRender.get(exprPath);
 
 				// If we're not re-rendering the whole thing.
 				if (!(exprsToRender instanceof WholeArrayOp))
