@@ -1292,9 +1292,6 @@ function renderWatched(root, trackModified=false) {
  * Handles getting and setting properties on the proxied object. */
 class ProxyHandler {
 
-	/** @deprecated */
-	path = [];
-
 	/** @type {Object<string, [Proxy, ProxyHandler]>} Proxies for child properties. */
 	proxies = {}
 
@@ -1308,13 +1305,10 @@ class ProxyHandler {
 	childExprPaths = {};
 
 
-	constructor(root, value, path='') {
+	constructor(root, value) {
 
 		/** @type {Object} The top level object being proxied. */
 		this.root = root;
-
-		/** @type {string} Path from the root */
-		this.path = path;
 
 		/** @type {*} the value found when starting at root and following the path? */
 		this.value = value;
@@ -1331,8 +1325,7 @@ class ProxyHandler {
 	getProxyandHandler(prop, val) {
 		let result = this.proxies[prop];
 		if (!result) {
-			const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
-			let handler = new ProxyHandler(this.root, this.value, path);
+			let handler = new ProxyHandler(this.root, this.value);
 			//val.handler = handler; // TODO: is this the best place to put this?  No, b/c we're putting it as a property on arrays, user objects, etc.
 			result = this.proxies[prop] = [new Proxy(val, handler), handler];
 		}
@@ -1392,7 +1385,6 @@ class ProxyHandler {
 
 			else if (prop === 'push' || prop==='pop' || prop === 'splice') {
 				const rootNg = Globals$1.nodeGroups.get(this.root);
-				//const path = this.path;
 				return new WatchedArray(rootNg, obj, this.exprPaths)[prop];
 			}
 		}
