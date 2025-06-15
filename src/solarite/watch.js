@@ -123,7 +123,8 @@ export function renderWatched(root, trackModified=false) {
 				let op = ops[i];
 				let nextOp = ops[i + 1];
 
-				// If two Adjacent ArraySpliceOps that swap eachother's items.
+				// If we have two Adjacent ArraySpliceOps that swap eachother's items,
+				// then be fast by directly swap their DOM nodes.
 				if (nextOp instanceof ArraySpliceOp && nextOp.deleteCount === 1 && nextOp.items.length === 1
 					&& op instanceof ArraySpliceOp && op.deleteCount === 1 && op.items.length === 1
 					&& nextOp.array[nextOp.index] === op.firstDeleted
@@ -136,7 +137,7 @@ export function renderWatched(root, trackModified=false) {
 					// Swap the nodegroup nga and ngb node positions
 					let nextA = nga.endNode.nextSibling;
 					let nextB = ngb.endNode.nextSibling;
-					for (let node of nga.getNodes())
+					for (let node of nga.getNodes()) // TODO: Manually iterate instead of calling getNodes().
 						node.parentNode.insertBefore(node, nextB);
 					for (let node of ngb.getNodes())
 						node.parentNode.insertBefore(node, nextA);
@@ -195,12 +196,36 @@ export function renderWatched(root, trackModified=false) {
 
 
 
+
+
+
+
+
+
+
+
+
+
 /**
  * Passed as an argument when creating a new Proxy().
  * Handles getting and setting properties on the proxied object. */
 class ProxyHandler {
+
+	/** @deprecated */
 	path = [];
+
+	/** @type {Object<string, [Proxy, ProxyHandler]>} Proxies for child properties. */
 	proxies = {}
+
+	/** @type Set<ExprPath> ExprPaths that will need to be re-rendered when this variable is modified. */
+	exprPaths = new Set();
+
+	/**
+	 * ExprPaths that will need to be re-rendered when one of this variable's primitive properties is modified,
+	 * since primitives can't have their own ProxyHandler.
+	 * @type {Object<prop:string, affected:Set<ExprPath>>} */
+	childExprPaths = {};
+
 
 	constructor(root, value, path='') {
 
@@ -221,20 +246,32 @@ class ProxyHandler {
 	 * Get a cached proxy of a sub-property.
 	 * @param prop {string}
 	 * @param val {*}
-	 * @returns {Proxy} */
-	getProxy(prop, val) {
+	 * @returns {[Proxy, ProxyHandler]} */
+	getProxyandHandler(prop, val) {
 		let result = this.proxies[prop];
 		if (!result) {
 			const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
-			result = this.proxies[prop] = new Proxy(val, new ProxyHandler(this.root, this.value, path));
+			let handler = new ProxyHandler(this.root, this.value, path);
+			//val.handler = handler; // TODO: is this the best place to put this?  No, b/c we're putting it as a property on arrays, user objects, etc.
+			result = this.proxies[prop] = [new Proxy(val, handler), handler];
 		}
 		return result;
 	}
 
+	/**
+	 * We override get() so we can mark which ExprPaths read from each variable in the hierarchy.
+	 * Then later when we call set on a variable, we can see which ExprPaths use it, and can mark them to be re-rendered.
+	 * @param obj
+	 * @param prop {string}
+	 * @param receiver
+	 * @returns {*|Proxy|(function(*): function(): any)} */
 	get(obj, prop, receiver) {
 
 		if (prop === '$removeProxy')
 			return obj;
+
+		// if (prop === 'items')
+		// 	debugger;
 
 		const result = (obj === receiver)
 			? this.value // top-level value.
@@ -246,7 +283,7 @@ class ProxyHandler {
 
 			if (prop === 'map') {
 
-				const handler = this;
+				const self = this;
 
 				// This outer function is so the ExprPath calls it as a function,
 				// instead of it being evaluated immediately when the Template is created.
@@ -260,12 +297,24 @@ class ProxyHandler {
 
 						const currExprPath = Globals.currentExprPath;
 						if (currExprPath) {
-							const path = handler.path;
-							const rootNg = Globals.nodeGroups.get(handler.root);
-							let watchedPaths = rootNg.watchedExprPaths[path];
-							if (!watchedPaths)
-								rootNg.watchedExprPaths[path] = watchedPaths = new Set();
-							watchedPaths.add(currExprPath);
+
+							// Old
+							// const path = self.path;
+							// const rootNg = Globals.nodeGroups.get(self.root);
+							// let watchedPaths = rootNg.watchedExprPaths[path];
+							// if (!watchedPaths)
+							// 	rootNg.watchedExprPaths[path] = watchedPaths = new Set();
+							// watchedPaths.add(currExprPath);
+
+
+							// New
+							// if (!self.childExprPaths[prop])
+							// 	self.childExprPaths[prop] = new Set([currExprPath]);
+							// else
+							// 	self.childExprPaths[prop].add(currExprPath);
+
+							// Newer:
+							self.exprPaths.add(currExprPath);
 						}
 
 						// Apply the map function.
@@ -273,37 +322,66 @@ class ProxyHandler {
 						Globals.currentExprPath.mapCallback = callback;
 						// If new Proxy fails b/c newObj isn't an object, make sure the expression is a function.
 						// TODO: Find a way to warn about this automatically.
-						return Array.prototype.map.call(new Proxy(newObj, handler), callback);
+						let p = new Proxy(newObj, self);
+						return Array.prototype.map.call(p, callback);
 					}
 			}
 
 			else if (prop === 'push' || prop==='pop' || prop === 'splice') {
 				const rootNg = Globals.nodeGroups.get(this.root);
-				const path = this.path;
-				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[path])[prop];
+				//const path = this.path;
+				return new WatchedArray(rootNg, obj,
+
+					// old:
+					//rootNg.watchedExprPaths[path]
+
+					// new:
+					// TODO: This needs to set exprpaths for the current proxy, not a child proxy.
+					this.exprPaths
+
+				)[prop];
 			}
 		}
 
 
 		// Save the ExprPath that's currently accessing this variable.
-		const currExpr = Globals.currentExprPath;
-		if (currExpr) {
-			if (!this.rootNodeGroup)
-				this.rootNodeGroup = Globals.nodeGroups.get(this.root);
-			const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
-			const watchedExprPaths = this.rootNodeGroup.watchedExprPaths;
-			const pathSet = watchedExprPaths[path];
-			if (!pathSet)
-				watchedExprPaths[path] = new Set([currExpr]);
-			else
-				pathSet.add(currExpr);
+		const currExprPath = Globals.currentExprPath;
+		if (currExprPath && prop !== 'constructor') {
+
+			// Old:
+			// if (!this.rootNodeGroup)
+			// 	this.rootNodeGroup = Globals.nodeGroups.get(this.root);
+			// const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+			// const watchedExprPaths = this.rootNodeGroup.watchedExprPaths;
+			// const pathSet = watchedExprPaths[path];
+			// if (!pathSet)
+			// 	watchedExprPaths[path] = new Set([currExprPath]);
+			// else
+			// 	pathSet.add(currExprPath);
 		}
 
 		// Accessing a sub-property
-		if (result && typeof result === 'object')
-			return this.getProxy(prop, result);  // Clone this handler and append prop to the path.
+		if (result && typeof result === 'object') {
+			let [proxiedResult, handler] = this.getProxyandHandler(prop, result);  // Clone this handler and append prop to the path.
 
-		return result;
+			if (currExprPath && prop !== 'constructor')
+				handler.exprPaths.add(currExprPath);
+
+			return proxiedResult;
+		}
+		else {
+			if (currExprPath && prop !== 'constructor') {
+
+				// We can't have Proxies on primitive types,
+				// So we store the affected expressions in the parent Proxy.
+				if (!this.childExprPaths[prop])
+					this.childExprPaths[prop] = new Set([currExprPath]);
+				else
+					this.childExprPaths[prop].add(currExprPath);
+			}
+
+			return result;
+		}
 	}
 
 	// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
@@ -313,15 +391,40 @@ class ProxyHandler {
 		val = removeProxy(val);
 
 		// 1. Add to the list of ExprPaths to re-render.
-		const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
 		if (!this.rootNodeGroup)
 			this.rootNodeGroup = Globals.nodeGroups.get(this.root);
 		const rootNg = this.rootNodeGroup
 
-		for (let exprPath of rootNg.watchedExprPaths[path] || []) {
+		// Old:
+		// const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+		//
+		// for (let exprPath of rootNg.watchedExprPaths[path] || []) {
+		//
+		// 	// Update a single NodeGroup created by array.map()
+		// 	// TODO: This doesn't trigger when setting the property of an object in an array.
+		// 	if (Array.isArray(obj) && Number.isInteger(+prop)) {
+		// 		const exprsToRender = rootNg.exprsToRender.get(exprPath);
+		//
+		// 		// If we're not re-rendering the whole thing.
+		// 		if (!(exprsToRender instanceof WholeArrayOp))
+		// 			Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
+		// 	}
+		//
+		// 	// Reapply the whole expression.
+		// 	else if (Array.isArray(val /*Reflect.get(obj, prop)*/))
+		// 		rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val));
+		// 	else
+		// 		rootNg.exprsToRender.set(exprPath, new ValueOp(val));
+		// }
 
-			// Update a single NodeGroup created by array.map()
-			// TODO: This doesn't trigger when setting the property of an object in an array.
+		// New: // TODO: Should I instead be checking if the old value of val is a primitive?
+		let isPrimitive = !val || typeof val !== 'object';
+		let exprPaths = isPrimitive
+			? this.childExprPaths[prop] || []
+			: this.getProxyandHandler(prop, val)[1].exprPaths;
+
+		for (let exprPath of exprPaths) {
+
 			if (Array.isArray(obj) && Number.isInteger(+prop)) {
 				const exprsToRender = rootNg.exprsToRender.get(exprPath);
 
@@ -332,10 +435,12 @@ class ProxyHandler {
 
 			// Reapply the whole expression.
 			else if (Array.isArray(val /*Reflect.get(obj, prop)*/))
-				rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
+				rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val));
 			else
-				rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
+				rootNg.exprsToRender.set(exprPath, new ValueOp(val));
 		}
+
+
 
 		// 2. Set the value.
 		if (obj === receiver)
@@ -391,7 +496,7 @@ class WatchedArray {
 	/**
 	 * @param array {Array}
 	 * @param rootNg {RootNodeGroup}
-	 * @param exprPaths {ExprPath[]} Expression paths that use this array. */
+	 * @param exprPaths {ExprPath[]|Set<ExprPath>} Expression paths that use this array. */
 	constructor(rootNg, array, exprPaths) {
 		this.rootNg = rootNg;
 		//#IFDEV
@@ -480,6 +585,7 @@ class ValueOp extends WatchOp {
 	}
 }
 
+// We detect such ops but we never need to instantiate this class.
 // class ArraySwapOp extends WatchOp {
 // 	constructor(array, index1, index2) {
 // 		super();
