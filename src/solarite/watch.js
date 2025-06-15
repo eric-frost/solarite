@@ -294,28 +294,10 @@ class ProxyHandler {
 					function mapFunction() {
 
 						// Save the ExprPaths that called the array used by .map()
-
 						const currExprPath = Globals.currentExprPath;
-						if (currExprPath) {
-
-							// Old
-							// const path = self.path;
-							// const rootNg = Globals.nodeGroups.get(self.root);
-							// let watchedPaths = rootNg.watchedExprPaths[path];
-							// if (!watchedPaths)
-							// 	rootNg.watchedExprPaths[path] = watchedPaths = new Set();
-							// watchedPaths.add(currExprPath);
-
-
-							// New
-							// if (!self.childExprPaths[prop])
-							// 	self.childExprPaths[prop] = new Set([currExprPath]);
-							// else
-							// 	self.childExprPaths[prop].add(currExprPath);
-
-							// Newer:
+						if (currExprPath)
 							self.exprPaths.add(currExprPath);
-						}
+
 
 						// Apply the map function.
 						const newObj = mapFunction.newValue || obj;
@@ -330,35 +312,13 @@ class ProxyHandler {
 			else if (prop === 'push' || prop==='pop' || prop === 'splice') {
 				const rootNg = Globals.nodeGroups.get(this.root);
 				//const path = this.path;
-				return new WatchedArray(rootNg, obj,
-
-					// old:
-					//rootNg.watchedExprPaths[path]
-
-					// new:
-					// TODO: This needs to set exprpaths for the current proxy, not a child proxy.
-					this.exprPaths
-
-				)[prop];
+				return new WatchedArray(rootNg, obj, this.exprPaths)[prop];
 			}
 		}
 
 
 		// Save the ExprPath that's currently accessing this variable.
 		const currExprPath = Globals.currentExprPath;
-		if (currExprPath && prop !== 'constructor') {
-
-			// Old:
-			// if (!this.rootNodeGroup)
-			// 	this.rootNodeGroup = Globals.nodeGroups.get(this.root);
-			// const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
-			// const watchedExprPaths = this.rootNodeGroup.watchedExprPaths;
-			// const pathSet = watchedExprPaths[path];
-			// if (!pathSet)
-			// 	watchedExprPaths[path] = new Set([currExprPath]);
-			// else
-			// 	pathSet.add(currExprPath);
-		}
 
 		// Accessing a sub-property
 		if (result && typeof result === 'object') {
@@ -395,28 +355,6 @@ class ProxyHandler {
 			this.rootNodeGroup = Globals.nodeGroups.get(this.root);
 		const rootNg = this.rootNodeGroup
 
-		// Old:
-		// const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
-		//
-		// for (let exprPath of rootNg.watchedExprPaths[path] || []) {
-		//
-		// 	// Update a single NodeGroup created by array.map()
-		// 	// TODO: This doesn't trigger when setting the property of an object in an array.
-		// 	if (Array.isArray(obj) && Number.isInteger(+prop)) {
-		// 		const exprsToRender = rootNg.exprsToRender.get(exprPath);
-		//
-		// 		// If we're not re-rendering the whole thing.
-		// 		if (!(exprsToRender instanceof WholeArrayOp))
-		// 			Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
-		// 	}
-		//
-		// 	// Reapply the whole expression.
-		// 	else if (Array.isArray(val /*Reflect.get(obj, prop)*/))
-		// 		rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val));
-		// 	else
-		// 		rootNg.exprsToRender.set(exprPath, new ValueOp(val));
-		// }
-
 		// New: // TODO: Should I instead be checking if the old value of val is a primitive?
 		let isPrimitive = !val || typeof val !== 'object';
 		let exprPaths = isPrimitive
@@ -439,8 +377,6 @@ class ProxyHandler {
 			else
 				rootNg.exprsToRender.set(exprPath, new ValueOp(val));
 		}
-
-
 
 		// 2. Set the value.
 		if (obj === receiver)
@@ -581,8 +517,7 @@ class ValueOp extends WatchOp {
 		this.value = value;
 	}
 
-	markNodeGroupsAvailable(exprPath) {
-	}
+	markNodeGroupsAvailable(exprPath) {}
 }
 
 // We detect such ops but we never need to instantiate this class.
