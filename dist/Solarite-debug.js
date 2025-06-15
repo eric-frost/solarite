@@ -1326,7 +1326,6 @@ class ProxyHandler {
 		let result = this.proxies[prop];
 		if (!result) {
 			let handler = new ProxyHandler(this.root, this.value);
-			//val.handler = handler; // TODO: is this the best place to put this?  No, b/c we're putting it as a property on arrays, user objects, etc.
 			result = this.proxies[prop] = [new Proxy(val, handler), handler];
 		}
 		return result;
@@ -1371,7 +1370,6 @@ class ProxyHandler {
 						const currExprPath = Globals$1.currentExprPath;
 						if (currExprPath)
 							self.exprPaths.add(currExprPath);
-
 
 						// Apply the map function.
 						const newObj = mapFunction.newValue || obj;
@@ -1434,19 +1432,23 @@ class ProxyHandler {
 			? this.childExprPaths[prop] || []
 			: this.getProxyandHandler(prop, val)[1].exprPaths;
 
+		const isArray = Array.isArray(obj);
 		for (let exprPath of exprPaths) {
 
-			if (Array.isArray(obj) && Number.isInteger(+prop)) {
-				const exprsToRender = rootNg.exprsToRender.get(exprPath);
+			if (isArray) {
+				if (Number.isInteger(+prop)) {
+					const exprsToRender = rootNg.exprsToRender.get(exprPath);
 
-				// If we're not re-rendering the whole thing.
-				if (!(exprsToRender instanceof WholeArrayOp))
-					Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
+					// If we're not re-rendering the whole thing.
+					if (!(exprsToRender instanceof WholeArrayOp))
+						// TODO: Inline this for performance
+						Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
+				}
+
+				// Reapply the whole expression.
+				else
+					rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val));
 			}
-
-			// Reapply the whole expression.
-			else if (Array.isArray(val /*Reflect.get(obj, prop)*/))
-				rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val));
 			else
 				rootNg.exprsToRender.set(exprPath, new ValueOp(val));
 		}
