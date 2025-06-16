@@ -173,8 +173,8 @@ let Util = {
 	 * @param arr {Array|*}
 	 * @returns {boolean} */
 	isPath(arr) {
-		return Array.isArray(arr) && arr.length >=2  // An array of two elements.
-			&& (typeof arr[0] === 'object' || typeof arr[0] === 'undefined') // Where the first element is an object, null, or undefined.
+		return Array.isArray(arr) && arr.length >=2  // An array of at least two elements.
+			&& (typeof arr[0] === 'object' || arr[0] === undefined) // Where the first element is an object, null, or undefined.
 			&& !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number'); // Path 1..x is only numbers and strings.
 	},
 

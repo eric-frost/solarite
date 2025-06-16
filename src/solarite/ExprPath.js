@@ -592,7 +592,7 @@ export default class ExprPath {
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.createNewComponent() for components.
-		if (expr.length >= 2) {
+		if (Util.isPath(expr)) {
 			let [obj, path] = [expr[0], expr.slice(1)];
 
 			if (!obj)
