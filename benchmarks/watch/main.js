@@ -146,12 +146,12 @@ class JSFrameworkBenchmark extends Solarite {
 			// this.data[1] = temp;
 
 			//
-			let temp = this.data[1];
-			this.data[1] = this.data[998];
-			this.data[998] = temp;
-
-
-			renderWatched(this);
+			//for (let i=0; i<10_000; i++) {
+				let temp = this.data[1];
+				this.data[1] = this.data[998];
+				this.data[998] = temp;
+				renderWatched(this);
+			//}
 		}
 	}
 

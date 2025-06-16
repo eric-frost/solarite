@@ -1199,6 +1199,7 @@ function renderWatched(root, trackModified=false) {
 		// Selectively update NodeGroups created by array.map()
 		else {
 
+			// Look for ArraySwapOp
 			for (let i = 0; i < ops.length; i++) {
 				let op = ops[i];
 				let nextOp = ops[i + 1];
@@ -1215,34 +1216,34 @@ function renderWatched(root, trackModified=false) {
 					let ngb = exprPath.nodeGroups[nextOp.index];
 
 					// Swap the nodegroup nga and ngb node positions
-					let nextA = nga.endNode.nextSibling;
-					let nextB = ngb.endNode.nextSibling;
-					for (let node of nga.getNodes()) // TODO: Manually iterate instead of calling getNodes().
-						node.parentNode.insertBefore(node, nextB);
-					for (let node of ngb.getNodes())
-						node.parentNode.insertBefore(node, nextA);
+					// let nextA = nga.endNode.nextSibling;
+					// let nextB = ngb.endNode.nextSibling;
+					// for (let node of nga.getNodes()) // TODO: Manually iterate instead of calling getNodes().
+					// 	node.parentNode.insertBefore(node, nextB);
+					// for (let node of ngb.getNodes())
+					// 	node.parentNode.insertBefore(node, nextA);
 
-					/*
+
 					// replaceWidth version:
 					let nextB = ngb.endNode.nextSibling;
 
-					let ngaNodes = nga.getNodes();
-					let ngbNodes = ngb.getNodes();
+					let ngaNodes = nga.nodesCache; //getNodes();
+					let ngbNodes = ngb.nodesCache;
 					let len = Math.min(ngaNodes.length, ngbNodes.length);
 
 					for (let i=0; i< len; i++)
 						ngaNodes[i].replaceWith(ngbNodes[i]);
 					// TODO: Insert additional nodes here.
-					for (let node of nga.getNodes())
+					for (let node of ngaNodes)
 						nextB.parentNode.insertBefore(node, nextB);
-					*/
+
 
 					exprPath.nodeGroups[op.index] = ngb;
 					exprPath.nodeGroups[nextOp.index] = nga;
 
 					if (trackModified) {
-						nga.getNodes().map(n => modified.add(n));
-						ngb.getNodes().map(n => modified.add(n));
+						ngaNodes.map(n => modified.add(n));
+						ngbNodes.map(n => modified.add(n));
 					}
 					i++;// skip next op
 				}

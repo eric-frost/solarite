@@ -169,8 +169,6 @@ class JSFrameworkBenchmark extends Solarite {
 	}
 
 	setSelected(row) {
-		// row.selected = !row.selected;
-		// let modifications = this.render();
 		row.selected = !row.selected;
 		let modifications = this.render();
 	}
