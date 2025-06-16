@@ -93,6 +93,7 @@ export default class Template {
 			if (this.html?.length === 1 && !this.html[0])
 				el.innerHTML = ''; // Fast path for empty component.
 			else {
+				ng.clearRenderWatched();
 				ng.applyExprs(this.exprs);
 			}
 		}

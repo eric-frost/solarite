@@ -607,12 +607,7 @@ export default class ExprPath {
 			}
 			else {
 				// TODO: should we remove isFalsy, since these are always props?
-				let strValue = Util.isFalsy(value) ? '' : value;
-
-				// If we don't have this condition, when we call render(), the browser will scroll to the currently
-				// selected item in a <select> and mess up manually scrolling to a different value.
-				if (strValue !== node[this.attrName])
-					node[this.attrName] = strValue;
+				node[this.attrName] = Util.isFalsy(value) ? '' : value;
 			}
 
 			// TODO: We need to remove any old listeners, like in bindEventAttribute.

@@ -16,7 +16,7 @@ function reset() {
 
 		/**
 		 * ExprPath.applyExactNodes() sets this property when an expression is being accessed.
-		 * watch() then adds the ExprPath to the list of ExprPaths that should be re-rendered when the value changes.
+		 * watch() then adds the ExprPath to rootNg.watchedExprPaths so we know which expressions use which fields.
 		 * @type {ExprPath}*/
 		currentExprPath: null,
 
