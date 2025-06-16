@@ -127,7 +127,7 @@ function reset() {
 
 		/**
 		 * ExprPath.applyExactNodes() sets this property when an expression is being accessed.
-		 * watch() then adds the ExprPath to rootNg.watchedExprPaths so we know which expressions use which fields.
+		 * watch() then adds the ExprPath to the list of ExprPaths that should be re-rendered when the value changes.
 		 * @type {ExprPath}*/
 		currentExprPath: null,
 
@@ -1033,6 +1033,7 @@ let unusedArg = Symbol('unusedArg');
 
 
 function removeProxy(obj) {
+	// noinspection JSUnresolvedReference
 	if (obj && obj.$removeProxy)
 		return obj.$removeProxy;
 	return obj;
@@ -1096,7 +1097,8 @@ function renderWatched(root, trackModified=false) {
 				let op = ops[i];
 				let nextOp = ops[i + 1];
 
-				// If two Adjacent ArraySpliceOps that swap eachother's items.
+				// If we have two Adjacent ArraySpliceOps that swap eachother's items,
+				// then be fast by directly swap their DOM nodes.
 				if (nextOp instanceof ArraySpliceOp && nextOp.deleteCount === 1 && nextOp.items.length === 1
 					&& op instanceof ArraySpliceOp && op.deleteCount === 1 && op.items.length === 1
 					&& nextOp.array[nextOp.index] === op.firstDeleted
@@ -1109,10 +1111,25 @@ function renderWatched(root, trackModified=false) {
 					// Swap the nodegroup nga and ngb node positions
 					let nextA = nga.endNode.nextSibling;
 					let nextB = ngb.endNode.nextSibling;
-					for (let node of nga.getNodes())
+					for (let node of nga.getNodes()) // TODO: Manually iterate instead of calling getNodes().
 						node.parentNode.insertBefore(node, nextB);
 					for (let node of ngb.getNodes())
 						node.parentNode.insertBefore(node, nextA);
+
+					/*
+					// replaceWidth version:
+					let nextB = ngb.endNode.nextSibling;
+
+					let ngaNodes = nga.getNodes();
+					let ngbNodes = ngb.getNodes();
+					let len = Math.min(ngaNodes.length, ngbNodes.length);
+
+					for (let i=0; i< len; i++)
+						ngaNodes[i].replaceWith(ngbNodes[i]);
+					// TODO: Insert additional nodes here.
+					for (let node of nga.getNodes())
+						nextB.parentNode.insertBefore(node, nextB);
+					*/
 
 					exprPath.nodeGroups[op.index] = ngb;
 					exprPath.nodeGroups[nextOp.index] = nga;
@@ -1153,16 +1170,28 @@ function renderWatched(root, trackModified=false) {
 
 
 
+
+
+
+
+
+
+
+
+
+
 /**
  * Passed as an argument when creating a new Proxy().
  * Handles getting and setting properties on the proxied object. */
 class ProxyHandler {
 	path = [];
+
+	/** @type {Object<string, Proxy>} Proxies for child properties. */
 	proxies = {}
 
 	constructor(root, value, path='') {
 
-		/** @type {Object} The top level object being proxied. */
+		/** @type {HTMLElement} The top level object being proxied. */
 		this.root = root;
 
 		/** @type {string} Path from the root */
@@ -1189,6 +1218,13 @@ class ProxyHandler {
 		return result;
 	}
 
+	/**
+	 * We override get() so we can mark which ExprPaths read from each variable in the hierarchy.
+	 * Then later when we call set on a variable, we can see which ExprPaths use it, and can mark them to be re-rendered.
+	 * @param obj
+	 * @param prop {string}
+	 * @param receiver
+	 * @returns {*|Proxy|(function(*): function(): any)} */
 	get(obj, prop, receiver) {
 
 		if (prop === '$removeProxy')
@@ -1248,6 +1284,8 @@ class ProxyHandler {
 				this.rootNodeGroup = Globals$1.nodeGroups.get(this.root);
 			let watchedExprPaths = this.rootNodeGroup.watchedExprPaths;
 			path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+			// We can't have Proxies on primitive types,
+			// So we store the affected expressions in the parent Proxy.
 			if (!watchedExprPaths[path])
 				watchedExprPaths[path] = new Set([currExpr]);
 			else
@@ -1282,14 +1320,16 @@ class ProxyHandler {
 
 				// If we're not re-rendering the whole thing.
 				if (!(exprsToRender instanceof WholeArrayOp))
+
+					// TODO: Inline this for performance
 					Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
 			}
 
 			// Reapply the whole expression.
 			else if (Array.isArray(val /*Reflect.get(obj, prop)*/))
-				rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val)); // True means to re-render the whole thing.
+				rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val));
 			else
-				rootNg.exprsToRender.set(exprPath, new ValueOp(val)); // True means to re-render the whole thing.
+				rootNg.exprsToRender.set(exprPath, new ValueOp(val));
 		}
 
 		// 2. Set the value.
@@ -1427,10 +1467,10 @@ class ValueOp extends WatchOp {
 		this.value = value;
 	}
 
-	markNodeGroupsAvailable(exprPath) {
-	}
+	markNodeGroupsAvailable(exprPath) {}
 }
 
+// We detect such ops but we never need to instantiate this class.
 // class ArraySwapOp extends WatchOp {
 // 	constructor(array, index1, index2) {
 // 		super();
