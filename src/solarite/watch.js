@@ -239,7 +239,9 @@ class ProxyHandler {
 	getProxy(prop, val) {
 		let result = this.proxies[prop];
 		if (!result) {
-			let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+			let path = this.path.length === 0
+				? prop
+				: (this.path + '\f' + prop);
 			result = this.proxies[prop] = new Proxy(val, new ProxyHandler(this.root, this.value, path));
 		}
 		return result;
@@ -266,7 +268,6 @@ class ProxyHandler {
 		if (Array.isArray(obj)) {
 
 			if (prop === 'map') {
-
 				let handler = this;
 
 				// This outer function is so the ExprPath calls it as a function,
@@ -333,11 +334,11 @@ class ProxyHandler {
 		val = removeProxy(val);
 
 		// 1. Add to the list of ExprPaths to re-render.
-		let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
 		if (!this.rootNodeGroup)
 			this.rootNodeGroup = Globals.nodeGroups.get(this.root);
 		let rootNg = this.rootNodeGroup
 
+		const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
 		for (let exprPath of rootNg.watchedExprPaths[path] || []) {
 
 			// Update a single NodeGroup created by array.map()
@@ -348,12 +349,12 @@ class ProxyHandler {
 				// If we're not re-rendering the whole thing.
 				if (!(exprsToRender instanceof WholeArrayOp))
 
-					// TODO: Inline this for performance
+					// TODO: Inline this for performance?
 					Util.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
 			}
 
 			// Reapply the whole expression.
-			else if (Array.isArray(val /*Reflect.get(obj, prop)*/))
+			else if (Array.isArray(val))
 				rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val));
 			else
 				rootNg.exprsToRender.set(exprPath, new ValueOp(val));
@@ -369,7 +370,7 @@ class ProxyHandler {
 		if (val && typeof val === 'object')
 			delete this.proxies[prop];
 
-		return true;
+		return true; // Required by Proxy
 	}
 }
 
@@ -380,10 +381,6 @@ class ProxyHandler {
  * 1.  When we call watch() it creates properties on the root object that return Proxies to watch when values are set.
  * 2.  When they are set, we add their paths to the rootNodeGroup.exprsToRender that keeps track of what to re-render.
  * 3.  Then we call renderWatched() to re-render only those parts.
- *
- * In more detail:
- * TODO
- *
  *
  * @param root {HTMLElement} An instance of a Web Component that uses r() to render its content.
  * @param field {string} The name of a top-level property of root.

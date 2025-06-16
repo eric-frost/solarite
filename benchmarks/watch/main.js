@@ -107,8 +107,8 @@ class JSFrameworkBenchmark extends Solarite {
 		//renderUnwatched(() => {
 		//debugger;
 			this.data = buildData(1000); // setting this.data is fast.
-		//	renderWatched(this); // Makes swap fail!
-			this.render()
+			renderWatched(this); // Makes update every 10th row fail if we clear and run again.
+		//	this.render()
 		//});
 	}
 
@@ -116,8 +116,8 @@ class JSFrameworkBenchmark extends Solarite {
 	runLots() {
 		//renderUnwatched(() => {
 			this.data = buildData(10_000);
-			//renderWatched(this);
-			this.render();
+			renderWatched(this);
+			//this.render();
 		//});
 	}
 
@@ -168,10 +168,10 @@ class JSFrameworkBenchmark extends Solarite {
 	}
 
 	setSelected(row) {
-		//for (let i=0; i<100; i++) {
-		row.selected = !row.selected;
-		//this.render();
-		renderWatched(this);
+		//for (let i=0; i<100_000; i++) {
+			row.selected = !row.selected;
+			//this.render();
+			renderWatched(this);
 		//}
 	}
 

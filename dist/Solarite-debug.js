@@ -80,18 +80,14 @@ var Util$1 = {
 	/**
 	 * Use an array as the value of a map, appending to it when we add.
 	 * Used by watch.js.
-	 * @param map {Map|WeakMap|Object}
+	 * @param map {Map}
 	 * @param key
 	 * @param value */
 	mapArrayAdd(map, key, value) {
-		let isMap = map instanceof Map || map instanceof WeakMap;
-		let result = isMap ? map.get(key) : map[key];
+		let result = map.get(key);
 		if (!result) {
 			result = [value];
-			if (isMap)
-				map.set(key, result);
-			else
-				map[key] = result;
+			map.set(key, result);
 		}
 		else
 			result.push(value);
@@ -384,6 +380,8 @@ let Util = {
 		let result = Globals$1.htmlProps[key];
 		if (result === undefined) { // Caching just barely makes this slightly faster.
 			let proto = Object.getPrototypeOf(el);
+
+			// Find the first HTMLElement that we inherit from (not our own classes)
 			while (proto) {
 				const ctorName = proto.constructor.name;
 				if (ctorName.startsWith('HTML') && ctorName.endsWith('Element'))
@@ -1320,7 +1318,9 @@ class ProxyHandler {
 	getProxy(prop, val) {
 		let result = this.proxies[prop];
 		if (!result) {
-			let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
+			let path = this.path.length === 0
+				? prop
+				: (this.path + '\f' + prop);
 			result = this.proxies[prop] = new Proxy(val, new ProxyHandler(this.root, this.value, path));
 		}
 		return result;
@@ -1347,7 +1347,6 @@ class ProxyHandler {
 		if (Array.isArray(obj)) {
 
 			if (prop === 'map') {
-
 				let handler = this;
 
 				// This outer function is so the ExprPath calls it as a function,
@@ -1414,11 +1413,11 @@ class ProxyHandler {
 		val = removeProxy(val);
 
 		// 1. Add to the list of ExprPaths to re-render.
-		let path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
 		if (!this.rootNodeGroup)
 			this.rootNodeGroup = Globals$1.nodeGroups.get(this.root);
 		let rootNg = this.rootNodeGroup;
 
+		const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
 		for (let exprPath of rootNg.watchedExprPaths[path] || []) {
 
 			// Update a single NodeGroup created by array.map()
@@ -1429,12 +1428,12 @@ class ProxyHandler {
 				// If we're not re-rendering the whole thing.
 				if (!(exprsToRender instanceof WholeArrayOp))
 
-					// TODO: Inline this for performance
+					// TODO: Inline this for performance?
 					Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
 			}
 
 			// Reapply the whole expression.
-			else if (Array.isArray(val /*Reflect.get(obj, prop)*/))
+			else if (Array.isArray(val))
 				rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val));
 			else
 				rootNg.exprsToRender.set(exprPath, new ValueOp(val));
@@ -1450,7 +1449,7 @@ class ProxyHandler {
 		if (val && typeof val === 'object')
 			delete this.proxies[prop];
 
-		return true;
+		return true; // Required by Proxy
 	}
 }
 
@@ -1461,10 +1460,6 @@ class ProxyHandler {
  * 1.  When we call watch() it creates properties on the root object that return Proxies to watch when values are set.
  * 2.  When they are set, we add their paths to the rootNodeGroup.exprsToRender that keeps track of what to re-render.
  * 3.  Then we call renderWatched() to re-render only those parts.
- *
- * In more detail:
- * TODO
- *
  *
  * @param root {HTMLElement} An instance of a Web Component that uses r() to render its content.
  * @param field {string} The name of a top-level property of root.
@@ -1693,6 +1688,8 @@ class ExprPath {
 	 * @type {?function} The most recent callback passed to a .map() function in this ExprPath.
 	 * TODO: What if one ExprPath has two .map() calls?  Maybe we just won't support that. */
 	mapCallback
+
+	isHtmlProperty = undefined;
 
 	/**
 	 * @param nodeBefore {Node}
@@ -2194,7 +2191,7 @@ class ExprPath {
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.createNewComponent() for components.
-		if (Util.isPath(expr)) {
+		if (expr.length >= 2) {
 			let [obj, path] = [expr[0], expr.slice(1)];
 
 			if (!obj)
@@ -2241,7 +2238,9 @@ class ExprPath {
 			// This version checks the html element it extends from, to see if has a setter set:
 			//     Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set
 			//let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
-			let isProp = Util.isHtmlProp(node, this.attrName);
+			let isProp = this.isHtmlProperty;
+			if (isProp === undefined)
+				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
 			let multiple = this.attrValue;

@@ -152,6 +152,8 @@ let Util = {
 		let result = Globals.htmlProps[key];
 		if (result === undefined) { // Caching just barely makes this slightly faster.
 			let proto = Object.getPrototypeOf(el);
+
+			// Find the first HTMLElement that we inherit from (not our own classes)
 			while (proto) {
 				const ctorName = proto.constructor.name;
 				if (ctorName.startsWith('HTML') && ctorName.endsWith('Element'))
