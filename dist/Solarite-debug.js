@@ -84,14 +84,10 @@ var Util$1 = {
 	 * @param key
 	 * @param value */
 	mapArrayAdd(map, key, value) {
-		let isMap = map instanceof Map || map instanceof WeakMap;
-		let result = isMap ? map.get(key) : map[key];
+		let result = map.get(key);
 		if (!result) {
 			result = [value];
-			if (isMap)
-				map.set(key, result);
-			else
-				map[key] = result;
+			map.set(key, result);
 		}
 		else
 			result.push(value);
@@ -384,6 +380,8 @@ let Util = {
 		let result = Globals$1.htmlProps[key];
 		if (result === undefined) { // Caching just barely makes this slightly faster.
 			let proto = Object.getPrototypeOf(el);
+
+			// Find the first HTMLElement that we inherit from (not our own classes)
 			while (proto) {
 				const ctorName = proto.constructor.name;
 				if (ctorName.startsWith('HTML') && ctorName.endsWith('Element'))
@@ -403,8 +401,8 @@ let Util = {
 	 * @param arr {Array|*}
 	 * @returns {boolean} */
 	isPath(arr) {
-		return Array.isArray(arr) && arr.length >=2  // An array of two elements.
-			&& (typeof arr[0] === 'object' || typeof arr[0] === 'undefined') // Where the first element is an object, null, or undefined.
+		return Array.isArray(arr) && arr.length >=2  // An array of at least two elements.
+			&& (typeof arr[0] === 'object' || arr[0] === undefined) // Where the first element is an object, null, or undefined.
 			&& !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number'); // Path 1..x is only numbers and strings.
 	},
 
@@ -1707,6 +1705,8 @@ class ExprPath {
 	 * TODO: What if one ExprPath has two .map() calls?  Maybe we just won't support that. */
 	mapCallback
 
+	isHtmlProperty = undefined;
+
 	/**
 	 * @param nodeBefore {Node}
 	 * @param nodeMarker {?Node}
@@ -2259,13 +2259,18 @@ class ExprPath {
 			// This version checks the html element it extends from, to see if has a setter set:
 			//     Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set
 			//let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
-			let isProp = Util.isHtmlProp(node, this.attrName);
+			let isProp = this.isHtmlProperty;
+			if (isProp === undefined)
+				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
 			let multiple = this.attrValue;
 			if (!multiple) {
 				Globals$1.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
+					if (this.type === 4) { // Don't evaluate functions before passing them to components
+						return
+					}
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
 					expr = expr();
 				}
@@ -4283,4 +4288,4 @@ let Solarite = new Proxy(createSolarite(), {
 let getInputValue = Util.getInputValue;
  // unfinished
 
-export { ArgType, Globals$1 as Globals, Solarite, Template, delve, getArg, getInputValue, r, renderWatched, watch };
+export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, getInputValue, r, renderWatched, watch };

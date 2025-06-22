@@ -87,14 +87,10 @@ var Util = {
 	 * @param key
 	 * @param value */
 	mapArrayAdd(map, key, value) {
-		let isMap = map instanceof Map || map instanceof WeakMap;
-		let result = isMap ? map.get(key) : map[key];
+		let result = map.get(key);
 		if (!result) {
 			result = [value];
-			if (isMap)
-				map.set(key, result);
-			else
-				map[key] = result;
+			map.set(key, result);
 		}
 		else
 			result.push(value);

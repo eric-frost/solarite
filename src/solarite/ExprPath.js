@@ -87,6 +87,8 @@ export default class ExprPath {
 	 * TODO: What if one ExprPath has two .map() calls?  Maybe we just won't support that. */
 	mapCallback
 
+	isHtmlProperty = undefined;
+
 	/**
 	 * @param nodeBefore {Node}
 	 * @param nodeMarker {?Node}
@@ -642,13 +644,18 @@ export default class ExprPath {
 			// This version checks the html element it extends from, to see if has a setter set:
 			//     Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set
 			//let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
-			let isProp = Util.isHtmlProp(node, this.attrName);
+			let isProp = this.isHtmlProperty;
+			if (isProp === undefined)
+				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
 			let multiple = this.attrValue;
 			if (!multiple) {
 				Globals.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
+					if (this.type === 4) { // Don't evaluate functions before passing them to components
+						return
+					}
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
 					expr = expr();
 				}

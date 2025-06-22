@@ -28,6 +28,7 @@ import Util from './Util.js';
 let getInputValue = Util.getInputValue;
 export {getInputValue};
 export {default as delve} from '../util/delve.js';
+export {default as SolariteUtil} from './Util.js';
 
 //Experimental:
 //export {forEach, watchGet, watchSet} from './watch.js' // old, unfinished
