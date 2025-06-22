@@ -2123,6 +2123,9 @@ class ExprPath {
 			if (!multiple) {
 				Globals$1.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
+					if (this.type === 4) { // Don't evaluate functions before passing them to components
+						return
+					}
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
 					expr = expr();
 				}
@@ -3992,4 +3995,4 @@ let Solarite = new Proxy(createSolarite(), {
 let getInputValue = Util.getInputValue;
  // unfinished
 
-export { ArgType, Globals$1 as Globals, Solarite, Template, delve, getArg, getInputValue, r, renderWatched, watch };
+export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, getInputValue, r, renderWatched, watch };

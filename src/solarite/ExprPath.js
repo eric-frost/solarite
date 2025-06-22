@@ -648,6 +648,9 @@ export default class ExprPath {
 			if (!multiple) {
 				Globals.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
+					if (this.type === 4) { // Don't evaluate functions before passing them to components
+						return
+					}
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
 					expr = expr();
 				}
