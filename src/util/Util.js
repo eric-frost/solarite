@@ -83,14 +83,18 @@ var Util = {
 	/**
 	 * Use an array as the value of a map, appending to it when we add.
 	 * Used by watch.js.
-	 * @param map {Map}
+	 * @param map {Map|WeakMap|Object}
 	 * @param key
 	 * @param value */
 	mapArrayAdd(map, key, value) {
-		let result = map.get(key);
+		let isMap = map instanceof Map || map instanceof WeakMap;
+		let result = isMap ? map.get(key) : map[key];
 		if (!result) {
 			result = [value];
-			map.set(key, result);
+			if (isMap)
+				map.set(key, result);
+			else
+				map[key] = result;
 		}
 		else
 			result.push(value);

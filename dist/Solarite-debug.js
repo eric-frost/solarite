@@ -80,14 +80,18 @@ var Util$1 = {
 	/**
 	 * Use an array as the value of a map, appending to it when we add.
 	 * Used by watch.js.
-	 * @param map {Map}
+	 * @param map {Map|WeakMap|Object}
 	 * @param key
 	 * @param value */
 	mapArrayAdd(map, key, value) {
-		let result = map.get(key);
+		let isMap = map instanceof Map || map instanceof WeakMap;
+		let result = isMap ? map.get(key) : map[key];
 		if (!result) {
 			result = [value];
-			map.set(key, result);
+			if (isMap)
+				map.set(key, result);
+			else
+				map[key] = result;
 		}
 		else
 			result.push(value);
@@ -380,8 +384,6 @@ let Util = {
 		let result = Globals$1.htmlProps[key];
 		if (result === undefined) { // Caching just barely makes this slightly faster.
 			let proto = Object.getPrototypeOf(el);
-
-			// Find the first HTMLElement that we inherit from (not our own classes)
 			while (proto) {
 				const ctorName = proto.constructor.name;
 				if (ctorName.startsWith('HTML') && ctorName.endsWith('Element'))
@@ -401,8 +403,8 @@ let Util = {
 	 * @param arr {Array|*}
 	 * @returns {boolean} */
 	isPath(arr) {
-		return Array.isArray(arr) && arr.length >=2  // An array of at least two elements.
-			&& (typeof arr[0] === 'object' || arr[0] === undefined) // Where the first element is an object, null, or undefined.
+		return Array.isArray(arr) && arr.length >=2  // An array of two elements.
+			&& (typeof arr[0] === 'object' || typeof arr[0] === 'undefined') // Where the first element is an object, null, or undefined.
 			&& !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number'); // Path 1..x is only numbers and strings.
 	},
 
@@ -1139,7 +1141,6 @@ let unusedArg = Symbol('unusedArg');
 
 
 function removeProxy(obj) {
-	// noinspection JSUnresolvedReference
 	if (obj && obj.$removeProxy)
 		return obj.$removeProxy;
 	return obj;
@@ -1199,7 +1200,6 @@ function renderWatched(root, trackModified=false) {
 		// Selectively update NodeGroups created by array.map()
 		else {
 
-			// Look for ArraySwapOp
 			for (let i = 0; i < ops.length; i++) {
 				let op = ops[i];
 				let nextOp = ops[i + 1];
@@ -1216,34 +1216,34 @@ function renderWatched(root, trackModified=false) {
 					let ngb = exprPath.nodeGroups[nextOp.index];
 
 					// Swap the nodegroup nga and ngb node positions
-					// let nextA = nga.endNode.nextSibling;
-					// let nextB = ngb.endNode.nextSibling;
-					// for (let node of nga.getNodes()) // TODO: Manually iterate instead of calling getNodes().
-					// 	node.parentNode.insertBefore(node, nextB);
-					// for (let node of ngb.getNodes())
-					// 	node.parentNode.insertBefore(node, nextA);
+					let nextA = nga.endNode.nextSibling;
+					let nextB = ngb.endNode.nextSibling;
+					for (let node of nga.getNodes()) // TODO: Manually iterate instead of calling getNodes().
+						node.parentNode.insertBefore(node, nextB);
+					for (let node of ngb.getNodes())
+						node.parentNode.insertBefore(node, nextA);
 
-
+					/*
 					// replaceWidth version:
 					let nextB = ngb.endNode.nextSibling;
 
-					let ngaNodes = nga.nodesCache; //getNodes();
-					let ngbNodes = ngb.nodesCache;
+					let ngaNodes = nga.getNodes();
+					let ngbNodes = ngb.getNodes();
 					let len = Math.min(ngaNodes.length, ngbNodes.length);
 
 					for (let i=0; i< len; i++)
 						ngaNodes[i].replaceWith(ngbNodes[i]);
 					// TODO: Insert additional nodes here.
-					for (let node of ngaNodes)
+					for (let node of nga.getNodes())
 						nextB.parentNode.insertBefore(node, nextB);
-
+					*/
 
 					exprPath.nodeGroups[op.index] = ngb;
 					exprPath.nodeGroups[nextOp.index] = nga;
 
 					if (trackModified) {
-						ngaNodes.map(n => modified.add(n));
-						ngbNodes.map(n => modified.add(n));
+						nga.getNodes().map(n => modified.add(n));
+						ngb.getNodes().map(n => modified.add(n));
 					}
 					i++;// skip next op
 				}
@@ -1291,18 +1291,24 @@ function renderWatched(root, trackModified=false) {
  * Passed as an argument when creating a new Proxy().
  * Handles getting and setting properties on the proxied object. */
 class ProxyHandler {
-	path = [];
 
-	/** @type {Object<string, Proxy>} Proxies for child properties. */
+	/** @type {Object<string, [Proxy, ProxyHandler]>} Proxies for child properties. */
 	proxies = {}
 
-	constructor(root, value, path='') {
+	/** @type Set<ExprPath> ExprPaths that will need to be re-rendered when this variable is modified. */
+	exprPaths = new Set();
 
-		/** @type {HTMLElement} The top level object being proxied. */
+	/**
+	 * ExprPaths that will need to be re-rendered when one of this variable's primitive properties is modified,
+	 * since primitives can't have their own ProxyHandler.
+	 * @type {Object<prop:string, affected:Set<ExprPath>>} */
+	childExprPaths = {};
+
+
+	constructor(root, value) {
+
+		/** @type {Object} The top level object being proxied. */
 		this.root = root;
-
-		/** @type {string} Path from the root */
-		this.path = path;
 
 		/** @type {*} the value found when starting at root and following the path? */
 		this.value = value;
@@ -1315,14 +1321,12 @@ class ProxyHandler {
 	 * Get a cached proxy of a sub-property.
 	 * @param prop {string}
 	 * @param val {*}
-	 * @returns {Proxy} */
-	getProxy(prop, val) {
+	 * @returns {[Proxy, ProxyHandler]} */
+	getProxyandHandler(prop, val) {
 		let result = this.proxies[prop];
 		if (!result) {
-			let path = this.path.length === 0
-				? prop
-				: (this.path + '\f' + prop);
-			result = this.proxies[prop] = new Proxy(val, new ProxyHandler(this.root, this.value, path));
+			let handler = new ProxyHandler(this.root, this.value);
+			result = this.proxies[prop] = [new Proxy(val, handler), handler];
 		}
 		return result;
 	}
@@ -1339,7 +1343,10 @@ class ProxyHandler {
 		if (prop === '$removeProxy')
 			return obj;
 
-		let result = (obj === receiver)
+		// if (prop === 'items')
+		// 	debugger;
+
+		const result = (obj === receiver)
 			? this.value // top-level value.
 			: Reflect.get(obj, prop, receiver); // avoid infinite recursion.
 
@@ -1348,7 +1355,8 @@ class ProxyHandler {
 		if (Array.isArray(obj)) {
 
 			if (prop === 'map') {
-				let handler = this;
+
+				const self = this;
 
 				// This outer function is so the ExprPath calls it as a function,
 				// instead of it being evaluated immediately when the Template is created.
@@ -1359,52 +1367,52 @@ class ProxyHandler {
 					function mapFunction() {
 
 						// Save the ExprPaths that called the array used by .map()
-						if (Globals$1.currentExprPath) {
-							let path = handler.path;
-							let rootNg = Globals$1.nodeGroups.get(handler.root);
-							if (!rootNg.watchedExprPaths[path])
-								rootNg.watchedExprPaths[path] = new Set();
-							rootNg.watchedExprPaths[path].add(Globals$1.currentExprPath);
-						}
+						const currExprPath = Globals$1.currentExprPath;
+						if (currExprPath)
+							self.exprPaths.add(currExprPath);
 
 						// Apply the map function.
-						let newObj = mapFunction.newValue || obj;
+						const newObj = mapFunction.newValue || obj;
 						Globals$1.currentExprPath.mapCallback = callback;
 						// If new Proxy fails b/c newObj isn't an object, make sure the expression is a function.
 						// TODO: Find a way to warn about this automatically.
-						return Array.prototype.map.call(new Proxy(newObj, handler), callback);
+						let p = new Proxy(newObj, self);
+						return Array.prototype.map.call(p, callback);
 					}
 			}
 
 			else if (prop === 'push' || prop==='pop' || prop === 'splice') {
 				const rootNg = Globals$1.nodeGroups.get(this.root);
-				const path = this.path;
-				return new WatchedArray(rootNg, obj, rootNg.watchedExprPaths[path])[prop];
+				return new WatchedArray(rootNg, obj, this.exprPaths)[prop];
 			}
 		}
 
 
 		// Save the ExprPath that's currently accessing this variable.
-		let path;
-		let currExpr = Globals$1.currentExprPath;
-		if (currExpr) {
-			if (!this.rootNodeGroup)
-				this.rootNodeGroup = Globals$1.nodeGroups.get(this.root);
-			let watchedExprPaths = this.rootNodeGroup.watchedExprPaths;
-			path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
-			// We can't have Proxies on primitive types,
-			// So we store the affected expressions in the parent Proxy.
-			if (!watchedExprPaths[path])
-				watchedExprPaths[path] = new Set([currExpr]);
-			else
-				watchedExprPaths[path].add(currExpr);
-		}
+		const currExprPath = Globals$1.currentExprPath;
 
 		// Accessing a sub-property
-		if (result && typeof result === 'object')
-			return this.getProxy(prop, result);  // Clone this handler and append prop to the path.
+		if (result && typeof result === 'object') {
+			let [proxiedResult, handler] = this.getProxyandHandler(prop, result);  // Clone this handler and append prop to the path.
 
-		return result;
+			if (currExprPath && prop !== 'constructor')
+				handler.exprPaths.add(currExprPath);
+
+			return proxiedResult;
+		}
+		else {
+			if (currExprPath && prop !== 'constructor') {
+
+				// We can't have Proxies on primitive types,
+				// So we store the affected expressions in the parent Proxy.
+				if (!this.childExprPaths[prop])
+					this.childExprPaths[prop] = new Set([currExprPath]);
+				else
+					this.childExprPaths[prop].add(currExprPath);
+			}
+
+			return result;
+		}
 	}
 
 	// TODO: Will fail for attribute w/ a value having multiple ExprPaths.
@@ -1416,26 +1424,31 @@ class ProxyHandler {
 		// 1. Add to the list of ExprPaths to re-render.
 		if (!this.rootNodeGroup)
 			this.rootNodeGroup = Globals$1.nodeGroups.get(this.root);
-		let rootNg = this.rootNodeGroup;
+		const rootNg = this.rootNodeGroup;
 
-		const path = this.path.length === 0 ? prop : (this.path + '\f' + prop);
-		for (let exprPath of rootNg.watchedExprPaths[path] || []) {
+		// New: // TODO: Should I instead be checking if the old value of val is a primitive?
+		let isPrimitive = !val || typeof val !== 'object';
+		let exprPaths = isPrimitive
+			? this.childExprPaths[prop] || []
+			: this.getProxyandHandler(prop, val)[1].exprPaths;
 
-			// Update a single NodeGroup created by array.map()
-			// TODO: This doesn't trigger when setting the property of an object in an array.
-			if (Array.isArray(obj) && Number.isInteger(+prop)) {
-				let exprsToRender = rootNg.exprsToRender.get(exprPath);
+		const isArray = Array.isArray(obj);
+		for (let exprPath of exprPaths) {
 
-				// If we're not re-rendering the whole thing.
-				if (!(exprsToRender instanceof WholeArrayOp))
+			if (isArray) {
+				if (Number.isInteger(+prop)) {
+					const exprsToRender = rootNg.exprsToRender.get(exprPath);
 
-					// TODO: Inline this for performance?
-					Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
+					// If we're not re-rendering the whole thing.
+					if (!(exprsToRender instanceof WholeArrayOp))
+						// TODO: Inline this for performance
+						Util$1.mapArrayAdd(rootNg.exprsToRender, exprPath, new ArraySpliceOp(obj, prop, 1, [val]));
+				}
+
+				// Reapply the whole expression.
+				else
+					rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val));
 			}
-
-			// Reapply the whole expression.
-			else if (Array.isArray(val))
-				rootNg.exprsToRender.set(exprPath, new WholeArrayOp(val));
 			else
 				rootNg.exprsToRender.set(exprPath, new ValueOp(val));
 		}
@@ -1450,7 +1463,7 @@ class ProxyHandler {
 		if (val && typeof val === 'object')
 			delete this.proxies[prop];
 
-		return true; // Required by Proxy
+		return true;
 	}
 }
 
@@ -1461,6 +1474,10 @@ class ProxyHandler {
  * 1.  When we call watch() it creates properties on the root object that return Proxies to watch when values are set.
  * 2.  When they are set, we add their paths to the rootNodeGroup.exprsToRender that keeps track of what to re-render.
  * 3.  Then we call renderWatched() to re-render only those parts.
+ *
+ * In more detail:
+ * TODO
+ *
  *
  * @param root {HTMLElement} An instance of a Web Component that uses r() to render its content.
  * @param field {string} The name of a top-level property of root.
@@ -1490,7 +1507,7 @@ class WatchedArray {
 	/**
 	 * @param array {Array}
 	 * @param rootNg {RootNodeGroup}
-	 * @param exprPaths {ExprPath[]} Expression paths that use this array. */
+	 * @param exprPaths {ExprPath[]|Set<ExprPath>} Expression paths that use this array. */
 	constructor(rootNg, array, exprPaths) {
 		this.rootNg = rootNg;
 		//#IFDEV
@@ -1689,8 +1706,6 @@ class ExprPath {
 	 * @type {?function} The most recent callback passed to a .map() function in this ExprPath.
 	 * TODO: What if one ExprPath has two .map() calls?  Maybe we just won't support that. */
 	mapCallback
-
-	isHtmlProperty = undefined;
 
 	/**
 	 * @param nodeBefore {Node}
@@ -2209,7 +2224,12 @@ class ExprPath {
 			}
 			else {
 				// TODO: should we remove isFalsy, since these are always props?
-				node[this.attrName] = Util.isFalsy(value) ? '' : value;
+				let strValue = Util.isFalsy(value) ? '' : value;
+
+				// If we don't have this condition, when we call render(), the browser will scroll to the currently
+				// selected item in a <select> and mess up manually scrolling to a different value.
+				if (strValue !== node[this.attrName])
+					node[this.attrName] = strValue;
 			}
 
 			// TODO: We need to remove any old listeners, like in bindEventAttribute.
@@ -2239,18 +2259,13 @@ class ExprPath {
 			// This version checks the html element it extends from, to see if has a setter set:
 			//     Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set
 			//let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
-			let isProp = this.isHtmlProperty;
-			if (isProp === undefined)
-				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
+			let isProp = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
 			let multiple = this.attrValue;
 			if (!multiple) {
 				Globals$1.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
-					if (this.type === 4) { // Don't evaluate functions before passing them to components
-						return
-					}
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
 					expr = expr();
 				}
@@ -3647,12 +3662,6 @@ class RootNodeGroup extends NodeGroup {
 	root;
 
 	/**
-	 * Store the ExprPaths that use each watched variable.
-	 * The path string is the path array joined on \f, because that's faster than sending it to JSON.stringify()
-	 * @type {Object<path:string, Set<ExprPath>>} */
-	watchedExprPaths = {};
-
-	/**
 	 * When we call renerWatched() we re-render these expressions, then clear this to a new Map()
 	 * @type {Map<ExprPath, ValueOp|WholeArrayOp|ArraySpliceOp[]>} */
 	exprsToRender = new Map();
@@ -3767,10 +3776,6 @@ class RootNodeGroup extends NodeGroup {
 
 			this.activateStaticComponents(staticComponents);
 		}
-	}
-
-	clearRenderWatched() {
-		this.watchedExprPaths = {};
 	}
 }
 
@@ -3887,7 +3892,6 @@ class Template {
 			if (this.html?.length === 1 && !this.html[0])
 				el.innerHTML = ''; // Fast path for empty component.
 			else {
-				ng.clearRenderWatched();
 				ng.applyExprs(this.exprs);
 			}
 		}
@@ -4279,4 +4283,4 @@ let Solarite = new Proxy(createSolarite(), {
 let getInputValue = Util.getInputValue;
  // unfinished
 
-export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, getInputValue, r, renderWatched, watch };
+export { ArgType, Globals$1 as Globals, Solarite, Template, delve, getArg, getInputValue, r, renderWatched, watch };
