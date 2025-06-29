@@ -1,15 +1,11 @@
 // noinspection DuplicatedCode
 
-// Broken tests will be annotated with FIXME
+import {getArg, r, Solarite} from '../src/solarite/Solarite.js';
+//import {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 
+import {watch, renderWatched} from "../src/solarite/watch.js";
 import Util from "../src/solarite/Util.js";
 import HtmlParser from "../src/solarite/HtmlParser.js";
-//import {watchGet, watchSet} from "../src/solarite/watch.js";
-import {getArg, r, renderWatched, Solarite} from '../src/solarite/Solarite.js';
-//import {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
-//import {watch} from "../src/solarite/watch2.js";
-import watch from "../src/solarite/watch.js";
-//import NodeGroupManager from "../src/solarite/NodeGroupManager.js";
 import NodeGroup from "../src/solarite/NodeGroup.js";
 import Template from "../src/solarite/Template.js";
 import Shell from "../src/solarite/Shell.js";

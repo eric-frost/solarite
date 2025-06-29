@@ -3,6 +3,8 @@
  * MIT License
  * https://vorticode.github.io/solarite/
  */
+/** @jsx r */
+/** @jsxFrag null */
 
 
 import createSolarite from "./createSolarite.js";
@@ -19,7 +21,7 @@ let Solarite = new Proxy(createSolarite(), {
 
 /** @type {HTMLElement|Class} */
 export {Solarite}
-export {default as r} from './r.js';
+export {default as r, default as h} from './r.js';
 export {getArg, ArgType} from './getArg.js';
 export {default as Template} from './Template.js';
 export {default as Globals} from './Globals.js';
@@ -31,5 +33,4 @@ export {default as delve} from '../util/delve.js';
 export {default as SolariteUtil} from './Util.js';
 
 //Experimental:
-//export {forEach, watchGet, watchSet} from './watch.js' // old, unfinished
-export {default as watch, renderWatched} from './watch.js'; // unfinished
+//export {default as watch, renderWatched} from './watch.js'; // unfinished

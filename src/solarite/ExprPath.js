@@ -6,7 +6,7 @@ import Template from "./Template.js";
 import Globals from "./Globals.js";
 import MultiValueMap from "../util/MultiValueMap.js";
 import udomdiff from "./udomdiff.js";
-import {ArraySpliceOp} from "./watch.js";
+//import {ArraySpliceOp} from "./watch.js";
 //#IFDEV
 var exprPathId = 0;
 //#ENDIF
@@ -117,7 +117,8 @@ export default class ExprPath {
 	 * We should modify path.applyValueAttrib so it stores the procssed parts and then only calls
 	 * setAttribute() once all the pieces are in place.
 	 *
-	 * @param exprs {Expr[]}*/
+	 * @param exprs {Expr[]}
+	 * @param freeNodeGroups {boolean} */
 	apply(exprs, freeNodeGroups=true) {
 		switch (this.type) {
 			case 1: // PathType.Content:
@@ -525,7 +526,7 @@ export default class ExprPath {
 	 * Call function when eventName is triggerd on node.
 	 * @param node {HTMLElement}
 	 * @param root {HTMLElement}
-	 * @param key {string{
+	 * @param key {string}
 	 * @param eventName {string}
 	 * @param func {function}
 	 * @param args {array}

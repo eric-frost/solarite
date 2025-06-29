@@ -3,7 +3,6 @@
  *
  * TODO:
  * 1. Have option to automatically render?
- * 2. Rename so we have watch.add() and watch.render() ?
  *
  * Limitations:
  * 1.  If we use one path to get a property during render, but a different path to set it, it will not be marked for rendering.
@@ -414,7 +413,7 @@ export default function watch(root, field, value=unusedArg) {
 		set: (val) => handler.set(root, field, val, root)
 	});
 }
-
+export {watch};
 
 
 /**

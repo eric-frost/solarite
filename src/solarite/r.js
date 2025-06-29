@@ -1,6 +1,7 @@
 import Template from "./Template.js";
 import Util from "./Util.js";
 import Globals from "./Globals.js";
+import {assert} from "../util/Errors.js";
 
 /**
  * Convert strings to HTMLNodes.
@@ -27,12 +28,13 @@ import Globals from "./Globals.js";
  *                                     // includes properly handling nested components and r`` sub-expressions.
  * 8. r(template)                      // Render Template created by #1.
  *
- * 9. r({render(){...}})              // Pass an object with a render method, and optionally other props/methods.
- *
+ * 9. r({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
+ * 10. r(string, object, ...)          // JSX
  * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template} */
 export default function r(htmlStrings=undefined, ...exprs) {
+
 
 	// TODO: Make this a more flat if/else and call other functions for the logic.
 	if (htmlStrings instanceof Node) {
@@ -84,6 +86,23 @@ export default function r(htmlStrings=undefined, ...exprs) {
 	}
 
 	else if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {
+		// 10. JSX
+		if (typeof exprs[0] === 'object') {
+			let tag = htmlStrings;
+			let props = exprs[0] || {};
+			let children = exprs.slice(1);
+
+			let templateHtmlStrings = [];
+			let templateExprs = [];
+
+			// TODO How to know which children are static html and which are expression placeholders?
+			// Perhaps we have to treat every text child as a string?
+
+			assert(templateHtmlStrings.length === templateExprs.length+1);
+			return new Template(templateHtmlStrings, templateExprs);
+		}
+
+
 		// If it starts with a string, trim both ends.
 		// TODO: Also trim if it ends with whitespace?
 		if (htmlStrings.match(/^\s^</))
@@ -125,7 +144,7 @@ export default function r(htmlStrings=undefined, ...exprs) {
 
 		if (obj.constructor.name !== 'Object') 
 			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
-      
+
 
 		// Special rebound render path, called by normal path.
 		// Intercepts the main r`...` function call inside render().
