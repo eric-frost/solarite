@@ -1,13 +1,6 @@
 import Util from "../util/Util.js";
 import SolariteUtil from './Util.js';
-import {getArg, ArgType} from "./getArg.js";
-import r from "./r.js";
 import Globals from "./Globals.js";
-
-
-//import {watchGet, watchSet} from "./watch.js";
-
-
 
 function defineClass(Class, tagName, extendsTag) {
 	if (!customElements.getName(Class)) { // If not previously defined.
@@ -22,10 +15,6 @@ function defineClass(Class, tagName, extendsTag) {
 		customElements.define(tagName, Class, options)
 	}
 }
-
-
-
-
 
 /**
  * Create a version of the Solarite class that extends from the given tag name.
@@ -155,16 +144,6 @@ export default function createSolarite(extendsTag=null) {
 		static define(tagName=null) {
 			defineClass(this, tagName, extendsTag)
 		}
-
-		//#IFDEV
-		
-		/**
-		 * @deprecated Use the getArg() function instead. */
-		getArg(name, val=null, type=ArgType.String) {
-			throw new Error('deprecated');
-			return getArg(this, name, val, type);
-		}
-		//#ENDIF
 	}
 }
 

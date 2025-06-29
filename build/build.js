@@ -55,8 +55,17 @@ const terserOptions = {
 		//eval: true, // We use reserved words to not mangle names used in eval.
 		toplevel: true, // Does nothing?
 		properties: {
-			regex: /_$/, // anything ending with _
-			undeclared: true, // Does nothing?
+			builtins: false,
+			keep_quoted: false,
+			regex: /./,  // match all properties
+			reserved: [
+				'arguments',
+				'prototype',
+				'caller',
+				'callee',
+				'constructor'
+			],
+			undeclared: true
 		}
 		//module: true, // Does nothing?
 	}

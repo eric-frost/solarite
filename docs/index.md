@@ -76,7 +76,7 @@ document.body.append(new ShoppingList()); // add <shopping-list> element
 To use, import one of these pre-bundled es6 modules into your project:
 
 - [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) - 85KB
-- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) - 24KB / 8KB gzipped
+- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) - 25KB / 8.8KB gzipped
 
 Or get Solarite from GitHub or NPM:
 
@@ -84,7 +84,7 @@ Or get Solarite from GitHub or NPM:
 - `git clone https://github.com/Vorticode/solarite.git`
 - `npm install solarite`
 
-This project is currently in BETA stage.  Tip:  A JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [PhpStorm](https://www.jetbrains.com/phpstorm/), or [IDEA](https://www.jetbrains.com/idea/) will syntax highlight the html template strings.
+Tip:  A JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [PhpStorm](https://www.jetbrains.com/phpstorm/), or [IDEA](https://www.jetbrains.com/idea/) will syntax highlight the html template strings.
 
 ## Performance
 

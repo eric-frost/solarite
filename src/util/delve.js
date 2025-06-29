@@ -4,8 +4,8 @@
  * @param path {string[]}
  * @param createVal {*}  If set, non-existent paths will be created and value at path will be set to createVal.
  * @return {*} The value, or undefined if it can't be reached. */
-export default function delve(obj, path, createVal = delveDontCreate) {
-	let isCreate = createVal !== delveDontCreate;
+export default function delve(obj, path, createVal = d) {
+	let isCreate = createVal !== d;
 
 	let len = path.length;
 	if (!obj && !isCreate && len)
@@ -40,4 +40,5 @@ export default function delve(obj, path, createVal = delveDontCreate) {
 	return obj;
 }
 
-let delveDontCreate = {};
+// d means "don't create"
+let d = {};

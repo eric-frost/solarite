@@ -92,18 +92,7 @@ var Util$1 = {
 		else
 			result.push(value);
 	},
-
-	weakMemoize(obj, callback) {
-		let result = weakMemoizeInputs.get(obj);
-		if (!result) {
-			result = callback(obj);
-			weakMemoizeInputs.set(obj, result);
-		}
-		return result;
-	}
 };
-
-let weakMemoizeInputs = new WeakMap();
 
 var Globals;
 
@@ -191,8 +180,8 @@ var Globals$1 = Globals;
  * @param path {string[]}
  * @param createVal {*}  If set, non-existent paths will be created and value at path will be set to createVal.
  * @return {*} The value, or undefined if it can't be reached. */
-function delve(obj, path, createVal = delveDontCreate) {
-	let isCreate = createVal !== delveDontCreate;
+function delve(obj, path, createVal = d) {
+	let isCreate = createVal !== d;
 
 	let len = path.length;
 	if (!obj && !isCreate && len)
@@ -227,7 +216,8 @@ function delve(obj, path, createVal = delveDontCreate) {
 	return obj;
 }
 
-let delveDontCreate = {};
+// d means "don't create"
+let d = {};
 
 let Util = {
 
@@ -486,116 +476,150 @@ function arraySame(a, b) {
 // For debugging only
 
 
-/**
- * There are three ways to create an instance of a Solarite Component:
- * 1.  new ComponentName();                                         // direct class instantiation
- * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another RedComponent.
- * 3.  <body><component-name></component-name></body>               // in the Document html.
- *
- * When created via #3, Solarite has no way to pass attributes as arguments to the constructor.  So to make
- * sure we get the correct value via all three paths, we write our constructors according to the following
- * example.  Note that constructor args are embedded in an object, and must be all lower-case because
- * Browsers make all html attribute names lowercase.
- *
- * @example
- * constructor({name, userid=1}={}) {
- *     super();
- *
- *     // Get value from "name" attriute if persent, otherwise from name constructor arg.
- *     this.name = getArg(this, 'name', name);
- *
- *     // Optionally convert the value to an integer.
- *     this.userId = getArg(this, 'userid', userid, ArgType.Int);
- * }
- *
- * @param el {HTMLElement}
- * @param attributeName {string} Attribute name.  Not case-sensitive.
- * @param defaultValue {*} Default value to use if attribute doesn't exist.
- * @param type {ArgType|function|*[]}
- *     If an array, use the value if it's in the array, otherwise return undefined.
- *     If it's a function, pass the value to the function and return the result.
- * @param fallback {*} If the defaultValue is undefiend and type can't be parsed as the given type, use this value.
- *     TODO: Should this be merged with the defaultValue argument?
- * @return {*} Undefined if attribute isn't set.  */
-function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, fallback=undefined) {
-	let val = defaultValue;
-	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util.camelToDashes(attributeName));
-	if (attrVal !== null) // If attribute doesn't exist.
-		val = attrVal;
-		
-	if (Array.isArray(type))
-		return type.includes(val) ? val : fallback;
-	
-	if (typeof type === 'function')
-		return type(val);
-	
-	// If bool, it's true as long as it exists and its value isn't falsey.
-	if (type===ArgType.Bool) {
-		let lAttrVal = typeof val === 'string' ? val.toLowerCase() : val;
-		if (['false', '0', false, 0, null, undefined, NaN].includes(lAttrVal))
-			return false;
-		if (['true', true].includes(lAttrVal) || parseFloat(lAttrVal) !== 0)
-			return true;
-		return fallback;
-	}
-	
-	// Attribute doesn't exist
-	let result;
-	switch (type) {
-		case ArgType.Int:
-			result = parseInt(val);
-			return isNaN(result) ? fallback : result;
-		case ArgType.Float:
-			result = parseFloat(val);
-			return isNaN(result) ? fallback : result;
-		case ArgType.String:
-			return [undefined, null, false].includes(val) ? '' : val+'';
-		case ArgType.Json:
-		case ArgType.Eval:
-			if (typeof val === 'string' && val.length)
-				try {
-					if (type === ArgType.Json)
-						return JSON.parse(val);
-					else
-						return eval(`(${val})`);
-				} catch (e) {
-					return val;
-				}
-			else return val;
+function defineClass(Class, tagName, extendsTag) {
+	if (!customElements.getName(Class)) { // If not previously defined.
+		tagName = tagName || Util.camelToDashes(Class.name);
+		if (!tagName.includes('-'))
+			tagName += '-element';
 
-		// type not provided
-		default:
-			return val;
+		let options = null;
+		if (extendsTag)
+			options = {extends: extendsTag};
+
+		customElements.define(tagName, Class, options);
 	}
 }
 
 /**
- * @enum */
-var ArgType = {
-	
-	/**
-	 * false, 0, null, undefined, '0', and 'false' (case-insensitive) become false.
-	 * Anything else, including empty string becomes true.
-	 * Empty string is true because attributes with no value should be evaulated as true. */
-	Bool: 'Bool',
-	
-	Int: 'Int',
-	Float: 'Float',
-	String: 'String',
+ * Create a version of the Solarite class that extends from the given tag name.
+ * Reasons to inherit from this instead of HTMLElement.  None of these are all that useful.
+ * 1.  customElements.define() is called automatically when you create the first instance.
+ * 2.  Calls render() when added to the DOM, if it hasn't been called already.
+ * 3.  Child elements are added before constructor is called.  But they're also passed to the constructor. (deprecated?)
+ * 4.  We can use this.html = r`...` to set html. (deprecated)
+ * 5.  We have the onConnect, onFirstConnect, and onDisconnect methods.
+ *     Can't figure out how to have these work standalone though, and still be synchronous.
+ * 6.  Can we extend from other element types like TR?
+ * 7.  Shows default text if render() function isn't defined.
+ *
+ * Advantages to inheriting from HTMLElement
+ * 1.  Minimization won't break when it renames the Class and we call customElements.define() on the wrong name.
+ * 2.  We can inherit from things like HTMLTableRowElement directly.
+ * 3.  There's less magic, since everyone is familiar with defining custom elements.
+ *
+ * @param extendsTag {?string}
+ * @return {Class} */
+function createSolarite(extendsTag=null) {
 
-	/** @deprecated for Json */
-	JSON: 'Json',
+	let BaseClass = HTMLElement;
+	if (extendsTag && !extendsTag.includes('-')) {
+		extendsTag = extendsTag.toLowerCase();
+
+		BaseClass = Globals$1.elementClasses[extendsTag];
+		if (!BaseClass) { // TODO: Use Cache
+			BaseClass = document.createElement(extendsTag).constructor;
+			Globals$1.elementClasses[extendsTag] = BaseClass;
+		}
+	}
 
 	/**
-	 * Parse the string value as JSON.
-	 * If it's not parsable, return the value as a string. */
-	Json: 'Json',
+	 * Intercept the construct call to auto-define the class before the constructor is called.
+	 * @type {HTMLElement} */
+	let HTMLElementAutoDefine = new Proxy(BaseClass, {
+		construct(Parent, args, Class) {
+			defineClass(Class, null, extendsTag);
 
-	/**
-	 * Evaluate the string as JavaScript using the eval() function.
-	 * If it can't be evaluated, return the original string. */
-	Eval: 'Eval'
-};
+			// This is a good place to manipulate any args before they're sent to the constructor.
+			// Such as loading them from attributes, if I could find a way to do so.
+
+			// This line is equivalent the to super() call.
+			return Reflect.construct(Parent, args, Class);
+		}
+	});
+
+	return class Solarite extends HTMLElementAutoDefine {
+		
+		
+		/**
+		 * TODO: Make these standalone functions.
+		 * Callbacks.
+		 * Use onConnect.push(() => ...); to add new callbacks. */
+		onConnect = Util$1.callback();
+		
+		onFirstConnect = Util$1.callback();
+		onDisconnect = Util$1.callback();
+
+		/**
+		 * @param options {RenderOptions} */
+		constructor(options={}) {
+			super();
+
+			// TODO: Is options.render ever used?
+			if (options.render===true)
+				this.render();
+
+			else if (options.render===false)
+				Globals$1.rendered.add(this); // Don't render on connectedCallback()
+
+			// Add slot children before constructor code executes.
+			// This breaks the styleStaticNested test.
+			// PendingChildren is setup in NodeGroup.createNewComponent()
+			// TODO: Match named slots.
+			//let ch = Globals.pendingChildren.pop();
+			//if (ch) // TODO: how could there be a slot before render is called?
+			//	(this.querySelector('slot') || this).append(...ch);
+
+			/** @deprecated
+			Object.defineProperty(this, 'html', {
+				set(html) {
+					Globals.rendered.add(this);
+					if (typeof html === 'string') {
+						console.warn("Assigning to this.html without the r template prefix.")
+						this.innerHTML = html;
+					}
+					else
+						this.modifications = r(this, html, options);
+				}
+			})*/
+
+			/*
+			let pthis = new Proxy(this, {
+				get(obj, prop) {
+					return Reflect.get(obj, prop)
+				}
+			});
+			this.render = this.render.bind(pthis);
+			*/
+		}
+
+		/**
+		 * Call render() only if it hasn't already been called.	 */
+		renderFirstTime() {
+			if (!Globals$1.rendered.has(this) && this.render)
+				this.render();
+		}
+		
+		/**
+		 * Called automatically by the browser. */
+		connectedCallback() {
+			this.renderFirstTime();
+			if (!Globals$1.connected.has(this)) {
+				Globals$1.connected.add(this);
+				this.onFirstConnect();
+			}
+			this.onConnect();
+		}
+		
+		disconnectedCallback() {
+			this.onDisconnect();
+		}
+
+
+		static define(tagName=null) {
+			defineClass(this, tagName, extendsTag);
+		}
+	}
+}
 
 
 
@@ -3356,160 +3380,116 @@ function r(htmlStrings=undefined, ...exprs) {
 		throw new Error('Unsupported arguments.')
 }
 
-//import {watchGet, watchSet} from "./watch.js";
+/**
+ * There are three ways to create an instance of a Solarite Component:
+ * 1.  new ComponentName();                                         // direct class instantiation
+ * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another RedComponent.
+ * 3.  <body><component-name></component-name></body>               // in the Document html.
+ *
+ * When created via #3, Solarite has no way to pass attributes as arguments to the constructor.  So to make
+ * sure we get the correct value via all three paths, we write our constructors according to the following
+ * example.  Note that constructor args are embedded in an object, and must be all lower-case because
+ * Browsers make all html attribute names lowercase.
+ *
+ * @example
+ * constructor({name, userid=1}={}) {
+ *     super();
+ *
+ *     // Get value from "name" attriute if persent, otherwise from name constructor arg.
+ *     this.name = getArg(this, 'name', name);
+ *
+ *     // Optionally convert the value to an integer.
+ *     this.userId = getArg(this, 'userid', userid, ArgType.Int);
+ * }
+ *
+ * @param el {HTMLElement}
+ * @param attributeName {string} Attribute name.  Not case-sensitive.
+ * @param defaultValue {*} Default value to use if attribute doesn't exist.
+ * @param type {ArgType|function|*[]}
+ *     If an array, use the value if it's in the array, otherwise return undefined.
+ *     If it's a function, pass the value to the function and return the result.
+ * @param fallback {*} If the defaultValue is undefiend and type can't be parsed as the given type, use this value.
+ *     TODO: Should this be merged with the defaultValue argument?
+ * @return {*} Undefined if attribute isn't set.  */
+function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, fallback=undefined) {
+	let val = defaultValue;
+	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util.camelToDashes(attributeName));
+	if (attrVal !== null) // If attribute doesn't exist.
+		val = attrVal;
+		
+	if (Array.isArray(type))
+		return type.includes(val) ? val : fallback;
+	
+	if (typeof type === 'function')
+		return type(val);
+	
+	// If bool, it's true as long as it exists and its value isn't falsey.
+	if (type===ArgType.Bool) {
+		let lAttrVal = typeof val === 'string' ? val.toLowerCase() : val;
+		if (['false', '0', false, 0, null, undefined, NaN].includes(lAttrVal))
+			return false;
+		if (['true', true].includes(lAttrVal) || parseFloat(lAttrVal) !== 0)
+			return true;
+		return fallback;
+	}
+	
+	// Attribute doesn't exist
+	let result;
+	switch (type) {
+		case ArgType.Int:
+			result = parseInt(val);
+			return isNaN(result) ? fallback : result;
+		case ArgType.Float:
+			result = parseFloat(val);
+			return isNaN(result) ? fallback : result;
+		case ArgType.String:
+			return [undefined, null, false].includes(val) ? '' : val+'';
+		case ArgType.Json:
+		case ArgType.Eval:
+			if (typeof val === 'string' && val.length)
+				try {
+					if (type === ArgType.Json)
+						return JSON.parse(val);
+					else
+						return eval(`(${val})`);
+				} catch (e) {
+					return val;
+				}
+			else return val;
 
-
-
-function defineClass(Class, tagName, extendsTag) {
-	if (!customElements.getName(Class)) { // If not previously defined.
-		tagName = tagName || Util.camelToDashes(Class.name);
-		if (!tagName.includes('-'))
-			tagName += '-element';
-
-		let options = null;
-		if (extendsTag)
-			options = {extends: extendsTag};
-
-		customElements.define(tagName, Class, options);
+		// type not provided
+		default:
+			return val;
 	}
 }
-
-
-
-
 
 /**
- * Create a version of the Solarite class that extends from the given tag name.
- * Reasons to inherit from this instead of HTMLElement.  None of these are all that useful.
- * 1.  customElements.define() is called automatically when you create the first instance.
- * 2.  Calls render() when added to the DOM, if it hasn't been called already.
- * 3.  Child elements are added before constructor is called.  But they're also passed to the constructor. (deprecated?)
- * 4.  We can use this.html = r`...` to set html. (deprecated)
- * 5.  We have the onConnect, onFirstConnect, and onDisconnect methods.
- *     Can't figure out how to have these work standalone though, and still be synchronous.
- * 6.  Can we extend from other element types like TR?
- * 7.  Shows default text if render() function isn't defined.
- *
- * Advantages to inheriting from HTMLElement
- * 1.  Minimization won't break when it renames the Class and we call customElements.define() on the wrong name.
- * 2.  We can inherit from things like HTMLTableRowElement directly.
- * 3.  There's less magic, since everyone is familiar with defining custom elements.
- *
- * @param extendsTag {?string}
- * @return {Class} */
-function createSolarite(extendsTag=null) {
+ * @enum */
+var ArgType = {
+	
+	/**
+	 * false, 0, null, undefined, '0', and 'false' (case-insensitive) become false.
+	 * Anything else, including empty string becomes true.
+	 * Empty string is true because attributes with no value should be evaulated as true. */
+	Bool: 'Bool',
+	
+	Int: 'Int',
+	Float: 'Float',
+	String: 'String',
 
-	let BaseClass = HTMLElement;
-	if (extendsTag && !extendsTag.includes('-')) {
-		extendsTag = extendsTag.toLowerCase();
-
-		BaseClass = Globals$1.elementClasses[extendsTag];
-		if (!BaseClass) { // TODO: Use Cache
-			BaseClass = document.createElement(extendsTag).constructor;
-			Globals$1.elementClasses[extendsTag] = BaseClass;
-		}
-	}
+	/** @deprecated for Json */
+	JSON: 'Json',
 
 	/**
-	 * Intercept the construct call to auto-define the class before the constructor is called.
-	 * @type {HTMLElement} */
-	let HTMLElementAutoDefine = new Proxy(BaseClass, {
-		construct(Parent, args, Class) {
-			defineClass(Class, null, extendsTag);
+	 * Parse the string value as JSON.
+	 * If it's not parsable, return the value as a string. */
+	Json: 'Json',
 
-			// This is a good place to manipulate any args before they're sent to the constructor.
-			// Such as loading them from attributes, if I could find a way to do so.
-
-			// This line is equivalent the to super() call.
-			return Reflect.construct(Parent, args, Class);
-		}
-	});
-
-	return class Solarite extends HTMLElementAutoDefine {
-		
-		
-		/**
-		 * TODO: Make these standalone functions.
-		 * Callbacks.
-		 * Use onConnect.push(() => ...); to add new callbacks. */
-		onConnect = Util$1.callback();
-		
-		onFirstConnect = Util$1.callback();
-		onDisconnect = Util$1.callback();
-
-		/**
-		 * @param options {RenderOptions} */
-		constructor(options={}) {
-			super();
-
-			// TODO: Is options.render ever used?
-			if (options.render===true)
-				this.render();
-
-			else if (options.render===false)
-				Globals$1.rendered.add(this); // Don't render on connectedCallback()
-
-			// Add slot children before constructor code executes.
-			// This breaks the styleStaticNested test.
-			// PendingChildren is setup in NodeGroup.createNewComponent()
-			// TODO: Match named slots.
-			//let ch = Globals.pendingChildren.pop();
-			//if (ch) // TODO: how could there be a slot before render is called?
-			//	(this.querySelector('slot') || this).append(...ch);
-
-			/** @deprecated
-			Object.defineProperty(this, 'html', {
-				set(html) {
-					Globals.rendered.add(this);
-					if (typeof html === 'string') {
-						console.warn("Assigning to this.html without the r template prefix.")
-						this.innerHTML = html;
-					}
-					else
-						this.modifications = r(this, html, options);
-				}
-			})*/
-
-			/*
-			let pthis = new Proxy(this, {
-				get(obj, prop) {
-					return Reflect.get(obj, prop)
-				}
-			});
-			this.render = this.render.bind(pthis);
-			*/
-		}
-
-		/**
-		 * Call render() only if it hasn't already been called.	 */
-		renderFirstTime() {
-			if (!Globals$1.rendered.has(this) && this.render)
-				this.render();
-		}
-		
-		/**
-		 * Called automatically by the browser. */
-		connectedCallback() {
-			this.renderFirstTime();
-			if (!Globals$1.connected.has(this)) {
-				Globals$1.connected.add(this);
-				this.onFirstConnect();
-			}
-			this.onConnect();
-		}
-		
-		disconnectedCallback() {
-			this.onDisconnect();
-		}
-
-
-		static define(tagName=null) {
-			defineClass(this, tagName, extendsTag);
-		}
-
-		
-	}
-}
+	/**
+	 * Evaluate the string as JavaScript using the eval() function.
+	 * If it can't be evaluated, return the original string. */
+	Eval: 'Eval'
+};
 
 /**
  * Solarite JavasCript UI library.

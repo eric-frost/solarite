@@ -1,12 +1,6 @@
 let lastObjectId = 1>>>0; // Is a 32-bit int faster to increment than JavaScript's Number, which is a 64-bit float?
 let objectIds = new WeakMap();
 
-// This is removed automatically by the bundler.  Adding #IFDEV blocks breaks it.
-export function hashReset() {
-	lastObjectId = 1>>>0;
-	objectIds = new WeakMap();
-}
-
 /**
  * @param obj {Object|string|Node}
  * @returns {string} */
