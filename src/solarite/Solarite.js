@@ -18,10 +18,12 @@ let Solarite = new Proxy(createSolarite(), {
 	}
 });
 
+import h from './h.js';
+export default h;
 
 /** @type {HTMLElement|Class} */
 export {Solarite}
-export {default as r, default as h} from './r.js';
+export {default as h, default as r} from './h.js';
 export {getArg, ArgType} from './getArg.js';
 export {default as Template} from './Template.js';
 export {default as Globals} from './Globals.js';

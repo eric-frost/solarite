@@ -1,2 +1,18 @@
+:<<"::CMDLITERAL"
 @echo off
-deno run -A Testimony.js --webroot=../ --page=tests/index.html --headless
+
+rem --------------------------------------
+rem This is a polyglot script that runs on both Windows (as a .bat file)
+rem and Linux/macOS (as a .sh file) to execute the test suite.
+rem Call this with no arguments to run all tests:
+rem ./run.bat
+rem
+rem Or pass individual test and test group names separated by spaces like this:
+rem ./run.bat StringUtil.nextInSequence ObjectUtilTest
+rem --------------------------------------
+
+deno run -A Testimony.js --headless --webroot=../ --page=tests/index.php %*
+GOTO :EOF
+::CMDLITERAL
+
+deno run -A Testimony.js --headless --webroot=../ --page=tests/index.php "$@"

@@ -3,7 +3,7 @@ import SolariteUtil from './Util.js';
 import Globals from "./Globals.js";
 
 function defineClass(Class, tagName, extendsTag) {
-	if (!customElements.getName(Class)) { // If not previously defined.
+	if (!customElements[getName](Class)) { // If not previously defined.
 		tagName = tagName || SolariteUtil.camelToDashes(Class.name)
 		if (!tagName.includes('-'))
 			tagName += '-element';
@@ -12,7 +12,7 @@ function defineClass(Class, tagName, extendsTag) {
 		if (extendsTag)
 			options = {extends: extendsTag}
 
-		customElements.define(tagName, Class, options)
+		customElements[define](tagName, Class, options)
 	}
 }
 
@@ -147,3 +147,6 @@ export default function createSolarite(extendsTag=null) {
 	}
 }
 
+// Trick to prevent minifier from renaming this method.
+let define = 'define';
+let getName = 'getName';

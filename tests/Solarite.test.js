@@ -1,7 +1,7 @@
 // noinspection DuplicatedCode
 
-import {getArg, r, Solarite} from '../src/solarite/Solarite.js';
-//import {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
+import h, {getArg, Solarite} from '../src/solarite/Solarite.js';
+//import h, {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 
 import {watch, renderWatched} from "../src/solarite/watch.js";
 import Util from "../src/solarite/Util.js";
@@ -164,8 +164,8 @@ Testimony.test('Solarite.NodeGroup.paragraph', () => {
 });
 
 Testimony.test('Solarite.NodeGroup.node', () => {
-	let a = r('<p>a</p>')
-	let b = r('<p>b</p>')
+	let a = h('<p>a</p>')
+	let b = h('<p>b</p>')
 	let ng = new NodeGroup(new Template(['<div>', '</div>'], [a]))
 
 	assert.eq(getHtml(ng), '<div><p>a</p></div>')
@@ -181,8 +181,8 @@ Testimony.test('Solarite.NodeGroup.node', () => {
 });
 
 Testimony.test('Solarite.NodeGroup._nodeSwap', () => {
-	let a = r('<p>a</p>')
-	let b = r('<p>b</p>')
+	let a = h('<p>a</p>')
+	let b = h('<p>b</p>')
 	let ng = new NodeGroup(new Template(['<div>', '', '</div>'], [a, b]))
 	document.body.append(ng.startNode)
 
@@ -194,7 +194,7 @@ Testimony.test('Solarite.NodeGroup._nodeSwap', () => {
 
 
 Testimony.test('Solarite.NodeGroup.arrayReverse', () => {
-	let list = [r('a'), r('b')];
+	let list = [h('a'), h('b')];
 
 	let ng = new NodeGroup(new Template(['<div>', '</div>'], [list]))
 	ng.verify();
@@ -250,7 +250,7 @@ Testimony.test('Solarite.basic.empty', () => {
 		}
 
 		render() {
-			r(this)``
+			h(this)``
 		}
 	}
 	customElements.define('r-10', A);
@@ -271,12 +271,12 @@ Testimony.test('Solarite.basic.empty2', () => {
         }
 
         render() {
-            r(this)`<r-11></r-11>`
+            h(this)`<r-11></r-11>`
         }
     }
     R11.define();
 
-    let a = r(`<r-11 title="Hello"></r-11>`);
+    let a = h(`<r-11 title="Hello"></r-11>`);
     assert.eq(a.outerHTML, `<r-11 title="Hello"></r-11>`);
 });
 
@@ -285,7 +285,7 @@ Testimony.test('Solarite.basic.empty2', () => {
 Testimony.test('Solarite.basic.text', () => {
 	class A extends Solarite {
 		render() {
-			r(this)`Here's Solarite &lt;Component&gt;` // apostophe, <>.
+			h(this)`Here's Solarite &lt;Component&gt;` // apostophe, <>.
 		}
 	}
 	customElements.define('r-15', A);
@@ -313,7 +313,7 @@ Testimony.test('Solarite.basic.manualRender', () => {
 		}
 
 		render() {
-			r(this)`Solarite Component`
+			h(this)`Solarite Component`
 		}
 	}
 	customElements.define('r-20', A);
@@ -330,7 +330,7 @@ Testimony.test('Solarite.basic.manualRender', () => {
 Testimony.test('Solarite.basic.pseudoRoot', () => {
 	class R30 extends Solarite {
 		render() {
-			r(this)`<r-30 title="Hello">World</r-30>`
+			h(this)`<r-30 title="Hello">World</r-30>`
 		}
 	}
 
@@ -350,7 +350,7 @@ Testimony.test('Solarite.basic.createElement', () => {
 		}
 
 		render() {
-			r(this)`<div>Hello!</div>`
+			h(this)`<div>Hello!</div>`
 		}
 	}
 	R35.define();
@@ -374,7 +374,7 @@ Testimony.test('Solarite.basic.createElement', () => {
 Testimony.test('Solarite.expr.staticString', () => {
 	class R40 extends HTMLElement {
 		render() {
-			r(this)`Solarite ${'Test'} Component`
+			h(this)`Solarite ${'Test'} Component`
 		}
 	}
 	customElements.define('r-40', R40);
@@ -398,7 +398,7 @@ Testimony.test('Solarite.expr.htmlString', () => {
 		}
 
 		render() {
-			r(this)`This text is ${r(`<b>Bold</b>`)}!`
+			h(this)`This text is ${h(`<b>Bold</b>`)}!`
 		}
 	}
 	A.define('r-42');
@@ -416,7 +416,7 @@ Testimony.test('Solarite.expr.table', () => {
 		}
 
 		render() {
-			r(this)`<table><tr>${r(`<td>Table Cell</td>`)}</tr></table>`
+			h(this)`<table><tr>${h(`<td>Table Cell</td>`)}</tr></table>`
 		}
 	}
 	let a = new R43();
@@ -429,7 +429,7 @@ Testimony.test('Solarite.expr.documentFragment', () => {
 
 	class R44 extends Solarite {
 		render() {
-			r(this)`This text is ${r(`<b>Bold</b><i>Italic</i>`)}!`
+			h(this)`This text is ${h(`<b>Bold</b><i>Italic</i>`)}!`
 		}
 	}
 
@@ -451,7 +451,7 @@ Testimony.test('Solarite.expr.undefined', () => {
 		}
 
 		render() {
-			r(this)`${this.valueless}` // Make sure it renders undefined as ''
+			h(this)`${this.valueless}` // Make sure it renders undefined as ''
 		}
 	}
 	customElements.define('r-80', A);
@@ -468,7 +468,7 @@ Testimony.test('Solarite.expr.staticNumber', () => {
 		}
 
 		render() {
-			r(this)`Solarite ${123} Component`
+			h(this)`Solarite ${123} Component`
 		}
 	}
 	customElements.define('r-46', A);
@@ -486,7 +486,7 @@ Testimony.test('Solarite.expr.staticDate', () => {
 		}
 
 		render() {
-			r(this)`${new Date('2010-02-01 00:00:00').getUTCFullYear()}`
+			h(this)`${new Date('2010-02-01 00:00:00').getUTCFullYear()}`
 		}
 	}
 	customElements.define('r-50', A);
@@ -503,7 +503,7 @@ Testimony.test('Solarite.expr.staticArray', () => {
 		}
 
 		render() {
-			r(this)`Items: ${[1, 2, 3]}`
+			h(this)`Items: ${[1, 2, 3]}`
 		}
 	}
 	customElements.define('r-52', A);
@@ -518,7 +518,7 @@ Testimony.test('Solarite.expr.array', () => {
 		fruits = ['Apple', 'Banana'];
 
 		render() {
-			r(this)`${this.fruits}`
+			h(this)`${this.fruits}`
 		}
 	}
 	customElements.define('r-60', A);
@@ -548,7 +548,7 @@ Testimony.test('Solarite.expr.arrayReverse', () => {
 		fruits = ['Apple', 'Banana', 'Cherry', 'Dragonfruit'];
 
 		render() {
-			r(this)`${this.fruits}`
+			h(this)`${this.fruits}`
 		}
 	}
 	customElements.define('r-62', A);
@@ -582,7 +582,7 @@ Testimony.test('Solarite.expr.twoArrays', () => {
 		pets = ['Cat'];
 
 		render() {
-			r(this)`${this.fruits}${this.pets}`
+			h(this)`${this.fruits}${this.pets}`
 		}
 	}
 	customElements.define('r-65', A);
@@ -642,7 +642,7 @@ Testimony.test('Solarite.expr.staticFunction', () => {
 		}
 
 		render() {
-			r(this)`Items: ${() => [1, 2, 3]}`
+			h(this)`Items: ${() => [1, 2, 3]}`
 		}
 	}
 	customElements.define('r-70', A);
@@ -659,7 +659,7 @@ Testimony.test('Solarite.expr.staticElement', () => {
 		}
 
 		render() {
-			r(this)`Field: ${document.createElement('input')}`
+			h(this)`Field: ${document.createElement('input')}`
 		}
 	}
 	customElements.define('r-74', A);
@@ -672,7 +672,7 @@ Testimony.test('Solarite.expr.varText', () => {
 	class A extends Solarite {
 		value = 'Apple';
 
-		render() { r(this)`The fruit is ${this.value}!` }
+		render() { h(this)`The fruit is ${this.value}!` }
 	}
 	customElements.define('r-90', A);
 
@@ -700,7 +700,7 @@ Testimony.test('Solarite.expr.cyclicRef', () => {
 		value = { name: 'Apple', self: null };
 
 		render() {
-			r(this)`The fruit is ${this.value.name}!`
+			h(this)`The fruit is ${this.value.name}!`
 		}
 	}
 
@@ -726,7 +726,7 @@ Testimony.test('Solarite.expr.textareaChild', 'Make sure we throw if an expressi
 		text = 1
 
 		render() {
-			r(this)`<textarea>${this.text}</textarea>`
+			h(this)`<textarea>${this.text}</textarea>`
 		}
 	}
 	customElements.define('r-110', R110);
@@ -757,7 +757,7 @@ Testimony.test('Solarite.loop.strings', () => {
 		fruits = ['Apple', 'Banana'];
 
 		render() {
-			r(this)`${this.fruits.map(fruit => fruit)}`
+			h(this)`${this.fruits.map(fruit => fruit)}`
 		}
 	}
 	customElements.define('r-200', A);
@@ -791,6 +791,8 @@ Testimony.test('Solarite.loop.strings', () => {
 	a.fruits.push('Apple');
 	a.render();
 	assert.eq(getHtml(a), '<r-200>Apple</r-200>');
+
+	a.remove();
 });
 
 Testimony.test('Solarite.loop.paragraphs', () => {
@@ -798,7 +800,7 @@ Testimony.test('Solarite.loop.paragraphs', () => {
 		fruits = ['Apple', 'Banana'];
 
 		render() {
-			r(this)`${this.fruits.map(fruit => r`<p>${fruit}</p>`)}`
+			h(this)`${this.fruits.map(fruit => h`<p>${fruit}</p>`)}`
 		}
 	}
 	customElements.define('r-210', A);
@@ -836,7 +838,7 @@ Testimony.test('Solarite.loop.paragraphsBefore', `Same as above, but with anothe
 		fruits = ['Apple', 'Banana'];
 
 		render() {
-			r(this)`${this.fruits.map(fruit => r`<p>${fruit}</p>`)}<hr>`
+			h(this)`${this.fruits.map(fruit => h`<p>${fruit}</p>`)}<hr>`
 		}
 	}
 	customElements.define('r-212', A);
@@ -873,7 +875,7 @@ Testimony.test('Solarite.loop.continuity', `Make sure elements are reused in a c
 		fruits = ['Apple', 'Banana'];
 
 		render() {
-			r(this)`${this.fruits.map(fruit => r`<p>${fruit}</p>`)}`
+			h(this)`${this.fruits.map(fruit => h`<p>${fruit}</p>`)}`
 		}
 	}
 	customElements.define('a-213', A);
@@ -925,9 +927,9 @@ Testimony.test('Solarite.loop.continuity2', `Identical items`, () => {
 		}
 
 		render() {
-			r(this)`
+			h(this)`
 			<a-214>
-				${this.items.map(item => r`
+				${this.items.map(item => h`
 					<div>${item}</div>		   
 				`)}
 				<button onclick=${this.render}>Render</button>
@@ -971,7 +973,7 @@ Testimony.test('Solarite.loop.eventBindings', async () => {
 			}
 
 			render() {
-				r(this)`${this.fruits.map((fruit, i) => r`<p onclick="${() => this.checkFruit(fruit, i)}">${fruit}</p>`)}`
+				h(this)`${this.fruits.map((fruit, i) => h`<p onclick="${() => this.checkFruit(fruit, i)}">${fruit}</p>`)}`
 			}
 		}
 
@@ -997,9 +999,9 @@ Testimony.test('Solarite.loop.pathCache', () => {
 		fruits = ['Apple', 'Banana'];
 
 		render() {
-			r(this)`${this.pets.map(pet =>
-				r`${this.fruits.map(fruit =>
-					r`<p>Item</p>`
+			h(this)`${this.pets.map(pet =>
+				h`${this.fruits.map(fruit =>
+					h`<p>Item</p>`
 				)}`
 			)}`
 		}
@@ -1021,9 +1023,9 @@ Testimony.test('Solarite.loop.nested', () => {
 		fruits = ['Apple', 'Banana'];
 
 		render() {
-			r(this)`${this.pets.map(pet =>
-				r`${this.fruits.map(fruit =>
-					r`<p>${pet} eats ${fruit}</p>`
+			h(this)`${this.pets.map(pet =>
+				h`${this.fruits.map(fruit =>
+					h`<p>${pet} eats ${fruit}</p>`
 				)}`
 			)}`
 		}
@@ -1082,9 +1084,9 @@ Testimony.test('Solarite.loop.nested2', () => {
 		pets = ['Cat', 'Dog'];
 
 		render() {
-			r(this)`${this.pets.map(pet =>
-				r`<div>${this.fruits.map(fruit =>
-					r`<p>${pet} eats ${fruit}</p>`
+			h(this)`${this.pets.map(pet =>
+				h`<div>${this.fruits.map(fruit =>
+					h`<p>${pet} eats ${fruit}</p>`
 				)}</div>`
 			)}`
 		}
@@ -1145,9 +1147,9 @@ Testimony.test('Solarite.loop.nested3', `Move items from one sublist to another.
 		];
 		
 		render() {
-			r(this)`${this.fruitGroups.map(fruitGroup =>
-				r`<div>${fruitGroup.map(fruit =>
-					r`<span>${fruit}</span>`
+			h(this)`${this.fruitGroups.map(fruitGroup =>
+				h`<div>${fruitGroup.map(fruit =>
+					h`<span>${fruit}</span>`
 				)}</div>`
 			)}`
 		}
@@ -1180,9 +1182,9 @@ Testimony.test('Solarite.loop.nested4', () => {
 		fruits2 = ['Banana', 'Cherry']
 		
 		render() {
-			r(this)`
-				<div>${this.fruits1.map(fruit => r`<span>${fruit}</span>`)}</div>
-				<div>${this.fruits2.map(fruit => r`<span>${fruit}</span>`)}</div>`
+			h(this)`
+				<div>${this.fruits1.map(fruit => h`<span>${fruit}</span>`)}</div>
+				<div>${this.fruits2.map(fruit => h`<span>${fruit}</span>`)}</div>`
 		}
 	}
 	A226.define();
@@ -1225,10 +1227,10 @@ Testimony.test('Solarite.loop.nested5', () => {
 		]
 		
 		render() {
-			r(this)`
+			h(this)`
 			<a-227>${this.boxes.map(item =>
-				r`${item.map(item2 =>
-					r`<div title=${v}>${item2}</div>`
+				h`${item.map(item2 =>
+					h`<div title=${v}>${item2}</div>`
 				)}`
 			)}</a-227>`;
 		}
@@ -1265,11 +1267,11 @@ Testimony.test('Solarite.loop.nestedConditional', () => {
 		fruits = ['Apple', 'Banana'];
 
 		render() {
-			r(this)`${this.pets.map(pet =>
-				r`${this.fruits.map(fruit =>
+			h(this)`${this.pets.map(pet =>
+				h`${this.fruits.map(fruit =>
 					isGoodBoy 
-						? r`<p>${pet} prepares ${fruit}</p>`
-						: r`<p>${pet} eats ${fruit}</p>`
+						? h`<p>${pet} prepares ${fruit}</p>`
+						: h`<p>${pet} eats ${fruit}</p>`
 				)}`
 			)}`
 		}
@@ -1310,10 +1312,10 @@ Testimony.test('Solarite.loop.conditionalNested', () => {
 		];
 
 		render() {
-			r(this)`${this.pets.map(pet =>
+			h(this)`${this.pets.map(pet =>
 				pet.activities.map(activity =>
 					activity.length >= 5
-						? r`<p>${pet.name} will ${activity}.</p>`
+						? h`<p>${pet.name} will ${activity}.</p>`
 						: ``
 				)
 			)}`
@@ -1348,10 +1350,10 @@ Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 		rows = [[[0]]];
 
 		render() {
-			r(this)`${this.rows.map(row =>
-				r`${row.map(items =>
-					r`${items.map(item =>
-						r`${item}`
+			h(this)`${this.rows.map(row =>
+				h`${row.map(items =>
+					h`${items.map(item =>
+						h`${item}`
 					)}`
 				)}`
 			)}`
@@ -1378,14 +1380,14 @@ Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 	assert.eq(getHtml(a), `<r-250>12345678</r-250>`);
 
 	// Replace numbers with nodes.
-	let p1 = r('<p>1</p')
-	let p2 = r('<p>2</p')
-	let p3 = r('<p>3</p')
-	let p4 = r('<p>4</p')
-	let p5 = r('<p>5</p')
-	let p6 = r('<p>6</p')
-	let p7 = r('<p>7</p')
-	let p8 = r('<p>8</p')
+	let p1 = h('<p>1</p')
+	let p2 = h('<p>2</p')
+	let p3 = h('<p>3</p')
+	let p4 = h('<p>4</p')
+	let p5 = h('<p>5</p')
+	let p6 = h('<p>6</p')
+	let p7 = h('<p>7</p')
+	let p8 = h('<p>8</p')
 
 	a.rows = [
 		[[p1,p2],[p3,p4]],
@@ -1426,7 +1428,7 @@ Testimony.test('Solarite.embed.styleStatic', () => {
 
 	class R300 extends Solarite {
 		render() {
-			r(this)`
+			h(this)`
 				<style>
 					:host { color: blue }			
 				</style>
@@ -1459,7 +1461,7 @@ Testimony.test('Solarite.embed.styleStaticNested', () => {
 	// since it adds the children before calling the constructor.
 	class B305 extends Solarite {
 		render() {
-			r(this)`
+			h(this)`
 				<style>:host { color: blue }</style>
 				Text that should be blue.
 			`;
@@ -1469,7 +1471,7 @@ Testimony.test('Solarite.embed.styleStaticNested', () => {
 
 	class A305 extends Solarite {
 		render() {
-			r(this)`
+			h(this)`
 			<a-305>
 				<style>:host { color: red }</style>
 				Text that should be red.
@@ -1506,7 +1508,7 @@ Testimony.test('Solarite.embed.styleStaticNested2', () => {
 			this.render();
 		}
 		render() {
-			r(this)`
+			h(this)`
 				<style>:host { color: blue }</style>
 				Text that should be blue.
 			`;
@@ -1522,7 +1524,7 @@ Testimony.test('Solarite.embed.styleStaticNested2', () => {
 
 		// Below, the count expression changes the path to the static component <b-308>
 		render() {
-			r(this)`
+			h(this)`
 			<a-308>
 				<style>:host { color: red }</style>
 				Text that should be red.
@@ -1557,7 +1559,7 @@ Testimony.test('Solarite.embed.optionsNoStyles', () => {
 	class R310 extends Solarite {
 		render() {
 			let options = {styles: false};
-			r(this, options)`
+			h(this, options)`
 				<style>
 					:host { color: blue }			
 				</style>
@@ -1580,7 +1582,7 @@ Testimony.test('Solarite.embed.styleDynamic', () => {
 
 	class R320 extends Solarite {
 		render() {
-			r(this)`
+			h(this)`
 				<style>
 					${style1} ${style2}
 				</style>
@@ -1607,7 +1609,7 @@ Testimony.test('Solarite.embed.styleDynamicNoSpaces', () => {
 
 	class R322 extends Solarite {
 		render() {
-			r(this)`
+			h(this)`
 				<style>${style1}${style2}</style>
 				Text that should be bold and red.
 			`;
@@ -1628,11 +1630,11 @@ Testimony.test('Solarite.embed.styleDynamicNoSpaces', () => {
 });
 
 Testimony.test('Solarite.embed.styleDynamicTag', () => {
-	let style1 = r`<style>:host { color: green }</style>`
+	let style1 = h`<style>:host { color: green }</style>`
 
 	class R325 extends Solarite {
 		render() {
-			r(this)`${style1}Text.`;
+			h(this)`${style1}Text.`;
 		}
 	}
 
@@ -1640,7 +1642,7 @@ Testimony.test('Solarite.embed.styleDynamicTag', () => {
 	document.body.append(a);
 	assert.eq(getHtml(a), `<r-325 data-style="1"><style>r-325[data-style="1"] { color: green }</style>Text.</r-325>`)
 
-	style1 = r`<style>:host { color: orangered }</style>`
+	style1 = h`<style>:host { color: orangered }</style>`
 	a.render();
 	assert.eq(getHtml(a), `<r-325 data-style="1"><style>r-325[data-style="1"] { color: orangered }</style>Text.</r-325>`)
 
@@ -1650,7 +1652,7 @@ Testimony.test('Solarite.embed.styleDynamicTag', () => {
 Testimony.test('Solarite.embed.svg', () => {
 	class R330 extends Solarite {
 		render() {
-			r(this)`
+			h(this)`
 				<div>
 					<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
 						<circle cx="25" cy="25" r="25" fill="blue" />
@@ -1672,7 +1674,7 @@ Testimony.test('Solarite.embed.scriptStatic', () => {
 	window.scriptStaticCount = 1;
 	class R340 extends Solarite {
 		render() {
-			r(this)`
+			h(this)`
 				<div>
 					<script>
 						window.scriptStaticCount = 1;
@@ -1699,7 +1701,7 @@ Testimony.test('Solarite.embed._scriptDynamic', () => {
 	let val = 1;
 	class R350 extends Solarite {
 		render() {
-			r(this)`
+			h(this)`
 				<div>
 					<script>
 						window.scriptStaticCount = ${val};
@@ -1740,7 +1742,7 @@ Testimony.test('Solarite.attrib.single', () => {
 
 	class R400 extends Solarite {
 		render() {
-			r(this)`<div class="${val}">${val}</div>`;
+			h(this)`<div class="${val}">${val}</div>`;
 		}
 	}
 
@@ -1761,7 +1763,7 @@ Testimony.test('Solarite.attrib.singleAndText', () => {
 
 	class R410 extends Solarite {
 		render() {
-			r(this)`<div class="before ${val} after">${val}</div>`;
+			h(this)`<div class="before ${val} after">${val}</div>`;
 		}
 	}
 
@@ -1787,7 +1789,7 @@ Testimony.test('Solarite.attrib.function', () => {
 
 	class R413 extends Solarite {
 		render() {
-			r(this)`<div class="${()=>val}">${val}</div>`;
+			h(this)`<div class="${()=>val}">${val}</div>`;
 		}
 	}
 
@@ -1808,7 +1810,7 @@ Testimony.test('Solarite.attrib.functionAndText', () => {
 
 	class R415 extends Solarite {
 		render() {
-			r(this)`<div class="before ${()=>val} after">${val}</div>`;
+			h(this)`<div class="before ${()=>val} after">${val}</div>`;
 		}
 	}
 
@@ -1835,7 +1837,7 @@ Testimony.test('Solarite.attrib.double', () => {
 
 	class R420 extends Solarite {
 		render() {
-			r(this)`<div class="${val1}${val2}">${val1}</div>`;
+			h(this)`<div class="${val1}${val2}">${val1}</div>`;
 		}
 	}
 
@@ -1857,7 +1859,7 @@ Testimony.test('Solarite.attrib.doubleAndText', () => {
 
 	class R430 extends Solarite {
 		render() {
-			r(this)`<div class="a ${val1} b ${val2} c">${val1}</div>`;
+			h(this)`<div class="a ${val1} b ${val2} c">${val1}</div>`;
 		}
 	}
 
@@ -1879,7 +1881,7 @@ Testimony.test('Solarite.attrib.doubleAndText', () => {
 
 	class R430 extends Solarite {
 		render() {
-			r(this)`<div class="a ${val1} b ${val2} c">${val1}</div>`;
+			h(this)`<div class="a ${val1} b ${val2} c">${val1}</div>`;
 		}
 	}
 
@@ -1902,7 +1904,7 @@ Testimony.test('Solarite.attrib.duplicate', 'Warn on duplicate attributes', () =
 
 	class R435 extends Solarite {
 		render() {
-			r(this)`<div class="a" class="${val}"></div>`;
+			h(this)`<div class="a" class="${val}"></div>`;
 		}
 	}
 
@@ -1923,7 +1925,7 @@ Testimony.test('Solarite.attrib.sparse', () => {
 
 	class R440 extends Solarite {
 		render() {
-			r(this)`<div ${isEdit && 'contenteditable'}>${isEdit && 'Editable!'}</div>`;
+			h(this)`<div ${isEdit && 'contenteditable'}>${isEdit && 'Editable!'}</div>`;
 		}
 	}
 
@@ -1946,7 +1948,7 @@ Testimony.test('Solarite.attrib.doubleSparse', () => {
 
 	class R450 extends Solarite {
 		render() {
-			r(this)`<div ${isEdit && 'contenteditable spellcheck="false"'}>${isEdit && 'Editable!'}</div>`;
+			h(this)`<div ${isEdit && 'contenteditable spellcheck="false"'}>${isEdit && 'Editable!'}</div>`;
 		}
 	}
 
@@ -1969,7 +1971,7 @@ Testimony.test('Solarite.attrib.toggle', () => {
 
 	class R460 extends Solarite {
 		render() {
-			r(this)`<div contenteditable=${isEdit}>${isEdit && 'Editable!'}</div>`;
+			h(this)`<div contenteditable=${isEdit}>${isEdit && 'Editable!'}</div>`;
 		}
 	}
 
@@ -1992,7 +1994,7 @@ Testimony.test('Solarite.attrib.toggleFunction', () => {
 
 	class R465 extends Solarite {
 		render() {
-			r(this)`<div contenteditable=${()=>isEdit}>${isEdit && 'Editable!'}</div>`;
+			h(this)`<div contenteditable=${()=>isEdit}>${isEdit && 'Editable!'}</div>`;
 		}
 	}
 
@@ -2013,7 +2015,7 @@ Testimony.test('Solarite.attrib.pseudoRoot', () => {
 	let title = 'Hello'
 	class R470 extends Solarite {
 		render() {
-			r(this)`<r-470 title="${title}">World</r-470>`
+			h(this)`<r-470 title="${title}">World</r-470>`
 		}
 	}
 
@@ -2035,12 +2037,12 @@ Testimony.test('Solarite.attrib.pseudoRoot2', 'Static attribute overrides.', () 
 	let title = 'Hello'
 	class R472 extends Solarite {
 		render() {
-			r(this)`<r-472 title="${title}" style="color: red">World</r-472>`
+			h(this)`<r-472 title="${title}" style="color: red">World</r-472>`
 		}
 	}
 	R472.define();
 
-	let b = r(`<r-472 style="color: green"></r-472>`);
+	let b = h(`<r-472 style="color: green"></r-472>`);
 	document.body.append(b);
 	assert.eq(b.outerHTML, `<r-472 style="color: green" title="Hello">World</r-472>`);
 	b.remove();
@@ -2052,13 +2054,13 @@ Testimony.test('Solarite.attrib.pseudoRoot3', 'Dynamic attribute overrides.', ()
 	let title = 'Hello'
 	class R473 extends Solarite {
 		render() {
-			r(this)`<r-473 title="${title}" style="color: red">World</r-473>`
+			h(this)`<r-473 title="${title}" style="color: red">World</r-473>`
 		}
 	}
 	R473.define();
 
 
-	let a = r(`<r-473 title="Goodbye"></r-473>`);
+	let a = h(`<r-473 title="Goodbye"></r-473>`);
 	document.body.append(a);
 
 	// Dynamic attributes take precedence
@@ -2081,7 +2083,7 @@ Testimony.test('Solarite.attrib.multiple', '', () => {
 	let button = 'Hello'
 	class R474 extends Solarite {
 		render() {
-			r(this)`
+			h(this)`
 				<r-474><button ${'class="primary"'} onclick=${e => {}}>${button}</button></r-474>`
 		}
 	}
@@ -2096,7 +2098,7 @@ Testimony.test('Solarite.attrib.ids1', () => {
 	class R500 extends Solarite {
 		one;
 		render() {
-			r(this)`<div data-id="one"></div>`;
+			h(this)`<div data-id="one"></div>`;
 		}
 	}
 
@@ -2110,7 +2112,7 @@ Testimony.test('Solarite.attrib.ids2', () => {
 	class R510 extends Solarite {
 		one;
 		render() {
-			r(this)`<div data-id="one"><p id="two"></p></div>`;
+			h(this)`<div data-id="one"><p id="two"></p></div>`;
 		}
 	}
 
@@ -2125,7 +2127,7 @@ Testimony.test('Solarite.attrib.idsDelve', () => {
 	class R520 extends Solarite {
 		one;
 		render() {
-			r(this)`<div data-id="one"><p id="path.to.p"></p></div>`;
+			h(this)`<div data-id="one"><p id="path.to.p"></p></div>`;
 		}
 	}
 
@@ -2142,7 +2144,7 @@ Testimony.test('Solarite.attrib.property', () => {
 	class R530 extends Solarite {
 		enabled;
 		render() {
-			r(this)`<r-530><input type="checkbox" checked=${this.enabled}></p></r-530>`;
+			h(this)`<r-530><input type="checkbox" checked=${this.enabled}></p></r-530>`;
 		}
 	}
 
@@ -2173,7 +2175,7 @@ Testimony.test('Solarite.attrib.property2', 'same as above, but with disabled at
 	class R531 extends Solarite {
 		enabled;
 		render() {
-			r(this)`<r-531><button disabled=${!this.enabled}>Button</button></r-531>`;
+			h(this)`<r-531><button disabled=${!this.enabled}>Button</button></r-531>`;
 		}
 	}
 
@@ -2198,6 +2200,8 @@ Testimony.test('Solarite.attrib.property2', 'same as above, but with disabled at
 	button.click();
 	assert.eq(button.disabled, false);
 	assert.eq(a.enabled, true); // It's not updated because we're not using two-way binding.  See the binding tests for that.
+
+	button.remove();
 });
 
 
@@ -2207,7 +2211,7 @@ Testimony.test('Solarite.attrib.inputValue', 'Make sure we can one-way bind to t
 		text = 1
 
 		render() {
-			r(this)`<input data-id="input" value=${this.text} oninput=${ev=>{ this.text = ev.target.value; this.render() }}>`
+			h(this)`<input data-id="input" value=${this.text} oninput=${ev=>{ this.text = ev.target.value; this.render() }}>`
 		}
 	}
 
@@ -2234,7 +2238,7 @@ Testimony.test('Solarite.attrib.textareaValue', 'Make sure we can one-way bind t
 		text = 1
 
 		render() {
-			r(this)`<textarea data-id="textarea" value=${this.text + '0'}></textarea>`
+			h(this)`<textarea data-id="textarea" value=${this.text + '0'}></textarea>`
 		}
 	}
 
@@ -2267,7 +2271,7 @@ Testimony.test('Solarite.comments.one', () => {
 	
 	class A480 extends Solarite {
 		render() {
-			r(this)`
+			h(this)`
 				<!--a-->
 				<div></div>`
 		}
@@ -2282,7 +2286,7 @@ Testimony.test('Solarite.comments.two', () => {
 	
 	class A482 extends Solarite {
 		render() {
-			r(this)`<div><!--${1} ${2}-->${3}</div>`
+			h(this)`<div><!--${1} ${2}-->${3}</div>`
 		}
 	}
 	let a = new A482();
@@ -2300,73 +2304,73 @@ Testimony.test('Solarite.comments.two', () => {
 /* ┌─────────────────╮
  * | r               |
  * └─────────────────╯*/
-Testimony.test('Solarite.r.staticElement', () => {
-	let button = r(`<button>hi</button>`);
+Testimony.test('Solarite.h.staticElement', () => {
+	let button = h(`<button>hi</button>`);
 	assert(button instanceof HTMLElement); // Not a DocumentFragment
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
 
-Testimony.test('Solarite.r.staticElement2', () => {
-	let button = r(`
+Testimony.test('Solarite.h.staticElement2', () => {
+	let button = h(`
 		<button>hi</button>`);
 	assert(button instanceof HTMLElement); // Not a DocumentFragment
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
 
-Testimony.test('Solarite.r.staticElement3', () => {
-	let button = r(` <!-- comment -->
+Testimony.test('Solarite.h.staticElement3', () => {
+	let button = h(` <!-- comment -->
 		<button>hi</button>`);
 	assert(button instanceof HTMLElement); // Not a DocumentFragment
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
 
-Testimony.test('Solarite.r.staticElement4', () => {
-	let button = r(` Hello`);
+Testimony.test('Solarite.h.staticElement4', () => {
+	let button = h(` Hello`);
 	assert(button instanceof Text);
 	assert.eq(getHtml(button), ` Hello`)
 })
 
-Testimony.test('Solarite.r.staticElement5', () => {
-	let button = r(` <!--comment--> Hello`);
+Testimony.test('Solarite.h.staticElement5', () => {
+	let button = h(` <!--comment--> Hello`);
 	assert(button instanceof Text);
 	assert.eq(getHtml(button), ` Hello`)
 })
 
-Testimony.test('Solarite.r.fragment', () => {
-	let fragment = r(`Hello <button>hi</button>`);
+Testimony.test('Solarite.h.fragment', () => {
+	let fragment = h(`Hello <button>hi</button>`);
 	assert(fragment instanceof DocumentFragment);
 	assert.eq(getHtml(fragment), `Hello |<button>hi</button>`)
 });
 
-Testimony.test('Solarite.r.fragment2', () => {
-	let fragment = r()`Hello <button>hi</button>`;
+Testimony.test('Solarite.h.fragment2', () => {
+	let fragment = h()`Hello <button>hi</button>`;
 	assert(fragment instanceof DocumentFragment);
 	assert.eq(getHtml(fragment), `Hello |<button>hi</button>`)
 });
 
-Testimony.test('Solarite.r.staticElement3', () => {
-	let button = r()`<button>hi</button>`;
+Testimony.test('Solarite.h.staticElement3', () => {
+	let button = h()`<button>hi</button>`;
 	assert(button instanceof HTMLElement);
 	assert.eq(getHtml(button), `<button>hi</button>`)
 });
 
-Testimony.test('Solarite.r.staticElement4', () => {
+Testimony.test('Solarite.h.staticElement4', () => {
 	// with line return
-	let button = r()`
+	let button = h()`
 		<button>hi</button>`;
 	assert(button instanceof HTMLElement);
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
 
-Testimony.test('Solarite.r.element', () => {
+Testimony.test('Solarite.h.element', () => {
 	let adjective = 'better'
-	let button = r()`<button>I'm a <b>${adjective}</b> button</button>`;
+	let button = h()`<button>I'm a <b>${adjective}</b> button</button>`;
 	
 	assert.eq(getHtml(button), `<button>I'm a <b>better</b> button</button>`)
 })
 
-Testimony.test('Solarite.r.standalone1', () => {
-	let button = r({
+Testimony.test('Solarite.h.standalone1', () => {
+	let button = h({
 		count: 0,
 
 		inc() {
@@ -2375,7 +2379,7 @@ Testimony.test('Solarite.r.standalone1', () => {
 		},
 
 		render() {
-			r(this)`<button onclick=${this.inc}>I've been clicked ${this.count} times.</button>`
+			h(this)`<button onclick=${this.inc}>I've been clicked ${this.count} times.</button>`
 		}
 	});
 	//document.body.append(button);
@@ -2391,8 +2395,8 @@ Testimony.test('Solarite.r.standalone1', () => {
 	//button.remove();
 });
 
-Testimony.test('Solarite.r.standalone2', () => {
-	let list = r({
+Testimony.test('Solarite.h.standalone2', () => {
+	let list = h({
 		items: [],
 
 		add() {
@@ -2401,11 +2405,11 @@ Testimony.test('Solarite.r.standalone2', () => {
 		},
 
 		render() {
-			r(this)`
+			h(this)`
 			<div>
 	            <button onclick=${this.add}>Add Item</button>
 	            <hr>
-	            ${this.items.map(item => r`
+	            ${this.items.map(item => h`
 	                <p>${item}</p>
 	            `)}
 	        </div>`
@@ -2432,8 +2436,8 @@ Testimony.test('Solarite.r.standalone2', () => {
 	//button.remove();
 });
 
-Testimony.test('Solarite.r.standaloneId', "Test id's on standalone elmenets.", () => {
-	let list = r({
+Testimony.test('Solarite.h.standaloneId', "Test id's on standalone elmenets.", () => {
+	let list = h({
 		items: [],
 
 		add() {
@@ -2442,7 +2446,7 @@ Testimony.test('Solarite.r.standaloneId', "Test id's on standalone elmenets.", (
 		},
 
 		render() {
-			r(this)`
+			h(this)`
 			<div>
 			   <button data-id="button" onclick=${this.add}>Add Item</button>
 			</div>`
@@ -2452,10 +2456,10 @@ Testimony.test('Solarite.r.standaloneId', "Test id's on standalone elmenets.", (
 	assert.eq(list.button.tagName, 'BUTTON');
 });
 
-Testimony.test('Solarite.r.standaloneStyle', "Test id's on standalone elmenets.", () => {
-	let box = r({
+Testimony.test('Solarite.h.standaloneStyle', "Test id's on standalone elmenets.", () => {
+	let box = h({
 		render() {
-			r(this)`
+			h(this)`
 			<div>
 	         <style>:host { display: block; background: red; width: 20px; height: 20px }</style>      
 	      </div>`
@@ -2466,16 +2470,16 @@ Testimony.test('Solarite.r.standaloneStyle', "Test id's on standalone elmenets."
 	assert.eq(box.firstElementChild.textContent, `div[data-style="${styleId}"] { display: block; background: red; width: 20px; height: 20px }`);
 });
 
-Testimony.test('Solarite.r.standalone3', () => {
+Testimony.test('Solarite.h.standalone3', () => {
 
 	// Make sure a div inside a div doesn't replace the parent div.
-	let list = r({
+	let list = h({
 		items: [],
 
 		render() {
-			r(this)`
+			h(this)`
 			<div>
-				${this.items.map(item => r`
+				${this.items.map(item => h`
 					<div>
 						<input placeholder="Name" value=${item.name}>
 						<input type="number" value=${item.qty}>
@@ -2495,7 +2499,7 @@ Testimony.test('Solarite.r.standalone3', () => {
 
 // TODO: This one fails because "this" isn't pointing to the right object when passed as part of a web component constructor:
 /*
- r({
+ h({
 
 		onTableSelect(table, tableList) {
 			this.select.value = table;
@@ -2510,7 +2514,7 @@ Testimony.test('Solarite.r.standalone3', () => {
 
 		render() {
 
-			r(this)`
+			h(this)`
 				<div class="group">
 					<select-box-2 data-id="select" focusopen filter select class="input rem14" placeholder="Select table" value=${binding}>
 						<table-list db=${DB} tables=${tables} access-level=${2} actions=${
@@ -2527,16 +2531,16 @@ Testimony.test('Solarite.r.standalone3', () => {
 	})
  */
 
-Testimony.test('Solarite.r.standaloneChild', () => {
+Testimony.test('Solarite.h.standaloneChild', () => {
 
 	function createItem(item) {
-		return r({
+		return h({
 			item: item,
 			render(attribs = null) {
 				// If attributes passed to constructor have changed.
 				if (attribs)
 					this.item = attribs.item;
-				r(this)`
+				h(this)`
 				<div>
 				   <b>${this.item.name}</b> - ${this.item.description}<br>
 				</div>`
@@ -2545,10 +2549,10 @@ Testimony.test('Solarite.r.standaloneChild', () => {
 	}
 
 	function createList(items) {
-		return r({
+		return h({
 			items: items,
 			render() {
-				r(this)`
+				h(this)`
 				<div>
 					${this.items.map(item =>
 					createItem(item)
@@ -2591,7 +2595,7 @@ Testimony.test('Solarite.component.tr', () => {
 
 	class TR510 extends Solarite('tr') {
 		render() {
-			r(this)`<td>hello</td>`
+			h(this)`<td>hello</td>`
 		}
 	}
 
@@ -2617,14 +2621,14 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 		}
 		
 		render() {
-			r(this)`<b-511>${this.name} | ${this.userId}</b-511>`
+			h(this)`<b-511>${this.name} | ${this.userId}</b-511>`
 		}
 	}
 	B511.define();
 	
 	class A511 extends Solarite {
 		render() {
-			r(this)`<div><b-511 name="User" user-id="2"></b-511></div>`;
+			h(this)`<div><b-511 name="User" user-id="2"></b-511></div>`;
 		}
 	}
 	A511.define();
@@ -2650,14 +2654,14 @@ Testimony.test('Solarite.component.staticWithDynamicChildren', () => {
 		}
 
 		render() {
-			r(this)`<b-512>${this.name} | ${this.userId}${this.bChildren}</b-512>`
+			h(this)`<b-512>${this.name} | ${this.userId}${this.bChildren}</b-512>`
 		}
 	}
 	B512.define();
 
 	class A512 extends Solarite {
 		render() {
-			r(this)`<div><b-512 name="User" user-id="2">${[1,2,3].map(num => r`<b>${num}</b>`)}</b-512></div>`;
+			h(this)`<div><b-512 name="User" user-id="2">${[1,2,3].map(num => h`<b>${num}</b>`)}</b-512></div>`;
 		}
 	}
 	A512.define();
@@ -2679,14 +2683,14 @@ Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...
 		}
 		
 		render() {
-			r(this)`<b-513>${this.name} | ${this.userId}</b-513>`
+			h(this)`<b-513>${this.name} | ${this.userId}</b-513>`
 		}
 	}
 	B513.define();
 	
 	class A513 extends Solarite {
 		render() {
-			r(this)`<div><b-513 name=${'User'} user-id=${2}></b-513></div>`;
+			h(this)`<div><b-513 name=${'User'} user-id=${2}></b-513></div>`;
 		}
 	}
 	A513.define();
@@ -2709,14 +2713,14 @@ Testimony.test('Solarite.component.dynamicAttribsAdjacent', 'Attribs specified v
 		}
 
 		render() {
-			r(this)`<b-515>${this.name} | ${this.userId}</b-515>`
+			h(this)`<b-515>${this.name} | ${this.userId}</b-515>`
 		}
 	}
 	B515.define();
 
 	class A515 extends Solarite {
 		render() {
-			r(this)`<div><b-515 selected name="${'User'}" SELECTED2 selected3="test" userId="${1}" selected4></b-515><b-515 name="${'User2'}" userId="${2}"></b-515></div>`;
+			h(this)`<div><b-515 selected name="${'User'}" SELECTED2 selected3="test" userId="${1}" selected4></b-515><b-515 name="${'User2'}" userId="${2}"></b-515></div>`;
 		}
 	}
 	A515.define();
@@ -2740,7 +2744,7 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 		}
 		
 		render() {
-			r(this)`<b-517>${this.name} | ${this.userId}</b-517>`
+			h(this)`<b-517>${this.name} | ${this.userId}</b-517>`
 		}
 	}
 	B517.define();
@@ -2759,7 +2763,7 @@ Testimony.test('Solarite.component.nested', () => {
 
 	class B518 extends Solarite {
 		render() {
-			r(this)`<div>B</div>`;
+			h(this)`<div>B</div>`;
 			bRenderCount++;
 		}
 	}
@@ -2768,7 +2772,7 @@ Testimony.test('Solarite.component.nested', () => {
 
 	class A518 extends Solarite {
 		render() {
-			r(this)`<b-518></b-518>`
+			h(this)`<b-518></b-518>`
 		}
 	}
 
@@ -2793,7 +2797,7 @@ Testimony.test('Solarite.component.nestedExprConstructorArg', "Pass an object to
 		render(props={}) {
 			if (props.user)
 				this.user = props.user;
-			r(this)`<div>Name:</div><div>${this.user.name}</div><div>Email:</div><div>${this.user.email}</div>`;
+			h(this)`<div>Name:</div><div>${this.user.name}</div><div>Email:</div><div>${this.user.email}</div>`;
 			bRenderCount++;
 		}
 
@@ -2804,7 +2808,7 @@ Testimony.test('Solarite.component.nestedExprConstructorArg', "Pass an object to
 		title = 'Users'
 		user = {name: 'John', email: 'john@example.com'};
 		render() {
-			r(this)`${this.title}<b-520 user="${this.user}"></b-520>`
+			h(this)`${this.title}<b-520 user="${this.user}"></b-520>`
 		}
 	}
 
@@ -2845,7 +2849,7 @@ Testimony.test('Solarite.component.nestedExprEvent', () => {
 		}
 
 		render() {
-			r(this)`
+			h(this)`
 			<b-530>				
 				<div>Name:</div><div>Fred</div>
 			</b-530>`;
@@ -2857,7 +2861,7 @@ Testimony.test('Solarite.component.nestedExprEvent', () => {
 
 	class A530 extends Solarite {
 		render() {
-			r(this)`
+			h(this)`
 			<a-530>
 				<b-530 onclick=${() => {console.log('click')}}></b-530>
 			</a-530>`
@@ -2888,7 +2892,7 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 		render(props={}) {
 			if (props.user)
 				this.user = props.user;
-			r(this)`<div>Name:</div><div>${this.user.name}</div><div>Email:</div><div>${this.user.email}</div>`;
+			h(this)`<div>Name:</div><div>${this.user.name}</div><div>Email:</div><div>${this.user.email}</div>`;
 			bRenderCount++;
 		}
 	}
@@ -2898,7 +2902,7 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 		title = 'Users'
 		user = {name: 'John', email: 'john@example.com'};
 		render() {
-			r(this)`${this.title}<b-540 user="${this.user}"></b-540>`
+			h(this)`${this.title}<b-540 user="${this.user}"></b-540>`
 		}
 	}
 	customElements.define('a-540', A540);
@@ -2935,9 +2939,9 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 Testimony.test('Solarite.component.nestedTrLoop', () => {
 
 	function tableRow(user) {
-		let tr = r({
+		let tr = h({
 			render() {
-				r(this)`<tr><td>${user.name}</td><td>${user.email}</td></tr>`
+				h(this)`<tr><td>${user.name}</td><td>${user.email}</td></tr>`
 			}
 		})
 		return tr;
@@ -2949,7 +2953,7 @@ Testimony.test('Solarite.component.nestedTrLoop', () => {
 			{name: 'Fred', email: 'fred@example.com'}
 		]
 		render() {
-			r(this)`<table><tbody>${this.users.map(user => tableRow(user))}</tbody></table>`
+			h(this)`<table><tbody>${this.users.map(user => tableRow(user))}</tbody></table>`
 		}
 	}
 	let table = new MyTable
@@ -3001,7 +3005,7 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 		render(props=null) { // Props is set when re-rendering, so we don't have to recreate the whole component.
 			if (props?.user)
 				this.user = props.user;
-			r(this)`<td>${this.user.name}</td><td>${this.user.email}</td>`
+			h(this)`<td>${this.user.name}</td><td>${this.user.email}</td>`
 		}
 	}
 	TR540.define('tr-540');
@@ -3013,7 +3017,7 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 			{name: 'Fred', email: 'fred@example.com'}
 		]
 		render() {
-			r(this)`<table><tbody>${this.users.map(user => r`<tr is="tr-540" user="${user}"></tr>`)}</tbody></table>`
+			h(this)`<table><tbody>${this.users.map(user => h`<tr is="tr-540" user="${user}"></tr>`)}</tbody></table>`
 		}
 	}
 	let table = new Table540
@@ -3060,12 +3064,12 @@ Testimony.test('Solarite.slots.basic', () => {
 
 	class S10 extends Solarite {
 		render() {
-			r(this)`<div>slot content:<slot></slot></div>`
+			h(this)`<div>slot content:<slot></slot></div>`
 		}
 	}
 	S10.define();
 
-	let div = r('<div><s-10>test</s-10></div>')
+	let div = h('<div><s-10>test</s-10></div>')
 	document.body.append(div);
 
 	assert.eq(div.outerHTML, `<div><s-10><div>slot content:<slot>test</slot></div></s-10></div>`)
@@ -3077,12 +3081,12 @@ Testimony.test('Solarite.slots.named', () => {
 
 	class S20 extends Solarite {
 		render() {
-			r(this)`<div>slot content:<slot name="one"></slot><slot></slot><slot name="two"></slot></div>`
+			h(this)`<div>slot content:<slot name="one"></slot><slot></slot><slot name="two"></slot></div>`
 		}
 	}
 	S20.define();
 
-	let div = r('<div><s-20>zero<div slot="one">One</div><div slot="one">One Again</div><div slot="two">Two</div>Three</s-20></div>')
+	let div = h('<div><s-20>zero<div slot="one">One</div><div slot="one">One Again</div><div slot="two">Two</div>Three</s-20></div>')
 	document.body.append(div);
 
 	assert.eq(div.outerHTML, `<div><s-20><div>slot content:<slot name="one"><div slot="one">One</div><div slot="one">One Again</div></slot><slot>zeroThree</slot><slot name="two"><div slot="two">Two</div></slot></div></s-20></div>`)
@@ -3094,12 +3098,12 @@ Testimony.test('Solarite.slots.slotless', `Add children even when no slots prese
 
 	class S30 extends Solarite {
 		render() {
-			r(this)`<div>child1</div>`
+			h(this)`<div>child1</div>`
 		}
 	}
 	S30.define();
 
-	let div = r('<div><s-30>child2<br>child3</s-30></div>')
+	let div = h('<div><s-30>child2<br>child3</s-30></div>')
 	document.body.append(div);
 
 	assert.eq(div.outerHTML, `<div><s-30><div>child1</div>child2<br>child3</s-30></div>`)
@@ -3121,7 +3125,7 @@ Testimony.test('Solarite.events.classic', () => {
 		count = 1
 
 		render() {
-			r(this)`<input data-id="input" value=${this.count} oninput="this.count=el.count">`
+			h(this)`<input data-id="input" value=${this.count} oninput="this.count=el.count">`
 		}
 	}
 
@@ -3146,7 +3150,7 @@ Testimony.test('Solarite.events.rebind', 'Ensure function is unbound/rebound on 
 		}
 		
 		render() {
-			r(this)`<input data-id="input" value=${this.count} oninput="${(e, el) => this.assign(el.value)}">`
+			h(this)`<input data-id="input" value=${this.count} oninput="${(e, el) => this.assign(el.value)}">`
 		}
 	}
 	Ev20.define();
@@ -3172,7 +3176,7 @@ Testimony.test('Solarite.events.args', 'Ensure event function args are received'
 		}
 		
 		render() {
-			r(this)`<input data-id="input" value='1' oninput="${(e, el) => this.assign(el.value)}">`
+			h(this)`<input data-id="input" value='1' oninput="${(e, el) => this.assign(el.value)}">`
 		}
 	}
 	Ev30.define();
@@ -3197,7 +3201,7 @@ Testimony.test('Solarite.events.onComponent', 'Event attrib on root component', 
 		}
 		
 		render() {
-			r(this)`<ev-40 oninput="${(e, el) => this.assign(el.firstChild.value)}"><input data-id="input" value='1'></ev-40>`
+			h(this)`<ev-40 oninput="${(e, el) => this.assign(el.firstChild.value)}"><input data-id="input" value='1'></ev-40>`
 		}
 	}
 	Ev40.define();
@@ -3227,7 +3231,7 @@ Testimony.test('Solarite.events.onChild', () => {
 		}
 
 		render() {
-			r(this)`
+			h(this)`
 			<e-50>				
 				<button onclick=${this.addItem}>Add Item</button>
 			</e-50>`
@@ -3255,9 +3259,9 @@ Testimony.test('Solarite.events.onExprChild', () => {
 		}
 
 		render() {
-			r(this)`
+			h(this)`
 			<e-60>				
-				${r`<button onclick=${this.addItem}>Add Item</button>`}
+				${h`<button onclick=${this.addItem}>Add Item</button>`}
 			</e-60>`
 		}
 	}
@@ -3282,7 +3286,7 @@ Testimony.test('Solarite.binding.input', () => {
 		count = 1
 
 		render() {
-			r(this)`<input data-id="input" value=${[this, 'count']}>`
+			h(this)`<input data-id="input" value=${[this, 'count']}>`
 		}
 	}
 
@@ -3312,7 +3316,7 @@ Testimony.test('Solarite.binding.inputReuse', () => {
 		items = [1, 2, 3]
 		
 		render() {
-			r(this)`${this.items.map(item => r`<input data-id="input" value=${item}>`)}`;
+			h(this)`${this.items.map(item => h`<input data-id="input" value=${item}>`)}`;
 		}
 	}
 	
@@ -3339,7 +3343,7 @@ Testimony.test('Solarite.binding.checkbox', () => {
 		enabled;
 
 		render() {
-			r(this)`<input data-id="input" type="checkbox" checked=${[this, 'enabled']}>`
+			h(this)`<input data-id="input" type="checkbox" checked=${[this, 'enabled']}>`
 		}
 	}
 
@@ -3364,7 +3368,7 @@ Testimony.test('Solarite.binding.textarea', () => {
 		text = 1
 
 		render() {
-			r(this)`<textarea data-id="input" value=${[this, 'text']}></textarea>`
+			h(this)`<textarea data-id="input" value=${[this, 'text']}></textarea>`
 		}
 	}
 
@@ -3393,7 +3397,7 @@ Testimony.test('Solarite.binding.select', () => {
 		count = 1
 
 		render() {
-			r(this)`<select data-id="input" value=${[this, 'count']}><option>1</option><option>2</option><option>3</option></select>`
+			h(this)`<select data-id="input" value=${[this, 'count']}><option>1</option><option>2</option><option>3</option></select>`
 		}
 	}
 
@@ -3421,7 +3425,7 @@ Testimony.test('Solarite.binding.selectMultiple', () => {
 		items = [2]
 
 		render() {
-			r(this)`<select multiple data-id="input" value=${[this, 'items']}><option value="1">Item 1</option><option value="2"">Item 2</option><option value="3">Item 3</option></select>`
+			h(this)`<select multiple data-id="input" value=${[this, 'items']}><option value="1">Item 1</option><option value="2"">Item 2</option><option value="3">Item 3</option></select>`
 		}
 	}
 
@@ -3460,7 +3464,7 @@ Testimony.test('Solarite.binding.selectDynamic', () => {
 		count = 1
 		
 		render() {
-			r(this)`<select data-id="input" value=${[this, 'count']}>${[1, 2, 3].map(item => r`<option>${item}</option>`)}</select>`
+			h(this)`<select data-id="input" value=${[this, 'count']}>${[1, 2, 3].map(item => h`<option>${item}</option>`)}</select>`
 		}
 	}
 	
@@ -3491,7 +3495,7 @@ Testimony.test('Solarite.binding.number', () => {
 		count = 1
 
 		render() {
-			r(this)`<input type="number" data-id="input" value=${[this, 'count']}>`
+			h(this)`<input type="number" data-id="input" value=${[this, 'count']}>`
 		}
 	}
 
@@ -3520,7 +3524,7 @@ Testimony.test('Solarite.binding.undefined', () => {
 	class B50 extends Solarite {
 
 		render() {
-			r(this)`<input data-id="input" value=${[this, 'count']}>`
+			h(this)`<input data-id="input" value=${[this, 'count']}>`
 		}
 	}
 
@@ -3547,9 +3551,9 @@ Testimony.test('Solarite.binding.loop', 'similar to the loop.continuity2 test ab
 		}
 
 		render() {
-			r(this)`
+			h(this)`
 			<v-70>	
-				${this.items.map((item, i) => r`
+				${this.items.map((item, i) => h`
 					<div>
 						<input type="number" oninput=${this.render} value=${[item, 'qty']}>
 						<button onclick=${()=>this.removeItem(i)}>x</button>
@@ -3625,7 +3629,7 @@ Testimony.test('Solarite.watch.primitive', () => {
 		}
 
 		render() {
-			r(this)`<w-10>${() => this.name + '!'}</w-10>`;
+			h(this)`<w-10>${() => this.name + '!'}</w-10>`;
 		}
 	}
 	customElements.define('w-10', W10);
@@ -3660,7 +3664,7 @@ Testimony.test('Solarite.watch.primitive2', `One primitive variable used twice.`
 		}
 
 		render() {
-			r(this)`<w-20>${() => this.name + '.'}<br>${() => this.name + '!'}</w-20>`;
+			h(this)`<w-20>${() => this.name + '.'}<br>${() => this.name + '!'}</w-20>`;
 		}
 	}
 
@@ -3673,6 +3677,8 @@ Testimony.test('Solarite.watch.primitive2', `One primitive variable used twice.`
 	assert.eq(getHtml(a), `<w-20>Jim.<br>Jim!</w-20>`);
 	assert.eq(2, modified.length);
 	assert.neq(modified[0], modified[1]);
+
+	a.remove();
 });
 
 Testimony.test('Solarite.watch.attrib', () => {
@@ -3684,7 +3690,7 @@ Testimony.test('Solarite.watch.attrib', () => {
 		}
 
 		render() {
-			r(this)`<w-23><p title=${() => this.name + '!'}></p></w-23>`;
+			h(this)`<w-23><p title=${() => this.name + '!'}></p></w-23>`;
 		}
 	}
 
@@ -3716,7 +3722,7 @@ Testimony.test('Solarite.watch.mutliAttrib', () => {
 		}
 
 		render() {
-			r(this)`<w-24><p ${() => `title=${this.name}!`}></p></w-24>`;
+			h(this)`<w-24><p ${() => `title=${this.name}!`}></p></w-24>`;
 		}
 	}
 
@@ -3752,7 +3758,7 @@ Testimony.test('Solarite.watch._componentAttrib', () => {
 		}
 
 		render() {
-			r(this)`<w-25 title=${() => this.name + '!'}></w-25>`;
+			h(this)`<w-25 title=${() => this.name + '!'}></w-25>`;
 		}
 	}
 
@@ -3788,7 +3794,7 @@ Testimony.test('Solarite.watch.object', () => {
 		}
 
 		render() {
-			r(this)`<w-30>${() => this.user.name + '!'}</w-30>`;
+			h(this)`<w-30>${() => this.user.name + '!'}</w-30>`;
 		}
 	}
 	customElements.define('w-30', W30);
@@ -3824,7 +3830,7 @@ Testimony.test('Solarite.watch.arrayOfObject', () => {
 		}
 
 		render() {
-			r(this)`<w-40>${() => this.users[0].name + '!'}</w-40>`;
+			h(this)`<w-40>${() => this.users[0].name + '!'}</w-40>`;
 		}
 	}
 	customElements.define('w-40', W40);
@@ -3855,7 +3861,7 @@ Testimony.test('Solarite.watch.loopAssign', `replace array elements`, () => {
 		}
 
 		render() {
-			r(this)`<w-50>${this.items.map(item => r`<div>${item}</div>`)}</w-50>`;
+			h(this)`<w-50>${this.items.map(item => h`<div>${item}</div>`)}</w-50>`;
 		}
 	}
 	customElements.define('w-50', W50);
@@ -3909,7 +3915,7 @@ Testimony.test('Solarite.watch.loopSwap', `swap array elements`, () => {
 		}
 
 		render() {
-			r(this)`<w-52>${this.items.map(item => r`<p>${item}</p>`)}</w-52>`;
+			h(this)`<w-52>${this.items.map(item => h`<p>${item}</p>`)}</w-52>`;
 		}
 	}
 	customElements.define('w-52', W52);
@@ -3970,7 +3976,7 @@ Testimony.test('Solarite.watch.loopObjAssign', `update array elements and their 
 		}
 
 		render() { // TODO: It'd be really nice if there was a way to not need ()=> for lazy evaluation.
-			r(this)`<w-55>${this.items.map(item => r`<div>${()=>item.name}|${()=>item.qty}</div>`)}</w-55>`;
+			h(this)`<w-55>${this.items.map(item => h`<div>${()=>item.name}|${()=>item.qty}</div>`)}</w-55>`;
 		}
 	}
 	customElements.define('w-55', W55);
@@ -3990,6 +3996,7 @@ Testimony.test('Solarite.watch.loopObjAssign', `update array elements and their 
 	assert.eq(getHtml(a), `<w-55><div>cherry|3</div><div>banana|2</div></w-55>`);
 	assert.eq([...modified].map(getHtml), [`<div>cherry|3</div>`]);
 
+	a.remove();
 });
 
 
@@ -4006,7 +4013,7 @@ Testimony.test('Solarite.watch.loopPushPop', () => {
 		}
 
 		render() {
-			r(this)`<w-60>${this.items.map(item => r`<div>${item}</div>`)}</w-60>`;
+			h(this)`<w-60>${this.items.map(item => h`<div>${item}</div>`)}</w-60>`;
 		}
 	}
 	customElements.define('w-60', W60);
@@ -4069,7 +4076,7 @@ Testimony.test('Solarite.watch.loopDeepPushPop', () => {
 		}
 
 		render() {
-			r(this)`<w-70>${this.props.items.map(item => r`<div>${item}</div>`)}</w-70>`;
+			h(this)`<w-70>${this.props.items.map(item => h`<div>${item}</div>`)}</w-70>`;
 		}
 	}
 	customElements.define('w-70', W70);
@@ -4118,13 +4125,13 @@ Testimony.test('Solarite.full._todoList', () => {
 		}
 
 		render() {
-			r(this)`
+			h(this)`
 			<shopping-list>
 				<style>:host input { width: 80px }</style>
 					
 				<button onclick=${this.addItem}>Add Item</button>
 	
-				${this.items.map(item => r`
+				${this.items.map(item => h`
 					<div>
 						<input placeholder="Item" value=${item.name} 
 							oninput=${e => { // two-way binding
@@ -4160,7 +4167,7 @@ Testimony.test('Solarite.full._treeItems', () => {
 		}
 
 		render() {
-			r(this)`
+			h(this)`
 				<tree-item>
 					<style>
 						:host #childItems { padding-left: 20px }
@@ -4203,12 +4210,12 @@ Testimony.test('Solarite.full._isc2', () => {
 
 	class Misc2 extends HTMLElement {
 		render() {
-			r(this)`
+			h(this)`
 			<misc-2>
-				${items.map(item => r`
+				${items.map(item => h`
 					<div>
-						${r`<span>${item.name}</span>`}
-						${r`<span>${item.qty}</span>`}
+						${h`<span>${item.name}</span>`}
+						${h`<span>${item.qty}</span>`}
 					</div>`
 				)}
 				
@@ -4277,15 +4284,15 @@ Testimony.test('Solarite.full._misc', () => {
 		}
 
 		render() {
-			r(this)`
+			h(this)`
 			<misc-1>
-				${this.items.map(item => r`
+				${this.items.map(item => h`
 					<p>						
-						${this.options.map(option => r`
+						${this.options.map(option => h`
 							<div style="display: flex">
-								${r`<button onclick=${() => this.setValue(item, option, option.name, '')}>${option.name}</button>`}
+								${h`<button onclick=${() => this.setValue(item, option, option.name, '')}>${option.name}</button>`}
 								
-								${option[item.id + '_showOther']  && r`<input>`}							
+								${option[item.id + '_showOther']  && h`<input>`}							
 							</div>`
 						)}
 					</p>

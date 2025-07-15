@@ -536,7 +536,7 @@ function flattenAndIndent(inputArray, indent = "") {
 //#ENDIF
 
 function defineClass(Class, tagName, extendsTag) {
-	if (!customElements.getName(Class)) { // If not previously defined.
+	if (!customElements[getName](Class)) { // If not previously defined.
 		tagName = tagName || Util.camelToDashes(Class.name);
 		if (!tagName.includes('-'))
 			tagName += '-element';
@@ -545,7 +545,7 @@ function defineClass(Class, tagName, extendsTag) {
 		if (extendsTag)
 			options = {extends: extendsTag};
 
-		customElements.define(tagName, Class, options);
+		customElements[define](tagName, Class, options);
 	}
 }
 
@@ -679,6 +679,10 @@ function createSolarite(extendsTag=null) {
 		}
 	}
 }
+
+// Trick to prevent minifier from renaming this method.
+let define = 'define';
+let getName = 'getName';
 
 //#IFDEV
 /*@__NO_SIDE_EFFECTS__*/
@@ -3468,8 +3472,8 @@ class Template {
 
 /**
  * Convert strings to HTMLNodes.
- * Using r as a tag will always create a Template.
- * Using r() as a function() will always create a DOM element.
+ * Using h`...` as a tag will always create a Template.
+ * Using h() as a function() will always create a DOM element.
  *
  * Features beyond what standard js tagged template strings do:
  * 1. r`` sub-expressions
@@ -3479,24 +3483,24 @@ class Template {
  * 5. TODO:  list more
  *
  * Currently supported:
- * 1. r(el, options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
- * 2. r(el, template, ?options)        // Render the Template created by #1 to element.
+ * 1. h(el, options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
+ * 2. h(el, template, ?options)        // Render the Template created by #1 to element.
  *
- * 3. r`<b>Hello</b> ${'World'}!`      // Create Template that can later be used to create nodes.
+ * 3. h`<b>Hello</b> ${'World'}!`      // Create Template that can later be used to create nodes.
  *
- * 4. r('Hello');                      // Create single text node.
- * 5. r('<b>Hello</b>');               // Create single HTMLElement
- * 6. r('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
- * 7. r()`Hello<b>${'World'}!</b>`     // Same as 4-6, but evaluates the string as a Solarite template, which
+ * 4. h('Hello');                      // Create single text node.
+ * 5. h('<b>Hello</b>');               // Create single HTMLElement
+ * 6. h('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
+ * 7. h()`Hello<b>${'World'}!</b>`     // Same as 4-6, but evaluates the string as a Solarite template, which
  *                                     // includes properly handling nested components and r`` sub-expressions.
- * 8. r(template)                      // Render Template created by #1.
+ * 8. h(template)                      // Render Template created by #1.
  *
- * 9. r({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
- * 10. r(string, object, ...)          // JSX
+ * 9. h({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
+ * 10. h(string, object, ...)          // JSX TODO
  * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template} */
-function r(htmlStrings=undefined, ...exprs) {
+function h(htmlStrings=undefined, ...exprs) {
 
 
 	// TODO: Make this a more flat if/else and call other functions for the logic.
@@ -3588,7 +3592,7 @@ function r(htmlStrings=undefined, ...exprs) {
 	else if (htmlStrings === undefined) {
 		return (htmlStrings, ...exprs) => {
 			//Globals.rendered.add(parent)
-			let template = r(htmlStrings, ...exprs);
+			let template = h(htmlStrings, ...exprs);
 			return template.render();
 		}
 	}
@@ -3612,7 +3616,7 @@ function r(htmlStrings=undefined, ...exprs) {
 		// Intercepts the main r`...` function call inside render().
 		if (Globals$1.objToEl.has(obj)) {
 			return function(...args) {
-			   let template = r(...args);
+			   let template = h(...args);
 			   let el = template.render();
 				Globals$1.objToEl.set(obj, el);
 			}.bind(obj);
@@ -3621,7 +3625,7 @@ function r(htmlStrings=undefined, ...exprs) {
 		// Normal path
 		else {
 			Globals$1.objToEl.set(obj, null);
-			obj.render(); // Calls the Special rebound render path above, when the render function calls r(this)
+			obj[renderF](); // Calls the Special rebound render path above, when the render function calls r(this)
 			let el = Globals$1.objToEl.get(obj);
 			Globals$1.objToEl.delete(obj);
 
@@ -3648,6 +3652,9 @@ function r(htmlStrings=undefined, ...exprs) {
 	else
 		throw new Error('Unsupported arguments.')
 }
+
+// Trick to prevent minifier from renaming this function.
+let renderF = 'render';
 
 /**
  * There are three ways to create an instance of a Solarite Component:
@@ -3779,4 +3786,5 @@ let getInputValue = Util.getInputValue;
 //Experimental:
 //export {default as watch, renderWatched} from './watch.js'; // unfinished
 
-export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, getInputValue, r as h, r };
+export default h;
+export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, getInputValue, h, h as r };

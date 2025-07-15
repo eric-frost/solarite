@@ -26,16 +26,29 @@
 	import './Solarite.test.js';
 	import './Benchmark.test.js';
 
+
+	Testimony.debugOnAssertFail = false;
+
+	// Don't catch errors so debugger can catch them.
+	Testimony.throwOnError = new URL(window.location.href).searchParams.has('throwOnError');
+	if (Testimony.throwOnError)
+		document.querySelector('input[name=throwOnError]').checked = true;
+
+
 	Testimony.render(document.getElementById('tests'));
 	Testimony.run();
 </script>
-	<form>
-		<button>Run Tests</button>
-		<a href=".">Reset</a>
-		<div id="tests"></div>
-		<br>
-		<button>Run Tests</button>
-	</form>
+<form>
+	<button>Run Tests</button>
+	<a href=".">Reset</a>
+	<label>
+		<input type="checkbox" name="throwOnError" value="">
+		Throw on Error
+	</label>
+	<div id="tests"></div>
+	<br>
+	<button>Run Tests</button>
+</form>
 </body>
 
 </html>

@@ -12,15 +12,20 @@
  * 9.  Support other Deno options.
  * 11. URLs only mark which tests to include or exclude, to make url shorter
  * 12. Auto-expand to failed tests.
+ *
+ * Can't have a test with part of the name being "constructor"
  */
 
 class AssertError extends Error {
-	constructor(expected, actual, op) {
-		super('Assertion Failed');
+	constructor(msgOrExpected='Assertion Failed', actual, op) {
+		if (actual)
+			super(`Failed:  ${msgOrExpected} ${op} ${actual}`);
+		else
+			super(msgOrExpected);
 		this.name = "AssertError";
-		this.expected = expected;
-		this.actual = actual;
-		this.op = op;
+		// this.expected = expected;
+		// this.actual = actual;
+		// this.op = op;
 	}
 }
 
@@ -45,7 +50,7 @@ Object.assign(assert, {
 		if (JSON.stringify(actual) !== JSON.stringify(expected)) {
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(expected, actual);
+			throw new AssertError(expected, actual, 'eqJson');
 		}
 	},
 
@@ -53,7 +58,7 @@ Object.assign(assert, {
 		if (isSame(val1, val2)) {
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(val1 + ' === ' + val2);
+			throw new AssertError(val1, val2, '!=');
 		}
 	},
 
@@ -61,12 +66,39 @@ Object.assign(assert, {
 		if (val1 > val2) {
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(val1 + ' > ' + val2);
+			throw new AssertError(val1, val2, ' > ');
+		}
+	},
+
+	error(fn, message) {
+		let throwed = true;
+		try {
+			fn();
+			throwed = false;
+		}
+		catch (e) {
+			if (message) {
+				if (!e.message.includes(message)) {
+					if (Testimony.debugOnAssertFail)
+						debugger;
+					throw new AssertError(`Expected error: '${message}' But got: '${e.message}'`);
+				}
+			}
+		}
+		if (!throwed) {
+			if (Testimony.debugOnAssertFail)
+				debugger;
+			throw new AssertError('Function did not throw an error.');
 		}
 	}
 });
 
 
+function createEl(html) {
+	let el = document.createElement('div');
+	el.innerHTML = html;
+	return el.firstChild;
+}
 
 /**
  * https://stackoverflow.com/a/6713782/
@@ -125,7 +157,9 @@ function h(text, quotes='"') {
 if (!globalThis.HTMLElement) // Don't define this when running from command line.
 	globalThis.HTMLElement = function(){};
 
-class TestItem extends HTMLElement {
+/**
+ * Render a test as HTML elements. */
+class TestComponent extends HTMLElement {
 
 	/** @type {Test} */
 	test;
@@ -143,6 +177,8 @@ class TestItem extends HTMLElement {
 	/** @param test {Test} */
 	constructor(test) {
 		super();
+		if (!test)
+			return; // This can happen if a test accidently clones the body tag, and everything in it, including this test.
 		this.test = test;
 		test.element = this;
 
@@ -168,15 +204,15 @@ class TestItem extends HTMLElement {
 		this.test.enabled = this.enableCB.checked;
 
 		// Check all children if this is checked.
-		[...this.childContainer.querySelectorAll('test-item')].map(testItem => {
+		[...this.childContainer.querySelectorAll('test-item')].map(TestComponent => {
 
 			// Unchecking a parent can disable underscored tests.
 			// But checking a parent can't enable underscored tests.
-			let isUnderscored = testItem.test.getShortName().startsWith('_');
+			let isUnderscored = TestComponent.test.getShortName().startsWith('_');
 			if (this.enableCB.checked && !isUnderscored)
-				testItem.enableCB.checked = true;
+				TestComponent.enableCB.checked = true;
 			if (!this.enableCB.checked)
-				testItem.enableCB.checked = false;
+				TestComponent.enableCB.checked = false;
 		});
 
 		// Make every parent checked if all its children are checked.
@@ -236,8 +272,11 @@ class TestItem extends HTMLElement {
 			this.className = 'fail';
 		}
 
-		if (this.test.status instanceof Error)
-			this.errorMessage.innerHTML = this.test.status.message;
+		if (this.test.status instanceof Error) {
+			let msg = Testimony.shortenError(this.test.status);
+
+			this.errorMessage.innerHTML = msg;
+			}
 		else
 			this.errorMessage.innerHTML = '';
 
@@ -260,6 +299,7 @@ class TestItem extends HTMLElement {
 			test-item.pass > div > label > [data-id=statusContainer]::before { position: relative; top: 3px; color: #0c0; content: '✓' }
 			test-item.fail > div > label > [data-id=statusContainer]::before { color: #f00; content: 'x' }
 			test-item [data-id=childContainer] { padding-left: 26px }
+			test-item a { text-decoration: none }
 		</style>					
 		<div style="display: flex; gap: 8px">
 			<!-- Expand button -->
@@ -281,11 +321,14 @@ class TestItem extends HTMLElement {
 				<span data-id="statusContainer"></span>
 				
 				<!-- Name -->
-				${h(this.test.getShortName())}
-				
+				<span>
+					${h(this.test.getShortName())}${this.test.link ? `<a 
+						href="${h(this.test.link)}" target="_blank" title="Open external test url in new tab">🡵</a>` : ''}
+					<span style="opacity: .5">${h(this.test.desc)}</span>
+				</span>
 			</label>	
-			<span style="opacity: .5">${h(this.test.desc)}</span>
-			<div data-id="errorMessage" style="color: red; padding-left: 62px"></div>
+			
+			<div data-id="errorMessage" style="color: red"></div>
 		</div>
 		<div data-id="childContainer" ${this.test.expanded ? `` : `style="display: none"`}></div>`;
 
@@ -297,14 +340,14 @@ class TestItem extends HTMLElement {
 		// Create child tests
 		for (let testName in this.test.children) {
 			let childTest = this.test.children[testName];
-			let child = new TestItem(childTest);
+			let child = new TestComponent(childTest);
 			this.childContainer.append(child);
 		}
 	}
 }
 
 if (globalThis.customElements?.define)
-	customElements.define('test-item', TestItem);
+	customElements.define('test-item', TestComponent);
 
 /** @enum */
 export const TestStatus = {
@@ -321,6 +364,8 @@ export const TestStatus = {
 class Test {
 	name;
 	desc;
+
+	link;
 
 	isSynchronous = false;
 
@@ -343,7 +388,7 @@ class Test {
 	 * @type {TestStatus|Error} */
 	status = TestStatus.NotStarted;
 
-	/** @type {TestItem} The WebComponent used to render this test.*/
+	/** @type {TestComponent} The WebComponent used to render this test.*/
 	element;
 
 	/**
@@ -474,9 +519,8 @@ class Test {
 				}
 			}
 			finally {
-				if (!pass) {
+				if (!pass && !(this.status instanceof Error))
 					this.status = TestStatus.Fail;
-				}
 
 				if (this.element)
 					this.element.renderStatus();
@@ -562,7 +606,7 @@ var Testimony = {
 	 * @returns {Promise<[string, Error][]>}
 	 */
 	async render(parent) {
-		let root = new TestItem(this.rootTest);
+		let root = new TestComponent(this.rootTest);
 		parent.append(root);
 	},
 
@@ -578,18 +622,32 @@ var Testimony = {
 	 * Add a test.
 	 *
 	 * Arguments can be given in any order, except that name must occur before desc.
+	 * TODO: Make this instead take name, func, and options.
 	 * @param name {string}
-	 * @param desc {string|function()=}
-	 * @param html {string|function()=}
+	 * @param options {?{desc:string=, html:string=, synchronous:string|boolean=}=}
 	 * @param func {function()=}
-	 * @param isSynchronous */
-	test(name, desc, html=null, func, isSynchronous=false) {
-		let name2, desc2='', html2, func2, isSynchronous2;
+	 * @param desc {string|function()=} Deprecated.  Use options.
+	 * @param html {string|function()=} Deprecated.  Use options.
+	 * @param synchronous {?boolean} Deprecated.  Use options.*/
+	test(name, options=null, func, desc, html=null, synchronous=null) {
+
+		// Sort arguments
+		let name2, desc2='', html2, func2, synchronous2;
 		for (let arg of arguments) {
 			if (typeof arg === 'function')
 				func2 = arg;
 			else if (typeof arg === 'boolean')
-				isSynchronous2 = arg;
+				synchronous2 = arg;
+			else if (arg && typeof arg === 'object') { // new path
+				if (arg.desc)
+					desc2 = arg.desc;
+				if (arg.html)
+					html2 = arg.html;
+				if (arg.func)
+					func2 = arg.func;
+				if (arg.synchronous)
+					synchronous2 = arg.synchronous;
+			}
 			else if ((arg+'').trim().match(/^<[!a-z]/i)) // an open tag.
 				html2 = arg;
 			else if (!name2)
@@ -599,7 +657,7 @@ var Testimony = {
 		}
 
 		// update func to create and destroy html before and after test.
-		// TODO: Move this to TestItem?
+		// TODO: Move this to TestComponent?
 		if (html2) {
 			let oldFunc = func2;
 
@@ -645,14 +703,68 @@ var Testimony = {
 
 			// If at leaf
 			if (pathSoFar.length === path.length)
-				test.children[item] = new Test(name2, desc2, func2, isSynchronous2, test); //{name: name2, desc: desc2, func: func2};
+				return test.children[item] = new Test(name2, desc2, func2, synchronous2, test); //{name: name2, desc: desc2, func: func2};
 
 			// Create test if it doesn't exist.
 			else {
-				test.children[item] = test.children[item] || new Test(pathSoFar.join('.'), '', null, isSynchronous2, test);
+				test.children[item] = test.children[item] || new Test(pathSoFar.join('.'), '', null, synchronous2, test);
 				test = test.children[item];
 			}
 		}
+	},
+
+	// Untested
+	testIframe(name, options, html, func) {
+		if (typeof options === 'string') {
+			html = options;
+			options = {};
+		}
+
+		return this.test(name, options, async () => {
+			var iframe = document.createElement('iframe');
+			//iframe.style.display = 'none';
+			document.body.append(iframe);
+
+			var doc = iframe.contentDocument || iframe.contentWindow.document;
+			doc.open();
+			doc.write(html);
+			doc.close();
+
+			let result = await func(doc);
+			iframe.parentNode.removeChild(iframe);
+			return result;
+		});
+	},
+
+	/**
+	 * Run a test on an external URL.
+	 * This is commonly used to call tests written in a server-side language.
+	 * @param name {string}
+	 * @param options {object}
+	 * @param url {string}
+	 * @param passText {string} If the url returns this text, the test will be marked as passing.
+	 * @returns {Test} */
+	testExternal(name, options, url, passText='test passed') {
+		// Shift arguments if options is not provided.
+		if (typeof options === 'string') {
+			passText = url || passText;
+			url = options;
+			options = {};
+		}
+
+		let test = Testimony.test(name, options, async () => {
+			let resp = await fetch(url);
+			let responseText = await resp.text();
+			if (!responseText.includes(passText)) {
+				// test.status = new Error(responseText); // Mark as failed even if we don't catch it.
+				throw new Error(responseText);
+			}
+		});
+
+		// Allow clicking the link icon to go directly to the test.
+		test.link = url;
+
+		return test;
 	},
 
 	// Internal functions:
@@ -663,7 +775,10 @@ var Testimony = {
 	 * @returns {string} */
 	shortenError(error, br='<br>&nbsp;&nbsp;') {
 		// slice(0, -3) to remove the 3 stacktrace lines inside Testimony.js that calls runtests.
-		let errorStack = error.stack.split(/\n/g).slice(0, -3).join('\r\n');
+
+		let lines = error.stack.split(/\n/g).filter(line => !line.includes('Testimony.js'));
+
+		let errorStack = lines.slice(0, -1).join('\r\n'); // Remove the line that invokes Testimony.js
 
 		errorStack = errorStack.replace(/\r?\n/g, br);
 		return errorStack.replace(new RegExp(window.location.origin, 'g'), ''); // Remove server name to shorten error stack.
@@ -685,8 +800,8 @@ var Testimony = {
 
 
 
-// Here and below is code for running from the command line
-// via Deno with a headless Chrome browser and optionally a Deno web server.
+// Here and below is code for running from the command line via Deno
+// with a headless Chrome browser and optionally a Deno web server.
 
 
 /**
@@ -752,17 +867,19 @@ async function runPage(page, webServer=null, webRoot=null, tests=null, headless=
 		? null
 		: startServer();
 
+	// Find Browser
 	const installations = await Launcher.getInstallations();
 	if (installations.length === 0)
 		throw new Error("No Chrome installations found.");
-
 	const executablePath = installations[0]; // Use the first found installation
 
 
+	// Start Browser
 	const browser = await puppeteer.launch({headless, executablePath});
 	const browserPage = await browser.newPage();
 	let args = [];
 
+	// Set tests
 	if (!tests)
 		args.push('allTests');
 	else
@@ -770,6 +887,7 @@ async function runPage(page, webServer=null, webRoot=null, tests=null, headless=
 			args.push(`&r=${test}`);
 
 
+	// Go to test pages.
 	const url = webServer
 		? `${webServer}/${page}?${args.join('&')}`
 		: `http:/localhost:${port}/${page}?${args.join('&')}`;
