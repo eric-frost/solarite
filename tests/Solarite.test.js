@@ -2757,6 +2757,36 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 	
 });
 
+
+
+Testimony.test('Solarite.component.componentInExpr', 'Make sure child component is instantiated and not left as -solarite-placeholder', () => {
+
+	class C520Child extends Solarite {
+		render() {
+			h(this)`<c-520-child>${this.name} | ${this.userId}</c-520-child>`
+		}
+	}
+	C520Child.define();
+
+	let child = h`<c-520-child></c-520-child>`;
+
+	class C520 extends Solarite {
+		render() {
+			h(this)`<c-520>${child}</c-520>`
+		}
+	}
+	C520.define();
+
+
+	let a = new C520();
+	a.render();
+	a.firstElementChild.render();
+
+	console.log(getHtml(a))
+
+
+});
+
 Testimony.test('Solarite.component.nested', () => {
 
 	let bRenderCount = 0;
@@ -3051,6 +3081,10 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
 	table.remove();
 });
+
+
+
+
 //</editor-fold>
 
 

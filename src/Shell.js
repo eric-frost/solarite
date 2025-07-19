@@ -1,6 +1,6 @@
-import {assert} from "./Errors.js";
+import {assert} from "./assert.js";
 import ExprPath, {ExprPathType, getNodePath} from "./ExprPath.js";
-import {isEvent} from "./Util.js";
+import Util from "./Util.js";
 import Globals from "./Globals.js";
 import HtmlParser from "./HtmlParser.js";
 
@@ -96,7 +96,7 @@ export default class Shell {
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
-							let type = isEvent(attr.name) ? ExprPathType.Event : ExprPathType.AttribValue;
+							let type = Util.isEvent(attr.name) ? ExprPathType.Event : ExprPathType.AttribValue;
 
 							this.paths.push(new ExprPath(null, node, type, attr.name, nonEmptyParts));
 							placeholdersUsed += parts.length - 1;

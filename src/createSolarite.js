@@ -1,10 +1,9 @@
-import Util from "./Util.js";
-import SolariteUtil from './Util.js';
+import Util from './Util.js';
 import Globals from "./Globals.js";
 
 function defineClass(Class, tagName, extendsTag) {
 	if (!customElements[getName](Class)) { // If not previously defined.
-		tagName = tagName || SolariteUtil.camelToDashes(Class.name)
+		tagName = tagName || Util.camelToDashes(Class.name)
 		if (!tagName.includes('-'))
 			tagName += '-element';
 

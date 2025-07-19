@@ -3,6 +3,21 @@ import delve from "./delve.js";
 
 let Util = {
 
+	/**
+	 * Returns true if they're the same.
+	 * @param a
+	 * @param b
+	 * @returns {boolean} */
+	arraySame(a, b) {
+		let aLength = a.length;
+		if (aLength !== b.length)
+			return false;
+		for (let i=0; i<aLength; i++)
+			if (a[i] !== b[i])
+				return false;
+		return true; // the same.
+	},
+
 	bindId(root, el) {
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
 		if (id) { // If something hasn't removed the id.
@@ -41,22 +56,6 @@ let Util = {
 					child.textContent = newText;
 			}
 		}
-	},
-
-	/**
-	 * Use an array as the value of a map, appending to it when we add.
-	 * Used by watch.js.
-	 * @param map {Map|WeakMap|Object}
-	 * @param key
-	 * @param value */
-	mapArrayAdd(map, key, value) {
-		let result = map.get(key);
-		if (!result) {
-			result = [value];
-			map.set(key, result);
-		}
-		else
-			result.push(value);
 	},
 
 	/**
@@ -158,6 +157,10 @@ let Util = {
 		return node.value; // String
 	},
 
+	isEvent(attrName) {
+		return attrName.startsWith('on') && attrName in Globals.div;
+	},
+
 	/**
 	 * @param el {HTMLElement}
 	 * @param prop {string}
@@ -219,6 +222,22 @@ let Util = {
 	},
 
 	/**
+	 * Use an array as the value of a map, appending to it when we add.
+	 * Used by watch.js.
+	 * @param map {Map|WeakMap|Object}
+	 * @param key
+	 * @param value */
+	mapArrayAdd(map, key, value) {
+		let result = map.get(key);
+		if (!result) {
+			result = [value];
+			map.set(key, result);
+		}
+		else
+			result.push(value);
+	},
+
+	/**
 	 * Remove nodes from the beginning and end that are not:
 	 * 1.  Elements.
 	 * 2.  Non-whitespace text nodes.
@@ -245,37 +264,6 @@ let Util = {
 };
 
 export default Util;
-
-
-
-let isEvent = attrName => attrName.startsWith('on') && attrName in Globals.div;
-export {isEvent};
-
-
-export function dashesToCamel(str) {
-	return str.replace(/-([a-z])/g, g => g[1].toUpperCase());
-}
-
-
-
-
-
-/**
- * Returns true if they're the same.
- * @param a
- * @param b
- * @returns {boolean} */
-export function arraySame(a, b) {
-	let aLength = a.length;
-	if (aLength !== b.length)
-		return false;
-	for (let i=0; i<aLength; i++)
-		if (a[i] !== b[i])
-			return false;
-	return true; // the same.
-}
-
-
 
 
 

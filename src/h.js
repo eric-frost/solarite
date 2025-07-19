@@ -1,7 +1,7 @@
 import Template from "./Template.js";
 import Util from "./Util.js";
 import Globals from "./Globals.js";
-import {assert} from "./Errors.js";
+import {assert} from "./assert.js";
 
 /**
  * Convert strings to HTMLNodes.

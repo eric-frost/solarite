@@ -1,4 +1,4 @@
-import {assert} from "./Errors.js";
+import {assert} from "./assert.js";
 import ExprPath, {ExprPathType, resolveNodePath} from "./ExprPath.js";
 import {getObjectHash} from "./hash.js";
 import Shell from "./Shell.js";

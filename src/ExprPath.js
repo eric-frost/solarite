@@ -1,7 +1,7 @@
-import {assert} from "./Errors.js";
+import {assert} from "./assert.js";
 import delve from "./delve.js";
 import NodeGroup from "./NodeGroup.js";
-import Util, {arraySame, setIndent} from "./Util.js";
+import Util, {setIndent} from "./Util.js";
 import Template from "./Template.js";
 import Globals from "./Globals.js";
 import MultiValueMap from "./MultiValueMap.js";
@@ -205,7 +205,7 @@ export default class ExprPath {
 
 
 		// This pre-check makes it a few percent faster?
-		let same = arraySame(oldNodes, newNodes);
+		let same = Util.arraySame(oldNodes, newNodes);
 		if (!same) {
 
 			path.nodesCache = newNodes; // Replaces value set by path.getNodes()
@@ -1055,9 +1055,9 @@ export default class ExprPath {
 				current = current.nextSibling
 			}
 
-			if (!arraySame(this.nodesCache, nodes))
+			if (!Util.arraySame(this.nodesCache, nodes))
 				console.log(this.nodesCache, nodes)
-			assert(arraySame(this.nodesCache, nodes) === true);
+			assert(Util.arraySame(this.nodesCache, nodes) === true);
 		}
 	}
 	//#ENDIF

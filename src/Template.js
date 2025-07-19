@@ -1,4 +1,4 @@
-import {assert} from "./Errors.js";
+import {assert} from "./assert.js";
 import {getObjectHash, getObjectId} from "./hash.js";
 import Globals from "./Globals.js";
 import {RootNodeGroup} from "./NodeGroup.js";
