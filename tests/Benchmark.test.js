@@ -4,12 +4,14 @@
 	memoize,
 	memoize2,
 	memoize4
-} from "../src/unused/Hashes.js";*/
+} from "../src/unused/Hashes.js";
 import {getObjectHash} from '../src/hash.js'
+
+*/
 import Testimony from "./Testimony.js";
 
 //import {r, Solarite} from "../src/Solarite.js";
-import {r, Solarite} from "../dist/Solarite.min.js";
+import {h, Solarite} from "../dist/Solarite.min.js";
 
 
 window.verify = false;
@@ -97,9 +99,9 @@ Testimony.test('Benchmark.solarite._createRows',  `Create ${rowCount.toLocaleStr
 	class A extends Solarite {
 		data = []
 		render() {
-			r(this)`<div>
+			h(this)`<div>
 				<div style="display: flex: flex-direction: column">
-					${this.data.map(row=>r`
+					${this.data.map(row=>h`
 						<div style="dispay: flex">
 							<td class="col-md-1">${row.id}</td>
 							<td class="col-md-4"><a class="lbl">${row.label}</a></td>
@@ -191,10 +193,10 @@ Testimony.test('Benchmark.solarite._partialUpdate',  `Update ${rowCount.toLocale
 		// But that makes performance measurements inconsistent across git revisions.
 		render() {
 			let options = {scripts: false, styles: false, ids: false}
-			r(this, options)`
+			h(this, options)`
 				<div>
 					<div style="display: flex: flex-direction: column">
-						${this.data.map((row, i) => r`
+						${this.data.map((row, i) => h`
 							<div style="display: flex">
 								<div class='col-md-1'>${row.id}</div>
 								<div class='col-md-4'><a class='lbl'>${row.label}</a></div>

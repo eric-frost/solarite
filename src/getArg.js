@@ -42,10 +42,9 @@ export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.S
 		return type.includes(val) ? val : fallback;
 	
 	if (typeof type === 'function') {
-		if (type.constructor)
-			return new type(val);
-		else
-			return type(val);
+		return type.constructor
+			? new type(val) // arg type is custom Class
+			: type(val); // arg type is custom function
 	}
 	
 	// If bool, it's true as long as it exists and its value isn't falsey.
@@ -87,6 +86,24 @@ export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.S
 			return val;
 	}
 }
+
+
+/**
+ * Experimental.  Set multiple arguments/attributes all at once.
+ * @param el {HTMLElement}
+ * @param args {Record<string, any>}
+ * @param types {Record<string, ArgType|function|Class>}
+ *
+ * @example
+ * constructor({user, path}={}) {
+ *     setArgs(this, arguments[0], {user: User, path: ArgType.String});
+ * }
+ */
+export function setArgs(el, args, types) {
+	for (let name in args)
+		this[name] = getArg(el, name, args[name], types[name] || ArgType.String);
+}
+
 
 /**
  * @enum */

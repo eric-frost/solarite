@@ -126,17 +126,17 @@ let Util = {
 	 * for (const item of flatten(complexArray))
 	 *     console.log(item);  // Outputs: 1, 2, 3, 4, 5, 6, { a: 'object' }, 7, 8, 9
 	 */
-	*flatten(value) {
-		if (Array.isArray(value)) {
-			for (const item of value) {
-				yield* Util.flatten(item);  // Recursively flatten arrays
-			}
-		} else if (typeof value === 'function') {
-			const result = value();
-			yield* Util.flatten(result);  // Recursively flatten the result of a function
-		} else
-			yield value;  // Yield primitive values as is
-	},
+	// *flatten(value) {
+	// 	if (Array.isArray(value)) {
+	// 		for (const item of value) {
+	// 			yield* Util.flatten(item);  // Recursively flatten arrays
+	// 		}
+	// 	} else if (typeof value === 'function') {
+	// 		const result = value();
+	// 		yield* Util.flatten(result);  // Recursively flatten the result of a function
+	// 	} else
+	// 		yield value;  // Yield primitive values as is
+	// },
 
 	/**
 	 * Get the value of an input as the most appropriate JavaScript type.
@@ -197,9 +197,10 @@ let Util = {
 		return val === undefined || val === false || val === null;
 	},
 
+	/*
 	isPrimitive(val) {
 		return typeof val === 'string' || typeof val === 'number'
-	},
+	},*/
 
 	/**
 	 * If val is a function, evaluate it recursively until the result is not a function.
