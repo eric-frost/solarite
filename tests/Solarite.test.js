@@ -337,6 +337,7 @@ Testimony.test('Solarite.basic.pseudoRoot', () => {
 	let a = new R30();
 	a.render();
 
+	console.log(getHtml(a))
 	assert.eq(getHtml(a), `<r-30 title="Hello">World</r-30>`)
 });
 
@@ -2759,11 +2760,11 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 
 
 
-Testimony.test('Solarite.component.componentInExpr', 'Make sure child component is instantiated and not left as -solarite-placeholder', () => {
+Testimony.test('Solarite.component.componentFromExpr', 'Make sure child component is instantiated and not left as -solarite-placeholder', () => {
 
 	class C520Child extends Solarite {
 		render() {
-			h(this)`<c-520-child>${this.name} | ${this.userId}</c-520-child>`
+			h(this)`<c-520-child>hi</c-520-child>`
 		}
 	}
 	C520Child.define();
@@ -2783,8 +2784,6 @@ Testimony.test('Solarite.component.componentInExpr', 'Make sure child component 
 	a.firstElementChild.render();
 
 	console.log(getHtml(a))
-
-
 });
 
 Testimony.test('Solarite.component.nested', () => {

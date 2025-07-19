@@ -1,6 +1,6 @@
 # Solarite
 
-Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript web component library for rendering minimal updates.  It follows modern web standards and is easy to use with vanilla JavaScript.
+Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript library for adding reactivity to web components, so that updates require minimal re-rendering.  It follows modern web standards and is easy to use with vanilla JavaScript.
 
 For documentation and examples, see the **[Official Solarite Page](https://vorticode.github.io/solarite/)**.
 

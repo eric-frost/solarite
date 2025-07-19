@@ -19,7 +19,7 @@
 class AssertError extends Error {
 	constructor(msgOrExpected='Assertion Failed', actual, op) {
 		if (actual)
-			super(`Failed:  ${msgOrExpected} ${op} ${actual}`);
+			super(`Failed:  \`${escapeHtml(msgOrExpected)}\` ${escapeHtml(op)} \`${escapeHtml(actual)}\``);
 		else
 			super(msgOrExpected);
 		this.name = "AssertError";
@@ -152,6 +152,10 @@ function h(text, quotes='"') {
 	if (quotes.includes('"'))
 		text = text.replace(/"/g, '&quot;');
 	return text;
+}
+
+function escapeHtml(text) {
+	return import.meta.main ? text : h(text);
 }
 
 if (!globalThis.HTMLElement) // Don't define this when running from command line.

@@ -1,4 +1,4 @@
-import {r, Solarite} from "../../src/solarite/Solarite.js";
+import {r, Solarite} from "../../src/Solarite.js";
 import "./ui/CodeEditor.js";
 import "./ui/FlexResizer.js";
 

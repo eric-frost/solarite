@@ -227,6 +227,20 @@ export default class ExprPath {
 			for (let ng of oldNodeGroups)
 				if (!ng.startNode.parentNode)
 					ng.removeAndSaveOrphans();
+
+
+
+
+			// Instantiate components created within ${...} expressions.
+			// Embedded style tags are handled elsewhere, but where?
+			for (let el of newNodes) {
+				if (el instanceof HTMLElement) {
+					if (el.hasAttribute('solarite-placeholder'))
+						this.parentNg.instantiateComponent(el);
+					for (let child of el.querySelectorAll('[solarite-placeholder]'))
+						this.parentNg.instantiateComponent(child);
+				}
+			}
 		}
 
 
@@ -406,50 +420,10 @@ export default class ExprPath {
 		// Arrays and functions.
 		// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
 		// but that consistently made the js-framework-benchmarks a few percentage points slower.
-		else {
+		else
 			this.exprToTemplates(expr, template => {
 				this.applyExactNodes(template, newNodes, secondPass);
 			})
-
-		}
-
-		// Old version
-		/*else if (Array.isArray(expr))
-			for (let subExpr of expr)
-				this.applyExactNodes(subExpr, newNodes, secondPass);
-
-		else if (typeof expr === 'function') {
-			// TODO: One ExprPath can have multiple expr functions.
-			// But if using it as a watch, it should only have one at the top level.
-			// So maybe this is ok.
-			Globals.currentExprPath = this; // Used by watch()
-
-			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			let result = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
-			Globals.currentExprPath = null;
-
-			this.applyExactNodes(result, newNodes, secondPass);
-		}
-
-		// String
-		else {
-			// Convert expression to a string.
-			let stringExpr = expr;
-			if (expr === undefined || expr === false || expr === null) // Util.isFalsy()
-				stringExpr = '';
-			else if (typeof expr !== 'string')
-				stringExpr = expr + '';
-
-			// Get the same Template for the same string each time.
-			let template = Globals.stringTemplates[stringExpr];
-			if (!template) {
-			template = new Template([stringExpr], []);
-				Globals.stringTemplates[stringExpr] = template;
-			}
-
-			// Recurse.
-			this.applyExactNodes(template, newNodes, secondPass);
-		}*/
 	}
 
 	applyMultipleAttribs(node, expr) {
@@ -592,7 +566,7 @@ export default class ExprPath {
 		// Copies the attribute to the property when the input event fires.
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
-		// This same logic is in NodeGroup.createNewComponent() for components.
+		// This same logic is in NodeGroup.instantiateComponent() for components.
 		if (Util.isPath(expr)) {
 			let [obj, path] = [expr[0], expr.slice(1)];
 

@@ -45,7 +45,6 @@ html:not([dark]) #write h3 { color: #678; }
 
 
 #write :is(p, h2, h3, h4, h5, h6, ol, ul) { max-width: 800px }
-#write p { text-align: justify }
 #write a, #write a:visited { color: #08c; text-decoration: none}
 #write a:hover { color: #08c; text-decoration: underline }
 #write ul { padding-left: 20px }

@@ -88,7 +88,7 @@ export default function createSolarite(extendsTag=null) {
 
 			// Add slot children before constructor code executes.
 			// This breaks the styleStaticNested test.
-			// PendingChildren is setup in NodeGroup.createNewComponent()
+			// PendingChildren is setup in NodeGroup.instantiateComponent()
 			// TODO: Match named slots.
 			//let ch = Globals.pendingChildren.pop();
 			//if (ch) // TODO: how could there be a slot before render is called?

@@ -6,10 +6,10 @@
 
 import h from './h.js';
 export default h;
-export {default as h, default as r} from './h.js'; // Deprecated exports
+export {default as h, default as r} from './h.js'; //Named exports for h() are deprecated.
+export {default as delve} from './delve.js';
 export {getArg, ArgType} from './getArg.js';
 export {default as Template} from './Template.js';
-export {default as delve} from './delve.js';
 
 
 

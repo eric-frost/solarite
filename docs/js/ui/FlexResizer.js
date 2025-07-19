@@ -1,4 +1,4 @@
-import {Solarite, r, getArg} from "../../../src/solarite/Solarite.js";
+import {Solarite, r, getArg} from "../../../src/Solarite.js";
 import Draggable2 from "../util/Draggable2.js";
 import Util from "../util/Util.js";
 

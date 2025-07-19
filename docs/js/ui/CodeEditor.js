@@ -51,7 +51,7 @@ import {
 	undoDepth
 } from '../codemirror/codemirror6.js';
 import themeSolarIce from "../codemirror/themeSolarIce.js";
-import {r, Solarite, getArg, ArgType} from "../../../src/solarite/Solarite.js";
+import {r, Solarite, getArg, ArgType} from "../../../src/Solarite.js";
 import Icons from "../util/Icons.js";
 import Util from "../util/Util.js";
 
@@ -74,9 +74,9 @@ export default class CodeEditor extends Solarite {
 	 * @type {Callbacks|function}
 	 *
 	 * @example
-	 * codeEditor.onChange.push(update => {
+	 * codeEditor.onChange = update => {
 	 *     console.log(update.state.doc.toString();
-	 * });
+	 * };
 	 * */
 	onChange = Util.callback();
 	
@@ -177,7 +177,7 @@ export default class CodeEditor extends Solarite {
 		
 		// Watch for dark attribute change on <html> element.
 		// So we can update our own theme in response.
-		this.onConnect.push(() => {
+		this.onConnect = () => {
 			if (this.ownerDocument.documentElement) {
 				const observer = new MutationObserver((mutations) => {
 					mutations.forEach((mutation) => {
@@ -190,9 +190,9 @@ export default class CodeEditor extends Solarite {
 				
 				observer.observe(this.ownerDocument.documentElement, {attributes: true});
 			}
-		});
+		}
 		
-		this.onInternalChange.push((update, codeEditor) => {
+		this.onInternalChange = ((update, codeEditor) => {
 			let sel = update.state.selection.main;
 			let lineObj = update.state.doc.lineAt(sel.head);
 			

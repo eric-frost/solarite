@@ -224,11 +224,12 @@ export default class Shell {
 		function addToken(token, context) {
 
 			if (context === HtmlParser.Tag) {
-				// Find Solarite Components tags and append -solarite-placeholder to their tag names.
+				// Find Solarite Components tags and append -solarite-placeholder to their tag names
+				// and give them a solarite-placeholder attribute so we can easily find them later.
 				// This way we can gather their constructor arguments and their children before we call their constructor.
-				// Later, NodeGroup.createNewComponent() will replace them with the real components.
+				// Later, NodeGroup.instantiateComponent() will replace them with the real components.
 				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-				token = token.replace(/^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i, match => match + '-solarite-placeholder');
+				token = token.replace(/^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i, match => match + '-solarite-placeholder solarite-placeholder');
 			}
 			tokens.push(token)
 		}

@@ -78,7 +78,7 @@ export default class NodeGroup {
 				// Apply exprs
 				this.applyExprs(template.exprs);
 
-				this.activateStaticComponents(staticComponents);
+				this.instantiateStaticComponents(staticComponents);
 			}
 			else if (shell)
 				this.activateEmbeds(fragment, shell);
@@ -172,7 +172,7 @@ export default class NodeGroup {
 			// Think of having two adjacent components.
 			// But the dynamicAttribsAdjacet test already passes.
 
-			// If a component:
+			// If expr is an attribute in a component:
 			// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
 			// 2. Otherwise send them to its render function.
 			// Components with no expressions as attributes are instead activated in activateEmbeds().
@@ -209,6 +209,8 @@ export default class NodeGroup {
 		// TODO: Only do this if we have ExprPaths within styles?
 		this.updateStyles();
 
+
+
 		// Invalidate the nodes cache because we just changed it.
 		this.nodesCache = null;
 
@@ -233,13 +235,13 @@ export default class NodeGroup {
 		// then we could re-use the hash and logic from NodeManager?
 		let newHash = getObjectHash(props);
 
-		let isPreHtmlElement = el.tagName.endsWith('-SOLARITE-PLACEHOLDER');
+		let isPreHtmlElement = el.hasAttribute('solarite-placeholder');
 		let isPreIsElement = el.hasAttribute('_is')
 
 
 		// Instantiate a placeholder.
 		if (isPreHtmlElement || isPreIsElement)
-			el = this.createNewComponent(el, isPreHtmlElement, props);
+			el = this.instantiateComponent(el, isPreHtmlElement, props);
 
 		// Call render() with the same params that would've been passed to the constructor.
 		else if (el.render) {
@@ -262,10 +264,10 @@ export default class NodeGroup {
 	 * The logic of this function is complex and could use cleaning up.
 	 *
 	 * @param el
-	 * @param isPreHtmlElement
+	 * @param isPreHtmlElement {?boolean} True if the element's tag name ends with -solarite-placeholder
 	 * @param props {Object} Attributes with dynamic values.
 	 * @return {HTMLElement} */
-	createNewComponent(el, isPreHtmlElement=undefined, props=undefined) {
+	instantiateComponent(el, isPreHtmlElement=undefined, props=undefined) {
 		if (isPreHtmlElement === undefined)
 			isPreHtmlElement = !el.hasAttribute('_is');
 
@@ -288,7 +290,7 @@ export default class NodeGroup {
 		if (el.attributes.length) {
 			for (let attrib of el.attributes) {
 				let attribName = Util.dashesToCamel(attrib.name);
-				if (!args.hasOwnProperty(attribName))
+				if (!args.hasOwnProperty(attribName) && attribName !== 'solarite-placeholder')
 					args[attribName] = attrib.value;
 			}
 		}
@@ -330,7 +332,7 @@ export default class NodeGroup {
 
 		// Copy attributes over.
 		for (let attrib of el.attributes)
-			if (attrib.name !== '_is')
+			if (attrib.name !== '_is' && attrib.name !== 'solarite-placeholder')
 				newEl.setAttribute(attrib.name, attrib.value);
 
 		// Set dynamic attributes if they are primitive types.
@@ -490,9 +492,9 @@ export default class NodeGroup {
 		let result = [];
 
 		// static components.  These are WebComponents that do not have any constructor arguments that are expressions.
-		// Those are instead created by applyExpr() which calls applyComponentExprs() which calls createNewcomponent().
+		// Those are instead created by applyExpr() which calls applyComponentExprs() which calls instantiateComponent().
 		// Maybe someday these two paths will be merged?
-		// Must happen before ids because createNewComponent will replace the element.
+		// Must happen before ids because instantiateComponent will replace the element.
 		for (let path of shell.staticComponents) {
 			if (pathOffset)
 				path = path.slice(0, -pathOffset);
@@ -506,13 +508,13 @@ export default class NodeGroup {
 		return result;
 	}
 
-	activateStaticComponents(staticComponents) {
+	instantiateStaticComponents(staticComponents) {
 		for (let el of staticComponents)
-			this.createNewComponent(el)
+			this.instantiateComponent(el)
 	}
 
 	/**
-	 * @param root {HTMLElement}
+	 * @param root {HTMLElement|DocumentFragment}
 	 * @param shell {Shell}
 	 * @param pathOffset {int} */
 	activateEmbeds(root, shell, pathOffset=0) {
@@ -622,7 +624,7 @@ export class RootNodeGroup extends NodeGroup {
 
 					// Copy attributes
 					for (let attrib of fragment.children[0].attributes)
-						if (!el.hasAttribute(attrib.name))
+						if (!el.hasAttribute(attrib.name) && attrib.name !== 'solarite-placeholder')
 							el.setAttribute(attrib.name, attrib.value);
 
 					// Go one level deeper into all of shell's paths.
@@ -682,7 +684,7 @@ export class RootNodeGroup extends NodeGroup {
 			// Apply exprs
 			this.applyExprs(template.exprs);
 
-			this.activateStaticComponents(staticComponents);
+			this.instantiateStaticComponents(staticComponents);
 		}
 	}
 }
@@ -706,6 +708,6 @@ function getSingleEl(fragment) {
  * @returns {boolean} */
 function isReplaceEl(fragment, el) {
 	return fragment.children.length===1
-		&& el.tagName.includes('-')
+		&& el.tagName.includes('-') // TODO: Check for solarite-placeholder attribute instead?
 		&& fragment.children[0].tagName.replace('-SOLARITE-PLACEHOLDER', '') === el.tagName;
 }

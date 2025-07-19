@@ -10,7 +10,7 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite
 
-Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript library (not [framework](https://www.youtube.com/watch?v=evmZTh7l6UE)) for rendering minimal updates to elements and web components.  Features:
+Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript library (not [framework](https://www.youtube.com/watch?v=evmZTh7l6UE)) for adding reactivity to web components, so that updates require minimal re-rendering.  Features:
 
 - No magic:  Renderer only when you want via the manually invoked `render()` method.
 - No setting up state variables.  Render any regular variable or data structure.
@@ -88,7 +88,9 @@ Tip:  A JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [Php
 
 ## Performance
 
-Here is Solarite on Stefan Krause's famous js-framework-benchmark versus some other common libraries.  Run on a Ryzen 7 3700X on Windows 10.  Performance is still improving with each version.![js-framework-benchmark](docs/js-framework-benchmark.png)
+Here is Solarite on Stefan Krause's famous js-framework-benchmark versus some other common libraries.  Run on a Ryzen 7 3700X on Windows 10.  Performance is still improving with each version.
+
+![js-framework-benchmark](docs/js-framework-benchmark.png)
 
 ## Concepts
 
