@@ -1,7 +1,7 @@
 import Template from "./Template.js";
 import Util from "./Util.js";
 import Globals from "./Globals.js";
-import {assert} from "../util/Errors.js";
+import {assert} from "./Errors.js";
 
 /**
  * Convert strings to HTMLNodes.
@@ -35,6 +35,8 @@ import {assert} from "../util/Errors.js";
  * @return {Node|HTMLElement|Template} */
 export default function h(htmlStrings=undefined, ...exprs) {
 
+	if (htmlStrings === undefined && !exprs.length && arguments.length)
+		throw new Error('h() cannot be called with undefined.');
 
 	// TODO: Make this a more flat if/else and call other functions for the logic.
 	if (htmlStrings instanceof Node) {
@@ -57,7 +59,7 @@ export default function h(htmlStrings=undefined, ...exprs) {
 		}
 
 		// 2. Render template created by #4 to element.
-		else if (exprs[0] instanceof Template) {
+		else { // instanceof Template
 			let options = exprs[1];
 			template.render(parent, options);
 
@@ -67,16 +69,6 @@ export default function h(htmlStrings=undefined, ...exprs) {
 				debugger;
 				parent.append(this.rootNg.getParentNode());
 			}
-		}
-
-
-
-		// null for expr[0], remove whole element.
-		   // This path never happens?
-		else {
-			throw new Error('unsupported');
-			//let ngm = NodeGroupManager.get(parent);
-			//ngm.render(null, exprs[1])
 		}
 	}
 

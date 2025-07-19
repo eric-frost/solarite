@@ -51,8 +51,8 @@ a.items.push({name: 'Fred'});
 */
 
 import Globals from "./Globals.js";
-import Util from "../util/Util.js";
-import {assert} from "../util/Errors.js";
+import Util from "./Util.js";
+import {assert} from "./Errors.js";
 
 let unusedArg = Symbol('unusedArg');
 

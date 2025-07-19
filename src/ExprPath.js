@@ -1,10 +1,10 @@
-import {assert} from "../util/Errors.js";
-import delve from "../util/delve.js";
+import {assert} from "./Errors.js";
+import delve from "./delve.js";
 import NodeGroup from "./NodeGroup.js";
 import Util, {arraySame, setIndent} from "./Util.js";
 import Template from "./Template.js";
 import Globals from "./Globals.js";
-import MultiValueMap from "../util/MultiValueMap.js";
+import MultiValueMap from "./MultiValueMap.js";
 import udomdiff from "./udomdiff.js";
 //import {ArraySpliceOp} from "./watch.js";
 //#IFDEV

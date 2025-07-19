@@ -1,17 +1,17 @@
 // noinspection DuplicatedCode
 
-import h, {getArg, Solarite} from '../src/solarite/Solarite.js';
+import h, {getArg, Solarite} from '../src/Solarite.js';
 //import h, {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 
-import {watch, renderWatched} from "../src/solarite/watch.js";
-import Util from "../src/solarite/Util.js";
-import HtmlParser from "../src/solarite/HtmlParser.js";
-import NodeGroup from "../src/solarite/NodeGroup.js";
-import Template from "../src/solarite/Template.js";
-import Shell from "../src/solarite/Shell.js";
+import {watch, renderWatched} from "../src/watch.js";
+import Util from "../src/Util.js";
+import HtmlParser from "../src/HtmlParser.js";
+import NodeGroup from "../src/NodeGroup.js";
+import Template from "../src/Template.js";
+import Shell from "../src/Shell.js";
 
 import Testimony, {assert} from './Testimony.js';
-import Globals from "../src/solarite/Globals.js";
+import Globals from "../src/Globals.js";
 
 // This function is used by the various tests.
 window.getHtml = (item, includeComments=false) => {
@@ -1341,7 +1341,7 @@ Testimony.test('Solarite.loop.conditionalNested', () => {
 	a.remove();
 });
 
-//import {hashReset} from "../src/solarite/hash.js";
+//import {hashReset} from "../src/hash.js";
 
 Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 	Globals.reset();

@@ -26,7 +26,7 @@ import Util from "./Util.js";
  * @param el {HTMLElement}
  * @param attributeName {string} Attribute name.  Not case-sensitive.
  * @param defaultValue {*} Default value to use if attribute doesn't exist.
- * @param type {ArgType|function|*[]}
+ * @param type {ArgType|function|Class|*[]}
  *     If an array, use the value if it's in the array, otherwise return undefined.
  *     If it's a function, pass the value to the function and return the result.
  * @param fallback {*} If the defaultValue is undefiend and type can't be parsed as the given type, use this value.
@@ -41,8 +41,12 @@ export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.S
 	if (Array.isArray(type))
 		return type.includes(val) ? val : fallback;
 	
-	if (typeof type === 'function')
-		return type(val);
+	if (typeof type === 'function') {
+		if (type.constructor)
+			return new type(val);
+		else
+			return type(val);
+	}
 	
 	// If bool, it's true as long as it exists and its value isn't falsey.
 	if (type===ArgType.Bool) {

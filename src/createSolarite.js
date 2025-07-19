@@ -1,4 +1,4 @@
-import Util from "../util/Util.js";
+import Util from "./Util.js";
 import SolariteUtil from './Util.js';
 import Globals from "./Globals.js";
 
@@ -70,10 +70,10 @@ export default function createSolarite(extendsTag=null) {
 		 * TODO: Make these standalone functions.
 		 * Callbacks.
 		 * Use onConnect.push(() => ...); to add new callbacks. */
-		onConnect = Util.callback();
+		onConnect;
 		
-		onFirstConnect = Util.callback();
-		onDisconnect = Util.callback();
+		onFirstConnect;
+		onDisconnect;
 
 		/**
 		 * @param options {RenderOptions} */
@@ -131,13 +131,16 @@ export default function createSolarite(extendsTag=null) {
 			this.renderFirstTime();
 			if (!Globals.connected.has(this)) {
 				Globals.connected.add(this);
-				this.onFirstConnect();
+				if (this.onFirstConnect)
+					this.onFirstConnect();
 			}
-			this.onConnect();
+			if (this.onConnect)
+				this.onConnect();
 		}
 		
 		disconnectedCallback() {
-			this.onDisconnect();
+			if (this.onDisconnect)
+				this.onDisconnect();
 		}
 
 

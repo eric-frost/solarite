@@ -1,5 +1,5 @@
 import Globals from "./Globals.js";
-import delve from "../util/delve.js";
+import delve from "./delve.js";
 
 let Util = {
 
@@ -43,6 +43,21 @@ let Util = {
 		}
 	},
 
+	/**
+	 * Use an array as the value of a map, appending to it when we add.
+	 * Used by watch.js.
+	 * @param map {Map|WeakMap|Object}
+	 * @param key
+	 * @param value */
+	mapArrayAdd(map, key, value) {
+		let result = map.get(key);
+		if (!result) {
+			result = [value];
+			map.set(key, result);
+		}
+		else
+			result.push(value);
+	},
 
 	/**
 	 * Convert a Proper Case name to a name with dashes.

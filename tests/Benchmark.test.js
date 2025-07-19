@@ -1,13 +1,11 @@
-import {
-	getObjectId2,
+/*import {
 	hashObject,
 	hashObject64,
 	memoize,
 	memoize2,
-	memoize3,
 	memoize4
-} from "../src/unused/Hashes.js";
-import {getObjectHash} from '../src/solarite/hash.js'
+} from "../src/unused/Hashes.js";*/
+import {getObjectHash} from '../src/hash.js'
 import Testimony from "./Testimony.js";
 
 //import {r, Solarite} from "../src/Solarite.js";
@@ -247,7 +245,7 @@ Testimony.test('Benchmark.solarite._partialUpdate',  `Update ${rowCount.toLocale
 
 });
 
-
+/*
 
 Testimony.test('Benchmark._memoize',  () => {
 	let data = buildData(100_000)
@@ -317,3 +315,4 @@ Testimony.test('Benchmark._getObjectHash',  () => {
 	console.log('getObjectHash: ' + (performance.now() - start))
 	//console.log(data)
 });
+*/

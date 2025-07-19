@@ -1,10 +1,10 @@
-import {assert} from "../util/Errors.js";
+import {assert} from "./Errors.js";
 import ExprPath, {ExprPathType, resolveNodePath} from "./ExprPath.js";
 import {getObjectHash} from "./hash.js";
 import Shell from "./Shell.js";
 import Util, {flattenAndIndent, nodeToArrayTree, setIndent} from "./Util.js";
 //import NodeGroupManager from "./NodeGroupManager.js";
-import delve from "../util/delve.js";
+import delve from "./delve.js";
 import Globals from "./Globals.js";
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */

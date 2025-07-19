@@ -31,7 +31,7 @@ export {default as Globals} from './Globals.js';
 import Util from './Util.js';
 let getInputValue = Util.getInputValue;
 export {getInputValue};
-export {default as delve} from '../util/delve.js';
+export {default as delve} from './delve.js';
 export {default as SolariteUtil} from './Util.js';
 
 //Experimental:

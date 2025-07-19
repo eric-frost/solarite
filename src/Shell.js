@@ -1,4 +1,4 @@
-import {assert} from "../util/Errors.js";
+import {assert} from "./Errors.js";
 import ExprPath, {ExprPathType, getNodePath} from "./ExprPath.js";
 import {isEvent} from "./Util.js";
 import Globals from "./Globals.js";
