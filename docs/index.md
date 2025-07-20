@@ -94,9 +94,62 @@ Here is Solarite on Stefan Krause's famous js-framework-benchmark versus some ot
 
 ## Concepts
 
+### Web Components
+
+Solarite is made to enhance [web components](https://developer.mozilla.org/en-US/docs/Web/API/Web_components) with reactivity; that is re-rendering only the changed elements with the data changes.  In this minimal example, we make a new class called `MyComponent` which extends from `HTMLElement` like any other web component.  We provide a `render()` function to set its html, and a constructor to call it when a new instance is created.
+
+All browsers require web component tag names to have at least one dash in the middle.  
+
+```javascript
+import h from './dist/Solarite.min.js';
+
+class MyComponent extends HTMLElement {
+	name = 'Solarite';
+    
+    constructor() {
+        super(); // JavaScript requires a super() call for sub-class construtors.
+        this.render();
+    }
+    
+	render() {
+        // This is how we'd create a web component using vanilla JavaScript
+        // without Solarite.  But this recreates all children on every render!
+        //this.innerHTML = `Hello <b>${this.name}!<b>`;
+        
+        // Using Solarite's h() function performs minimal updates on render.
+		h(this)`<my-component>Hello <b>${this.name}!</b></my-component>`
+	}
+}
+
+// Register the <my-component> tag name with the browser.
+// Browsers require this for all web components.
+customElements.define('my-component', MyComponent);
+
+document.body.append(new MyComponent());
+```
+
+Alternatively, instead of instantiating the element in JavaScript, we could can instantiate the element directly from html:
+
+```Html
+<my-component></my-component>
+```
+
+JavaScript veterans will realize that other than the `h()` function, this is highly similar to one might create vanilla JavaScript web components.  This is by design!
+
+Since these are just regular web components, they can define the [connectedCallback()](https://developer.salesforce.com/docs/platform/lwc/guide/create-lifecycle-hooks-dom.html#connectedcallback) and [disconnectedCallback()](https://developer.salesforce.com/docs/platform/lwc/guide/create-lifecycle-hooks-dom.html#disconnectedcallback) methods that will be called when they're added and removed from the DOM, respectively.  These functions are only supported for web components and not regular elements.
+
 ### Regular Elements
 
-The `h()` function can create html elements.  Pass any object with a `render()` function as the first argument.  This object can optionally have additional properties and methods, which become bound to the resulting element.  When `render()` is called, only the changed nodes will be updated.
+The `h()` function can create html elements:
+
+```javascript
+import h from './dist/Solarite.min.js';
+
+let button = h(`<button>Hello World</button>`);
+document.body.append(button);
+```
+
+You can also pass objects to h() with a `render()` method.  This object can optionally have additional properties and methods, which become bound to the resulting element.  When `render()` is called, only the changed nodes will be updated.
 
 ```javascript
 import h from './dist/Solarite.min.js';
@@ -138,50 +191,6 @@ function createButton(text) {
 document.body.append(createButton('clicks'));
 document.body.append(createButton('tickles'));
 ```
-
-### Web Components
-
-Solarite can also create [web components](https://developer.mozilla.org/en-US/docs/Web/API/Web_components).  In this minimal example, we make a new class called `MyComponent` which extends from `HTMLElement` like any other web component.  We provide a `render()` function to set its html, and a constructor to call it when a new instance is created.
-
-All browsers require web component tag names to have at least one dash in the middle.  
-
-```javascript
-import h from './dist/Solarite.min.js';
-
-class MyComponent extends HTMLElement {
-	name = 'Solarite';
-    
-    constructor() {
-        super(); // JavaScript requires a super() call for sub-class construtors.
-        this.render();
-    }
-    
-	render() {
-        // This is how we'd create a web component using vanilla JavaScript
-        // without Solarite.  But this recreates all children on every render!
-        //this.innerHTML = `Hello <b>${this.name}!<b>`;
-        
-        // Using Solarite's h() function performs minimal updates on render.
-		h(this)`<my-component>Hello <b>${this.name}!</b></my-component>`
-	}
-}
-
-// Register the <my-component> tag name with the browser.
-// Browsers require this for all web components.
-customElements.define('my-component', MyComponent);
-
-document.body.append(new MyComponent());
-```
-
-Alternatively, instead of instantiating the element in JavaScript, we could can instantiate the element directly from html:
-
-```Html
-<my-component></my-component>
-```
-
-JavaScript veterans will realize that other than the `h()` function, this is highly similar to one might create vanilla JavaScript web components.  This is by design!
-
-Since these are just regular web components, they can define the [connectedCallback()](https://developer.salesforce.com/docs/platform/lwc/guide/create-lifecycle-hooks-dom.html#connectedcallback) and [disconnectedCallback()](https://developer.salesforce.com/docs/platform/lwc/guide/create-lifecycle-hooks-dom.html#disconnectedcallback) methods that will be called when they're added and removed from the DOM, respectively.  These functions are only supported for web components and not regular elements.
 
 ### Rendering
 
@@ -516,17 +525,19 @@ import h from './dist/Solarite.min.js';
 
 class NotesItem extends HTMLElement {
 	// Constructor receives item object from attributes.
-	constructor({item, fontSize}, children) {
+	constructor({item, fontSize}) {
 		super();
 		this.item = item;
         this.fontSize = fontSize;
 		this.render();
 	}
 	
-	render({item, fontSize}={}) {
-        // If item passed to the constructor has changed.
-        if (item) this.item = item;
-        if (fontSize) this.fontSize = fontSize;
+	render({item, fontSize}={}) { // Same arguments as constructor
+        if (this.item === item && this.fontSize === fontSize)
+            return; // Don't re-render, nothing has changed.
+        
+        this.item = item;
+        this.fontSize = fontSize;
 		h(this)`
 		<notes-item>
 		   <style> :host { font-size: ${this.fontSize}px }</style>
@@ -574,7 +585,9 @@ list.render();
 
 Since html attributes are case-insensitive, Solarite converts dash-case (aka kabob-case) attribute names to camelCase, as happens above with the `font-size` attribute becoming the `fontSize` argument.
 
-Calling `render()` on a parent component will call `render()` on child components if the attributes passed to the child component have changed.  The new attributes will be passed as an object as the first argument to the child component's `render()` function.  The `render()` function can then decide what to do with that data, and if it should re-render itself by calling `h(this)`, which will in turn call `render()` on its own child web components.
+Calling `render()` on a parent component will call `render()` on child components, even if the attributes passed to the child component have not changed.  This way the child component can compare the attributes and decide for itself if it wants to re-render.
+
+The new attributes will be passed as an object as the first argument to the child component's `render()` function.  The `render()` function can then decide what to do with that data, and if it should re-render itself by calling `h(this)`, which will in turn call `render()` on its own child web components.
 
 In the above code, we alternatively could've created the `<notes-item>` element via the `new` keyword, but doing so would cause all `NotesItem` components to be recreated on every render.
 
@@ -591,8 +604,6 @@ class NotesList extends HTMLElement {
 }
 ```
 
-
-
 ### The h() function
 
 The `h()` function renders templates and html elements.  There are multiple ways to use the `h()` function:
@@ -601,11 +612,11 @@ The `h()` function renders templates and html elements.  There are multiple ways
 import h from './dist/Solarite.min.js';
 
 // h`string`
-// Convert the html to a Template that can later be used to create nodes.
+// Convert the html to a Solarite Template that can later be used to create nodes.
 let template = h`Hello ${"World"}!`;
 
 // h(HTMLElement, Template)
-// Render the template created by #1 to the <body> tag.
+// Render the template created by #1 as a child of the <body> tag.
 h(document.body, template);  
 
 // h(Template):Node|HTMLElement
@@ -613,7 +624,7 @@ h(document.body, template);
 let el = h(template);
 
 // h(HTMLElement)`string`
-// Create template and render its nodes to el.
+// Create template and render its node(s) as a child of HTMLElement el.
 h(el)`<b>${'Hi'}</b>`;
 
 // h(html:string):TextNode
@@ -625,7 +636,7 @@ let textNode = h('Hello');
 let el2 = h('<b>Hello</b>');
 
 // h(html:string):DocumentFragment
-// Create document fragment because there's more than one node.
+// Create document fragment with two nodes as its children.
 let fragment = h('Hello <u>Goodbye</u>');
 
 // h(function():Template, Object<string, function|*>):HTMLElement
@@ -818,7 +829,7 @@ This is the time example from Lit.js implemented with Solarite:
 
 ```html
 <script type="module">
-import h, {getArg} from './dist/Solarite.min.js';
+import h, {getArg, ArgType} from './dist/Solarite.min.js';
 
 const replay = h`<svg enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><title>Replay</title><g><rect fill="none" height="24" width="24"/><rect fill="none" height="24" width="24"/><rect fill="none" height="24" width="24"/></g><g><g/><path d="M12,5V1L7,6l5,5V7c3.31,0,6,2.69,6,6s-2.69,6-6,6s-6-2.69-6-6H4c0,4.42,3.58,8,8,8s8-3.58,8-8S16.42,5,12,5z"/></g></svg>`;
 const pause = h`<svg height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><title>Pause</title><path d="M0 0h24v24H0V0z" fill="none"/><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
@@ -828,7 +839,10 @@ class MyTimer extends HTMLElement {
   
     constructor({duration}={}) {
         super();
-        this.duration = getArg(this, 'duration', duration)*1;
+        
+        // getArg() gets the duration value from the html attributes when the
+        // element is instatiated in regular html and not inside a tagged template.
+        this.duration = getArg(this, 'duration', duration, ArgType.Float);
         this.end = null;
         this.remaining = this.duration * 1000;
         this.render();

@@ -1,98 +1,101 @@
+//#IFDEV
+/*@__NO_SIDE_EFFECTS__*/
+function assert(val) {
+	if (!val) {
+		debugger;
+		throw new Error('Assertion failed: ' + val);
+	}
+}
+
+//#ENDIF
+
+let lastObjectId = 1>>>0; // Is a 32-bit int faster to increment than JavaScript's Number, which is a 64-bit float?
+let objectIds = new WeakMap();
+
 /**
- * @typedef {Array|function(...*)} Callbacks
- * @property {function(function)} push
- * @property {function()} remove
- * @property {function()} pause
- * @property {function()} resume
- * */
+ * @param obj {Object|string|Node}
+ * @returns {string} */
+function getObjectId(obj) {
+	// if (typeof obj === 'function')
+	// 	return obj.toString(); // This fails to detect when a function's bound variables changes.
+	
+	let result = objectIds.get(obj);
+	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
+		result = '~\f' + (lastObjectId++); // We use a unique, 2-byte prefix to ensure it doesn't collide w/ strings not from getObjectId()
+		objectIds.set(obj, result);
+	}
+	return result;
+}
+
+/**
+ * Control how JSON.stringify() handles Nodes and Functions.
+ * Normally, we'd pass a replacer() function argument to JSON.stringify() to handle Nodes and Functions.
+ * But that makes JSON.stringify() take twice as long to run.
+ * Adding a toJSON method globally on these object prototypes doesn't incur that performance penalty. */
+let isHashing = true;
+function toJSON() {
+	return isHashing ? getObjectId(this) : this
+}
+
+
+// Node.prototype.toJSON = toJSON;
+// Function.prototype.toJSON = toJSON;
 
 
 /**
- * A place for functions that have no other home. */
-var Util$1 = {
+ * Get a string that uniquely maps to the values of the given object.
+ * If a value in obj changes, calling getObjectHash(obj) will then return a different hash.
+ * This is used by NodeGroupManager to create a hash that represents the current values of a NodeGroup.
+ *
+ * Relies on the Node and Function prototypes being overridden above.
+ *
+ * Note that passing an integer may collide with the number we get from hashing an object.
+ * But we don't handle that case because we need max performance and Solarite never passes integers to this function.
+ *
+ * @param obj {*}
+ * @returns {string} */
+function getObjectHash(obj) {
 
-	/**
-	 * Create an array-like object that stores a group of callbacks.
-	 * Supports all array functions and properties like push() and .length.
-	 * Can be called directly.
-	 *
-	 * @param functions {function[]}
-	 * @return {Callbacks|function}
-	 *
-	 * @example
-	 * var c = Util.callback();
-	 * var f = () => console.log(3);
-	 * c.push(f);
-	 * c();
-	 * c.remove(f);
-	 * c();
-	 */
-	callback(...functions) {
-		var paused = false;
+	// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
+	// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
+	// So we check the assignments on every run of getObjectHash()
+	if (Node.prototype.toJSON !== toJSON) {
+		Node.prototype.toJSON = toJSON;
+		if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
+			Function.prototype.toJSON = toJSON;
+	}
 
-		// Make it callable.  When we call it, call all callbacks() with the given args.
-		let result = async function(...args) {
-			let result2 = [];
-			if (!paused)
-				for (let i=0; i<result.length; i++)
-					result2.push(result[i](...args));
-			return await Promise.all(result2);
-		};
-		
-		// Make it iterable.
-		result[Symbol.iterator] = function() {
-			let index = 0;
-			return {
-				next: () => index < result.length
-					 ? {value: result[index++], done: false}
-					 : {done: true}
-			};
-		};
+	let result;
+	isHashing = true;
+	try {
+		result = JSON.stringify(obj);
+	}
+	catch(e) {
+		result = getObjectHashCircular(obj);
+	}
+	isHashing = false;
+	return result;
+}
 
-		// Use properties from Array
-		for (let prop of Object.getOwnPropertyNames(Array.prototype))
-			if (prop !== 'length' && prop !== 'constructor')
-				result[prop] = Array.prototype[prop];
+/**
+ * Slower hashing method that supports.
+ * @param obj
+ * @returns {string} */
+function getObjectHashCircular(obj) {
 
-		result.l = 0; // Internal length
-		Object.defineProperty(result, 'length', {
-			get() { return result.l },
-			set(val) { result.l = val;}
-		});
-
-		// Add the remove() function.
-		result.remove = func => {
-			let idx = result.findIndex(item => item === func);
-			if (idx !== -1)
-				result.splice(idx, 1);
-		};
-		result.pause = () => paused = true;
-
-		result.resume = () => paused = false;
-
-		// Add initial functions
-		for (let f of functions)
-			result.push(f);
-
-		return result;
-	},
-
-	/**
-	 * Use an array as the value of a map, appending to it when we add.
-	 * Used by watch.js.
-	 * @param map {Map|WeakMap|Object}
-	 * @param key
-	 * @param value */
-	mapArrayAdd(map, key, value) {
-		let result = map.get(key);
-		if (!result) {
-			result = [value];
-			map.set(key, result);
+	//console.log('circular')
+	// Slower version that handles circular references.
+	// Just adding any callback at all, even one that just returns the value, makes JSON.stringify() twice as slow.
+	const seen = new Set();
+	return JSON.stringify(obj, (key, value) => {
+		if (typeof value === 'object' && value !== null) {
+			if (seen.has(value))
+				return getObjectId(value);
+			seen.add(value);
 		}
-		else
-			result.push(value);
-	},
-};
+		return value;
+	});
+}
 
 var Globals;
 
@@ -221,6 +224,21 @@ let d = {};
 
 let Util = {
 
+	/**
+	 * Returns true if they're the same.
+	 * @param a
+	 * @param b
+	 * @returns {boolean} */
+	arraySame(a, b) {
+		let aLength = a.length;
+		if (aLength !== b.length)
+			return false;
+		for (let i=0; i<aLength; i++)
+			if (a[i] !== b[i])
+				return false;
+		return true; // the same.
+	},
+
 	bindId(root, el) {
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
 		if (id) { // If something hasn't removed the id.
@@ -260,7 +278,6 @@ let Util = {
 			}
 		}
 	},
-
 
 	/**
 	 * Convert a Proper Case name to a name with dashes.
@@ -329,17 +346,17 @@ let Util = {
 	 * for (const item of flatten(complexArray))
 	 *     console.log(item);  // Outputs: 1, 2, 3, 4, 5, 6, { a: 'object' }, 7, 8, 9
 	 */
-	*flatten(value) {
-		if (Array.isArray(value)) {
-			for (const item of value) {
-				yield* Util.flatten(item);  // Recursively flatten arrays
-			}
-		} else if (typeof value === 'function') {
-			const result = value();
-			yield* Util.flatten(result);  // Recursively flatten the result of a function
-		} else
-			yield value;  // Yield primitive values as is
-	},
+	// *flatten(value) {
+	// 	if (Array.isArray(value)) {
+	// 		for (const item of value) {
+	// 			yield* Util.flatten(item);  // Recursively flatten arrays
+	// 		}
+	// 	} else if (typeof value === 'function') {
+	// 		const result = value();
+	// 		yield* Util.flatten(result);  // Recursively flatten the result of a function
+	// 	} else
+	// 		yield value;  // Yield primitive values as is
+	// },
 
 	/**
 	 * Get the value of an input as the most appropriate JavaScript type.
@@ -359,6 +376,10 @@ let Util = {
 			return [...node.selectedOptions].map(option => option.value); // Array of Strings
 
 		return node.value; // String
+	},
+
+	isEvent(attrName) {
+		return attrName.startsWith('on') && attrName in Globals$1.div;
 	},
 
 	/**
@@ -400,9 +421,10 @@ let Util = {
 		return val === undefined || val === false || val === null;
 	},
 
+	/*
 	isPrimitive(val) {
 		return typeof val === 'string' || typeof val === 'number'
-	},
+	},*/
 
 	/**
 	 * If val is a function, evaluate it recursively until the result is not a function.
@@ -418,6 +440,22 @@ let Util = {
 		else if (Array.isArray(val) || typeof val === 'object')
 			return ''; // JSON.stringify(val);
 		return val;
+	},
+
+	/**
+	 * Use an array as the value of a map, appending to it when we add.
+	 * Used by watch.js.
+	 * @param map {Map|WeakMap|Object}
+	 * @param key
+	 * @param value */
+	mapArrayAdd(map, key, value) {
+		let result = map.get(key);
+		if (!result) {
+			result = [value];
+			map.set(key, result);
+		}
+		else
+			result.push(value);
 	},
 
 	/**
@@ -445,31 +483,6 @@ let Util = {
 		return result;
 	}
 };
-
-
-
-let isEvent = attrName => attrName.startsWith('on') && attrName in Globals$1.div;
-
-
-
-
-
-/**
- * Returns true if they're the same.
- * @param a
- * @param b
- * @returns {boolean} */
-function arraySame(a, b) {
-	let aLength = a.length;
-	if (aLength !== b.length)
-		return false;
-	for (let i=0; i<aLength; i++)
-		if (a[i] !== b[i])
-			return false;
-	return true; // the same.
-}
-
-
 
 
 
@@ -534,254 +547,6 @@ function flattenAndIndent(inputArray, indent = "") {
 	return result;
 }
 //#ENDIF
-
-function defineClass(Class, tagName, extendsTag) {
-	if (!customElements[getName](Class)) { // If not previously defined.
-		tagName = tagName || Util.camelToDashes(Class.name);
-		if (!tagName.includes('-'))
-			tagName += '-element';
-
-		let options = null;
-		if (extendsTag)
-			options = {extends: extendsTag};
-
-		customElements[define](tagName, Class, options);
-	}
-}
-
-/**
- * Create a version of the Solarite class that extends from the given tag name.
- * Reasons to inherit from this instead of HTMLElement.  None of these are all that useful.
- * 1.  customElements.define() is called automatically when you create the first instance.
- * 2.  Calls render() when added to the DOM, if it hasn't been called already.
- * 3.  Child elements are added before constructor is called.  But they're also passed to the constructor. (deprecated?)
- * 4.  We can use this.html = r`...` to set html. (deprecated)
- * 5.  We have the onConnect, onFirstConnect, and onDisconnect methods.
- *     Can't figure out how to have these work standalone though, and still be synchronous.
- * 6.  Can we extend from other element types like TR?
- * 7.  Shows default text if render() function isn't defined.
- *
- * Advantages to inheriting from HTMLElement
- * 1.  Minimization won't break when it renames the Class and we call customElements.define() on the wrong name.
- * 2.  We can inherit from things like HTMLTableRowElement directly.
- * 3.  There's less magic, since everyone is familiar with defining custom elements.
- *
- * @param extendsTag {?string}
- * @return {Class} */
-function createSolarite(extendsTag=null) {
-
-	let BaseClass = HTMLElement;
-	if (extendsTag && !extendsTag.includes('-')) {
-		extendsTag = extendsTag.toLowerCase();
-
-		BaseClass = Globals$1.elementClasses[extendsTag];
-		if (!BaseClass) { // TODO: Use Cache
-			BaseClass = document.createElement(extendsTag).constructor;
-			Globals$1.elementClasses[extendsTag] = BaseClass;
-		}
-	}
-
-	/**
-	 * Intercept the construct call to auto-define the class before the constructor is called.
-	 * @type {HTMLElement} */
-	let HTMLElementAutoDefine = new Proxy(BaseClass, {
-		construct(Parent, args, Class) {
-			defineClass(Class, null, extendsTag);
-
-			// This is a good place to manipulate any args before they're sent to the constructor.
-			// Such as loading them from attributes, if I could find a way to do so.
-
-			// This line is equivalent the to super() call.
-			return Reflect.construct(Parent, args, Class);
-		}
-	});
-
-	return class Solarite extends HTMLElementAutoDefine {
-		
-		
-		/**
-		 * TODO: Make these standalone functions.
-		 * Callbacks.
-		 * Use onConnect.push(() => ...); to add new callbacks. */
-		onConnect = Util$1.callback();
-		
-		onFirstConnect = Util$1.callback();
-		onDisconnect = Util$1.callback();
-
-		/**
-		 * @param options {RenderOptions} */
-		constructor(options={}) {
-			super();
-
-			// TODO: Is options.render ever used?
-			if (options.render===true)
-				this.render();
-
-			else if (options.render===false)
-				Globals$1.rendered.add(this); // Don't render on connectedCallback()
-
-			// Add slot children before constructor code executes.
-			// This breaks the styleStaticNested test.
-			// PendingChildren is setup in NodeGroup.createNewComponent()
-			// TODO: Match named slots.
-			//let ch = Globals.pendingChildren.pop();
-			//if (ch) // TODO: how could there be a slot before render is called?
-			//	(this.querySelector('slot') || this).append(...ch);
-
-			/** @deprecated
-			Object.defineProperty(this, 'html', {
-				set(html) {
-					Globals.rendered.add(this);
-					if (typeof html === 'string') {
-						console.warn("Assigning to this.html without the r template prefix.")
-						this.innerHTML = html;
-					}
-					else
-						this.modifications = r(this, html, options);
-				}
-			})*/
-
-			/*
-			let pthis = new Proxy(this, {
-				get(obj, prop) {
-					return Reflect.get(obj, prop)
-				}
-			});
-			this.render = this.render.bind(pthis);
-			*/
-		}
-
-		/**
-		 * Call render() only if it hasn't already been called.	 */
-		renderFirstTime() {
-			if (!Globals$1.rendered.has(this) && this.render)
-				this.render();
-		}
-		
-		/**
-		 * Called automatically by the browser. */
-		connectedCallback() {
-			this.renderFirstTime();
-			if (!Globals$1.connected.has(this)) {
-				Globals$1.connected.add(this);
-				this.onFirstConnect();
-			}
-			this.onConnect();
-		}
-		
-		disconnectedCallback() {
-			this.onDisconnect();
-		}
-
-
-		static define(tagName=null) {
-			defineClass(this, tagName, extendsTag);
-		}
-	}
-}
-
-// Trick to prevent minifier from renaming this method.
-let define = 'define';
-let getName = 'getName';
-
-//#IFDEV
-/*@__NO_SIDE_EFFECTS__*/
-function assert(val) {
-	if (!val) {
-		debugger;
-		throw new Error('Assertion failed: ' + val);
-	}
-}
-
-//#ENDIF
-
-let lastObjectId = 1>>>0; // Is a 32-bit int faster to increment than JavaScript's Number, which is a 64-bit float?
-let objectIds = new WeakMap();
-
-/**
- * @param obj {Object|string|Node}
- * @returns {string} */
-function getObjectId(obj) {
-	// if (typeof obj === 'function')
-	// 	return obj.toString(); // This fails to detect when a function's bound variables changes.
-	
-	let result = objectIds.get(obj);
-	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
-		result = '~\f' + (lastObjectId++); // We use a unique, 2-byte prefix to ensure it doesn't collide w/ strings not from getObjectId()
-		objectIds.set(obj, result);
-	}
-	return result;
-}
-
-/**
- * Control how JSON.stringify() handles Nodes and Functions.
- * Normally, we'd pass a replacer() function argument to JSON.stringify() to handle Nodes and Functions.
- * But that makes JSON.stringify() take twice as long to run.
- * Adding a toJSON method globally on these object prototypes doesn't incur that performance penalty. */
-let isHashing = true;
-function toJSON() {
-	return isHashing ? getObjectId(this) : this
-}
-
-
-// Node.prototype.toJSON = toJSON;
-// Function.prototype.toJSON = toJSON;
-
-
-/**
- * Get a string that uniquely maps to the values of the given object.
- * If a value in obj changes, calling getObjectHash(obj) will then return a different hash.
- * This is used by NodeGroupManager to create a hash that represents the current values of a NodeGroup.
- *
- * Relies on the Node and Function prototypes being overridden above.
- *
- * Note that passing an integer may collide with the number we get from hashing an object.
- * But we don't handle that case because we need max performance and Solarite never passes integers to this function.
- *
- * @param obj {*}
- * @returns {string} */
-function getObjectHash(obj) {
-
-	// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
-	// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
-	// So we check the assignments on every run of getObjectHash()
-	if (Node.prototype.toJSON !== toJSON) {
-		Node.prototype.toJSON = toJSON;
-		if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
-			Function.prototype.toJSON = toJSON;
-	}
-
-	let result;
-	isHashing = true;
-	try {
-		result = JSON.stringify(obj);
-	}
-	catch(e) {
-		result = getObjectHashCircular(obj);
-	}
-	isHashing = false;
-	return result;
-}
-
-/**
- * Slower hashing method that supports.
- * @param obj
- * @returns {string} */
-function getObjectHashCircular(obj) {
-
-	//console.log('circular')
-	// Slower version that handles circular references.
-	// Just adding any callback at all, even one that just returns the value, makes JSON.stringify() twice as slow.
-	const seen = new Set();
-	return JSON.stringify(obj, (key, value) => {
-		if (typeof value === 'object' && value !== null) {
-			if (seen.has(value))
-				return getObjectId(value);
-			seen.add(value);
-		}
-		return value;
-	});
-}
 
 class MultiValueMap {
 
@@ -1349,7 +1114,7 @@ class ExprPath {
 
 
 		// This pre-check makes it a few percent faster?
-		let same = arraySame(oldNodes, newNodes);
+		let same = Util.arraySame(oldNodes, newNodes);
 		if (!same) {
 
 			path.nodesCache = newNodes; // Replaces value set by path.getNodes()
@@ -1371,6 +1136,20 @@ class ExprPath {
 			for (let ng of oldNodeGroups)
 				if (!ng.startNode.parentNode)
 					ng.removeAndSaveOrphans();
+
+
+
+
+			// Instantiate components created within ${...} expressions.
+			// Embedded style tags are handled elsewhere, but where?
+			for (let el of newNodes) {
+				if (el instanceof HTMLElement) {
+					if (el.hasAttribute('solarite-placeholder'))
+						this.parentNg.instantiateComponent(el);
+					for (let child of el.querySelectorAll('[solarite-placeholder]'))
+						this.parentNg.instantiateComponent(child);
+				}
+			}
 		}
 
 
@@ -1547,50 +1326,10 @@ class ExprPath {
 		// Arrays and functions.
 		// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
 		// but that consistently made the js-framework-benchmarks a few percentage points slower.
-		else {
+		else
 			this.exprToTemplates(expr, template => {
 				this.applyExactNodes(template, newNodes, secondPass);
 			});
-
-		}
-
-		// Old version
-		/*else if (Array.isArray(expr))
-			for (let subExpr of expr)
-				this.applyExactNodes(subExpr, newNodes, secondPass);
-
-		else if (typeof expr === 'function') {
-			// TODO: One ExprPath can have multiple expr functions.
-			// But if using it as a watch, it should only have one at the top level.
-			// So maybe this is ok.
-			Globals.currentExprPath = this; // Used by watch()
-
-			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			let result = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
-			Globals.currentExprPath = null;
-
-			this.applyExactNodes(result, newNodes, secondPass);
-		}
-
-		// String
-		else {
-			// Convert expression to a string.
-			let stringExpr = expr;
-			if (expr === undefined || expr === false || expr === null) // Util.isFalsy()
-				stringExpr = '';
-			else if (typeof expr !== 'string')
-				stringExpr = expr + '';
-
-			// Get the same Template for the same string each time.
-			let template = Globals.stringTemplates[stringExpr];
-			if (!template) {
-			template = new Template([stringExpr], []);
-				Globals.stringTemplates[stringExpr] = template;
-			}
-
-			// Recurse.
-			this.applyExactNodes(template, newNodes, secondPass);
-		}*/
 	}
 
 	applyMultipleAttribs(node, expr) {
@@ -1733,7 +1472,7 @@ class ExprPath {
 		// Copies the attribute to the property when the input event fires.
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
-		// This same logic is in NodeGroup.createNewComponent() for components.
+		// This same logic is in NodeGroup.instantiateComponent() for components.
 		if (Util.isPath(expr)) {
 			let [obj, path] = [expr[0], expr.slice(1)];
 
@@ -2399,7 +2138,7 @@ class Shell {
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
-							let type = isEvent(attr.name) ? ExprPathType.Event : ExprPathType.AttribValue;
+							let type = Util.isEvent(attr.name) ? ExprPathType.Event : ExprPathType.AttribValue;
 
 							this.paths.push(new ExprPath(null, node, type, attr.name, nonEmptyParts));
 							placeholdersUsed += parts.length - 1;
@@ -2527,11 +2266,12 @@ class Shell {
 		function addToken(token, context) {
 
 			if (context === HtmlParser.Tag) {
-				// Find Solarite Components tags and append -solarite-placeholder to their tag names.
+				// Find Solarite Components tags and append -solarite-placeholder to their tag names
+				// and give them a solarite-placeholder attribute so we can easily find them later.
 				// This way we can gather their constructor arguments and their children before we call their constructor.
-				// Later, NodeGroup.createNewComponent() will replace them with the real components.
+				// Later, NodeGroup.instantiateComponent() will replace them with the real components.
 				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-				token = token.replace(/^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i, match => match + '-solarite-placeholder');
+				token = token.replace(/^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i, match => match + '-solarite-placeholder solarite-placeholder');
 			}
 			tokens.push(token);
 		}
@@ -2702,7 +2442,7 @@ class NodeGroup {
 				// Apply exprs
 				this.applyExprs(template.exprs);
 
-				this.activateStaticComponents(staticComponents);
+				this.instantiateStaticComponents(staticComponents);
 			}
 			else if (shell)
 				this.activateEmbeds(fragment, shell);
@@ -2796,7 +2536,7 @@ class NodeGroup {
 			// Think of having two adjacent components.
 			// But the dynamicAttribsAdjacet test already passes.
 
-			// If a component:
+			// If expr is an attribute in a component:
 			// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
 			// 2. Otherwise send them to its render function.
 			// Components with no expressions as attributes are instead activated in activateEmbeds().
@@ -2833,6 +2573,8 @@ class NodeGroup {
 		// TODO: Only do this if we have ExprPaths within styles?
 		this.updateStyles();
 
+
+
 		// Invalidate the nodes cache because we just changed it.
 		this.nodesCache = null;
 
@@ -2857,23 +2599,25 @@ class NodeGroup {
 		// then we could re-use the hash and logic from NodeManager?
 		let newHash = getObjectHash(props);
 
-		let isPreHtmlElement = el.tagName.endsWith('-SOLARITE-PLACEHOLDER');
+		let isPreHtmlElement = el.hasAttribute('solarite-placeholder');
 		let isPreIsElement = el.hasAttribute('_is');
 
 
 		// Instantiate a placeholder.
 		if (isPreHtmlElement || isPreIsElement)
-			el = this.createNewComponent(el, isPreHtmlElement, props);
+			el = this.instantiateComponent(el, isPreHtmlElement, props);
 
 		// Call render() with the same params that would've been passed to the constructor.
+		// We do this even if the arguments haven't changed, so we can let the child component
+		// compare the arguments and then decide for itself whether it wants to re-render.
 		else if (el.render) {
-			let oldHash = Globals$1.componentArgsHash.get(el);
-			if (oldHash !== newHash) {
+			//let oldHash = Globals.componentArgsHash.get(el);
+			//if (oldHash !== newHash) { //  Only if not changed.
 				let args = {};
 				for (let name in props || {})
 					args[Util.dashesToCamel(name)] = props[name];
 				el.render(args); // Pass new values of props to render so it can decide how it wants to respond.
-			}
+			//}
 		}
 
 		Globals$1.componentArgsHash.set(el, newHash);
@@ -2886,10 +2630,10 @@ class NodeGroup {
 	 * The logic of this function is complex and could use cleaning up.
 	 *
 	 * @param el
-	 * @param isPreHtmlElement
+	 * @param isPreHtmlElement {?boolean} True if the element's tag name ends with -solarite-placeholder
 	 * @param props {Object} Attributes with dynamic values.
 	 * @return {HTMLElement} */
-	createNewComponent(el, isPreHtmlElement=undefined, props=undefined) {
+	instantiateComponent(el, isPreHtmlElement=undefined, props=undefined) {
 		if (isPreHtmlElement === undefined)
 			isPreHtmlElement = !el.hasAttribute('_is');
 
@@ -2912,7 +2656,7 @@ class NodeGroup {
 		if (el.attributes.length) {
 			for (let attrib of el.attributes) {
 				let attribName = Util.dashesToCamel(attrib.name);
-				if (!args.hasOwnProperty(attribName))
+				if (!args.hasOwnProperty(attribName) && attribName !== 'solarite-placeholder')
 					args[attribName] = attrib.value;
 			}
 		}
@@ -2954,7 +2698,7 @@ class NodeGroup {
 
 		// Copy attributes over.
 		for (let attrib of el.attributes)
-			if (attrib.name !== '_is')
+			if (attrib.name !== '_is' && attrib.name !== 'solarite-placeholder')
 				newEl.setAttribute(attrib.name, attrib.value);
 
 		// Set dynamic attributes if they are primitive types.
@@ -3114,9 +2858,9 @@ class NodeGroup {
 		let result = [];
 
 		// static components.  These are WebComponents that do not have any constructor arguments that are expressions.
-		// Those are instead created by applyExpr() which calls applyComponentExprs() which calls createNewcomponent().
+		// Those are instead created by applyExpr() which calls applyComponentExprs() which calls instantiateComponent().
 		// Maybe someday these two paths will be merged?
-		// Must happen before ids because createNewComponent will replace the element.
+		// Must happen before ids because instantiateComponent will replace the element.
 		for (let path of shell.staticComponents) {
 			if (pathOffset)
 				path = path.slice(0, -pathOffset);
@@ -3130,13 +2874,13 @@ class NodeGroup {
 		return result;
 	}
 
-	activateStaticComponents(staticComponents) {
+	instantiateStaticComponents(staticComponents) {
 		for (let el of staticComponents)
-			this.createNewComponent(el);
+			this.instantiateComponent(el);
 	}
 
 	/**
-	 * @param root {HTMLElement}
+	 * @param root {HTMLElement|DocumentFragment}
 	 * @param shell {Shell}
 	 * @param pathOffset {int} */
 	activateEmbeds(root, shell, pathOffset=0) {
@@ -3246,7 +2990,7 @@ class RootNodeGroup extends NodeGroup {
 
 					// Copy attributes
 					for (let attrib of fragment.children[0].attributes)
-						if (!el.hasAttribute(attrib.name))
+						if (!el.hasAttribute(attrib.name) && attrib.name !== 'solarite-placeholder')
 							el.setAttribute(attrib.name, attrib.value);
 
 					// Go one level deeper into all of shell's paths.
@@ -3306,7 +3050,7 @@ class RootNodeGroup extends NodeGroup {
 			// Apply exprs
 			this.applyExprs(template.exprs);
 
-			this.activateStaticComponents(staticComponents);
+			this.instantiateStaticComponents(staticComponents);
 		}
 	}
 }
@@ -3330,7 +3074,7 @@ function getSingleEl(fragment) {
  * @returns {boolean} */
 function isReplaceEl(fragment, el) {
 	return fragment.children.length===1
-		&& el.tagName.includes('-')
+		&& el.tagName.includes('-') // TODO: Check for solarite-placeholder attribute instead?
 		&& fragment.children[0].tagName.replace('-SOLARITE-PLACEHOLDER', '') === el.tagName;
 }
 
@@ -3502,6 +3246,8 @@ class Template {
  * @return {Node|HTMLElement|Template} */
 function h(htmlStrings=undefined, ...exprs) {
 
+	if (htmlStrings === undefined && !exprs.length && arguments.length)
+		throw new Error('h() cannot be called with undefined.');
 
 	// TODO: Make this a more flat if/else and call other functions for the logic.
 	if (htmlStrings instanceof Node) {
@@ -3524,7 +3270,7 @@ function h(htmlStrings=undefined, ...exprs) {
 		}
 
 		// 2. Render template created by #4 to element.
-		else if (exprs[0] instanceof Template) {
+		else { // instanceof Template
 			let options = exprs[1];
 			template.render(parent, options);
 
@@ -3534,16 +3280,6 @@ function h(htmlStrings=undefined, ...exprs) {
 				debugger;
 				parent.append(this.rootNg.getParentNode());
 			}
-		}
-
-
-
-		// null for expr[0], remove whole element.
-		   // This path never happens?
-		else {
-			throw new Error('unsupported');
-			//let ngm = NodeGroupManager.get(parent);
-			//ngm.render(null, exprs[1])
 		}
 	}
 
@@ -3681,7 +3417,7 @@ let renderF = 'render';
  * @param el {HTMLElement}
  * @param attributeName {string} Attribute name.  Not case-sensitive.
  * @param defaultValue {*} Default value to use if attribute doesn't exist.
- * @param type {ArgType|function|*[]}
+ * @param type {ArgType|function|Class|*[]}
  *     If an array, use the value if it's in the array, otherwise return undefined.
  *     If it's a function, pass the value to the function and return the result.
  * @param fallback {*} If the defaultValue is undefiend and type can't be parsed as the given type, use this value.
@@ -3696,8 +3432,11 @@ function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, 
 	if (Array.isArray(type))
 		return type.includes(val) ? val : fallback;
 	
-	if (typeof type === 'function')
-		return type(val);
+	if (typeof type === 'function') {
+		return type.constructor
+			? new type(val) // arg type is custom Class
+			: type(val); // arg type is custom function
+	}
 	
 	// If bool, it's true as long as it exists and its value isn't falsey.
 	if (type===ArgType.Bool) {
@@ -3739,6 +3478,24 @@ function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, 
 	}
 }
 
+
+/**
+ * Experimental.  Set multiple arguments/attributes all at once.
+ * @param el {HTMLElement}
+ * @param args {Record<string, any>}
+ * @param types {Record<string, ArgType|function|Class>}
+ *
+ * @example
+ * constructor({user, path}={}) {
+ *     setArgs(this, arguments[0], {user: User, path: ArgType.String});
+ * }
+ */
+function setArgs(el, args, types) {
+	for (let name in args)
+		this[name] = getArg(el, name, args[name], types[name] || ArgType.String);
+}
+
+
 /**
  * @enum */
 var ArgType = {
@@ -3767,6 +3524,158 @@ var ArgType = {
 	Eval: 'Eval'
 };
 
+function defineClass(Class, tagName, extendsTag) {
+	if (!customElements[getName](Class)) { // If not previously defined.
+		tagName = tagName || Util.camelToDashes(Class.name);
+		if (!tagName.includes('-'))
+			tagName += '-element';
+
+		let options = null;
+		if (extendsTag)
+			options = {extends: extendsTag};
+
+		customElements[define](tagName, Class, options);
+	}
+}
+
+/**
+ * Create a version of the Solarite class that extends from the given tag name.
+ * Reasons to inherit from this instead of HTMLElement.  None of these are all that useful.
+ * 1.  customElements.define() is called automatically when you create the first instance.
+ * 2.  Calls render() when added to the DOM, if it hasn't been called already.
+ * 3.  Child elements are added before constructor is called.  But they're also passed to the constructor. (deprecated?)
+ * 4.  We can use this.html = r`...` to set html. (deprecated)
+ * 5.  We have the onConnect, onFirstConnect, and onDisconnect methods.
+ *     Can't figure out how to have these work standalone though, and still be synchronous.
+ * 6.  Can we extend from other element types like TR?
+ * 7.  Shows default text if render() function isn't defined.
+ *
+ * Advantages to inheriting from HTMLElement
+ * 1.  Minimization won't break when it renames the Class and we call customElements.define() on the wrong name.
+ * 2.  We can inherit from things like HTMLTableRowElement directly.
+ * 3.  There's less magic, since everyone is familiar with defining custom elements.
+ *
+ * @param extendsTag {?string}
+ * @return {Class} */
+function createSolarite(extendsTag=null) {
+
+	let BaseClass = HTMLElement;
+	if (extendsTag && !extendsTag.includes('-')) {
+		extendsTag = extendsTag.toLowerCase();
+
+		BaseClass = Globals$1.elementClasses[extendsTag];
+		if (!BaseClass) { // TODO: Use Cache
+			BaseClass = document.createElement(extendsTag).constructor;
+			Globals$1.elementClasses[extendsTag] = BaseClass;
+		}
+	}
+
+	/**
+	 * Intercept the construct call to auto-define the class before the constructor is called.
+	 * @type {HTMLElement} */
+	let HTMLElementAutoDefine = new Proxy(BaseClass, {
+		construct(Parent, args, Class) {
+			defineClass(Class, null, extendsTag);
+
+			// This is a good place to manipulate any args before they're sent to the constructor.
+			// Such as loading them from attributes, if I could find a way to do so.
+
+			// This line is equivalent the to super() call.
+			return Reflect.construct(Parent, args, Class);
+		}
+	});
+
+	return class Solarite extends HTMLElementAutoDefine {
+		
+		
+		/**
+		 * TODO: Make these standalone functions.
+		 * Callbacks.
+		 * Use onConnect.push(() => ...); to add new callbacks. */
+		onConnect;
+		
+		onFirstConnect;
+		onDisconnect;
+
+		/**
+		 * @param options {RenderOptions} */
+		constructor(options={}) {
+			super();
+
+			// TODO: Is options.render ever used?
+			if (options.render===true)
+				this.render();
+
+			else if (options.render===false)
+				Globals$1.rendered.add(this); // Don't render on connectedCallback()
+
+			// Add slot children before constructor code executes.
+			// This breaks the styleStaticNested test.
+			// PendingChildren is setup in NodeGroup.instantiateComponent()
+			// TODO: Match named slots.
+			//let ch = Globals.pendingChildren.pop();
+			//if (ch) // TODO: how could there be a slot before render is called?
+			//	(this.querySelector('slot') || this).append(...ch);
+
+			/** @deprecated
+			Object.defineProperty(this, 'html', {
+				set(html) {
+					Globals.rendered.add(this);
+					if (typeof html === 'string') {
+						console.warn("Assigning to this.html without the r template prefix.")
+						this.innerHTML = html;
+					}
+					else
+						this.modifications = r(this, html, options);
+				}
+			})*/
+
+			/*
+			let pthis = new Proxy(this, {
+				get(obj, prop) {
+					return Reflect.get(obj, prop)
+				}
+			});
+			this.render = this.render.bind(pthis);
+			*/
+		}
+
+		/**
+		 * Call render() only if it hasn't already been called.	 */
+		renderFirstTime() {
+			if (!Globals$1.rendered.has(this) && this.render)
+				this.render();
+		}
+		
+		/**
+		 * Called automatically by the browser. */
+		connectedCallback() {
+			this.renderFirstTime();
+			if (!Globals$1.connected.has(this)) {
+				Globals$1.connected.add(this);
+				if (this.onFirstConnect)
+					this.onFirstConnect();
+			}
+			if (this.onConnect)
+				this.onConnect();
+		}
+		
+		disconnectedCallback() {
+			if (this.onDisconnect)
+				this.onDisconnect();
+		}
+
+
+		static define(tagName=null) {
+			defineClass(this, tagName, extendsTag);
+		}
+	}
+}
+
+// Trick to prevent minifier from renaming this method.
+let define = 'define';
+let getName = 'getName';
+
 /**
  * Solarite JavasCript UI library.
  * MIT License
@@ -3776,15 +3685,13 @@ var ArgType = {
 /**
  * TODO: The Proxy and the multiple base classes mess up 'instanceof Solarite'
  * @type {Node|Class<HTMLElement>|function(tagName:string):Node|Class<HTMLElement>} */
-let Solarite = new Proxy(createSolarite(), {
+const Solarite = new Proxy(createSolarite(), {
 	apply(self, _, args) {
 		return createSolarite(...args)
 	}
 });
-let getInputValue = Util.getInputValue;
 
-//Experimental:
 //export {default as watch, renderWatched} from './watch.js'; // unfinished
 
 export default h;
-export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, getInputValue, h, h as r };
+export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, h, h as r, setArgs };

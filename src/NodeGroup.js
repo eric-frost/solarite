@@ -244,14 +244,16 @@ export default class NodeGroup {
 			el = this.instantiateComponent(el, isPreHtmlElement, props);
 
 		// Call render() with the same params that would've been passed to the constructor.
+		// We do this even if the arguments haven't changed, so we can let the child component
+		// compare the arguments and then decide for itself whether it wants to re-render.
 		else if (el.render) {
-			let oldHash = Globals.componentArgsHash.get(el);
-			if (oldHash !== newHash) {
+			//let oldHash = Globals.componentArgsHash.get(el);
+			//if (oldHash !== newHash) { //  Only if not changed.
 				let args = {};
 				for (let name in props || {})
 					args[Util.dashesToCamel(name)] = props[name];
 				el.render(args); // Pass new values of props to render so it can decide how it wants to respond.
-			}
+			//}
 		}
 
 		Globals.componentArgsHash.set(el, newHash);

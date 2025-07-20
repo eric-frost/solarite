@@ -337,7 +337,6 @@ Testimony.test('Solarite.basic.pseudoRoot', () => {
 	let a = new R30();
 	a.render();
 
-	console.log(getHtml(a))
 	assert.eq(getHtml(a), `<r-30 title="Hello">World</r-30>`)
 });
 
@@ -2769,11 +2768,11 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 	}
 	C520Child.define();
 
-	let child = h`<c-520-child></c-520-child>`;
+	//let child = ;
 
 	class C520 extends Solarite {
 		render() {
-			h(this)`<c-520>${child}</c-520>`
+			h(this)`<c-520>${h`<c-520-child></c-520-child>`}</c-520>`
 		}
 	}
 	C520.define();
@@ -2781,10 +2780,43 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 
 	let a = new C520();
 	a.render();
-	a.firstElementChild.render();
 
-	console.log(getHtml(a))
+	assert.eq(`<c-520><c-520-child>hi</c-520-child></c-520>`, getHtml(a));
 });
+
+
+Testimony.test('Solarite.component.componentFromExpr2', () => {
+
+	class C521Child extends Solarite {
+		constructor({arg}) {
+			super();
+			this.textContent += arg.text;
+		}
+
+		render() {
+			h(this)`<c-521-child>hi</c-521-child>`
+		}
+	}
+	C521Child.define();
+
+	let message = {
+		text: 'bye'
+	}
+
+	class C521 extends Solarite {
+		render() {
+			h(this)`<c-521>${h`<c-521-child arg=${message}></c-521-child>`}</c-521>`
+		}
+	}
+	C521.define();
+
+
+	let a = new C521();
+	a.render();
+
+	assert.eq(`<c-521><c-521-child arg="">hibye</c-521-child></c-521>`, getHtml(a));
+});
+
 
 Testimony.test('Solarite.component.nested', () => {
 
@@ -2857,12 +2889,12 @@ Testimony.test('Solarite.component.nestedExprConstructorArg', "Pass an object to
 
 	bRenderCount = 0
 	a.render();
-	assert.eq(bRenderCount, 0)
+	assert.eq(bRenderCount, 1) // Make sure the child re-rendered.
 
 	a.title = 'Users2'
 	a.render();
 	assert.eq(getHtml(a), `<a-520>Users2<b-520 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-520></a-520>`)
-	assert.eq(bRenderCount, 0); // Value passed to b didn't change, so it shouldn't re-render.
+	assert.eq(bRenderCount, 2); // Make sure the child re-rendered.
 
 	a.remove();
 });
@@ -2953,12 +2985,12 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 
 	bRenderCount = 0
 	a.render();
-	assert.eq(bRenderCount, 0)
+	assert.eq(bRenderCount, 1)
 
 	a.title = 'Users2'
 	a.render();
 	assert.eq(getHtml(a), `<a-540>Users2<b-540 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-540></a-540>`)
-	assert.eq(bRenderCount, 0) // Value passed to b didn't change, so it shouldn't re-render.
+	assert.eq(bRenderCount, 2) // Make sure the child re-rendered.
 
 	a.remove();
 });
