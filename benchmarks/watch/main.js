@@ -1,5 +1,5 @@
 import {Solarite, r, watch, renderWatched} from './Solarite.min.js';
-//import {Solarite, r, watch, renderWatched} from '../../src/solarite/Solarite.js';
+//import {Solarite, r, watch, renderWatched} from '../../src/Solarite.js';
 
 let urlParams = new URLSearchParams(window.location.search);
 let benchmark = urlParams.get('benchmark');

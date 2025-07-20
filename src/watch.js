@@ -210,7 +210,7 @@ export function renderWatched(root, trackModified=false) {
  * Handles getting and setting properties on the proxied object. */
 class ProxyHandler {
 
-	/** @type {Object<string, [Proxy, ProxyHandler]>} Proxies for child properties. */
+	/** @type {Record<string, [Proxy, ProxyHandler]>} Proxies for child properties. */
 	proxies = {}
 
 	/** @type Set<ExprPath> ExprPaths that will need to be re-rendered when this variable is modified. */
@@ -219,7 +219,7 @@ class ProxyHandler {
 	/**
 	 * ExprPaths that will need to be re-rendered when one of this variable's primitive properties is modified,
 	 * since primitives can't have their own ProxyHandler.
-	 * @type {Object<prop:string, affected:Set<ExprPath>>} */
+	 * @type {Record<prop:string, affected:Set<ExprPath>>} */
 	childExprPaths = {};
 
 

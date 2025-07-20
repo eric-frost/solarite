@@ -133,7 +133,7 @@ export default class CodeEditor extends Solarite {
 	 * @param language {?string} Can be the name of the language or one of the file extensions.
 	 *     Supported languages: php, php-plain, javascript, html, markdown, sql, css
 	 * @param languageconfig {?Object} Options for CodeMirror.
-	 * @param toolbar {string|Object<html:Template, update:function>[]} Names of buttons from CodeEditiorToolbar.buttonTemplates or an array of HTMLElements to use as buttons.
+	 * @param toolbar {string|Record<html:Template, update:function>[]} Names of buttons from CodeEditiorToolbar.buttonTemplates or an array of HTMLElements to use as buttons.
 	 * @param options {object}
 	 * @param options.wordWrap {boolean}
 	 * @param options.tabSize {int}

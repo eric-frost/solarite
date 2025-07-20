@@ -35,7 +35,7 @@ export default class Shell {
 	/** @type {int[][]} Array of paths.  Used by activateEmbeds() to quickly find components. */
 	staticComponents = [];
 
-	/** @type {{path:int[], attribs:Object<string, string>}[]} */
+	/** @type {{path:int[], attribs:Record<string, string>}[]} */
 	//componentAttribs = [];
 
 

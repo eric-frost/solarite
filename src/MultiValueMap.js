@@ -1,6 +1,6 @@
 export default class MultiValueMap {
 
-	/** @type {Object<string, Set>} */
+	/** @type {Record<string, Set>} */
 	data = {};
 
 	// Set a new value for a key
@@ -87,37 +87,6 @@ export default class MultiValueMap {
 
 		set.delete(val);
 		result = val;
-
-		if (set.size === 0)
-			delete data[key];
-
-		return result;
-	}
-
-
-	/**
-	 * Try to delete an item that matches the key and the isPreferred function.
-	 * if not the latter, just delete any item that matches the key.
-	 * @param key {string}
-	 * @returns {*|undefined} The deleted item. */
-	deletePreferred(key, parent) {
-		let result;
-		let data = this.data;
-		let set = data[key];
-		if (!set)
-			return undefined;
-
-		for (let val of set) {
-			if (val?.parentNode === parent) {
-				set.delete(val);
-				result = val;
-				break;
-			}
-		}
-		if (!result) {
-			[result] = set;
-			set.delete(result);
-		}
 
 		if (set.size === 0)
 			delete data[key];

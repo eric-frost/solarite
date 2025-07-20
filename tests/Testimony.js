@@ -377,7 +377,7 @@ class Test {
 	parent = null;
 
 	/**
-	 * @type {?Object<name:string, Test>} Null if it's a leaf node. */
+	 * @type {?Record<name:string, Test>} Null if it's a leaf node. */
 	children = null;
 
 	/**
@@ -451,7 +451,7 @@ class Test {
 		if (this.children) {
 
 
-			/** @type {Object<string, int>} a count of each status type. */
+			/** @type {Record<string, int>} a count of each status type. */
 			let status = {}
 			let childCount = Object.keys(this.children).length;
 			for (let child of Object.values(this.children)) {
@@ -720,6 +720,7 @@ var Testimony = {
 	// Untested
 	testIframe(name, options, html, func) {
 		if (typeof options === 'string') {
+			func = html;
 			html = options;
 			options = {};
 		}

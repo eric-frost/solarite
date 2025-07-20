@@ -12,7 +12,7 @@ html[dark] {
 	/*--card-background: #0b0e12 !important;*/
 	--card-border: #1a1c1e !important;
 }
-html { background: var(--background) !important; font-size: 18px !important }
+html { background: var(--background) !important; font-size: 16px !important }
 body::before { content: ''; position: fixed; inset: 0;
 	opacity: .03; filter: grayscale(75%);
 	background: url('solarite-machine.webp') no-repeat -200px -200px / 140% auto ;  }
@@ -39,12 +39,13 @@ body::before { content: ''; position: fixed; inset: 0;
 #write h3 { margin-top: 1.5em; margin-bottom: .3em; font-size: 140%; line-height: 1.1; font-family: Cabin, sans-serif }
 html:not([dark]) #write h3 { color: #678; }
 
-#write h4 { font-size: 105%; font-weight: bold; margin-top: .75em; margin-bottom: 0 }
+#write h4 { font-size: 100%; font-weight: bold; margin-top: .75em; margin-bottom: 0 }
 #write h5 { font-size: 100%; font-weight: bold; margin-top: .75em; margin-bottom: 0 }
 #write h6 { font-size: 100%; font-weight: normal; margin-top: .75em; margin-bottom: 0; text-decoration: underline }
 
 
 #write :is(p, h2, h3, h4, h5, h6, ol, ul) { max-width: 800px }
+#write p { margin-top: 0 }
 #write a, #write a:visited { color: #08c; text-decoration: none}
 #write a:hover { color: #08c; text-decoration: underline }
 #write ul { padding-left: 20px }
@@ -61,16 +62,18 @@ body.typora-export { padding: 0 !important }
 :is(td, th):not(:first-of-type) { padding-left: 5px }
 code { white-space: nowrap; border: none !important }
 
-.outline-h1 > .outline-item { color: white; font-size: 22px }
-.outline-h2 > .outline-item { color: white }
-
-
 table :is(th, td) {
 	border-color: var(--shade1) !important
 }
 table tr:nth-child(2n), thead {
 	background-color: transparent !important
 }
+
+/* Left Menu */
+.outline-h1 > .outline-item { color: white; font-size: 20px }
+.outline-h2 > .outline-item { color: white }
+.outline-h4 { display: none }
+.outline-label { line-height: 1.1 }
 
 
 @media screen and (width < 1085px) {

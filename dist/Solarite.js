@@ -113,15 +113,15 @@ function reset() {
 		div: document.createElement("div"),
 
 		/**
-		 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
+		 * @type {Record<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
 		elementClasses: {},
 
-		/** @type {Object<string, boolean>} Key is tag-name.propName.  Value is whether it's an attribute.*/
+		/** @type {Record<string, boolean>} Key is tag-name.propName.  Value is whether it's an attribute.*/
 		htmlProps: {},
 
 		/**
 		 * Used by ExprPath.applyEventAttrib()
-		 * @type {WeakMap<Node, Object<eventName:string, [original:function, bound:function, args:*[]]>>} */
+		 * @type {WeakMap<Node, Record<eventName:string, [original:function, bound:function, args:*[]]>>} */
 		nodeEvents: new WeakMap(),
 
 		/**
@@ -156,7 +156,7 @@ function reset() {
 		 * A map of individual untagged strings to their Templates.
 		 * This way we don't keep creating new Templates for the same string when re-rendering.
 		 * This is used by ExprPath.applyExactNodes()
-		 * @type {Object<string, Template>} */
+		 * @type {Record<string, Template>} */
 		//stringTemplates: {},
 
 		reset,
@@ -482,7 +482,7 @@ let Util = {
 
 class MultiValueMap {
 
-	/** @type {Object<string, Set>} */
+	/** @type {Record<string, Set>} */
 	data = {};
 
 	// Set a new value for a key
@@ -569,37 +569,6 @@ class MultiValueMap {
 
 		set.delete(val);
 		result = val;
-
-		if (set.size === 0)
-			delete data[key];
-
-		return result;
-	}
-
-
-	/**
-	 * Try to delete an item that matches the key and the isPreferred function.
-	 * if not the latter, just delete any item that matches the key.
-	 * @param key {string}
-	 * @returns {*|undefined} The deleted item. */
-	deletePreferred(key, parent) {
-		let result;
-		let data = this.data;
-		let set = data[key];
-		if (!set)
-			return undefined;
-
-		for (let val of set) {
-			if (val?.parentNode === parent) {
-				set.delete(val);
-				result = val;
-				break;
-			}
-		}
-		if (!result) {
-			[result] = set;
-			set.delete(result);
-		}
 
 		if (set.size === 0)
 			delete data[key];
@@ -1895,7 +1864,7 @@ class Shell {
 	/** @type {int[][]} Array of paths.  Used by activateEmbeds() to quickly find components. */
 	staticComponents = [];
 
-	/** @type {{path:int[], attribs:Object<string, string>}[]} */
+	/** @type {{path:int[], attribs:Record<string, string>}[]} */
 	//componentAttribs = [];
 
 

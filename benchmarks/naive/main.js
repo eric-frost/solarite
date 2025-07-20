@@ -1,5 +1,5 @@
 import {Solarite, r} from './Solarite.min.js';
-//import {Solarite, r} from '../../src/solarite/Solarite.js';
+//import {Solarite, r} from '../../src/Solarite.js';
 let debug2 = window.location.search.includes('debug');
 let benchmark = window.location.search.includes('benchmark');
 

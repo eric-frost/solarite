@@ -23,15 +23,15 @@ function reset() {
 		div: document.createElement("div"),
 
 		/**
-		 * @type {Object<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
+		 * @type {Record<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
 		elementClasses: {},
 
-		/** @type {Object<string, boolean>} Key is tag-name.propName.  Value is whether it's an attribute.*/
+		/** @type {Record<string, boolean>} Key is tag-name.propName.  Value is whether it's an attribute.*/
 		htmlProps: {},
 
 		/**
 		 * Used by ExprPath.applyEventAttrib()
-		 * @type {WeakMap<Node, Object<eventName:string, [original:function, bound:function, args:*[]]>>} */
+		 * @type {WeakMap<Node, Record<eventName:string, [original:function, bound:function, args:*[]]>>} */
 		nodeEvents: new WeakMap(),
 
 		/**
@@ -66,7 +66,7 @@ function reset() {
 		 * A map of individual untagged strings to their Templates.
 		 * This way we don't keep creating new Templates for the same string when re-rendering.
 		 * This is used by ExprPath.applyExactNodes()
-		 * @type {Object<string, Template>} */
+		 * @type {Record<string, Template>} */
 		//stringTemplates: {},
 
 		reset,
