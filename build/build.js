@@ -3,7 +3,7 @@
  *
  * @example
  * # Creates output.js and output.min.js
- * node build input.js output.js
+ * deno run build.js input.js output.js
  *
  * ------------------------
  * How to create the dependencies for build.js  Tested with Rollup v2.23.0 and Terser 5.3.2
@@ -18,7 +18,7 @@
  * 9.  npm uninstall -g rollup terser
  * 10. Copy terser.min.js, rollup.min.js, and source-map.min.js to the lib folder, and delete our temporary working folder.
  *
- * After that, node.js is the only external dependency needed to build.
+ * After that, Deno is the only external dependency needed to build.
  */
 
 const rollupOptions = {
@@ -75,24 +75,14 @@ const terserOptions = {
 
 // Code starts here:
 
-const input = process.argv[2];
-const output = process.argv[3];
+const input = Deno.args[0];
+const output = Deno.args[1];
 const outputDebug = output.replace(/\.js$/, '-debug.js');
 const outputMin = output.replace(/\.js$/, '.min.js');
 
-const fs = require('fs');
-const Rollup = require('./lib/rollup.min.js');
-const Terser = require("./lib/terser.min.js");
-
-/*
-// Deno version (Unsupported)
-const input = Deno.args[0];
-const output = Deno.args[1];
-const outputMin = output.replace(/\.js$/, '.min.js');
-
-import './lib/rollup.min.js';
-import "./lib/terser.min.js";
-*/
+// Import modules
+import * as Rollup from './lib/rollup.min.js';
+import * as Terser from "./lib/terser.min.js";
 
 async function rollup(input, output, options) {
 	options.input = input;
@@ -112,13 +102,13 @@ function timestamp() {
 }
 
 async function terser(options) {
-	var code = [fs.readFileSync(outputDebug)].join('');
+	var code = Deno.readTextFileSync(outputDebug);
 
 	// Remove //#IFDEV blocks.
 	code = code.replace(/\/\/#IFDEV[\s\S]*?\/\/#ENDIF/gm, '');
 	code = code.replace(/\/\*#IFDEV\*\/[\s\S]*?\/\*#ENDIF\*\//gm, '');
 
-	fs.writeFileSync(output, code);
+	Deno.writeTextFileSync(output, code);
 
 	let idx = code.indexOf('#IFDEV')
 	if (idx !== -1) {
@@ -134,10 +124,10 @@ async function terser(options) {
 
 
 	var result = await Terser.minify(code, options);
-	fs.writeFileSync(outputMin, result.code);
+	Deno.writeTextFileSync(outputMin, result.code);
 
-	let stats = fs.statSync(output);
-	let statsMin = fs.statSync(outputMin);
+	let stats = Deno.statSync(output);
+	let statsMin = Deno.statSync(outputMin);
 	console.log(`Successfully created ${output} (${stats.size.toLocaleString()} bytes) ` +
 		`and ${outputMin} (${statsMin.size.toLocaleString()} bytes).` );
 }
