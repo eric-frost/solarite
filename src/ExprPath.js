@@ -228,9 +228,6 @@ export default class ExprPath {
 				if (!ng.startNode.parentNode)
 					ng.removeAndSaveOrphans();
 
-
-
-
 			// Instantiate components created within ${...} expressions.
 			// Embedded style tags are handled elsewhere, but where?
 			for (let el of newNodes) {
@@ -443,16 +440,30 @@ export default class ExprPath {
 				Globals.currentExprPath = null;
 			}
 
-			let attrs = (expr +'') // Split string into multiple attributes.
-				.split(/([\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s]+))/g)
-				.map(text => text.trim())
-				.filter(text => text.length);
+			// Attribute as name: value object.
+			if (typeof expr === 'object') {
+				for (let name in expr) {
+					let value = expr[name];
+					if (value === undefined || value === false || value === null)
+						continue;
+					node.setAttribute(name, value);
+					this.attrNames.add(name)
+				}
+			}
 
-			for (let attr of attrs) {
-				let [name, value] = attr.split(/\s*=\s*/); // split on first equals.
-				value = (value || '').replace(/^(['"])(.*)\1$/, '$2'); // trim value quotes if they match.
-				node.setAttribute(name, value);
-				this.attrNames.add(name)
+			// Attributes as string
+			else {
+				let attrs = (expr + '') // Split string into multiple attributes.
+					.split(/([\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s]+))/g)
+					.map(text => text.trim())
+					.filter(text => text.length);
+
+				for (let attr of attrs) {
+					let [name, value] = attr.split(/\s*=\s*/); // split on first equals.
+					value = (value || '').replace(/^(['"])(.*)\1$/, '$2'); // trim value quotes if they match.
+					node.setAttribute(name, value);
+					this.attrNames.add(name)
+				}
 			}
 		}
 

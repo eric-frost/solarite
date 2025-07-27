@@ -1139,13 +1139,13 @@ Testimony.test('Solarite.loop.nested2', () => {
 });
 
 Testimony.test('Solarite.loop.nested3', `Move items from one sublist to another.`, () => {
-	
+
 	class A225 extends Solarite {
 		fruitGroups = [
 			['Apple'],
 			['Banana', 'Cherry']
 		];
-		
+
 		render() {
 			h(this)`${this.fruitGroups.map(fruitGroup =>
 				h`<div>${fruitGroup.map(fruit =>
@@ -1156,16 +1156,16 @@ Testimony.test('Solarite.loop.nested3', `Move items from one sublist to another.
 	}
 	A225.define();
 	window.verify = true;
-	
+
 	let a = new A225();
 	document.body.append(a);
 	a.render();
-	
+
 	let cherry = a.fruitGroups[1].pop();
 	a.fruitGroups[0].push(cherry);
 	a.render();
-	
-	
+
+
 	let banana = a.fruitGroups[1].pop();
 	a.fruitGroups[0].push(banana);
 	a.render();
@@ -1176,11 +1176,11 @@ Testimony.test('Solarite.loop.nested3', `Move items from one sublist to another.
 
 // Tried to make a simpler version of nested3, but it works fine:
 Testimony.test('Solarite.loop.nested4', () => {
-	
+
 	class A226 extends Solarite {
 		fruits1 = ['Apple']
 		fruits2 = ['Banana', 'Cherry']
-		
+
 		render() {
 			h(this)`
 				<div>${this.fruits1.map(fruit => h`<span>${fruit}</span>`)}</div>
@@ -1189,43 +1189,43 @@ Testimony.test('Solarite.loop.nested4', () => {
 	}
 	A226.define();
 	window.verify = true;
-	
+
 	let a = new A226();
 	document.body.append(a);
 	a.render();
-	
+
 	let cherry = a.fruits2.pop();
 	a.fruits1.push(cherry);
 	a.render();
-	
-	
+
+
 	let banana = a.fruits2.pop();
 	a.fruits1.push(banana);
 	//window.debug = true;
 	a.render();
-	
+
 	window.verify = false;
 	a.remove();
 });
 
 Testimony.test('Solarite.loop.nested5', () => {
-	
+
 	// This test was originally created by reducing a failure in production code
 	// to the simplest version.
 	// The problem was that NodeGroupManager.findAndDeleteClose() was trying to
 	// delete the old exactKey, but it didn't exist because it had already been assigned.
 	// Commenting out the assert() fixed the problem.
-	
+
 	// v could also be a function to trigger this same test.
 	// Since functions are new on each render().
 	let v = 'F1';
-	
+
 	class A227 extends Solarite {
 		boxes = [
 			["A"],
 			["A", "B"]
 		]
-		
+
 		render() {
 			h(this)`
 			<a-227>${this.boxes.map(item =>
@@ -1236,24 +1236,24 @@ Testimony.test('Solarite.loop.nested5', () => {
 		}
 	}
 	A227.define();
-	
+
 	//window.verify = true;
-	
+
 	let a = new A227();
 	document.body.append(a); // calls render()
-	
 
-	
-	
+
+
+
 	v = 'F2';
 	a.boxes = [
 		["A", "B"],
 		['A']
 	]
 	a.render();
-	
+
 	assert.eq(a.outerHTML, `<a-227><!--ExprPath:0--><!--ExprPath:0--><div title="F2"><!--ExprPath:1-->A<!--ExprPathEnd:1--></div><div title="F2"><!--ExprPath:1-->B<!--ExprPathEnd:1--></div><!--ExprPathEnd:0--><!--ExprPath:0--><div title="F2"><!--ExprPath:1-->A<!--ExprPathEnd:1--></div><!--ExprPathEnd:0--><!--ExprPathEnd:0--></a-227>`);
-	
+
 	window.verify = false;
 	a.remove();
 });
@@ -1776,8 +1776,8 @@ Testimony.test('Solarite.attrib.singleAndText', () => {
 	val = 'two';
 	a.render();
 	assert.eq(getHtml(a), `<r-410><div class="before two after">two</div></r-410>`);
-	
-	
+
+
 	val = false;
 	a.render();
 	assert.eq(getHtml(a), `<r-410><div class="before  after"></div></r-410>`);
@@ -2046,7 +2046,7 @@ Testimony.test('Solarite.attrib.pseudoRoot2', 'Static attribute overrides.', () 
 	document.body.append(b);
 	assert.eq(b.outerHTML, `<r-472 style="color: green" title="Hello">World</r-472>`);
 	b.remove();
-	
+
 
 });
 
@@ -2258,6 +2258,62 @@ Testimony.test('Solarite.attrib.textareaValue', 'Make sure we can one-way bind t
 
 	a.remove();
 });
+
+Testimony.test('Solarite.attrib.objectAttributes', 'Make sure we can specify attributes as an object.', () => {
+	class R560 extends Solarite {
+		attrs = {
+			class: 'test-class',
+			'data-test': 'test-data',
+			style: 'color: red',
+			disabled: true
+		}
+
+		render() {
+			h(this)`<div data-id="div" ${this.attrs}></div>`
+		}
+	}
+
+	let a = new R560();
+	document.body.append(a);
+
+	// Check that all attributes from the object were applied
+	assert.eq(a.div.getAttribute('class'), 'test-class');
+	assert.eq(a.div.getAttribute('data-test'), 'test-data');
+	assert.eq(a.div.getAttribute('style'), 'color: red');
+	assert.eq(a.div.getAttribute('disabled'), 'true');
+
+	// Update attributes and re-render
+	a.attrs = {
+		class: 'new-class',
+		'data-test': 'new-data',
+		style: 'color: blue'
+		// disabled is removed
+	};
+	a.render();
+
+	// Check that attributes were updated
+	assert.eq(a.div.getAttribute('class'), 'new-class');
+	assert.eq(a.div.getAttribute('data-test'), 'new-data');
+	assert.eq(a.div.getAttribute('style'), 'color: blue');
+	assert.eq(a.div.hasAttribute('disabled'), false); // disabled should be removed
+
+	// Test with falsy values
+	a.attrs = {
+		class: 'final-class',
+		'data-test': null,     // should be skipped
+		style: undefined,      // should be skipped
+		disabled: false        // should be skipped
+	};
+	a.render();
+
+	// Check that falsy attributes were skipped
+	assert.eq(a.div.getAttribute('class'), 'final-class');
+	assert.eq(a.div.hasAttribute('data-test'), false);
+	assert.eq(a.div.hasAttribute('style'), false);
+	assert.eq(a.div.hasAttribute('disabled'), false);
+
+	a.remove();
+});
 //</editor-fold>
 
 
@@ -2268,7 +2324,7 @@ Testimony.test('Solarite.attrib.textareaValue', 'Make sure we can one-way bind t
  * | comments        |
  * └─────────────────╯*/
 Testimony.test('Solarite.comments.one', () => {
-	
+
 	class A480 extends Solarite {
 		render() {
 			h(this)`
@@ -2283,14 +2339,14 @@ Testimony.test('Solarite.comments.one', () => {
 });
 
 Testimony.test('Solarite.comments.two', () => {
-	
+
 	class A482 extends Solarite {
 		render() {
 			h(this)`<div><!--${1} ${2}-->${3}</div>`
 		}
 	}
 	let a = new A482();
-	
+
 	a.render();
 	assert.eq(getHtml(a), `<a-482><div>3</div></a-482>`)
 	a.remove();
@@ -2365,7 +2421,7 @@ Testimony.test('Solarite.h.staticElement4', () => {
 Testimony.test('Solarite.h.element', () => {
 	let adjective = 'better'
 	let button = h()`<button>I'm a <b>${adjective}</b> button</button>`;
-	
+
 	assert.eq(getHtml(button), `<button>I'm a <b>better</b> button</button>`)
 })
 
@@ -2619,23 +2675,23 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 			this.name = name;
 			this.userId = userId;
 		}
-		
+
 		render() {
 			h(this)`<b-511>${this.name} | ${this.userId}</b-511>`
 		}
 	}
 	B511.define();
-	
+
 	class A511 extends Solarite {
 		render() {
 			h(this)`<div><b-511 name="User" user-id="2"></b-511></div>`;
 		}
 	}
 	A511.define();
-	
+
 	let a = new A511();
 	a.render();
-	
+
 	assert.eq(a.outerHTML, `<a-511><div><b-511 name="User" user-id="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-511></div></a-511>`);
 });
 
@@ -2674,30 +2730,30 @@ Testimony.test('Solarite.component.staticWithDynamicChildren', () => {
 });
 
 Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...}', () => {
-	
+
 	class B513 extends Solarite {
 		constructor({name, userId}={}) {
 			super();
 			this.name = name;
 			this.userId = userId;
 		}
-		
+
 		render() {
 			h(this)`<b-513>${this.name} | ${this.userId}</b-513>`
 		}
 	}
 	B513.define();
-	
+
 	class A513 extends Solarite {
 		render() {
 			h(this)`<div><b-513 name=${'User'} user-id=${2}></b-513></div>`;
 		}
 	}
 	A513.define();
-	
+
 	let a = new A513();
 	a.render();
-	
+
 	assert.eq(a.outerHTML, `<a-513><div><b-513 name="User" user-id="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-513></div></a-513>`);
 });
 
@@ -2742,19 +2798,19 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 			this.userId = getArg(this, 'userid', userid);
 			this.render();
 		}
-		
+
 		render() {
 			h(this)`<b-517>${this.name} | ${this.userId}</b-517>`
 		}
 	}
 	B517.define();
-	
+
 
 	let div = document.createElement('div');
 	div.innerHTML = `<b-517 name="User" userid="2"></b-517>`
 
 	assert.eq(div.outerHTML, `<div><b-517 name="User" userid="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-517></div>`)
-	
+
 });
 
 
@@ -3203,79 +3259,79 @@ Testimony.test('Solarite.events.classic', () => {
 
 
 Testimony.test('Solarite.events.rebind', 'Ensure function is unbound/rebound on render', () => {
-	
+
 	let assignCalls = 0;
-	
+
 	class Ev20 extends Solarite {
 		count = 1
-		
+
 		assign(val) {
 			this.count = val;
 			assignCalls++;
 		}
-		
+
 		render() {
 			h(this)`<input data-id="input" value=${this.count} oninput="${(e, el) => this.assign(el.value)}">`
 		}
 	}
 	Ev20.define();
-	
+
 	let a = new Ev20();
 	a.render();
 	assert.eq(assignCalls, 0);
 	a.firstChild.dispatchEvent(new Event('input'));
 	assert.eq(assignCalls, 1);
-	
+
 	a.render();
 	a.firstChild.dispatchEvent(new Event('input'));
 	assert.eq(assignCalls, 2);
 });
 
 Testimony.test('Solarite.events.args', 'Ensure event function args are received', () => {
-	
+
 	class Ev30 extends Solarite {
 		count = 0
-		
+
 		assign(val) {
 			this.count = val;
 		}
-		
+
 		render() {
 			h(this)`<input data-id="input" value='1' oninput="${(e, el) => this.assign(el.value)}">`
 		}
 	}
 	Ev30.define();
-	
+
 	let a = new Ev30();
 	a.render();
 	a.firstChild.dispatchEvent(new Event('input'));
 	assert.eq(a.count, '1');
-	
+
 	a.firstChild.value = '2';
 	a.firstChild.dispatchEvent(new Event('input'));
 	assert.eq(a.count, '2');
 });
 
 Testimony.test('Solarite.events.onComponent', 'Event attrib on root component', () => {
-	
+
 	class Ev40 extends Solarite {
 		count = 0
-		
+
 		assign(val) {
 			this.count = val;
 		}
-		
+
 		render() {
 			h(this)`<ev-40 oninput="${(e, el) => this.assign(el.firstChild.value)}"><input data-id="input" value='1'></ev-40>`
 		}
 	}
 	Ev40.define();
-	
+
 	let a = new Ev40();
 	a.render();
 	a.firstChild.dispatchEvent(new Event('input', {bubbles: true}));
 	assert.eq(a.count, '1');
-	
+
 	a.firstChild.value = '2';
 	a.firstChild.dispatchEvent(new Event('input', {bubbles: true}));
 	assert.eq(a.count, '2');
@@ -3376,28 +3432,28 @@ Testimony.test('Solarite.binding.input', () => {
 
 
 Testimony.test('Solarite.binding.inputReuse', () => {
-	
+
 	class B12 extends Solarite {
 		items = [1, 2, 3]
-		
+
 		render() {
 			h(this)`${this.items.map(item => h`<input data-id="input" value=${item}>`)}`;
 		}
 	}
-	
+
 	let b = new B12();
 	document.body.append(b);
-	
+
 	// Remove and re-add the input with a new value.
 	b.items = [];
 	b.render();
-	
+
 	b.items = [4];
 	b.render();
-	
+
 	// Make sure it takes the new value.
 	assert.eq(b.firstElementChild.value, '4');
-	
+
 	b.remove();
 });
 
@@ -3524,25 +3580,25 @@ Testimony.test('Solarite.binding.selectMultiple', () => {
 });
 
 Testimony.test('Solarite.binding.selectDynamic', () => {
-	
+
 	class B36 extends Solarite {
 		count = 1
-		
+
 		render() {
 			h(this)`<select data-id="input" value=${[this, 'count']}>${[1, 2, 3].map(item => h`<option>${item}</option>`)}</select>`
 		}
 	}
-	
+
 	let b = new B36();
 	document.body.append(b);
 	assert.eq(b.input.value, '1')
 	assert.eq(b.input.selectedIndex, 0);
-	
+
 	b.count = 2
 	b.render()
 	assert.eq(b.input.value, '2');
 	assert.eq(b.input.selectedIndex, 1);
-	
+
 	b.input.value = 3;
 	b.input.dispatchEvent(new Event('input', {
 		bubbles: true,
@@ -3550,7 +3606,7 @@ Testimony.test('Solarite.binding.selectDynamic', () => {
 	}));
 	assert.eq(b.count, '3')
 	assert.eq(b.input.selectedIndex, 2);
-	
+
 	b.remove();
 });
 
@@ -4006,7 +4062,7 @@ Testimony.test('Solarite.watch.loopSwap', `swap array elements`, () => {
 	let modified = renderWatched(a, true);
 	assert.eq(getHtml(a), `<w-52><p>apple</p><p>dragonfruit</p><p>cherry</p><p>banana</p><p>elderberry</p></w-52>`);
 	//assert.eq([...modified], [banana, dragonfruit]);
-	
+
 	// Make sure we moved instead of recreating the text nodes.
 	// assert.eq(apple.childNodes[1], appleText);
 	// assert.eq(banana.childNodes[1], dragonfruitText);
@@ -4193,9 +4249,9 @@ Testimony.test('Solarite.full._todoList', () => {
 			h(this)`
 			<shopping-list>
 				<style>:host input { width: 80px }</style>
-					
+
 				<button onclick=${this.addItem}>Add Item</button>
-	
+
 				${this.items.map(item => h`
 					<div>
 						<input placeholder="Item" value=${item.name} 
@@ -4283,7 +4339,7 @@ Testimony.test('Solarite.full._isc2', () => {
 						${h`<span>${item.qty}</span>`}
 					</div>`
 				)}
-				
+
 			</misc-2>`;
 		}
 	}
@@ -4356,7 +4412,7 @@ Testimony.test('Solarite.full._misc', () => {
 						${this.options.map(option => h`
 							<div style="display: flex">
 								${h`<button onclick=${() => this.setValue(item, option, option.name, '')}>${option.name}</button>`}
-								
+
 								${option[item.id + '_showOther']  && h`<input>`}							
 							</div>`
 						)}
@@ -4415,4 +4471,3 @@ Testimony.test('Solarite.full._misc', () => {
 
 
 //<editor-fold desc="full">
-

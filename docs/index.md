@@ -82,9 +82,7 @@ Import one of these pre-bundled ES6 modules directly into your project:
 - [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 109KB (unminified)
 - [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) - 25KB / 8.6KB gzipped
 
-### Alternative Installation Methods
-
-Get Solarite from GitHub or NPM:
+Alternatively, get Solarite from GitHub or NPM:
 
 - [Solarite GitHub Repository](https://github.com/Vorticode/solarite)  <a class="github-button" href="https://github.com/vorticode/solarite" data-color-scheme="no-preference: light; light: light; dark: dark;" data-icon="octicon-star" data-size="small" data-show-count="true" aria-label="Star vorticode/solarite on GitHub">Star</a>
 - Clone the repository: `git clone https://github.com/Vorticode/solarite.git`
@@ -313,6 +311,43 @@ setTimeout(attributeDemo.render, 2000);
 ```
 
 Expressions can also toggle the presence of an attribute.  In the last div above, if `isEditable` is false, null, or undefined, the contenteditable attribute will be removed.
+
+You can also specify multiple attributes at once using an object, where the keys are attribute names and the values are attribute values:
+
+```javascript
+import h from './dist/Solarite.min.js';
+
+class ObjectAttributeDemo extends HTMLElement {
+    constructor() {
+        super();
+        this.attrs = {
+            class: 'important',
+            style: 'color: blue',
+            'data-test': 'example',
+            disabled: false
+        };
+        this.render();
+    }
+
+    toggleDisabled() {
+        this.attrs.disabled = !this.attrs.disabled;
+        this.render();
+    }
+
+    render() {
+        h(this)`
+        <object-attribute-demo>
+            <button ${this.attrs} onclick=${this.toggleDisabled}>
+                Click to toggle disabled
+            </button>
+        </object-attribute-demo>`
+    }
+}
+customElements.define('object-attribute-demo', ObjectAttributeDemo);
+document.body.append(new ObjectAttributeDemo());
+```
+
+In the example above, all attributes from the `this.attrs` object are applied to the button element. If a value is `undefined`, `false`, or `null`, the attribute will be skipped or removed if it was previously set.
 
 Note that attributes can also be assigned to the root element, such as `class="big"` on the `<attribute-demo>` tag above.
 
@@ -584,16 +619,17 @@ class NotesItem extends HTMLElement {
 	}
 
 	render({item, fontSize}={}, children) { // Same arguments as constructor
-        if (this.item === item && this.fontSize === fontSize)
-            // We skip h() checking to see if any DOM nodes need to be re-rendered because 
-            return; // we already know nothing has changed.
-
-        this.item = item;
-        this.fontSize = fontSize;
+        if (item && fontSize) {
+			if (this.item === item && this.fontSize === fontSize)
+				// We skip h() checking if any DOM nodes need to be re-rendered 
+                return; // because we already know nothing has changed.
+			this.item = item;
+			this.fontSize = fontSize;
+		}
 		h(this)`
 		<notes-item>
 		   <style> :host { font-size: ${this.fontSize}px }</style>
-		   <b>${this.item.name}</b> - ${this.item.description}<br>
+		   <b>${this.item?.name}</b> - ${this.item?.description}<br>
 		</notes-item>`
 	}
 }
@@ -666,7 +702,7 @@ class NotesList extends HTMLElement {
 }
 ```
 
-### The h() Function Fully Explained
+### The h() Function
 
 The `h()` function is the core of Solarite's rendering system. It handles template creation, DOM updates, and element instantiation. Understanding its various usage patterns will help you get the most out of Solarite.
 

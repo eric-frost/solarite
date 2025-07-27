@@ -283,24 +283,24 @@ export default class NodeGroup {
 		if (!Constructor)
 			throw new Error(`The custom tag name ${tagName} is not registered.`)
 
-		let args = {};
+		let attribs = {};
 		for (let name in props || {})
-			args[Util.dashesToCamel(name)] = props[name];
+			attribs[Util.dashesToCamel(name)] = props[name];
 
 		// Pass other attribs to constructor, since otherwise they're not yet set on the element,
 		// and the constructor would otherwise have no way to see them.
 		if (el.attributes.length) {
 			for (let attrib of el.attributes) {
 				let attribName = Util.dashesToCamel(attrib.name);
-				if (!args.hasOwnProperty(attribName) && attribName !== 'solarite-placeholder')
-					args[attribName] = attrib.value;
+				if (!attribs.hasOwnProperty(attribName) && attribName !== 'solarite-placeholder')
+					attribs[attribName] = attrib.value;
 			}
 		}
 
 		// Create the web component.
 		// Get the children that aren't Solarite's comment placeholders.
-		let ch = [...el.childNodes].filter(node => node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath'));
-		let newEl = new Constructor(args, ch);
+		let children = [...el.childNodes].filter(node => node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath'));
+		let newEl = new Constructor(attribs, children);
 
 		if (!isPreHtmlElement)
 			newEl.setAttribute('is', el.getAttribute('is').toLowerCase());

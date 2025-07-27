@@ -1,7 +1,7 @@
 
-import {r} from '../src/Solarite.js';
+import h from '../src/Solarite.js';
 
-let button = r({
+let button = h({
 	count: 0,
 
 	inc() {
@@ -10,7 +10,7 @@ let button = r({
 	},
 
 	render() {
-		r(this, <button onclick={this.inc}>{this.count} times.<span contenteditable>a</span></button>);
+		h(this, <button onclick={this.inc}>{this.count} times.<span contenteditable>a</span></button>);
 	}
 });
 document.body.append(button);

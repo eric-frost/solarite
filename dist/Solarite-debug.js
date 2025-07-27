@@ -1106,9 +1106,6 @@ class ExprPath {
 				if (!ng.startNode.parentNode)
 					ng.removeAndSaveOrphans();
 
-
-
-
 			// Instantiate components created within ${...} expressions.
 			// Embedded style tags are handled elsewhere, but where?
 			for (let el of newNodes) {
@@ -1318,16 +1315,30 @@ class ExprPath {
 				Globals$1.currentExprPath = null;
 			}
 
-			let attrs = (expr +'') // Split string into multiple attributes.
-				.split(/([\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s]+))/g)
-				.map(text => text.trim())
-				.filter(text => text.length);
+			// Attribute as name: value object.
+			if (typeof expr === 'object') {
+				for (let name in expr) {
+					let value = expr[name];
+					if (value === undefined || value === false || value === null)
+						continue;
+					node.setAttribute(name, value);
+					this.attrNames.add(name);
+				}
+			}
 
-			for (let attr of attrs) {
-				let [name, value] = attr.split(/\s*=\s*/); // split on first equals.
-				value = (value || '').replace(/^(['"])(.*)\1$/, '$2'); // trim value quotes if they match.
-				node.setAttribute(name, value);
-				this.attrNames.add(name);
+			// Attributes as string
+			else {
+				let attrs = (expr + '') // Split string into multiple attributes.
+					.split(/([\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s]+))/g)
+					.map(text => text.trim())
+					.filter(text => text.length);
+
+				for (let attr of attrs) {
+					let [name, value] = attr.split(/\s*=\s*/); // split on first equals.
+					value = (value || '').replace(/^(['"])(.*)\1$/, '$2'); // trim value quotes if they match.
+					node.setAttribute(name, value);
+					this.attrNames.add(name);
+				}
 			}
 		}
 
@@ -2616,24 +2627,24 @@ class NodeGroup {
 		if (!Constructor)
 			throw new Error(`The custom tag name ${tagName} is not registered.`)
 
-		let args = {};
+		let attribs = {};
 		for (let name in props || {})
-			args[Util.dashesToCamel(name)] = props[name];
+			attribs[Util.dashesToCamel(name)] = props[name];
 
 		// Pass other attribs to constructor, since otherwise they're not yet set on the element,
 		// and the constructor would otherwise have no way to see them.
 		if (el.attributes.length) {
 			for (let attrib of el.attributes) {
 				let attribName = Util.dashesToCamel(attrib.name);
-				if (!args.hasOwnProperty(attribName) && attribName !== 'solarite-placeholder')
-					args[attribName] = attrib.value;
+				if (!attribs.hasOwnProperty(attribName) && attribName !== 'solarite-placeholder')
+					attribs[attribName] = attrib.value;
 			}
 		}
 
 		// Create the web component.
 		// Get the children that aren't Solarite's comment placeholders.
-		let ch = [...el.childNodes].filter(node => node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath'));
-		let newEl = new Constructor(args, ch);
+		let children = [...el.childNodes].filter(node => node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath'));
+		let newEl = new Constructor(attribs, children);
 
 		if (!isPreHtmlElement)
 			newEl.setAttribute('is', el.getAttribute('is').toLowerCase());
