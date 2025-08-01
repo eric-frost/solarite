@@ -18,6 +18,17 @@ let Util = {
 		return true; // the same.
 	},
 
+	/**
+	 *
+	 * @param el {HTMLElement}
+	 * @return {Object} */
+	attribsToObject(el) {
+		let result = {};
+		for (let attrib of el.attributes)
+			result[Util.dashesToCamel(attrib.name)] = attrib.value;
+		return result;
+	},
+
 	bindId(root, el) {
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
 		if (id) { // If something hasn't removed the id.

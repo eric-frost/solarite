@@ -2667,6 +2667,7 @@ Testimony.test('Solarite.component.tr', () => {
 Testimony.test('Solarite.component.staticAttribs', () => {
 	// Note that all attribs become lowercase.
 	// Not sure how to prevent this w/o using an xml doctype.
+	let renderCount = 0;
 	class B511 extends Solarite {
 		constructor({name, userId}={}) {
 			super();
@@ -2674,8 +2675,9 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 			this.userId = userId;
 		}
 
-		render() {
+		render({name, userId}={}) {
 			h(this)`<b-511>${this.name} | ${this.userId}</b-511>`
+			renderCount++;
 		}
 	}
 	B511.define();
@@ -2691,6 +2693,11 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 	a.render();
 
 	assert.eq(a.outerHTML, `<a-511><div><b-511 name="User" user-id="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-511></div></a-511>`);
+
+	// Test the code in NodeGroup.applyExprs() that calls render on static components:
+	renderCount = 0;
+	a.render()
+	assert.eq(renderCount, 1);
 });
 
 Testimony.test('Solarite.component.staticWithDynamicChildren', () => {
@@ -2814,10 +2821,11 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 
 
 Testimony.test('Solarite.component.componentFromExpr', 'Make sure child component is instantiated and not left as -solarite-placeholder', () => {
-
+	let renderCount = 0;
 	class C520Child extends Solarite {
 		render() {
 			h(this)`<c-520-child>hi</c-520-child>`
+			renderCount++;
 		}
 	}
 	C520Child.define();
@@ -2834,6 +2842,13 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 	a.render();
 
 	assert.eq(`<c-520><c-520-child>hi</c-520-child></c-520>`, getHtml(a));
+
+	renderCount=0;
+	a.render();
+
+
+	// See the TODO in ExprPath.applyExactNodes()
+	assert.eq(renderCount, 1);
 });
 
 
@@ -2877,13 +2892,10 @@ Testimony.test('Solarite.component.componentFromExpr2', () => {
 	assert.eq(`<c-521><c-521-child message="">hiworld</c-521-child></c-521>`, getHtml(a));
 
 	renderCount=0;
-	window.debug = true;
 	a.render();
 
 
-	// TODO: Make sure render() is called on the child element if nothing changes.  Because the element itself should decide if it wants to render.
-	// For example we could pass it an HTMLElement as its argument, which will hash to the same value, even if its properties change.
-	// We probably need to intercept this in ExprPath.applyNodes
+	// This only works because ExprPath.applyExactNodes() calls applyExprs() if the NodeGroup has a web component.
 	assert.eq(renderCount, 1);
 
 });

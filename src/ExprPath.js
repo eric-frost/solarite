@@ -414,10 +414,10 @@ export default class ExprPath {
 						}
 					}
 				}
+
+				// This calls render() on web components that have expressions as attributes.
 				if (apply)
 					ng.applyExprs(expr.exprs);
-
-
 				this.nodeGroups.push(ng);
 
 				return ng;

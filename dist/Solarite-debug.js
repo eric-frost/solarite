@@ -239,6 +239,17 @@ let Util = {
 		return true; // the same.
 	},
 
+	/**
+	 *
+	 * @param el {HTMLElement}
+	 * @return {Object} */
+	attribsToObject(el) {
+		let result = {};
+		for (let attrib of el.attributes)
+			result[Util.dashesToCamel(attrib.name)] = attrib.value;
+		return result;
+	},
+
 	bindId(root, el) {
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
 		if (id) { // If something hasn't removed the id.
@@ -1312,10 +1323,10 @@ class ExprPath {
 						}
 					}
 				}
+
+				// This calls render() on web components that have expressions as attributes.
 				if (apply)
 					ng.applyExprs(expr.exprs);
-
-
 				this.nodeGroups.push(ng);
 
 				return ng;
@@ -2453,6 +2464,8 @@ class NodeGroup {
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
 
+	staticComponents = [];
+
 
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
@@ -2468,15 +2481,15 @@ class NodeGroup {
 
 				// Static web components can sometimes have children created via expressions.
 				// But calling applyExprs() will mess up the shell's path to them.
-				// So we find them first, then call activateStaticComponents() after their children have been created.
-				let staticComponents = this.findStaticComponents(fragment, shell);
+				// So we find them first, then call instantiateStaticComponents() after their children have been created.
+				this.staticComponents = this.findStaticComponents(fragment, shell);
 
 				this.activateEmbeds(fragment, shell);
 
 				// Apply exprs
 				this.applyExprs(template.exprs);
 
-				this.instantiateStaticComponents(staticComponents);
+				this.instantiateStaticComponents(this.staticComponents);
 			}
 			else if (shell)
 				this.activateEmbeds(fragment, shell);
@@ -2608,7 +2621,10 @@ class NodeGroup {
 		// TODO: Only do this if we have ExprPaths within styles?
 		this.updateStyles();
 
-
+		// Call render() on static web components.  This makes the component.staticAttribs() test work.
+		for (let el of this.staticComponents)
+			if (el.render)
+				el.render(Util.attribsToObject(el)); // It has no expressions.
 
 		// Invalidate the nodes cache because we just changed it.
 		this.nodesCache = null;
@@ -2626,7 +2642,7 @@ class NodeGroup {
 	/**
 	 * Create a nested Component or call render with the new props.
 	 * @param el {Solarite:HTMLElement}
-	 * @param props {Object} */
+	 * @param props {Object} The dynamic properties of a component. */
 	applyComponentExprs(el, props) {
 
 		// TODO: Does a hash of this already exist somewhere?
@@ -2650,7 +2666,7 @@ class NodeGroup {
 		if (el.render && (!Globals$1.rendered.has(el) || !instantiate)) {
 			//let oldHash = Globals.componentArgsHash.get(el);
 			//if (oldHash !== newHash) { //  Only if not changed.
-				let args = {};
+				let args = Util.attribsToObject(el);
 				for (let name in props || {})
 					args[Util.dashesToCamel(name)] = props[name];
 				el.render(args); // Pass new values of props to render so it can decide how it wants to respond.
@@ -2912,8 +2928,8 @@ class NodeGroup {
 	}
 
 	instantiateStaticComponents(staticComponents) {
-		for (let el of staticComponents)
-			this.instantiateComponent(el);
+		for (let i in staticComponents)
+			staticComponents[i] = this.instantiateComponent(staticComponents[i]);
 	}
 
 	/**
@@ -3080,14 +3096,14 @@ class RootNodeGroup extends NodeGroup {
 			// Static web components can sometimes have children created via expressions.
 			// But calling applyExprs() will mess up the shell's path to them.
 			// So we find them first, then call activateStaticComponents() after their children have been created.
-			let staticComponents = this.findStaticComponents(root, shell, offset);
+			this.staticComponents = this.findStaticComponents(root, shell, offset);
 
 			this.activateEmbeds(root, shell, offset);
 
 			// Apply exprs
 			this.applyExprs(template.exprs);
 
-			this.instantiateStaticComponents(staticComponents);
+			this.instantiateStaticComponents(this.staticComponents);
 		}
 	}
 }
