@@ -31,7 +31,7 @@ body::before { content: ''; position: fixed; inset: 0;
 .typora-export-sidebar .outline-expander { width: 0 }
 
 #write { max-width: 860px; margin: 0 !important; padding-left: 20px }
-#write h1 { font: 700 350% Cabin; line-height: 1; margin: 0; padding: 0; color: var(--invert);
+#write h1 { font: 700 350% Cabin; line-height: 1; margin: 0 0 20px 0; padding: 0; color: var(--invert);
     border-bottom: 0 solid transparent; width: 140%; max-width: calc(100vw - 75px); }
 
 #write h2 { font-family: Cabin, sans-serif; font-size: 220%; line-height: 1; margin: 2em 0 .25em 0 }

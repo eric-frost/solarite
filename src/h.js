@@ -11,7 +11,7 @@ import {assert} from "./assert.js";
  * Features beyond what standard js tagged template strings do:
  * 1. r`` sub-expressions
  * 2. functions, nodes, and arrays of nodes as sub-expressions.
- * 3. html-escape all expressions by default, unless wrapped in r()
+ * 3. html-escape all expressions by default, unless wrapped in h()
  * 4. event binding
  * 5. TODO:  list more
  *
@@ -151,7 +151,7 @@ export default function h(htmlStrings=undefined, ...exprs) {
 		// Normal path
 		else {
 			Globals.objToEl.set(obj, null);
-			obj[renderF](); // Calls the Special rebound render path above, when the render function calls r(this)
+			obj[renderF](); // Calls the Special rebound render path above, when the render function calls h(this)
 			let el = Globals.objToEl.get(obj);
 			Globals.objToEl.delete(obj);
 

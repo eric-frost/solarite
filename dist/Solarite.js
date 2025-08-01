@@ -130,20 +130,20 @@ function reset() {
 		nodeGroups: new WeakMap(),
 
 		/**
-		 * Used by r() path 9. */
+		 * Used by h() path 9. */
 		objToEl: new WeakMap(),
 
 		//pendingChildren: [],
 
 
 		/**
-		 * Elements that have been rendered to by r() at least once.
+		 * Elements that have been rendered to by h() at least once.
 		 * This is used by the Solarite class to know when to call onFirstConnect()
 		 * @type {WeakSet<HTMLElement>} */
 		rendered: new WeakSet(),
 
 		/**
-		 * Elements that are currently rendering via the r() function.
+		 * Elements that are currently rendering via the h() function.
 		 * @type {WeakSet<HTMLElement>} */
 		rendering: new WeakSet(),
 
@@ -244,26 +244,49 @@ let Util = {
 	},
 
 	/**
+	 * If the style tab has a global attribute:
+	 * 1.  Put it in the document head as <style data-style="tag-name">...</style>
+	 * 2.  Replace the :host {...} CSS selector as tag-name {...}.
+	 * Otherwise keep it where it is and:
+	 * 1.  Add data-style="1" attribute to the root element.
+	 * 2.  Replace the :host {...} selector in the style as tag-name[data-style='1'] {...}
 	 * @param style {HTMLStyleElement}
 	 * @param root {HTMLElement} */
 	bindStyles(style, root) {
-		let styleId = root.getAttribute('data-style');
-		if (!styleId) {
-			// Keep track of one style id for each class.
-			// TODO: Put this outside the class in a map, so it doesn't conflict with static properties.
-			if (!root.constructor.styleId)
-				root.constructor.styleId = 1;
-			styleId = root.constructor.styleId++;
 
-			root.setAttribute('data-style', styleId);
+		let tagName = root.tagName.toLowerCase();
+		let styleId, attribSelector;
+
+		if (style.hasAttribute('global') || style.hasAttribute('data-global')) {
+			styleId = tagName;
+			attribSelector = '';
+			if (!document.head.querySelector(`style[data-style="${styleId}"]`)) {
+				document.head.append(style);
+				style.setAttribute('data-style', styleId);
+			}
+			else // TODO: Make sure the style has no expressions.
+				style.remove(); // already in the head.
+		}
+		else {
+			let styleId = root.getAttribute('data-style');
+			if (!styleId) {
+				// Keep track of one style id for each class.
+				// TODO: Put this outside the class in a map, so it doesn't conflict with static properties.
+				if (!root.constructor.styleId)
+					root.constructor.styleId = 1;
+				styleId = root.constructor.styleId++;
+
+				root.setAttribute('data-style', styleId);
+			}
+
+			attribSelector = `[data-style="${styleId}"]`;
 		}
 
 		// Replace ":host" with "tagName[data-style=...]" in the css.
-		let tagName = root.tagName.toLowerCase();
 		for (let child of style.childNodes) {
 			if (child.nodeType === 3) {
 				let oldText = child.textContent;
-				let newText = oldText.replace(/:host(?=[^a-z0-9_])/gi, `${tagName}[data-style="${styleId}"]`);
+				let newText = oldText.replace(/:host(?=[^a-z0-9_])/gi, `${tagName}${attribSelector}`);
 				if (oldText !== newText)
 					child.textContent = newText;
 			}
@@ -995,7 +1018,7 @@ class ExprPath {
 					ng.removeAndSaveOrphans();
 
 			// Instantiate components created within ${...} expressions.
-			// Embedded style tags are handled elsewhere, but where?
+			// Also see this.applyExactNodes() which handles calling render() on web components even if they are unchanged.
 			for (let el of newNodes) {
 				if (el instanceof HTMLElement) {
 					if (el.hasAttribute('solarite-placeholder'))
@@ -1005,6 +1028,10 @@ class ExprPath {
 				}
 			}
 		}
+
+		//for (let component of components)
+		//	if (component.render)
+		//		this.parentNg.instantiateComponent(component, false, );
 
 
 		
@@ -1148,13 +1175,36 @@ class ExprPath {
 	applyExactNodes(expr, newNodes, secondPass) {
 
 		if (expr instanceof Template) {
+
 			let ng = this.getNodeGroup(expr, true);
 			if (ng) {
+				let newestNodes = ng.getNodes();
+				newNodes.push(...newestNodes);
 
-				// TODO: Track ranges of changed nodes and only pass those to udomdiff?
-				// But will that break the swap benchmark?
-				newNodes.push(...ng.getNodes());
+				// Re-apply all expressions if there's a web component, so we can pass them to its constructor.
+				// Also see similar code at the end of this.applyNodes() which handles web components being instantiated the first time.
+				let apply = false;
+				for (let el of newestNodes) {
+					if (el instanceof HTMLElement) {
+						if (el.tagName.includes('-')) {
+							apply = true;
+							break;
+						}
+						for (let child of el.querySelectorAll('*')) {
+							if (child.tagName.includes('-')) {
+								apply = true;
+								break;
+							}
+						}
+					}
+				}
+				if (apply)
+					ng.applyExprs(expr.exprs);
+
+
 				this.nodeGroups.push(ng);
+
+				return ng;
 			}
 
 			// If expression, mark it to be evaluated later in ExprPath.apply() to find partial match.
@@ -1610,8 +1660,11 @@ class ExprPath {
 				result = collection.deleteAny(template.getExactKey());
 			}
 
-			if (result) // also delete the matching close key.
+			if (result) {// also delete the matching close key.
 				collection.deleteSpecific(template.getCloseKey(), result);
+
+				//result.applyExprs(template.exprs);
+			}
 			else {
 				return null;
 			}
@@ -1651,7 +1704,8 @@ class ExprPath {
 	isComponent() {
 		// Events won't have type===Component.
 		// TODO: Have a special flag for components instead of it being on the type?
-		return this.type === ExprPathType.ComponentAttribValue || (this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
+		return (this.type === ExprPathType.ComponentAttribValue) ||
+			(this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
 	}
 
 	/**
@@ -1710,7 +1764,7 @@ class ExprPath {
 /** @enum {int} */
 const ExprPathType = {
 	/** Child of a node */
-	Content: 1,
+	Content: 1, // TODO: Rename to Nodes
 
 	/** One or more whole attributes */
 	AttribMultiple: 2,
@@ -2319,6 +2373,7 @@ class NodeGroup {
 				exprIndex--;
 			}
 
+
 			// TODO: Need to end and restart this block when going from one component to the next?
 			// Think of having two adjacent components.
 			// But the dynamicAttribsAdjacet test already passes.
@@ -2389,13 +2444,15 @@ class NodeGroup {
 
 
 		// Instantiate a placeholder.
-		if (isPreHtmlElement || isPreIsElement)
+		let instantiate = isPreHtmlElement || isPreIsElement;
+		if (instantiate)
 			el = this.instantiateComponent(el, isPreHtmlElement, props);
 
+		// If constructor (via instantiateComponent()) didn't call render(), call it explicitly.
 		// Call render() with the same params that would've been passed to the constructor.
 		// We do this even if the arguments haven't changed, so we can let the child component
 		// compare the arguments and then decide for itself whether it wants to re-render.
-		else if (el.render) {
+		if (el.render && (!Globals$1.rendered.has(el) || !instantiate)) {
 			//let oldHash = Globals.componentArgsHash.get(el);
 			//if (oldHash !== newHash) { //  Only if not changed.
 				let args = {};
@@ -2475,7 +2532,7 @@ class NodeGroup {
 		if (this.endNode === el)
 			this.endNode = newEl;
 
-
+		// This is used only if inheriting from the Solarite class.
 		// applyComponentExprs() is called because we're rendering.
 		// So we want to render the sub-component also.
 		if (newEl.renderFirstTime)
@@ -2749,7 +2806,7 @@ class RootNodeGroup extends NodeGroup {
 				this.endNode = el;
 			} else {
 				let singleEl = getSingleEl(fragment);
-				this.root = singleEl || fragment; // We return the whole fragment when calling r() with a collection of nodes.
+				this.root = singleEl || fragment; // We return the whole fragment when calling h() with a collection of nodes.
 
 				Globals$1.nodeGroups.set(this.root, this);
 				if (singleEl) {
@@ -2933,7 +2990,7 @@ class Template {
  * Features beyond what standard js tagged template strings do:
  * 1. r`` sub-expressions
  * 2. functions, nodes, and arrays of nodes as sub-expressions.
- * 3. html-escape all expressions by default, unless wrapped in r()
+ * 3. html-escape all expressions by default, unless wrapped in h()
  * 4. event binding
  * 5. TODO:  list more
  *
@@ -3072,7 +3129,7 @@ function h(htmlStrings=undefined, ...exprs) {
 		// Normal path
 		else {
 			Globals$1.objToEl.set(obj, null);
-			obj[renderF](); // Calls the Special rebound render path above, when the render function calls r(this)
+			obj[renderF](); // Calls the Special rebound render path above, when the render function calls h(this)
 			let el = Globals$1.objToEl.get(obj);
 			Globals$1.objToEl.delete(obj);
 
@@ -3337,7 +3394,7 @@ function createSolarite(extendsTag=null) {
 						this.innerHTML = html;
 					}
 					else
-						this.modifications = r(this, html, options);
+						this.modifications = h(this, html, options);
 				}
 			})*/
 

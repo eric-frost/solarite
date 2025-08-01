@@ -10,17 +10,7 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite
 
-Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript library (not a [framework](https://www.youtube.com/watch?v=evmZTh7l6UE)) for adding reactivity to web components. It enables minimal re-rendering when data changes, making your applications more efficient.
-
-## Key Features
-
-- **Explicit Rendering**: You control when rendering happens through the manually invoked `render()` method - no unexpected side effects.
-- **Simple State Management**: No special state setup required. Use regular JavaScript variables and data structures.
-- **Scoped Styling**: Define styles that apply only to your web component and its children while still inheriting external styles.
-- **Automatic Element References**: Elements with `id` or `data-id` attributes automatically become properties of your component class.
-- **Component Composition**: Attributes are passed as constructor arguments to nested components for easy data flow.
-- **Zero Dependencies**: Single file with no build steps or dependencies. Not even Node.js.  Just `import` Solarite.js or Solarite.min.js into your vanilla JavaScript and start coding.
-- **MIT License**: Free for commercial use with no attribution required.
+Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript library for adding reactivity to web components.  This allows minimal DOM updates when data changes.
 
 ```javascript
 import h from './dist/Solarite.min.js';
@@ -73,6 +63,16 @@ customElements.define('shopping-list', ShoppingList);
 document.body.append(new ShoppingList()); // add <shopping-list> element
 ```
 
+## Key Features
+
+- **Explicit Rendering**: You control when rendering happens through the manually invoked `render()` method - no unexpected side effects.
+- **Simple State Management**: No special state setup required. Use regular JavaScript variables and data structures.
+- **Scoped Styling**: Define styles that apply only to your web component and its children while still inheriting external styles.
+- **Automatic Element References**: Elements with `id` or `data-id` attributes automatically become properties of your component class.
+- **Component Composition**: Attributes are passed as constructor arguments to nested components for easy data flow.
+- **Zero Dependencies**: Single file with no build steps or dependencies. Not even Node.js.  Just `import` Solarite.js or Solarite.min.js into your vanilla JavaScript and start coding.
+- **MIT License**: Free for commercial use with no attribution required.
+
 ## Installation
 
 ### Quick Start
@@ -94,7 +94,7 @@ For the best development experience, use a JetBrains IDE like [WebStorm](https:/
 
 ## Performance
 
-Here is Solarite on Stefan Krause's famous js-framework-benchmark versus some other common libraries.  Run on a Ryzen 7 3700X on Windows 10.  Performance is still improving with each version.
+Here is Solarite on Stefan Krause's famous js-framework-benchmark versus some other common libraries.  Run on a Ryzen 7 3700X on Windows 10.  Performance is still improving.
 
 ![js-framework-benchmark](docs/js-framework-benchmark.png)
 
@@ -897,7 +897,7 @@ list.items[1] = '2';
 list.render();
 ```
 
-## Under the Hood: How Solarite Works
+## How Solarite Works
 
 Understanding how Solarite works internally can help you write more efficient components and debug issues more effectively.
 
@@ -1040,13 +1040,9 @@ function pad(pad, val) {
 <my-timer duration="300"></my-timer>
 ```
 
-
-
 ## Upcoming Features
 
 Solarite is actively being developed with several exciting features planned for future releases:
-
-### Planned Enhancements
 
 1. **Shadow DOM Support**: Optional integration with the browser's native Shadow DOM for true encapsulation of styles and DOM.
 

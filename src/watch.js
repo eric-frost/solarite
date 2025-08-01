@@ -28,7 +28,7 @@ class WatchExample extends Solarite {
 	}
 
 	render() {
-		r(this)`
+		h(this)`
 		<watch-example>
 			${() => this.name + '!'}
 
@@ -397,7 +397,7 @@ class ProxyHandler {
  * TODO
  *
  *
- * @param root {HTMLElement} An instance of a Web Component that uses r() to render its content.
+ * @param root {HTMLElement} An instance of a Web Component that uses h() to render its content.
  * @param field {string} The name of a top-level property of root.
  * @param value {string|Symbol} The default value. */
 export default function watch(root, field, value=unusedArg) {

@@ -32,26 +32,49 @@ let Util = {
 	},
 
 	/**
+	 * If the style tab has a global attribute:
+	 * 1.  Put it in the document head as <style data-style="tag-name">...</style>
+	 * 2.  Replace the :host {...} CSS selector as tag-name {...}.
+	 * Otherwise keep it where it is and:
+	 * 1.  Add data-style="1" attribute to the root element.
+	 * 2.  Replace the :host {...} selector in the style as tag-name[data-style='1'] {...}
 	 * @param style {HTMLStyleElement}
 	 * @param root {HTMLElement} */
 	bindStyles(style, root) {
-		let styleId = root.getAttribute('data-style');
-		if (!styleId) {
-			// Keep track of one style id for each class.
-			// TODO: Put this outside the class in a map, so it doesn't conflict with static properties.
-			if (!root.constructor.styleId)
-				root.constructor.styleId = 1;
-			styleId = root.constructor.styleId++;
 
-			root.setAttribute('data-style', styleId)
+		let tagName = root.tagName.toLowerCase();
+		let styleId, attribSelector;
+
+		if (style.hasAttribute('global') || style.hasAttribute('data-global')) {
+			styleId = tagName;
+			attribSelector = '';
+			if (!document.head.querySelector(`style[data-style="${styleId}"]`)) {
+				document.head.append(style)
+				style.setAttribute('data-style', styleId);
+			}
+			else // TODO: Make sure the style has no expressions.
+				style.remove(); // already in the head.
+		}
+		else {
+			let styleId = root.getAttribute('data-style');
+			if (!styleId) {
+				// Keep track of one style id for each class.
+				// TODO: Put this outside the class in a map, so it doesn't conflict with static properties.
+				if (!root.constructor.styleId)
+					root.constructor.styleId = 1;
+				styleId = root.constructor.styleId++;
+
+				root.setAttribute('data-style', styleId);
+			}
+
+			attribSelector = `[data-style="${styleId}"]`;
 		}
 
 		// Replace ":host" with "tagName[data-style=...]" in the css.
-		let tagName = root.tagName.toLowerCase();
 		for (let child of style.childNodes) {
 			if (child.nodeType === 3) {
 				let oldText = child.textContent;
-				let newText = oldText.replace(/:host(?=[^a-z0-9_])/gi, `${tagName}[data-style="${styleId}"]`)
+				let newText = oldText.replace(/:host(?=[^a-z0-9_])/gi, `${tagName}${attribSelector}`)
 				if (oldText !== newText)
 					child.textContent = newText;
 			}

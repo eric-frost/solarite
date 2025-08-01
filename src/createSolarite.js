@@ -103,7 +103,7 @@ export default function createSolarite(extendsTag=null) {
 						this.innerHTML = html;
 					}
 					else
-						this.modifications = r(this, html, options);
+						this.modifications = h(this, html, options);
 				}
 			})*/
 

@@ -168,6 +168,7 @@ export default class NodeGroup {
 				exprIndex--;
 			}
 
+
 			// TODO: Need to end and restart this block when going from one component to the next?
 			// Think of having two adjacent components.
 			// But the dynamicAttribsAdjacet test already passes.
@@ -240,13 +241,15 @@ export default class NodeGroup {
 
 
 		// Instantiate a placeholder.
-		if (isPreHtmlElement || isPreIsElement)
+		let instantiate = isPreHtmlElement || isPreIsElement
+		if (instantiate)
 			el = this.instantiateComponent(el, isPreHtmlElement, props);
 
+		// If constructor (via instantiateComponent()) didn't call render(), call it explicitly.
 		// Call render() with the same params that would've been passed to the constructor.
 		// We do this even if the arguments haven't changed, so we can let the child component
 		// compare the arguments and then decide for itself whether it wants to re-render.
-		else if (el.render) {
+		if (el.render && (!Globals.rendered.has(el) || !instantiate)) {
 			//let oldHash = Globals.componentArgsHash.get(el);
 			//if (oldHash !== newHash) { //  Only if not changed.
 				let args = {};
@@ -326,7 +329,7 @@ export default class NodeGroup {
 		if (this.endNode === el)
 			this.endNode = newEl;
 
-
+		// This is used only if inheriting from the Solarite class.
 		// applyComponentExprs() is called because we're rendering.
 		// So we want to render the sub-component also.
 		if (newEl.renderFirstTime)
@@ -665,7 +668,7 @@ export class RootNodeGroup extends NodeGroup {
 				this.endNode = el;
 			} else {
 				let singleEl = getSingleEl(fragment);
-				this.root = singleEl || fragment; // We return the whole fragment when calling r() with a collection of nodes.
+				this.root = singleEl || fragment; // We return the whole fragment when calling h() with a collection of nodes.
 
 				Globals.nodeGroups.set(this.root, this);
 				if (singleEl) {

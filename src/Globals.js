@@ -40,20 +40,20 @@ function reset() {
 		nodeGroups: new WeakMap(),
 
 		/**
-		 * Used by r() path 9. */
+		 * Used by h() path 9. */
 		objToEl: new WeakMap(),
 
 		//pendingChildren: [],
 
 
 		/**
-		 * Elements that have been rendered to by r() at least once.
+		 * Elements that have been rendered to by h() at least once.
 		 * This is used by the Solarite class to know when to call onFirstConnect()
 		 * @type {WeakSet<HTMLElement>} */
 		rendered: new WeakSet(),
 
 		/**
-		 * Elements that are currently rendering via the r() function.
+		 * Elements that are currently rendering via the h() function.
 		 * @type {WeakSet<HTMLElement>} */
 		rendering: new WeakSet(),
 

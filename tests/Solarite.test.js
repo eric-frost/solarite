@@ -1201,7 +1201,6 @@ Testimony.test('Solarite.loop.nested4', () => {
 
 	let banana = a.fruits2.pop();
 	a.fruits1.push(banana);
-	//window.debug = true;
 	a.render();
 
 	window.verify = false;
@@ -2161,7 +2160,6 @@ Testimony.test('Solarite.attrib.property', () => {
 	// Make sure manually checking it doesn't break it..
 	input.checked = true;
 
-	window.debug = true;
 	a.enabled = false;
 	a.render();
 	assert.eq(input.checked, false);
@@ -2824,8 +2822,6 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 	}
 	C520Child.define();
 
-	//let child = ;
-
 	class C520 extends Solarite {
 		render() {
 			h(this)`<c-520>${h`<c-520-child></c-520-child>`}</c-520>`
@@ -2842,35 +2838,54 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 
 
 Testimony.test('Solarite.component.componentFromExpr2', () => {
+	let renderCount = 0;
 
-	class C521Child extends Solarite {
-		constructor({arg}) {
+	// Definition
+	class C521Child extends HTMLElement {
+		constructor({message}) {
 			super();
-			this.textContent += arg.text;
+			this.text = message.text;
 		}
 
+		render({message}) {
+			this.text = message.text;
+			h(this)`<c-521-child>hi${this.text}</c-521-child>`
+			renderCount++;
+		}
+	}
+	customElements.define('c-521-child', C521Child);
+
+	let message = {text: 'bye'};
+
+	class C521 extends HTMLElement {
 		render() {
-			h(this)`<c-521-child>hi</c-521-child>`
+			h(this)`<c-521>${h`<c-521-child message=${message}></c-521-child>`}</c-521>`
 		}
 	}
-	C521Child.define();
-
-	let message = {
-		text: 'bye'
-	}
-
-	class C521 extends Solarite {
-		render() {
-			h(this)`<c-521>${h`<c-521-child arg=${message}></c-521-child>`}</c-521>`
-		}
-	}
-	C521.define();
+	customElements.define('c-521', C521);
 
 
+	// Test 1
 	let a = new C521();
 	a.render();
+	assert.eq(`<c-521><c-521-child message="">hibye</c-521-child></c-521>`, getHtml(a));
 
-	assert.eq(`<c-521><c-521-child arg="">hibye</c-521-child></c-521>`, getHtml(a));
+	// Test 2
+	message = {text: 'world'}
+	//window.debug = true;
+	a.render();
+	assert.eq(`<c-521><c-521-child message="">hiworld</c-521-child></c-521>`, getHtml(a));
+
+	renderCount=0;
+	window.debug = true;
+	a.render();
+
+
+	// TODO: Make sure render() is called on the child element if nothing changes.  Because the element itself should decide if it wants to render.
+	// For example we could pass it an HTMLElement as its argument, which will hash to the same value, even if its properties change.
+	// We probably need to intercept this in ExprPath.applyNodes
+	assert.eq(renderCount, 1);
+
 });
 
 
@@ -3147,7 +3162,6 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
 
 	table.users[1].name = 'Barry'
-	window.debug = true;
 	table.render();
 	assert.eq(getHtml(table),
 		`<table-540><table><tbody>` +
@@ -3158,7 +3172,6 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
 
 	table.users[1] = {name: 'Dave', email: 'dave@example.com'};
-	window.debug = true;
 	table.render();
 	assert.eq(getHtml(table),
 		`<table-540><table><tbody>` +

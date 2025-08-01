@@ -229,7 +229,7 @@ export default class ExprPath {
 					ng.removeAndSaveOrphans();
 
 			// Instantiate components created within ${...} expressions.
-			// Embedded style tags are handled elsewhere, but where?
+			// Also see this.applyExactNodes() which handles calling render() on web components even if they are unchanged.
 			for (let el of newNodes) {
 				if (el instanceof HTMLElement) {
 					if (el.hasAttribute('solarite-placeholder'))
@@ -239,6 +239,10 @@ export default class ExprPath {
 				}
 			}
 		}
+
+		//for (let component of components)
+		//	if (component.render)
+		//		this.parentNg.instantiateComponent(component, false, );
 
 
 		/*#IFDEV*/path.verify();/*#ENDIF*/
@@ -387,13 +391,36 @@ export default class ExprPath {
 	applyExactNodes(expr, newNodes, secondPass) {
 
 		if (expr instanceof Template) {
+
 			let ng = this.getNodeGroup(expr, true);
 			if (ng) {
+				let newestNodes = ng.getNodes();
+				newNodes.push(...newestNodes);
 
-				// TODO: Track ranges of changed nodes and only pass those to udomdiff?
-				// But will that break the swap benchmark?
-				newNodes.push(...ng.getNodes());
+				// Re-apply all expressions if there's a web component, so we can pass them to its constructor.
+				// Also see similar code at the end of this.applyNodes() which handles web components being instantiated the first time.
+				let apply = false;
+				for (let el of newestNodes) {
+					if (el instanceof HTMLElement) {
+						if (el.tagName.includes('-')) {
+							apply = true;
+							break;
+						}
+						for (let child of el.querySelectorAll('*')) {
+							if (child.tagName.includes('-')) {
+								apply = true;
+								break;
+							}
+						}
+					}
+				}
+				if (apply)
+					ng.applyExprs(expr.exprs);
+
+
 				this.nodeGroups.push(ng);
+
+				return ng;
 			}
 
 			// If expression, mark it to be evaluated later in ExprPath.apply() to find partial match.
@@ -873,8 +900,11 @@ export default class ExprPath {
 				result = collection.deleteAny(template.getExactKey());
 			}
 
-			if (result) // also delete the matching close key.
+			if (result) {// also delete the matching close key.
 				collection.deleteSpecific(template.getCloseKey(), result);
+
+				//result.applyExprs(template.exprs);
+			}
 			else {
 				return null;
 			}
@@ -914,7 +944,8 @@ export default class ExprPath {
 	isComponent() {
 		// Events won't have type===Component.
 		// TODO: Have a special flag for components instead of it being on the type?
-		return this.type === ExprPathType.ComponentAttribValue || (this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
+		return (this.type === ExprPathType.ComponentAttribValue) ||
+			(this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
 	}
 
 	/**
@@ -1065,7 +1096,7 @@ function setValue(root, path, node) {
 /** @enum {int} */
 export const ExprPathType = {
 	/** Child of a node */
-	Content: 1,
+	Content: 1, // TODO: Rename to Nodes
 
 	/** One or more whole attributes */
 	AttribMultiple: 2,
