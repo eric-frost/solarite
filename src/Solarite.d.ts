@@ -44,7 +44,7 @@ export function delve(obj: object, path: string[], createVal?: any): any;
 
 // Globals object
 export const Globals: {
-    componentArgsHash: WeakMap<any, any>;
+    //componentArgsHash: WeakMap<any, any>;
     connected: WeakSet<HTMLElement>;
     currentExprPath: any;
     div: HTMLDivElement;

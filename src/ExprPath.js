@@ -143,7 +143,7 @@ export default class ExprPath {
 	/**
 	 * Insert/replace the nodes created by a single expression.
 	 * Called by applyExprs()
-	 * This function is recursive, as the functions it calls also call it.
+	 * This function is recursive.  It calls functions that call applyNodes().
 	 * @param expr {Expr}
 	 * @param freeNodeGroups {boolean}
 	 * @return {Node[]} New Nodes created. */
@@ -178,7 +178,6 @@ export default class ExprPath {
 		if (secondPass.length) {
 			for (let [nodesIndex, ngIndex] of secondPass) {
 				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
-
 				let ngNodes = ng.getNodes();
 
 				/*#IFDEV*/assert(!(newNodes[nodesIndex] instanceof NodeGroup))/*#ENDIF*/
@@ -199,10 +198,7 @@ export default class ExprPath {
 
 		/*#IFDEV*/assert(!path.nodeGroups.includes(null))/*#ENDIF*/
 
-
-
 		let oldNodes = path.getNodes();
-
 
 		// This pre-check makes it a few percent faster?
 		let same = Util.arraySame(oldNodes, newNodes);
@@ -397,6 +393,7 @@ export default class ExprPath {
 				let newestNodes = ng.getNodes();
 				newNodes.push(...newestNodes);
 
+				// New!
 				// Re-apply all expressions if there's a web component, so we can pass them to its constructor.
 				// NodeGroup.applyExprs() is used to call applyComponentExprs() on web components that have expression attributes.
 				// For those that don't, ,we call applyComponentExprs() directly here.

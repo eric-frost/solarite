@@ -7,7 +7,7 @@ function reset() {
 
 		/**
 		 * Used by NodeGroup.applyComponentExprs() */
-		componentArgsHash: new WeakMap(),
+		//componentArgsHash: new WeakMap(),
 
 		/**
 		 * Store which instances of Solarite have already been added to the DOM.

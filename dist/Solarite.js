@@ -97,7 +97,7 @@ function reset() {
 
 		/**
 		 * Used by NodeGroup.applyComponentExprs() */
-		componentArgsHash: new WeakMap(),
+		//componentArgsHash: new WeakMap(),
 
 		/**
 		 * Store which instances of Solarite have already been added to the DOM.
@@ -944,7 +944,7 @@ class ExprPath {
 	/**
 	 * Insert/replace the nodes created by a single expression.
 	 * Called by applyExprs()
-	 * This function is recursive, as the functions it calls also call it.
+	 * This function is recursive.  It calls functions that call applyNodes().
 	 * @param expr {Expr}
 	 * @param freeNodeGroups {boolean}
 	 * @return {Node[]} New Nodes created. */
@@ -979,7 +979,6 @@ class ExprPath {
 		if (secondPass.length) {
 			for (let [nodesIndex, ngIndex] of secondPass) {
 				let ng = path.getNodeGroup(newNodes[nodesIndex], false);
-
 				let ngNodes = ng.getNodes();
 
 				
@@ -1000,10 +999,7 @@ class ExprPath {
 
 		
 
-
-
 		let oldNodes = path.getNodes();
-
 
 		// This pre-check makes it a few percent faster?
 		let same = Util.arraySame(oldNodes, newNodes);
@@ -1193,6 +1189,7 @@ class ExprPath {
 				let newestNodes = ng.getNodes();
 				newNodes.push(...newestNodes);
 
+				// New!
 				// Re-apply all expressions if there's a web component, so we can pass them to its constructor.
 				// NodeGroup.applyExprs() is used to call applyComponentExprs() on web components that have expression attributes.
 				// For those that don't, ,we call applyComponentExprs() directly here.
@@ -2449,7 +2446,7 @@ class NodeGroup {
 		// TODO: Does a hash of this already exist somewhere?
 		// Perhaps if Components were treated as child NodeGroups, which would need to be the child of an ExprPath,
 		// then we could re-use the hash and logic from NodeManager?
-		let newHash = getObjectHash(props);
+		//let newHash = getObjectHash(props);
 
 		let isPreHtmlElement = el.hasAttribute('solarite-placeholder');
 		let isPreIsElement = el.hasAttribute('_is');
@@ -2481,7 +2478,7 @@ class NodeGroup {
 			//}
 		}
 
-		Globals$1.componentArgsHash.set(el, newHash);
+		//Globals.componentArgsHash.set(el, newHash);
 	}
 
 	/**

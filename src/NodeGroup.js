@@ -239,7 +239,7 @@ export default class NodeGroup {
 		// TODO: Does a hash of this already exist somewhere?
 		// Perhaps if Components were treated as child NodeGroups, which would need to be the child of an ExprPath,
 		// then we could re-use the hash and logic from NodeManager?
-		let newHash = getObjectHash(props);
+		//let newHash = getObjectHash(props);
 
 		let isPreHtmlElement = el.hasAttribute('solarite-placeholder');
 		let isPreIsElement = el.hasAttribute('_is')
@@ -271,7 +271,7 @@ export default class NodeGroup {
 			//}
 		}
 
-		Globals.componentArgsHash.set(el, newHash);
+		//Globals.componentArgsHash.set(el, newHash);
 	}
 
 	/**
