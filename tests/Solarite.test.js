@@ -2848,9 +2848,15 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 
 	assert.eq(`<c-520><c-520-child>hi</c-520-child></c-520>`, getHtml(a));
 
-	renderCount=0;
+	window.debug = true;
+	renderCount = 0;
 	a.render();
+	console.log(getHtml(a))
 	assert.eq(renderCount, 1);
+
+	// renderCount = 0;
+	// a.render();
+	// assert.eq(renderCount, 1);
 });
 
 

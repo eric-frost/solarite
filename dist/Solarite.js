@@ -234,10 +234,11 @@ let Util = {
 	 *
 	 * @param el {HTMLElement}
 	 * @return {Object} */
-	attribsToObject(el) {
+	attribsToObject(el, ignore=null) {
 		let result = {};
 		for (let attrib of el.attributes)
-			result[Util.dashesToCamel(attrib.name)] = attrib.value;
+			if (attrib.name !== ignore)
+				result[Util.dashesToCamel(attrib.name)] = attrib.value;
 		return result;
 	},
 
@@ -1186,31 +1187,30 @@ class ExprPath {
 	applyExactNodes(expr, newNodes, secondPass) {
 
 		if (expr instanceof Template) {
-
 			let ng = this.getNodeGroup(expr, true);
+
 			if (ng) {
 				let newestNodes = ng.getNodes();
 				newNodes.push(...newestNodes);
 
 				// Re-apply all expressions if there's a web component, so we can pass them to its constructor.
+				// NodeGroup.applyExprs() is used to call applyComponentExprs() on web components that have expression attributes.
+				// For those that don't, ,we call applyComponentExprs() directly here.
 				// Also see similar code at the end of this.applyNodes() which handles web components being instantiated the first time.
 				let apply = false;
 				for (let el of newestNodes) {
 					if (el instanceof HTMLElement) {
+
 						if (el.tagName.includes('-')) {
-							if (!expr.exprs.find(expr => expr.nodeMarker === el)) {
+							if (!expr.exprs.find(expr => expr.nodeMarker === el))
 								this.parentNg.applyComponentExprs(el);
-								//if (el.render)
-								//	el.render(Util.attribsToObject(el));
-							}
 							else
 								apply = true;
 						}
 						for (let child of el.querySelectorAll('*')) {
-							if (child.render && child.tagName.includes('-')) {
-								if (!expr.exprs.find(expr => expr.nodeMarker === child)) {
+							if (child.tagName.includes('-')) {
+								if (!expr.exprs.find(expr => expr.nodeMarker === child))
 									this.parentNg.applyComponentExprs(child);
-								}
 								else
 									apply = true;
 							}
@@ -1448,16 +1448,8 @@ class ExprPath {
 
 		// Regular attribute
 		else {
-			// TODO: Cache this on ExprPath.isProp when Shell creates the props.  Have ExprPath.clone() copy .isProp
-			// Or make it a new PathType.
-			//if (this.attrName === 'disabled')
-			//	debugger;
-
-			// hasOwnProperty() checks only the object, not the parents
-			// this.attrName in node checks the node and the parents.
-			// This version checks the html element it extends from, to see if has a setter set:
-			//     Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set
-			//let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
+			// Cache this on ExprPath.isHtmlProperty when Shell creates the props.
+			// Have ExprPath.clone() copy .isHtmlProperty?
 			let isProp = this.isHtmlProperty;
 			if (isProp === undefined)
 				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
@@ -1563,9 +1555,7 @@ class ExprPath {
 
 	/**
 	 * Clear the nodeCache of this ExprPath, as well as all parent and child ExprPaths that
-	 * share the same DOM parent node.
-	 *
-	 * TODO: Is recursive clearing ever necessary? */
+	 * share the same DOM parent node. */
 	clearNodesCache() {
 		let path = this;
 
@@ -1578,9 +1568,6 @@ class ExprPath {
 			// If stuck in an infinite loop here, the problem is likely due to Template hash colisions.
 			// Which cause one path to be the descendant of itself, creating a cycle.
 		}
-
-		// Commented out on Sep 30, 2024 b/c it was making the benchmark never finish when adding 10k rows.
-		//clearChildNodeCache(this);
 	}
 
 
@@ -2470,8 +2457,9 @@ class NodeGroup {
 
 		// Instantiate a placeholder.
 		let instantiate = isPreHtmlElement || isPreIsElement;
+		let attribs, children;
 		if (instantiate)
-			el = this.instantiateComponent(el, isPreHtmlElement, props);
+			[el, attribs, children]= this.instantiateComponent(el, isPreHtmlElement, props);
 
 		// If constructor (via instantiateComponent()) didn't call render(), call it explicitly.
 		// Call render() with the same params that would've been passed to the constructor.
@@ -2480,10 +2468,16 @@ class NodeGroup {
 		if (el.render /* && (!Globals.rendered.has(el) || !instantiate)*/) {
 			//let oldHash = Globals.componentArgsHash.get(el);
 			//if (oldHash !== newHash) { //  Only if not changed.
-				let args = Util.attribsToObject(el);  // TODO: This is also done above in instantiateComponent.
-				for (let name in props || {})
-					args[Util.dashesToCamel(name)] = props[name];
-				el.render(args); // Pass new values of props to render so it can decide how it wants to respond.
+
+				// Get the attribs arguments if not created above by instantiateComponent()
+				if (!attribs) {
+					attribs = Util.attribsToObject(el);  // TODO: This is also done above in instantiateComponent.
+					for (let name in props || {})
+						attribs[Util.dashesToCamel(name)] = props[name];
+					children = el.childNodes;
+				}
+
+				el.render(attribs, children); // Pass new values of props to render so it can decide how it wants to respond.
 			//}
 		}
 
@@ -2493,13 +2487,12 @@ class NodeGroup {
 	/**
 	 * We swap the placeholder element for the real element so we can pass its dynamic attributes
 	 * to its constructor.
+	 * This does not call render()
 	 *
-	 * The logic of this function is complex and could use cleaning up.
-	 *
-	 * @param el
+	 * @param el {HTMLElement}
 	 * @param isPreHtmlElement {?boolean} True if the element's tag name ends with -solarite-placeholder
 	 * @param props {Object} Attributes with dynamic values.
-	 * @return {HTMLElement} */
+	 * @return {[HTMLElement, attribs:Object, children:Node[]]}} */
 	instantiateComponent(el, isPreHtmlElement=undefined, props=undefined) {
 		if (isPreHtmlElement === undefined)
 			isPreHtmlElement = !el.hasAttribute('_is');
@@ -2514,20 +2507,12 @@ class NodeGroup {
 		if (!Constructor)
 			throw new Error(`The custom tag name ${tagName} is not registered.`)
 
-		let attribs = {};
+		// Pass other attribs to constructor, since otherwise they're not yet set on the element,
+		// and the constructor would otherwise have no way to see them.
+		let attribs = Util.attribsToObject(el, 'solarite-placeholder');
 		for (let name in props || {})
 			attribs[Util.dashesToCamel(name)] = props[name];
 
-		// Pass other attribs to constructor, since otherwise they're not yet set on the element,
-		// and the constructor would otherwise have no way to see them.
-		// TODO: Use Util.attributesToObject() and call that before handling the props above.
-		if (el.attributes.length) {
-			for (let attrib of el.attributes) {
-				let attribName = Util.dashesToCamel(attrib.name);
-				if (!attribs.hasOwnProperty(attribName) && attribName !== 'solarite-placeholder')
-					attribs[attribName] = attrib.value;
-			}
-		}
 
 		// Create the web component.
 		// Get the children that aren't Solarite's comment placeholders.
@@ -2582,7 +2567,7 @@ class NodeGroup {
 				newEl.setAttribute(name, val);
 		}
 
-		return newEl;
+		return [newEl, attribs, children];
 	}
 
 	/**
@@ -2678,8 +2663,9 @@ class NodeGroup {
 	}
 
 	instantiateStaticComponents(staticComponents) {
+		let _;
 		for (let i in staticComponents)
-			staticComponents[i] = this.instantiateComponent(staticComponents[i]);
+			[staticComponents[i], _, _] = this.instantiateComponent(staticComponents[i]);
 	}
 
 	/**

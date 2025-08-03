@@ -22,10 +22,11 @@ let Util = {
 	 *
 	 * @param el {HTMLElement}
 	 * @return {Object} */
-	attribsToObject(el) {
+	attribsToObject(el, ignore=null) {
 		let result = {};
 		for (let attrib of el.attributes)
-			result[Util.dashesToCamel(attrib.name)] = attrib.value;
+			if (attrib.name !== ignore)
+				result[Util.dashesToCamel(attrib.name)] = attrib.value;
 		return result;
 	},
 

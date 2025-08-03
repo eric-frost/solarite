@@ -247,8 +247,9 @@ export default class NodeGroup {
 
 		// Instantiate a placeholder.
 		let instantiate = isPreHtmlElement || isPreIsElement
+		let attribs, children;
 		if (instantiate)
-			el = this.instantiateComponent(el, isPreHtmlElement, props);
+			[el, attribs, children]= this.instantiateComponent(el, isPreHtmlElement, props);
 
 		// If constructor (via instantiateComponent()) didn't call render(), call it explicitly.
 		// Call render() with the same params that would've been passed to the constructor.
@@ -257,10 +258,16 @@ export default class NodeGroup {
 		if (el.render /* && (!Globals.rendered.has(el) || !instantiate)*/) {
 			//let oldHash = Globals.componentArgsHash.get(el);
 			//if (oldHash !== newHash) { //  Only if not changed.
-				let args = Util.attribsToObject(el);  // TODO: This is also done above in instantiateComponent.
-				for (let name in props || {})
-					args[Util.dashesToCamel(name)] = props[name];
-				el.render(args); // Pass new values of props to render so it can decide how it wants to respond.
+
+				// Get the attribs arguments if not created above by instantiateComponent()
+				if (!attribs) {
+					attribs = Util.attribsToObject(el);  // TODO: This is also done above in instantiateComponent.
+					for (let name in props || {})
+						attribs[Util.dashesToCamel(name)] = props[name];
+					children = el.childNodes;
+				}
+
+				el.render(attribs, children); // Pass new values of props to render so it can decide how it wants to respond.
 			//}
 		}
 
@@ -270,13 +277,12 @@ export default class NodeGroup {
 	/**
 	 * We swap the placeholder element for the real element so we can pass its dynamic attributes
 	 * to its constructor.
+	 * This does not call render()
 	 *
-	 * The logic of this function is complex and could use cleaning up.
-	 *
-	 * @param el
+	 * @param el {HTMLElement}
 	 * @param isPreHtmlElement {?boolean} True if the element's tag name ends with -solarite-placeholder
 	 * @param props {Object} Attributes with dynamic values.
-	 * @return {HTMLElement} */
+	 * @return {[HTMLElement, attribs:Object, children:Node[]]}} */
 	instantiateComponent(el, isPreHtmlElement=undefined, props=undefined) {
 		if (isPreHtmlElement === undefined)
 			isPreHtmlElement = !el.hasAttribute('_is');
@@ -291,20 +297,12 @@ export default class NodeGroup {
 		if (!Constructor)
 			throw new Error(`The custom tag name ${tagName} is not registered.`)
 
-		let attribs = {};
+		// Pass other attribs to constructor, since otherwise they're not yet set on the element,
+		// and the constructor would otherwise have no way to see them.
+		let attribs = Util.attribsToObject(el, 'solarite-placeholder');
 		for (let name in props || {})
 			attribs[Util.dashesToCamel(name)] = props[name];
 
-		// Pass other attribs to constructor, since otherwise they're not yet set on the element,
-		// and the constructor would otherwise have no way to see them.
-		// TODO: Use Util.attributesToObject() and call that before handling the props above.
-		if (el.attributes.length) {
-			for (let attrib of el.attributes) {
-				let attribName = Util.dashesToCamel(attrib.name);
-				if (!attribs.hasOwnProperty(attribName) && attribName !== 'solarite-placeholder')
-					attribs[attribName] = attrib.value;
-			}
-		}
 
 		// Create the web component.
 		// Get the children that aren't Solarite's comment placeholders.
@@ -359,7 +357,7 @@ export default class NodeGroup {
 				newEl.setAttribute(name, val);
 		}
 
-		return newEl;
+		return [newEl, attribs, children];
 	}
 
 	/**
@@ -520,8 +518,9 @@ export default class NodeGroup {
 	}
 
 	instantiateStaticComponents(staticComponents) {
+		let _;
 		for (let i in staticComponents)
-			staticComponents[i] = this.instantiateComponent(staticComponents[i])
+			[staticComponents[i], _, _] = this.instantiateComponent(staticComponents[i])
 	}
 
 	/**

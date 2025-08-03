@@ -391,31 +391,30 @@ export default class ExprPath {
 	applyExactNodes(expr, newNodes, secondPass) {
 
 		if (expr instanceof Template) {
-
 			let ng = this.getNodeGroup(expr, true);
+
 			if (ng) {
 				let newestNodes = ng.getNodes();
 				newNodes.push(...newestNodes);
 
 				// Re-apply all expressions if there's a web component, so we can pass them to its constructor.
+				// NodeGroup.applyExprs() is used to call applyComponentExprs() on web components that have expression attributes.
+				// For those that don't, ,we call applyComponentExprs() directly here.
 				// Also see similar code at the end of this.applyNodes() which handles web components being instantiated the first time.
 				let apply = false;
 				for (let el of newestNodes) {
 					if (el instanceof HTMLElement) {
+
 						if (el.tagName.includes('-')) {
-							if (!expr.exprs.find(expr => expr.nodeMarker === el)) {
+							if (!expr.exprs.find(expr => expr.nodeMarker === el))
 								this.parentNg.applyComponentExprs(el);
-								//if (el.render)
-								//	el.render(Util.attribsToObject(el));
-							}
 							else
 								apply = true;
 						}
 						for (let child of el.querySelectorAll('*')) {
-							if (child.render && child.tagName.includes('-')) {
-								if (!expr.exprs.find(expr => expr.nodeMarker === child)) {
+							if (child.tagName.includes('-')) {
+								if (!expr.exprs.find(expr => expr.nodeMarker === child))
 									this.parentNg.applyComponentExprs(child);
-								}
 								else
 									apply = true;
 							}
@@ -656,16 +655,8 @@ export default class ExprPath {
 
 		// Regular attribute
 		else {
-			// TODO: Cache this on ExprPath.isProp when Shell creates the props.  Have ExprPath.clone() copy .isProp
-			// Or make it a new PathType.
-			//if (this.attrName === 'disabled')
-			//	debugger;
-
-			// hasOwnProperty() checks only the object, not the parents
-			// this.attrName in node checks the node and the parents.
-			// This version checks the html element it extends from, to see if has a setter set:
-			//     Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set
-			//let isProp = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), this.attrName)?.set;
+			// Cache this on ExprPath.isHtmlProperty when Shell creates the props.
+			// Have ExprPath.clone() copy .isHtmlProperty?
 			let isProp = this.isHtmlProperty;
 			if (isProp === undefined)
 				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
@@ -776,9 +767,7 @@ export default class ExprPath {
 
 	/**
 	 * Clear the nodeCache of this ExprPath, as well as all parent and child ExprPaths that
-	 * share the same DOM parent node.
-	 *
-	 * TODO: Is recursive clearing ever necessary? */
+	 * share the same DOM parent node. */
 	clearNodesCache() {
 		let path = this;
 
@@ -791,23 +780,6 @@ export default class ExprPath {
 			// If stuck in an infinite loop here, the problem is likely due to Template hash colisions.
 			// Which cause one path to be the descendant of itself, creating a cycle.
 		}
-
-		function clearChildNodeCache(path) {
-
-			// Clear cache of child ExprPaths that have the same parentNode
-			for (let ng of path.nodeGroups) {
-				if (ng) // Can be null from apply()'s push(null) call.
-					for (let path2 of ng.paths) {
-						if (path2.type === ExprPathType.Content && path2.parentNode === parentNode) {
-							path2.nodesCache = null;
-							clearChildNodeCache(path2);
-						}
-					}
-			}
-		}
-
-		// Commented out on Sep 30, 2024 b/c it was making the benchmark never finish when adding 10k rows.
-		//clearChildNodeCache(this);
 	}
 
 
