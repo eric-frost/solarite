@@ -254,10 +254,10 @@ export default class NodeGroup {
 		// Call render() with the same params that would've been passed to the constructor.
 		// We do this even if the arguments haven't changed, so we can let the child component
 		// compare the arguments and then decide for itself whether it wants to re-render.
-		if (el.render && (!Globals.rendered.has(el) || !instantiate)) {
+		if (el.render /* && (!Globals.rendered.has(el) || !instantiate)*/) {
 			//let oldHash = Globals.componentArgsHash.get(el);
 			//if (oldHash !== newHash) { //  Only if not changed.
-				let args = Util.attribsToObject(el);
+				let args = Util.attribsToObject(el);  // TODO: This is also done above in instantiateComponent.
 				for (let name in props || {})
 					args[Util.dashesToCamel(name)] = props[name];
 				el.render(args); // Pass new values of props to render so it can decide how it wants to respond.
@@ -297,6 +297,7 @@ export default class NodeGroup {
 
 		// Pass other attribs to constructor, since otherwise they're not yet set on the element,
 		// and the constructor would otherwise have no way to see them.
+		// TODO: Use Util.attributesToObject() and call that before handling the props above.
 		if (el.attributes.length) {
 			for (let attrib of el.attributes) {
 				let attribName = Util.dashesToCamel(attrib.name);

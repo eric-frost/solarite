@@ -2822,32 +2822,34 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 
 Testimony.test('Solarite.component.componentFromExpr', 'Make sure child component is instantiated and not left as -solarite-placeholder', () => {
 	let renderCount = 0;
-	class C520Child extends Solarite {
+	class C520Child extends HTMLElement {
+		constructor() {
+			super();
+		}
+
 		render() {
 			h(this)`<c-520-child>hi</c-520-child>`
 			renderCount++;
 		}
 	}
-	C520Child.define();
+	customElements.define('c-520-child', C520Child);
 
-	class C520 extends Solarite {
+	class C520 extends HTMLElement {
 		render() {
 			h(this)`<c-520>${h`<c-520-child></c-520-child>`}</c-520>`
 		}
 	}
-	C520.define();
+	customElements.define('c-520', C520);
 
 
 	let a = new C520();
+	window.debug = true;
 	a.render();
 
 	assert.eq(`<c-520><c-520-child>hi</c-520-child></c-520>`, getHtml(a));
 
 	renderCount=0;
 	a.render();
-
-
-	// See the TODO in ExprPath.applyExactNodes()
 	assert.eq(renderCount, 1);
 });
 
@@ -2893,8 +2895,6 @@ Testimony.test('Solarite.component.componentFromExpr2', () => {
 
 	renderCount=0;
 	a.render();
-
-
 	// This only works because ExprPath.applyExactNodes() calls applyExprs() if the NodeGroup has a web component.
 	assert.eq(renderCount, 1);
 

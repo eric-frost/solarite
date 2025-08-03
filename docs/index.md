@@ -98,6 +98,8 @@ Here is Solarite on Stefan Krause's famous js-framework-benchmark versus some ot
 
 ![js-framework-benchmark](docs/js-framework-benchmark.png)
 
+Note that the JS Framework Benchmark separates keyed and non-keyed frameworks.  Solarite is non-keyed according to the criteria of this benchmark but in this chart it's placed next to keyed frameworks since otherwise we can't compare it with the most popular frameworks.
+
 ## Core Concepts
 
 ### Web Components

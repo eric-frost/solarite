@@ -233,9 +233,9 @@ export default class ExprPath {
 			for (let el of newNodes) {
 				if (el instanceof HTMLElement) {
 					if (el.hasAttribute('solarite-placeholder'))
-						this.parentNg.instantiateComponent(el);
+						this.parentNg.applyComponentExprs(el);
 					for (let child of el.querySelectorAll('[solarite-placeholder]'))
-						this.parentNg.instantiateComponent(child);
+						this.parentNg.applyComponentExprs(child);
 				}
 			}
 		}
@@ -403,13 +403,21 @@ export default class ExprPath {
 				for (let el of newestNodes) {
 					if (el instanceof HTMLElement) {
 						if (el.tagName.includes('-')) {
-							apply = true;
-							break;
+							if (!expr.exprs.find(expr => expr.nodeMarker === el)) {
+								this.parentNg.applyComponentExprs(el);
+								//if (el.render)
+								//	el.render(Util.attribsToObject(el));
+							}
+							else
+								apply = true;
 						}
 						for (let child of el.querySelectorAll('*')) {
-							if (child.tagName.includes('-')) {
-								apply = true;
-								break;
+							if (child.render && child.tagName.includes('-')) {
+								if (!expr.exprs.find(expr => expr.nodeMarker === child)) {
+									this.parentNg.applyComponentExprs(child);
+								}
+								else
+									apply = true;
 							}
 						}
 					}
@@ -418,6 +426,7 @@ export default class ExprPath {
 				// This calls render() on web components that have expressions as attributes.
 				if (apply)
 					ng.applyExprs(expr.exprs);
+				
 				this.nodeGroups.push(ng);
 
 				return ng;
