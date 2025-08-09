@@ -6,8 +6,9 @@ function reset() {
 	Globals = {
 
 		/**
-		 * Used by NodeGroup.applyComponentExprs() */
-		//componentArgsHash: new WeakMap(),
+		 * Dynamic values that should be passed to a Component's constructor and render() function.
+		 * @type {Map<HTMLElement, any[]>} */
+		componentArgs: new Map(),
 
 		/**
 		 * Store which instances of Solarite have already been added to the DOM.

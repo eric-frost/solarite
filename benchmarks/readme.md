@@ -5,6 +5,9 @@ To use them, either copy them or symbolic link these folders into the frameworks
 From within the keyed folder:
 mklink /J solarite "../../../lib/solarite/benchmarks/watch"
 
+## Run a quick test
+http://solarite.loc/benchmarks/naive/?
+
 
 ## How to run the js-framework-benchmark tests
 

@@ -1,7 +1,13 @@
 import {Solarite, r} from './Solarite.min.js';
 //import {Solarite, r} from '../../src/Solarite.js';
 let debug2 = window.location.search.includes('debug');
-let benchmark = window.location.search.includes('benchmark');
+
+
+let urlParams = new URLSearchParams(window.location.search);
+let benchmark = urlParams.get('benchmark');
+if (benchmark === '')
+	benchmark = 1;
+let run = urlParams.has('run');
 
 if (debug2) {
 	window.getHtml = (item, includeComments=false) => {
@@ -85,8 +91,8 @@ class JSFrameworkBenchmark extends Solarite {
 			callback();
 			const time = performance.now() - start;
 			times.push(time);
-			console.log(`${name}: ${time.toFixed(1)}ms.`);
-			await sleep(20); // wait for render
+			console.log(`${name}: ${time.toFixed(2)}ms.`);
+			await sleep(20); // wait for render before starting next test.
 		}
 
 		// Time the creation of rows
@@ -98,21 +104,21 @@ class JSFrameworkBenchmark extends Solarite {
 				return Math.pow(arr.reduce((a, b) => (a || .1) * (b||.1), 1), 1 / arr.length);
 			};
 
-			await run('Create Rows', () => this.run());
-			await run('Replace All Rows', () => this.run());
-			await run('Partial Update', () => this.update());
-			await run('Select Row', () => this.setSelected(this.data[1]));
-			await run('Swap Rows', () => this.swapRows());
-			await run('Remove Row', () => this.remove(this.data[1].id));
-			await run('Clear Rows', () => this.clear());
-			await run('Create Many Rows', () => this.runLots());
-			await run('Append Rows', () => this.add());
-			await run('Clear Rows', () => this.clear());
+			await run('Create Rows', () => this.runBench());
+			await run('Replace All Rows', () => this.runBench());
+			await run('Partial Update', () => this.updateBench());
+			await run('Select Row', () => this.setSelectedBench(this.data[1]));
+			await run('Swap Rows', () => this.swapRowsBench());
+			await run('Remove Row', () => this.removeBench(this.data[1].id));
+			await run('Clear Rows', () => this.clearBench());
+			await run('Create Many Rows', () => this.runLotsBench());
+			await run('Append Rows', () => this.addBench());
+			await run('Clear Rows', () => this.clearBench());
 
 			// Log the geometric mean of all steps
 			const geoMean = geometricMean(times);
 			results.push(geoMean);
-			console.log(`Geometric mean: ${geoMean.toFixed(2)}ms`);
+			console.log(`*** Geometric mean: ${geoMean.toFixed(2)}ms`);
 		}
 
 		if (runs > 1) {
@@ -124,53 +130,52 @@ class JSFrameworkBenchmark extends Solarite {
 		}
 	}
 
-	run() {
+	runBench() {
 		this.data = buildData(1000);
-		let modifications = this.render()
+		this.render()
 	}
 
-	runLots() {
+	runLotsBench() {
 		this.data = buildData(10_000);
-		let modifications = this.render()
+		this.render()
 	}
 
-	add() {
+	addBench() {
 		this.data.push(...buildData(1000));
-		let modifications = this.render();
+		this.render();
 	}
 
-	update() {
+	updateBench() {
 		let len = this.data.length;
 		for (let i=0; i<len; i+=10)
 			this.data[i].label += ' !!!';
 		this.render()
 	}
 
-	swapRows() {
+	swapRowsBench() {
 		if (this.data.length > 998) {
 
 			let temp = this.data[1];
 			this.data[1] = this.data[998];
 			this.data[998] = temp;
-			var modifications = this.render()
+			this.render()
 		}
 	}
 
-	clear() {
+	clearBench() {
 		this.data = [];
-		let modifications = this.render()
+		this.render()
 	}
 
-	remove(id) {
+	removeBench(id) {
 		let index = this.data.findIndex(row=>row.id===id);
-
 		this.data.splice(index, 1);
-		let modifications = this.render();
+		this.render();
 	}
 
-	setSelected(row) {
+	setSelectedBench(row) {
 		row.selected = !row.selected;
-		let modifications = this.render();
+		this.render();
 	}
 
 	render() {
@@ -186,27 +191,27 @@ class JSFrameworkBenchmark extends Solarite {
 						<div class="row">
 							<div class="col-sm-6 smallpad">
 								<button id="run" class="btn btn-primary btn-block" type="button" 
-									onclick=${this.run}>Create 1,000 rows</button>
+									onclick=${this.runBench}>Create 1,000 rows</button>
 							</div>
 							<div class="col-sm-6 smallpad">
 								<button id="runlots" class="btn btn-primary btn-block" type="button" 
-									onclick=${this.runLots}>Create 10,000 rows</button>
+									onclick=${this.runLotsBench}>Create 10,000 rows</button>
 							</div>
 							<div class="col-sm-6 smallpad">
 								<button id="add" class="btn btn-primary btn-block" type="button" 
-									onclick=${this.add}>Append 1,000 rows</button>
+									onclick=${this.addBench}>Append 1,000 rows</button>
 							</div>
 							<div class="col-sm-6 smallpad">
 								<button id="update" class="btn btn-primary btn-block" type="button" 
-									onclick=${this.update}>Update every 10th row</button>
+									onclick=${this.updateBench}>Update every 10th row</button>
 							</div>
 							<div class="col-sm-6 smallpad">
 								<button id="clear" class="btn btn-primary btn-block" type="button" 
-									onclick=${this.clear}>Clear</button>
+									onclick=${this.clearBench}>Clear</button>
 							</div>
 							<div class="col-sm-6 smallpad">
 								<button id="swaprows" class="btn btn-primary btn-block" type="button" 
-									onclick=${this.swapRows}>Swap Rows</button>
+									onclick=${this.swapRowsBench}>Swap Rows</button>
 							</div>
 						</div>
 					</div>
@@ -217,9 +222,9 @@ class JSFrameworkBenchmark extends Solarite {
 					r`<tr class=${row.selected ? 'danger' : ''}>
 						<td class="col-md-1">${row.id}</td>
 						<td class="col-md-4">
-							<a onclick=${[this.setSelected, row]}>${row.label}</a></td>
+							<a onclick=${[this.setSelectedBench, row]}>${row.label}</a></td>
 						<td class="col-md-1">
-							<a onclick=${[this.remove, row.id]}>
+							<a onclick=${[this.removeBench, row.id]}>
 								<span class="glyphicon glyphicon-remove" aria-hidden="true"></span></a>
 						</td>
 						<td class="col-md-6"/>
@@ -236,7 +241,7 @@ let app = new JSFrameworkBenchmark();
 document.body.append(app);
 
 
-
 if (benchmark)
-	app.benchmark(1);
-
+	app.benchmark(benchmark);
+else if (run)
+	app.run();

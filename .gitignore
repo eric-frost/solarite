@@ -2,7 +2,8 @@
 /_internal
 /benchmarks/results
 /benchmarks/vanilla3
-/benchmarks/watch
+/benchmarks/watch/Solarite.min.js
+/benchmarks/naive/Solarite.min.js
 /css
 /tests/.run
 /deno.lock

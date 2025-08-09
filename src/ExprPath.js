@@ -405,7 +405,7 @@ export default class ExprPath {
 						if (el.tagName.includes('-')) {
 							if (!expr.exprs.find(expr => expr.nodeMarker === el))
 								this.parentNg.applyComponentExprs(el);
-							else
+							else // Commenting out this "else" causes render() to be called too often.
 								apply = true;
 						}
 						for (let child of el.querySelectorAll('*')) {
