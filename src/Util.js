@@ -19,8 +19,9 @@ let Util = {
 	},
 
 	/**
-	 *
+	 * Convert HTMLElement attributes to an object.
 	 * @param el {HTMLElement}
+	 * @param ignore {?string} Optionally ignore this attribute.
 	 * @return {Object} */
 	attribsToObject(el, ignore=null) {
 		let result = {};
@@ -132,7 +133,6 @@ let Util = {
 	dashesToCamel(str) {
 		return str.replace(/-([a-z])/g, g => g[1].toUpperCase());
 	},
-
 
 	/**
 	 * A generator function that recursively traverses and flattens a value.

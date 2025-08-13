@@ -401,11 +401,32 @@ Testimony.test('Solarite.expr.htmlString', () => {
 			h(this)`This text is ${h(`<b>Bold</b>`)}!`
 		}
 	}
+	A.define('r-41');
+
+	let a = new A();
+	assert.eq(getHtml(a), '<r-41>This text is <b>Bold</b>!</r-41>');
+});
+
+
+Testimony.test('Solarite.expr.htmlEncodedString', () => {
+
+	class A extends Solarite {
+		constructor() {
+			super();
+			this.render();
+		}
+
+		render() {
+			h(this)`This text is not ${`<b>Bold</b>`}!`
+		}
+	}
 	A.define('r-42');
 
 	let a = new A();
-	assert.eq(getHtml(a), '<r-42>This text is <b>Bold</b>!</r-42>');
+	console.log(getHtml(a))
+	assert.eq(getHtml(a), '<r-42>This text is not &lt;b&gt;Bold&lt;/b&gt;!</r-42>');
 });
+
 
 Testimony.test('Solarite.expr.table', () => {
 
@@ -2690,7 +2711,9 @@ Testimony.test('Solarite.component.staticAttribs', () => {
 	A511.define();
 
 	let a = new A511();
+	renderCount = 0;
 	a.render();
+	assert.eq(renderCount, 1);
 
 	assert.eq(a.outerHTML, `<a-511><div><b-511 name="User" user-id="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-511></div></a-511>`);
 
@@ -2854,9 +2877,9 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 	console.log(getHtml(a))
 	assert.eq(renderCount, 1);
 
-	// renderCount = 0;
-	// a.render();
-	// assert.eq(renderCount, 1);
+	renderCount = 0;
+	a.render();
+	assert.eq(renderCount, 1);
 });
 
 
@@ -3200,6 +3223,73 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 	table.remove();
 });
 
+
+// Written by Junie:
+Testimony.test('Solarite.component.staticChildConstructorChildrenBefore', () => {
+	let ctorChildrenCount = -1;
+	let ctorChildText = null;
+
+	class S600Child extends Solarite {
+		constructor(props, children) {
+			super();
+			ctorChildrenCount = children ? children.length : 0;
+			ctorChildText = [...(children || [])].map(n => n.textContent || '').join('');
+		}
+		render() {
+			// Preserve whatever children were passed in initially
+			h(this)`<s-600-child>${ctorChildText}</s-600-child>`
+		}
+	}
+	S600Child.define();
+
+	class S600 extends Solarite {
+		render() {
+			h(this)`<s-600><s-600-child>${'A'}</s-600-child></s-600>`
+		}
+	}
+	S600.define();
+
+	let a = new S600();
+	a.render();
+
+	// Constructor should have seen the expression-produced children
+	assert.eq(1, ctorChildrenCount);
+	assert.eq('A', ctorChildText);
+	// And the DOM should reflect the rendered output
+	assert.eq('<s-600><s-600-child>A</s-600-child></s-600>', getHtml(a));
+});
+
+// Written by Junie:
+Testimony.test('Solarite.component.staticNoExprRendersOncePerParentRender', () => {
+	let renderCount = 0;
+	class S601Child extends Solarite {
+		render() {
+			renderCount++;
+			h(this)`<s-601-child>ok</s-601-child>`
+		}
+	}
+	S601Child.define();
+
+	class S601 extends Solarite {
+		render() {
+			h(this)`<s-601><s-601-child></s-601-child></s-601>`
+		}
+	}
+	S601.define();
+
+	let a = new S601();
+	a.render();
+	assert.eq('<s-601><s-601-child>ok</s-601-child></s-601>', getHtml(a));
+
+	let prev = renderCount;
+	a.render();
+	assert.eq(prev + 1, renderCount);
+
+	// Rendering again without changes should still call child.render exactly once per parent render
+	let prev2 = renderCount;
+	a.render();
+	assert.eq(prev2 + 1, renderCount);
+});
 
 
 
@@ -4258,6 +4348,15 @@ Testimony.test('Solarite.watch.loopDeepPushPop', () => {
  * | Full            |
  * └─────────────────╯*/
 
+import DataTable2 from './DataTable2.js';
+
+Testimony.test('Solarite.full.datatable', ()=> {
+
+
+	let dt = new DataTable2();
+	document.body.append(dt);
+});
+
 Testimony.test('Solarite.full._todoList', () => {
 	class ShoppingList extends HTMLElement {
 		constructor(items=[]) {
@@ -4501,4 +4600,6 @@ Testimony.test('Solarite.full._misc', () => {
 });
 
 
-//<editor-fold desc="full">
+//</editor-fold desc="full">
+
+

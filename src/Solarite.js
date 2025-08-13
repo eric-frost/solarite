@@ -15,6 +15,13 @@ export {default as Template} from './Template.js';
 
 // Experimental:
 //--------------
+
+import Template from './Template.js';
+
+export function t(html) {
+	return new Template([html], []);
+}
+
 export {setArgs} from './getArg.js';
 
 import createSolarite from "./createSolarite.js";

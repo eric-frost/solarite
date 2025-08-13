@@ -113,7 +113,7 @@ export default class NodeGroup {
 		// Get a cached version of the parsed and instantiated html, and ExprPaths.
 
 		// If it's just a text node, skip a bunch of unnecessary steps.
-		if (!(this instanceof RootNodeGroup) && !template.exprs.length && !template.html[0].includes('<')) {
+		if (template.isText) {
 			//let doc = this.rootNg.startNode?.ownerDocument || document;
 			let textNode = document.createTextNode(template.html[0]);
 
@@ -193,7 +193,7 @@ export default class NodeGroup {
 						componentProps[attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
 					}
 
-					this.applyComponentExprs(path.nodeMarker, componentProps);
+					this.handleComponent(path.nodeMarker, componentProps, true);
 
 					// Set attributes on component.
 					for (let j=i; j<=lastComponentPathIndex; j++)
@@ -212,7 +212,7 @@ export default class NodeGroup {
 		// TODO: Only do this if we have ExprPaths within styles?
 		this.updateStyles();
 
-		// Call render() on static web components.  This makes the component.staticAttribs() test work.
+		// Call render() on static web components. This makes the component.staticAttribs() test work.
 		for (let el of this.staticComponents)
 			if (el.render)
 				el.render(Util.attribsToObject(el)); // It has no expressions.
@@ -231,49 +231,29 @@ export default class NodeGroup {
 	}
 
 	/**
-	 * Create a nested Component or call render with the new props.
-	 * @param el {Solarite:HTMLElement}
-	 * @param props {Object} The dynamic properties of a component. */
-	applyComponentExprs(el, props) {
-
-		// TODO: Does a hash of this already exist somewhere?
-		// Perhaps if Components were treated as child NodeGroups, which would need to be the child of an ExprPath,
-		// then we could re-use the hash and logic from NodeManager?
-		//let newHash = getObjectHash(props);
-
+	 * Unified path to ensure a child component is instantiated (if placeholder) and optionally rendered.
+	 * @param el {HTMLElement}
+	 * @param props {?Object}
+	 * @param doRender {boolean}
+	 * @return {HTMLElement} The (possibly replaced) element. */
+	handleComponent(el, props=null, doRender=true) {
 		let isPreHtmlElement = el.hasAttribute('solarite-placeholder');
-		let isPreIsElement = el.hasAttribute('_is')
-
-
-		// Instantiate a placeholder.
-		let instantiate = isPreHtmlElement || isPreIsElement
+		let isPreIsElement = el.hasAttribute('_is');
 		let attribs, children;
-		if (instantiate)
-			[el, attribs, children]= this.instantiateComponent(el, isPreHtmlElement, props);
-
-		// If constructor (via instantiateComponent()) didn't call render(), call it explicitly.
-		// Call render() with the same params that would've been passed to the constructor.
-		// We do this even if the arguments haven't changed, so we can let the child component
-		// compare the arguments and then decide for itself whether it wants to re-render.
-		if (el.render /* && (!Globals.rendered.has(el) || !instantiate)*/) {
-			//let oldHash = Globals.componentArgsHash.get(el);
-			//if (oldHash !== newHash) { //  Only if not changed.
-
-				// Get the attribs arguments if not created above by instantiateComponent()
-				if (!attribs) {
-					attribs = Util.attribsToObject(el);  // TODO: This is also done above in instantiateComponent.
-					for (let name in props || {})
-						attribs[Util.dashesToCamel(name)] = props[name];
-					children = el.childNodes;
-				}
-
-				el.render(attribs, children); // Pass new values of props to render so it can decide how it wants to respond.
-			//}
+		if (isPreHtmlElement || isPreIsElement)
+			[el, attribs, children] = this.instantiateComponent(el, isPreHtmlElement, props);
+		if (doRender && el.render) {
+			if (!attribs) {
+				attribs = Util.attribsToObject(el);
+				for (let name in props || {})
+					attribs[Util.dashesToCamel(name)] = props[name];
+				children = el.childNodes;
+			}
+			el.render(attribs, children);
 		}
-
-		//Globals.componentArgsHash.set(el, newHash);
+		return el;
 	}
-
+	
 	/**
 	 * We swap the placeholder element for the real element so we can pass its dynamic attributes
 	 * to its constructor.
@@ -518,9 +498,9 @@ export default class NodeGroup {
 	}
 
 	instantiateStaticComponents(staticComponents) {
-		let _;
+		// TODO: Why do we not call render() on the static component here?  The tests pass either way.
 		for (let i in staticComponents)
-			[staticComponents[i], _, _] = this.instantiateComponent(staticComponents[i])
+			staticComponents[i] = this.handleComponent(staticComponents[i], null, false);
 	}
 
 	/**
@@ -541,7 +521,7 @@ export default class NodeGroup {
 					let el = resolveNodePath(root, path);
 					Util.bindId(rootEl, el);
 				}
-				}
+			}
 
 			// styles
 			if (options?.styles !== false) {

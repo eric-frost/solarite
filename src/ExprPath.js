@@ -229,9 +229,9 @@ export default class ExprPath {
 			for (let el of newNodes) {
 				if (el instanceof HTMLElement) {
 					if (el.hasAttribute('solarite-placeholder'))
-						this.parentNg.applyComponentExprs(el);
+						this.parentNg.handleComponent(el, null, true);
 					for (let child of el.querySelectorAll('[solarite-placeholder]'))
-						this.parentNg.applyComponentExprs(child);
+						this.parentNg.handleComponent(child, null, true);
 				}
 			}
 		}
@@ -363,7 +363,9 @@ export default class ExprPath {
 			// Get the same Template for the same string each time.
 			// let template = Globals.stringTemplates[expr];
 			// if (!template) {
+
 				let template = new Template([expr], []);
+				template.isText = true;
 			//	Globals.stringTemplates[expr] = template;
 			//}
 
@@ -404,14 +406,14 @@ export default class ExprPath {
 
 						if (el.tagName.includes('-')) {
 							if (!expr.exprs.find(expr => expr.nodeMarker === el))
-								this.parentNg.applyComponentExprs(el);
-							else // Commenting out this "else" causes render() to be called too often.
+								this.parentNg.handleComponent(el, null, true);
+							else // Commenting out this "else" causes render() to be called too often, but other UI code fails if it's present.
 								apply = true;
 						}
 						for (let child of el.querySelectorAll('*')) {
 							if (child.tagName.includes('-')) {
 								if (!expr.exprs.find(expr => expr.nodeMarker === child))
-									this.parentNg.applyComponentExprs(child);
+									this.parentNg.handleComponent(child, null, true);
 								else
 									apply = true;
 							}
@@ -883,9 +885,8 @@ export default class ExprPath {
 
 				//result.applyExprs(template.exprs);
 			}
-			else {
+			else
 				return null;
-			}
 		}
 
 		// Find a close match.

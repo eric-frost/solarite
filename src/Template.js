@@ -21,6 +21,8 @@ export default class Template {
 	/** @type {NodeGroup} */
 	nodeGroup;
 
+	isText;
+
 	/**
 	 *
 	 * @param htmlStrings {string[]}

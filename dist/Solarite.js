@@ -232,8 +232,9 @@ let Util = {
 	},
 
 	/**
-	 *
+	 * Convert HTMLElement attributes to an object.
 	 * @param el {HTMLElement}
+	 * @param ignore {?string} Optionally ignore this attribute.
 	 * @return {Object} */
 	attribsToObject(el, ignore=null) {
 		let result = {};
@@ -345,7 +346,6 @@ let Util = {
 	dashesToCamel(str) {
 		return str.replace(/-([a-z])/g, g => g[1].toUpperCase());
 	},
-
 
 	/**
 	 * A generator function that recursively traverses and flattens a value.
@@ -1031,9 +1031,9 @@ class ExprPath {
 			for (let el of newNodes) {
 				if (el instanceof HTMLElement) {
 					if (el.hasAttribute('solarite-placeholder'))
-						this.parentNg.applyComponentExprs(el);
+						this.parentNg.handleComponent(el, null, true);
 					for (let child of el.querySelectorAll('[solarite-placeholder]'))
-						this.parentNg.applyComponentExprs(child);
+						this.parentNg.handleComponent(child, null, true);
 				}
 			}
 		}
@@ -1160,7 +1160,9 @@ class ExprPath {
 			// Get the same Template for the same string each time.
 			// let template = Globals.stringTemplates[expr];
 			// if (!template) {
+
 				let template = new Template([expr], []);
+				template.isText = true;
 			//	Globals.stringTemplates[expr] = template;
 			//}
 
@@ -1201,14 +1203,14 @@ class ExprPath {
 
 						if (el.tagName.includes('-')) {
 							if (!expr.exprs.find(expr => expr.nodeMarker === el))
-								this.parentNg.applyComponentExprs(el);
-							else // Commenting out this "else" causes render() to be called too often.
+								this.parentNg.handleComponent(el, null, true);
+							else // Commenting out this "else" causes render() to be called too often, but other UI code fails if it's present.
 								apply = true;
 						}
 						for (let child of el.querySelectorAll('*')) {
 							if (child.tagName.includes('-')) {
 								if (!expr.exprs.find(expr => expr.nodeMarker === child))
-									this.parentNg.applyComponentExprs(child);
+									this.parentNg.handleComponent(child, null, true);
 								else
 									apply = true;
 							}
@@ -1670,9 +1672,8 @@ class ExprPath {
 
 				//result.applyExprs(template.exprs);
 			}
-			else {
+			else
 				return null;
-			}
 		}
 
 		// Find a close match.
@@ -2324,7 +2325,7 @@ class NodeGroup {
 		// Get a cached version of the parsed and instantiated html, and ExprPaths.
 
 		// If it's just a text node, skip a bunch of unnecessary steps.
-		if (!(this instanceof RootNodeGroup) && !template.exprs.length && !template.html[0].includes('<')) {
+		if (template.isText) {
 			//let doc = this.rootNg.startNode?.ownerDocument || document;
 			let textNode = document.createTextNode(template.html[0]);
 
@@ -2403,7 +2404,7 @@ class NodeGroup {
 						componentProps[attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
 					}
 
-					this.applyComponentExprs(path.nodeMarker, componentProps);
+					this.handleComponent(path.nodeMarker, componentProps, true);
 
 					// Set attributes on component.
 					for (let j=i; j<=lastComponentPathIndex; j++)
@@ -2422,7 +2423,7 @@ class NodeGroup {
 		// TODO: Only do this if we have ExprPaths within styles?
 		this.updateStyles();
 
-		// Call render() on static web components.  This makes the component.staticAttribs() test work.
+		// Call render() on static web components. This makes the component.staticAttribs() test work.
 		for (let el of this.staticComponents)
 			if (el.render)
 				el.render(Util.attribsToObject(el)); // It has no expressions.
@@ -2439,49 +2440,29 @@ class NodeGroup {
 	}
 
 	/**
-	 * Create a nested Component or call render with the new props.
-	 * @param el {Solarite:HTMLElement}
-	 * @param props {Object} The dynamic properties of a component. */
-	applyComponentExprs(el, props) {
-
-		// TODO: Does a hash of this already exist somewhere?
-		// Perhaps if Components were treated as child NodeGroups, which would need to be the child of an ExprPath,
-		// then we could re-use the hash and logic from NodeManager?
-		//let newHash = getObjectHash(props);
-
+	 * Unified path to ensure a child component is instantiated (if placeholder) and optionally rendered.
+	 * @param el {HTMLElement}
+	 * @param props {?Object}
+	 * @param doRender {boolean}
+	 * @return {HTMLElement} The (possibly replaced) element. */
+	handleComponent(el, props=null, doRender=true) {
 		let isPreHtmlElement = el.hasAttribute('solarite-placeholder');
 		let isPreIsElement = el.hasAttribute('_is');
-
-
-		// Instantiate a placeholder.
-		let instantiate = isPreHtmlElement || isPreIsElement;
 		let attribs, children;
-		if (instantiate)
-			[el, attribs, children]= this.instantiateComponent(el, isPreHtmlElement, props);
-
-		// If constructor (via instantiateComponent()) didn't call render(), call it explicitly.
-		// Call render() with the same params that would've been passed to the constructor.
-		// We do this even if the arguments haven't changed, so we can let the child component
-		// compare the arguments and then decide for itself whether it wants to re-render.
-		if (el.render /* && (!Globals.rendered.has(el) || !instantiate)*/) {
-			//let oldHash = Globals.componentArgsHash.get(el);
-			//if (oldHash !== newHash) { //  Only if not changed.
-
-				// Get the attribs arguments if not created above by instantiateComponent()
-				if (!attribs) {
-					attribs = Util.attribsToObject(el);  // TODO: This is also done above in instantiateComponent.
-					for (let name in props || {})
-						attribs[Util.dashesToCamel(name)] = props[name];
-					children = el.childNodes;
-				}
-
-				el.render(attribs, children); // Pass new values of props to render so it can decide how it wants to respond.
-			//}
+		if (isPreHtmlElement || isPreIsElement)
+			[el, attribs, children] = this.instantiateComponent(el, isPreHtmlElement, props);
+		if (doRender && el.render) {
+			if (!attribs) {
+				attribs = Util.attribsToObject(el);
+				for (let name in props || {})
+					attribs[Util.dashesToCamel(name)] = props[name];
+				children = el.childNodes;
+			}
+			el.render(attribs, children);
 		}
-
-		//Globals.componentArgsHash.set(el, newHash);
+		return el;
 	}
-
+	
 	/**
 	 * We swap the placeholder element for the real element so we can pass its dynamic attributes
 	 * to its constructor.
@@ -2661,9 +2642,9 @@ class NodeGroup {
 	}
 
 	instantiateStaticComponents(staticComponents) {
-		let _;
+		// TODO: Why do we not call render() on the static component here?  The tests pass either way.
 		for (let i in staticComponents)
-			[staticComponents[i], _, _] = this.instantiateComponent(staticComponents[i]);
+			staticComponents[i] = this.handleComponent(staticComponents[i], null, false);
 	}
 
 	/**
@@ -2684,7 +2665,7 @@ class NodeGroup {
 					let el = resolveNodePath(root, path);
 					Util.bindId(rootEl, el);
 				}
-				}
+			}
 
 			// styles
 			if (options?.styles !== false) {
@@ -2882,6 +2863,8 @@ class Template {
 
 	/** @type {NodeGroup} */
 	nodeGroup;
+
+	isText;
 
 	/**
 	 *
@@ -3460,6 +3443,10 @@ let getName = 'getName';
  * https://vorticode.github.io/solarite/
  */
 
+function t(html) {
+	return new Template([html], []);
+}
+
 /**
  * TODO: The Proxy and the multiple base classes mess up 'instanceof Solarite'
  * @type {Node|Class<HTMLElement>|function(tagName:string):Node|Class<HTMLElement>} */
@@ -3472,4 +3459,4 @@ const Solarite = new Proxy(createSolarite(), {
 //export {default as watch, renderWatched} from './watch.js'; // unfinished
 
 export default h;
-export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, h, h as r, setArgs };
+export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, t };
