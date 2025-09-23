@@ -2382,10 +2382,10 @@ class Shell {
 	 * Get the shell for the html strings.
 	 * @param htmlStrings {string[]} Typically comes from a Template.
 	 * @returns {Shell} */
-	static get(htmlStrings) {
+	static get(htmlStrings, isRoot) {
 		let result = Globals$1.shells.get(htmlStrings);
 		if (!result) {
-			result = new Shell(htmlStrings);
+			result = new Shell(htmlStrings, isRoot);
 			Globals$1.shells.set(htmlStrings, result); // cache
 		}
 
@@ -2525,7 +2525,8 @@ class NodeGroup {
 			return [];
 		}
 		else {
-			let shell = Shell.get(template.html);
+			// TODO: We need to make it not subtitute solarite-placeholder when we're a RootNodeGroup.
+			let shell = Shell.get(template.html, this instanceof RootNodeGroup);
 			let fragment = shell.fragment.cloneNode(true);
 
 			if (fragment instanceof DocumentFragment) {
@@ -2971,11 +2972,9 @@ class RootNodeGroup extends NodeGroup {
 	exprsToRender = new Map();
 
 	/**
-	 *
 	 * @param template
 	 * @param el
-	 * @param options {?object}
-	 */
+	 * @param options {?object} */
 	constructor(template, el, options) {
 		super(template);
 
@@ -3055,7 +3054,8 @@ class RootNodeGroup extends NodeGroup {
 
 				this.startNode = el;
 				this.endNode = el;
-			} else {
+			}
+			else {
 				let singleEl = getSingleEl(fragment);
 				this.root = singleEl || fragment; // We return the whole fragment when calling h() with a collection of nodes.
 
@@ -3163,6 +3163,7 @@ class Template {
 
 	/**
 	 * Render the main template, which may indirectly call renderTemplate() to create children.
+	 * TODO: This doesn't replace solarite-placeholders when rendering standalone.
 	 * @param el {HTMLElement}
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
@@ -3174,8 +3175,13 @@ class Template {
 		// Rendering a standalone element.
 		// TODO: figure out when to not use RootNodeGroup
 		if (standalone) {
-			ng = new RootNodeGroup(this, null, options);
+			ng = new RootNodeGroup(this, null, options); // calls applyExprs
 			el = ng.getRootNode();
+			//if (el.tagName.includes('-')) {
+			//
+			//}
+
+
 			Globals$1.nodeGroups.set(el, ng); // Why was this commented out?
 			firstTime = true;
 		}
@@ -3190,19 +3196,21 @@ class Template {
 			// This can happen if we try manually rendering one template to a NodeGroup that was created expecting a different template.
 			// These don't always have the same length, for example if one attribute has multiple expressions.
 			if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
-				throw new Error(`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length} \${value} placeholders can't accomodate a Template with ${this.exprs.length} values.`);		}
+				throw new Error(`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length
+					} \${value} placeholders can't accomodate a Template with ${this.exprs.length} values.`);
+		}
 
 		// Creating the root nodegroup also renders it.
 		// If we didn't just create it, we need to render it.
 		if (!firstTime) {
 			if (this.html?.length === 1 && !this.html[0])
 				el.innerHTML = ''; // Fast path for empty component.
-			else {
+			else
 				ng.applyExprs(this.exprs);
-			}
 		}
 
-		ng.exprsToRender = new Map();
+		if (ng.exprsToRender.size) // only used for watches.
+			ng.exprsToRender = new Map();
 		return el;
 	}
 
@@ -3256,18 +3264,24 @@ class Template {
  * 4. event binding
  * 5. TODO:  list more
  *
+ * General rule:
+ * If h() is a function with null or an HTMLElement as its first argument create a Node.
+ * Otherwise create a template
+ *
  * Currently supported:
- * 1. h(el, options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
- * 2. h(el, template, ?options)        // Render the Template created by #1 to element.
  *
- * 3. h`<b>Hello</b> ${'World'}!`      // Create Template that can later be used to create nodes.
+ * Create Tempataes
+ * 1. h`<b>Hello</b> ${'World'}!`      // Create Template that can later be used to create nodes.
+ * 2. h('<b>Hello</b><u>Goodbye</u>'); // Create Template from string, that can later be used to create nodes.
  *
- * 4. h('Hello');                      // Create single text node.
- * 5. h('<b>Hello</b>');               // Create single HTMLElement
- * 6. h('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
- * 7. h()`Hello<b>${'World'}!</b>`     // Same as 4-6, but evaluates the string as a Solarite template, which
- *                                     // includes properly handling nested components and r`` sub-expressions.
- * 8. h(template)                      // Render Template created by #1.
+ * Add children to an element.
+ * 3. h(el, h`<b>${'Hi'}</b>`, ?options)
+ * 4. h(el, ?options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
+ *
+ * Create top-level element
+ * 5. h(null, `<b>${'Hi'}</b>`, ?options) // Create HTMLElement or DocumentFragment if more than one root node.
+ * 6. h(null, h`<b>${'Hi'}</b>`, ?options) // Create HTMLElement or DocumentFragment if more than one root node.
+ * 7. h()`Hello<b>${'World'}!</b>`
  *
  * 9. h({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
  * 10. h(string, object, ...)          // JSX TODO
@@ -3276,21 +3290,47 @@ class Template {
  * @return {Node|HTMLElement|Template} */
 function h(htmlStrings=undefined, ...exprs) {
 
-	if (htmlStrings === undefined && !exprs.length && arguments.length)
+	if (arguments[0] === undefined && !exprs.length && arguments.length)
 		throw new Error('h() cannot be called with undefined.');
 
-	// TODO: Make this a more flat if/else and call other functions for the logic.
-	if (htmlStrings instanceof Node) {
-		let parent = htmlStrings, template = exprs[0];
+	// 1. Tagged template
+	if (Array.isArray(htmlStrings)) {
+		return new Template(htmlStrings, exprs);
+	}
 
-		// 1
-		if (!(exprs[0] instanceof Template)) {
+	// 2. String to template.
+	else if (typeof arguments[0] === 'string' || arguments[0] instanceof String) {
+		let html = arguments[0];
+
+		// If it starts with whitespace, trim both ends.
+		// TODO: Also trim if it ends with whitespace?
+		if (html.match(/^\s^</))
+			html = html.trim();
+
+		return new Template([html], []);
+	}
+
+	else if (arguments[0] instanceof HTMLElement || arguments[0] instanceof DocumentFragment) {
+
+		// 3. Render template to element.
+		if (arguments[1] instanceof Template) {
+
+			/** @type Template */
+			let template = arguments[1];
+			let parent = arguments[0];
+			let options = arguments[2]; // deprecated?
+			template.render(parent, options);
+		}
+
+		// 4. Render tagged template to element
+		else {
+			let parent = arguments[0], options = arguments[1];
+
+			// Remove shadowroot.  TODO: This could mess up paths?
 			if (parent.shadowRoot)
-				parent.innerHTML = ''; // Remove shadowroot.  TODO: This could mess up paths?
+				parent.innerHTML = '';
 
-			let options = exprs[0];
-
-			// Return a tagged template function that applies the tagged themplate to parent.
+			// Return a tagged template function that applies the tagged template to parent.
 			let taggedTemplate = (htmlStrings, ...exprs) => {
 				Globals$1.rendered.add(parent);
 				let template = new Template(htmlStrings, exprs);
@@ -3298,24 +3338,84 @@ function h(htmlStrings=undefined, ...exprs) {
 			};
 			return taggedTemplate;
 		}
+	}
 
-		// 2. Render template created by #4 to element.
-		else { // instanceof Template
-			let options = exprs[1];
-			template.render(parent, options);
+	else if ((arguments[0] === null || arguments[0] === undefined)) {
 
-			// Append on the first go.
-			if (!parent.childNodes.length && this) {
-				// TODO: Is this ever executed?
-				debugger;
-				parent.append(this.rootNg.getParentNode());
+		// 5.
+		if (typeof arguments[1] === 'string') {
+
+			// We create a new one each time because otherwise
+			// the returned fragment will have its content replaced by a subsequent call.
+			let templateEl = document.createElement('template');
+			templateEl.innerHTML = arguments[1];
+
+			// 5a. Return Node if there's one child.
+			let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);
+			if (relevantNodes.length === 1)
+				return relevantNodes[0];
+
+			// 5b. Otherwise return DocumentFragment.
+			return templateEl.content;
+		}
+		// 6.
+		else if (arguments[1] instanceof Template) {
+			return arguments[1].render() // Doesn't replace solarite-placeholder.
+		}
+
+		// 7. Create a static element
+		else {
+			return (htmlStrings, ...exprs) => {
+				let template = h(htmlStrings, ...exprs);
+				return h(null, template); // Go to path 6.
 			}
 		}
 	}
 
-	// 3. Path if used as a template tag.
-	else if (Array.isArray(htmlStrings)) {
-		return new Template(htmlStrings, exprs);
+	// 9. Create dynamic element with render() function.
+	// TODO: This path doesn't handle embeds like data-id="..."
+	else if (typeof htmlStrings === 'object') {
+		let obj = htmlStrings;
+
+		if (obj.constructor.name !== 'Object')
+			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
+
+
+		// Special rebound render path, called by normal path.
+		// Intercepts the main r`...` function call inside render().
+		if (Globals$1.objToEl.has(obj)) {
+			return function(...args) {
+				let template = h(...args);
+				let el = template.render();
+				Globals$1.objToEl.set(obj, el);
+			}.bind(obj);
+		}
+
+		// Normal path
+		else {
+			Globals$1.objToEl.set(obj, null);
+			obj[renderF](); // Calls the Special rebound render path above, when the render function calls h(this)
+			let el = Globals$1.objToEl.get(obj);
+			Globals$1.objToEl.delete(obj);
+
+			for (let name in obj)
+				if (typeof obj[name] === 'function')
+					el[name] = obj[name].bind(el);  // Make the "this" of functions be el.
+					// TODO: But this doesn't work for passing an object with functions as a constructor arg via an attribute:
+				// <my-element arg=${{myFunc() { return this }}}
+				else
+					el[name] = obj[name];
+
+			// Bind id's
+			// This doesn't work for id's referenced by attributes.
+			// for (let idEl of el.querySelectorAll('[id],[data-id]')) {
+			// 	Util.bindId(el, idEl);
+			// 	Util.bindId(obj, idEl);
+			// }
+			// TODO: Bind styles
+
+			return el;
+		}
 	}
 
 	else if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {
@@ -3333,87 +3433,10 @@ function h(htmlStrings=undefined, ...exprs) {
 			assert(templateHtmlStrings.length === templateExprs.length+1);
 			return new Template(templateHtmlStrings, templateExprs);
 		}
-
-
-		// If it starts with a string, trim both ends.
-		// TODO: Also trim if it ends with whitespace?
-		if (htmlStrings.match(/^\s^</))
-			htmlStrings = htmlStrings.trim();
-
-		// We create a new one each time because otherwise
-		// the returned fragment will have its content replaced by a subsequent call.
-		let templateEl = document.createElement('template');
-		templateEl.innerHTML = htmlStrings;
-
-		// 4+5. Return Node if there's one child.
-		let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);
-		if (relevantNodes.length === 1)
-			return relevantNodes[0];
-
-		// 6. Otherwise return DocumentFragment.
-		return templateEl.content;
-	}
-
-	// 7. Create a static element
-	else if (htmlStrings === undefined) {
-		return (htmlStrings, ...exprs) => {
-			//Globals.rendered.add(parent)
-			let template = h(htmlStrings, ...exprs);
-			return template.render();
-		}
-	}
-
-	// 8.
-	else if (htmlStrings instanceof Template) {
-		return htmlStrings.render();
 	}
 
 
-	// 9. Create dynamic element with render() function.
-	// TODO: This path doesn't handle embeds like data-id="..."
-	else if (typeof htmlStrings === 'object') {
-		let obj = htmlStrings;
 
-		if (obj.constructor.name !== 'Object') 
-			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
-
-
-		// Special rebound render path, called by normal path.
-		// Intercepts the main r`...` function call inside render().
-		if (Globals$1.objToEl.has(obj)) {
-			return function(...args) {
-			   let template = h(...args);
-			   let el = template.render();
-				Globals$1.objToEl.set(obj, el);
-			}.bind(obj);
-		}
-
-		// Normal path
-		else {
-			Globals$1.objToEl.set(obj, null);
-			obj[renderF](); // Calls the Special rebound render path above, when the render function calls h(this)
-			let el = Globals$1.objToEl.get(obj);
-			Globals$1.objToEl.delete(obj);
-
-			for (let name in obj)
-				if (typeof obj[name] === 'function')
-					el[name] = obj[name].bind(el);  // Make the "this" of functions be el.
-					// TODO: But this doesn't work for passing an object with functions as a constructor arg via an attribute:
-					// <my-element arg=${{myFunc() { return this }}}
-				else
-					el[name] = obj[name];
-
-			// Bind id's
-			// This doesn't work for id's referenced by attributes.
-			// for (let idEl of el.querySelectorAll('[id],[data-id]')) {
-			// 	Util.bindId(el, idEl);
-			// 	Util.bindId(obj, idEl);
-			// }
-			// TODO: Bind styles
-
-			return el;
-		}
-	}
 
 	else
 		throw new Error('Unsupported arguments.')

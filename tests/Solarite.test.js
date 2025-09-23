@@ -264,20 +264,21 @@ Testimony.test('Solarite.basic.empty', () => {
 
 Testimony.test('Solarite.basic.empty2', () => {
 
-    class R11 extends Solarite {
-        constructor(args) {
-            super();
-            //	console.log(args)
-        }
+	class R11 extends Solarite {
+		constructor(args) {
+			super();
+			//	console.log(args)
+		}
 
-        render() {
-            h(this)`<r-11></r-11>`
-        }
-    }
-    R11.define();
+		render() {
+			h(this)`<r-11></r-11>`
+		}
+	}
+	R11.define();
 
-    let a = h(`<r-11 title="Hello"></r-11>`);
-    assert.eq(a.outerHTML, `<r-11 title="Hello"></r-11>`);
+	let a = h(null, `<r-11 title="Hello"></r-11>`);
+	console.log(a)
+	assert.eq(a.outerHTML, `<r-11 title="Hello"></r-11>`);
 });
 
 
@@ -2062,7 +2063,7 @@ Testimony.test('Solarite.attrib.pseudoRoot2', 'Static attribute overrides.', () 
 	}
 	R472.define();
 
-	let b = h(`<r-472 style="color: green"></r-472>`);
+	let b = h()`<r-472 style="color: green"></r-472>`;
 	document.body.append(b);
 	assert.eq(b.outerHTML, `<r-472 style="color: green" title="Hello">World</r-472>`);
 	b.remove();
@@ -2080,7 +2081,7 @@ Testimony.test('Solarite.attrib.pseudoRoot3', 'Dynamic attribute overrides.', ()
 	R473.define();
 
 
-	let a = h(`<r-473 title="Goodbye"></r-473>`);
+	let a = h()`<r-473 title="Goodbye"></r-473>`;
 	document.body.append(a);
 
 	// Dynamic attributes take precedence

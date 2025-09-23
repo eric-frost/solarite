@@ -121,7 +121,8 @@ export default class NodeGroup {
 			return [];
 		}
 		else {
-			let shell = Shell.get(template.html);
+			// TODO: We need to make it not subtitute solarite-placeholder when we're a RootNodeGroup.
+			let shell = Shell.get(template.html, this instanceof RootNodeGroup);
 			let fragment = shell.fragment.cloneNode(true);
 
 			if (fragment instanceof DocumentFragment) {
@@ -567,11 +568,9 @@ export class RootNodeGroup extends NodeGroup {
 	exprsToRender = new Map();
 
 	/**
-	 *
 	 * @param template
 	 * @param el
-	 * @param options {?object}
-	 */
+	 * @param options {?object} */
 	constructor(template, el, options) {
 		super(template);
 
@@ -651,7 +650,8 @@ export class RootNodeGroup extends NodeGroup {
 
 				this.startNode = el;
 				this.endNode = el;
-			} else {
+			}
+			else {
 				let singleEl = getSingleEl(fragment);
 				this.root = singleEl || fragment; // We return the whole fragment when calling h() with a collection of nodes.
 

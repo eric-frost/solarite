@@ -300,10 +300,10 @@ export default class Shell {
 	 * Get the shell for the html strings.
 	 * @param htmlStrings {string[]} Typically comes from a Template.
 	 * @returns {Shell} */
-	static get(htmlStrings) {
+	static get(htmlStrings, isRoot) {
 		let result = Globals.shells.get(htmlStrings);
 		if (!result) {
-			result = new Shell(htmlStrings);
+			result = new Shell(htmlStrings, isRoot);
 			Globals.shells.set(htmlStrings, result); // cache
 		}
 
