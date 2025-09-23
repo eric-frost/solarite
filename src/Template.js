@@ -60,7 +60,6 @@ export default class Template {
 
 	/**
 	 * Render the main template, which may indirectly call renderTemplate() to create children.
-	 * TODO: This doesn't replace solarite-placeholders when rendering standalone.
 	 * @param el {HTMLElement}
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
@@ -72,13 +71,8 @@ export default class Template {
 		// Rendering a standalone element.
 		// TODO: figure out when to not use RootNodeGroup
 		if (standalone) {
-			ng = new RootNodeGroup(this, null, options); // calls applyExprs
+			ng = new RootNodeGroup(this, null, options);
 			el = ng.getRootNode();
-			//if (el.tagName.includes('-')) {
-			//
-			//}
-
-
 			Globals.nodeGroups.set(el, ng); // Why was this commented out?
 			firstTime = true;
 		}
@@ -93,21 +87,19 @@ export default class Template {
 			// This can happen if we try manually rendering one template to a NodeGroup that was created expecting a different template.
 			// These don't always have the same length, for example if one attribute has multiple expressions.
 			if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
-				throw new Error(`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length
-					} \${value} placeholders can't accomodate a Template with ${this.exprs.length} values.`);
-		}
+				throw new Error(`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length} \${value} placeholders can't accomodate a Template with ${this.exprs.length} values.`);		}
 
 		// Creating the root nodegroup also renders it.
 		// If we didn't just create it, we need to render it.
 		if (!firstTime) {
 			if (this.html?.length === 1 && !this.html[0])
 				el.innerHTML = ''; // Fast path for empty component.
-			else
+			else {
 				ng.applyExprs(this.exprs);
+			}
 		}
 
-		if (ng.exprsToRender.size) // only used for watches.
-			ng.exprsToRender = new Map();
+		ng.exprsToRender = new Map();
 		return el;
 	}
 

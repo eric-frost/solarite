@@ -276,8 +276,7 @@ Testimony.test('Solarite.basic.empty2', () => {
 	}
 	R11.define();
 
-	let a = h(null, `<r-11 title="Hello"></r-11>`);
-	console.log(a)
+	let a = h(`<r-11 title="Hello"></r-11>`);
 	assert.eq(a.outerHTML, `<r-11 title="Hello"></r-11>`);
 });
 
@@ -1290,7 +1289,7 @@ Testimony.test('Solarite.loop.nestedConditional', () => {
 		render() {
 			h(this)`${this.pets.map(pet =>
 				h`${this.fruits.map(fruit =>
-					isGoodBoy 
+					isGoodBoy
 						? h`<p>${pet} prepares ${fruit}</p>`
 						: h`<p>${pet} eats ${fruit}</p>`
 				)}`
@@ -2063,7 +2062,7 @@ Testimony.test('Solarite.attrib.pseudoRoot2', 'Static attribute overrides.', () 
 	}
 	R472.define();
 
-	let b = h()`<r-472 style="color: green"></r-472>`;
+	let b = h(`<r-472 style="color: green"></r-472>`);
 	document.body.append(b);
 	assert.eq(b.outerHTML, `<r-472 style="color: green" title="Hello">World</r-472>`);
 	b.remove();
@@ -2081,7 +2080,7 @@ Testimony.test('Solarite.attrib.pseudoRoot3', 'Dynamic attribute overrides.', ()
 	R473.define();
 
 
-	let a = h()`<r-473 title="Goodbye"></r-473>`;
+	let a = h(`<r-473 title="Goodbye"></r-473>`);
 	document.body.append(a);
 
 	// Dynamic attributes take precedence
@@ -2954,7 +2953,7 @@ Testimony.test('Solarite.component.nested', () => {
 	assert(!(a.firstChild instanceof B518))
 
 	a.render();
-   assert(a.firstChild instanceof B518);
+	assert(a.firstChild instanceof B518);
 	assert.eq(getHtml(a), `<a-518><b-518><div>B</div></b-518></a-518>`);
 })
 
@@ -3134,8 +3133,8 @@ Testimony.test('Solarite.component.nestedTrLoop', () => {
 	document.body.append(table)
 	assert.eq(getHtml(table),
 		`<my-table><table><tbody>`+
-			`<tr><td>John</td><td>john@example.com</td></tr>` +
-			`<tr><td>Fred</td><td>fred@example.com</td></tr>` +
+		`<tr><td>John</td><td>john@example.com</td></tr>` +
+		`<tr><td>Fred</td><td>fred@example.com</td></tr>` +
 		`</tbody></table></my-table>`)
 
 
@@ -3144,8 +3143,8 @@ Testimony.test('Solarite.component.nestedTrLoop', () => {
 	table.render();
 	assert.eq(getHtml(table),
 		`<my-table><table><tbody>` +
-			`<tr><td>John</td><td>john@example.com</td></tr>` +
-			`<tr><td>Barry</td><td>fred@example.com</td></tr>` +
+		`<tr><td>John</td><td>john@example.com</td></tr>` +
+		`<tr><td>Barry</td><td>fred@example.com</td></tr>` +
 		`</tbody></table></my-table>`)
 
 	table.remove();
@@ -4387,9 +4386,9 @@ Testimony.test('Solarite.full._todoList', () => {
 					<div>
 						<input placeholder="Item" value=${item.name} 
 							oninput=${e => { // two-way binding
-								item.name = e.target.value;
-								this.render()
-							}}>
+				item.name = e.target.value;
+				this.render()
+			}}>
 					</div>		   
 				`)}
 			</shopping-list>`
@@ -4469,7 +4468,7 @@ Testimony.test('Solarite.full._isc2', () => {
 						${h`<span>${item.name}</span>`}
 						${h`<span>${item.qty}</span>`}
 					</div>`
-				)}
+			)}
 
 			</misc-2>`;
 		}
@@ -4546,7 +4545,7 @@ Testimony.test('Solarite.full._misc', () => {
 
 								${option[item.id + '_showOther']  && h`<input>`}							
 							</div>`
-						)}
+			)}
 					</p>
 					<br><br>
 				`)}
