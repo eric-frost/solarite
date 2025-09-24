@@ -4348,46 +4348,85 @@ Testimony.test('Solarite.watch.loopDeepPushPop', () => {
  * | Full            |
  * └─────────────────╯*/
 
-import DataTable2 from './DataTable2.js';
+Testimony.test('Solarite.full._tree', ()=> {
 
-Testimony.test('Solarite.full.datatable', ()=> {
-	let dt = new DataTable2();
+	class TreeItem extends HTMLElement {
+		treeData;
+		renderContent;
+
+		constructor(fields) {
+			super();
+			for (let name in fields)
+				if (name in this)
+					this[name] = fields[name];
+			this.render();
+		}
+		render() {
+			h(this)`
+			<tree-item>
+				<div data-id="childItems">
+					${(this.treeData.children || []).map(child => h`
+						<tree-item tree-data=${child} render-content=${this.renderContent}></tree-item>
+					`)}
+				</div>
+			</tree-item>`
+		}
+	}
+	customElements.define('tree-item', TreeItem);
+
+
+	class TreeParent extends HTMLElement {
+		render() {
+			// Tree two levels deep
+			let treeData = {
+				children: [{}]
+			};
+
+			h(this)`
+			<tree-parent class="'dt-root">	
+				<tree-item data-id="root" tree-data=${treeData}></tree-item>
+			</tree-parent>`
+		}
+	}
+
+	customElements.define('tree-parent', TreeParent);
+
+
+	let dt = new TreeParent();
+	dt.render();
 	document.body.append(dt);
 });
 
 
-Testimony.test('Solarite.full.importForm', ()=> {
+Testimony.test('Solarite.full.reRender', `Render a child web component multiple times`, ()=> {
 
-
-	class ImportData2 extends HTMLElement {
-
-		constructor() {
-			super();
-			this.render();
-			this.render();
-		//	this.render();
-		}
-
-		columns = [1, 2, 3];
-
-		render() {
-			h(this)`
-		<import-data-2 style="background: white">
-			${this.columns.map(col => h`
-				<a-1></a-1>`
-			)}						
-		</import-data-2>`
-		}
+	class ReRenderChild extends HTMLElement {
 
 	}
-	customElements.define('import-data-2', ImportData2);
+	customElements.define('re-render-child', ReRenderChild);
 
 
-	class A extends HTMLElement {}
-	customElements.define('a-1', A);
+	class ReRender extends HTMLElement {
+		constructor() {
+			super();
+			this.columns = [1, 2, 3];
+			this.render();
+			this.render();
+			this.render();
+		}
+		render() {
+			h(this)`
+			<re-render>
+				${this.columns.map(col => h`
+					<re-render-child></re-render-child>`
+				)}						
+			</re-render>`
+		}
+	}
+	customElements.define('re-render', ReRender);
 
 
-	let form = new ImportData2();
+	let form = new ReRender();
 	form.render();
 	document.body.append(form);
 
