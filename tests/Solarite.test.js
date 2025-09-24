@@ -4351,11 +4351,47 @@ Testimony.test('Solarite.watch.loopDeepPushPop', () => {
 import DataTable2 from './DataTable2.js';
 
 Testimony.test('Solarite.full.datatable', ()=> {
-
-
 	let dt = new DataTable2();
 	document.body.append(dt);
 });
+
+
+Testimony.test('Solarite.full.importForm', ()=> {
+
+
+	class ImportData2 extends HTMLElement {
+
+		constructor() {
+			super();
+			this.render();
+			this.render();
+		//	this.render();
+		}
+
+		columns = [1, 2, 3];
+
+		render() {
+			h(this)`
+		<import-data-2 style="background: white">
+			${this.columns.map(col => h`
+				<a-1></a-1>`
+			)}						
+		</import-data-2>`
+		}
+
+	}
+	customElements.define('import-data-2', ImportData2);
+
+
+	class A extends HTMLElement {}
+	customElements.define('a-1', A);
+
+
+	let form = new ImportData2();
+	form.render();
+	document.body.append(form);
+
+})
 
 Testimony.test('Solarite.full._todoList', () => {
 	class ShoppingList extends HTMLElement {

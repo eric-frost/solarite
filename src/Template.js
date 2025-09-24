@@ -1,7 +1,7 @@
 import {assert} from "./assert.js";
 import {getObjectHash, getObjectId} from "./hash.js";
 import Globals from "./Globals.js";
-import {RootNodeGroup} from "./NodeGroup.js";
+import RootNodeGroup from "./RootNodeGroup.js";
 
 /**
  * The html strings and evaluated expressions from an html tagged template.
@@ -17,9 +17,6 @@ export default class Template {
 
 	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
-
-	/** @type {NodeGroup} */
-	nodeGroup;
 
 	isText;
 

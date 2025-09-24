@@ -2269,6 +2269,9 @@ class NodeGroup {
 
 	staticComponents = [];
 
+	/** @type {Template} */
+	template;
+
 
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
@@ -2308,30 +2311,24 @@ class NodeGroup {
 	 * @param closeKey {?string}
 	 * @returns {[DocumentFragment, Shell]} */
 	init(template, parentPath=null, exactKey=null, closeKey=null) {
-		this.exactKey = exactKey || template.getExactKey();
-		this.closeKey = closeKey || template.getCloseKey();
-
 		this.parentPath = parentPath;
 		this.rootNg = parentPath?.parentNg?.rootNg || this;
-
+		this.template = template;
+		this.exactKey = exactKey || template.getExactKey();
+		this.closeKey = closeKey || template.getCloseKey();
 		
 
-		/** @type {Template} */
-		this.template = template;
 
-		// new!  Is this needed?
-		template.nodeGroup = this;
-
-		// Get a cached version of the parsed and instantiated html, and ExprPaths.
 
 		// If it's just a text node, skip a bunch of unnecessary steps.
 		if (template.isText) {
-			//let doc = this.rootNg.startNode?.ownerDocument || document;
-			let textNode = document.createTextNode(template.html[0]);
-
+			let doc = this.rootNg.startNode?.ownerDocument || document;
+			let textNode = doc.createTextNode(template.html[0]);
 			this.startNode = this.endNode = textNode;
 			return [];
 		}
+
+		// Get a cached version of the parsed and instantiated html, and ExprPaths:
 		else {
 			let shell = Shell.get(template.html);
 			let fragment = shell.fragment.cloneNode(true);
@@ -2341,9 +2338,9 @@ class NodeGroup {
 				this.startNode = childNodes[0];
 				this.endNode = childNodes[childNodes.length - 1];
 			}
-			else {
+			else
 				this.startNode = this.endNode = fragment;
-			}
+
 			return [fragment, shell];
 		}
 	}
@@ -2466,6 +2463,7 @@ class NodeGroup {
 	/**
 	 * We swap the placeholder element for the real element so we can pass its dynamic attributes
 	 * to its constructor.
+	 * This is only called by handleComponent()
 	 * This does not call render()
 	 *
 	 * @param el {HTMLElement}
@@ -2697,7 +2695,6 @@ class NodeGroup {
 	}
 }
 
-
 class RootNodeGroup extends NodeGroup {
 
 	/**
@@ -2860,9 +2857,6 @@ class Template {
 
 	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
-
-	/** @type {NodeGroup} */
-	nodeGroup;
 
 	isText;
 
