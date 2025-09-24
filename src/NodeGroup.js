@@ -171,11 +171,11 @@ export default class NodeGroup {
 			// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
 			// 2. Otherwise send them to its render function.
 			// Components with no expressions as attributes are instead activated in activateEmbeds().
-			if (path.nodeMarker !== this.rootNg.root && path.isComponent()) {
+			if (path.nodeMarker !== this.rootNg.root && path.isComponent) {
 
-				if (!nextPath || !nextPath.isComponent() || nextPath.nodeMarker !== path.nodeMarker)
+				if (!nextPath || !nextPath.isComponent || nextPath.nodeMarker !== path.nodeMarker)
 					lastComponentPathIndex = i;
-				let isFirstComponentPath = !prevPath || !prevPath.isComponent() || prevPath.nodeMarker !== path.nodeMarker;
+				let isFirstComponentPath = !prevPath || !prevPath.isComponent || prevPath.nodeMarker !== path.nodeMarker;
 
 				if (isFirstComponentPath) {
 

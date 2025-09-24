@@ -748,6 +748,7 @@ export default class ExprPath {
 			nodeBefore = childNodes[this.nodeBeforeIndex];
 
 		let result = new ExprPath(nodeBefore, nodeMarker, this.type, this.attrName, this.attrValue);
+		result.isComponent = this.isComponent;
 
 		//#IFDEV
 		result.nodeMarker.exprPath = result;
@@ -815,7 +816,7 @@ export default class ExprPath {
 		// 	result2.push(...ng.getNodes())
 		// return result2;
 
-		if (this.type === ExprPathType.AttribValue || this.type === ExprPathType.AttribMultiple || this.type === ExprPathType.ComponentAttribValue) {
+		if (this.type === ExprPathType.AttribValue || this.type === ExprPathType.AttribMultiple) {
 			return [this.nodeMarker];
 		}
 
@@ -913,17 +914,6 @@ export default class ExprPath {
 
 		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
 		return result;
-	}
-
-	/**
-	 * Is the path either:
-	 * 1.  A component attribute value.
-	 * 2.  Or an ExprPathType.Event attribute on a component.
-	 * @return {boolean} */
-	isComponent() {
-		// Events won't have type===Component.
-		// TODO: Have a special flag for components instead of it being on the type?
-		return (this.type === ExprPathType.ComponentAttribValue || this.type===ExprPathType.ComponentEvent);
 	}
 
 	/**
@@ -1082,16 +1072,11 @@ export const ExprPathType = {
 	/** Value of an attribute. */
 	AttribValue: 3,
 
-	/** Value of an attribute being passed to a component. */
-	ComponentAttribValue: 4,
-
 	/** Expressions inside Html comments. */
 	Comment: 5,
 
 	/** Value of an attribute. */
 	Event: 6,
-
-	ComponentEvent: 7,
 }
 
 
