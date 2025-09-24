@@ -131,6 +131,7 @@ export default class ExprPath {
 				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
 				break;
 			case 6: // PathType.Event:
+			case 7:
 				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
 				break;
 			default: // TODO: Is this still used?  Lots of tests fail without it.
@@ -212,7 +213,6 @@ export default class ExprPath {
 			// Fast clear method
 			let isNowEmpty = oldNodes.length && !newNodes.length;
 			if (!isNowEmpty || !path.fastClear())
-
 				// Rearrange nodes.
 				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker)
 
@@ -235,11 +235,6 @@ export default class ExprPath {
 				}
 			}
 		}
-
-		//for (let component of components)
-		//	if (component.render)
-		//		this.parentNg.instantiateComponent(component, false, );
-
 
 		/*#IFDEV*/path.verify();/*#ENDIF*/
 	}
@@ -518,7 +513,7 @@ export default class ExprPath {
 	 * @param root */
 	applyEventAttrib(node, expr, root) {
 		/*#IFDEV*/
-		assert(this.type === ExprPathType.Event/* || this.type === PathType.Component*/);
+		assert(this.type === ExprPathType.Event || this.type === ExprPathType.ComponentEvent);
 		assert(root instanceof HTMLElement);
 		/*#ENDIF*/
 
@@ -920,11 +915,15 @@ export default class ExprPath {
 		return result;
 	}
 
+	/**
+	 * Is the path either:
+	 * 1.  A component attribute value.
+	 * 2.  Or an ExprPathType.Event attribute on a component.
+	 * @return {boolean} */
 	isComponent() {
 		// Events won't have type===Component.
 		// TODO: Have a special flag for components instead of it being on the type?
-		return (this.type === ExprPathType.ComponentAttribValue) ||
-			(this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
+		return (this.type === ExprPathType.ComponentAttribValue || this.type===ExprPathType.ComponentEvent);
 	}
 
 	/**
@@ -1091,6 +1090,8 @@ export const ExprPathType = {
 
 	/** Value of an attribute. */
 	Event: 6,
+
+	ComponentEvent: 7,
 }
 
 

@@ -25,7 +25,9 @@ export default class RootNodeGroup extends NodeGroup {
 
 		let [fragment, shell] = this.populateFromTemplate(template);
 
-		let offset = 0;
+		let startingPathDepth = 0;
+
+
 		if (fragment instanceof Text) {
 
 			if (el) {
@@ -35,8 +37,12 @@ export default class RootNodeGroup extends NodeGroup {
 					el.append(fragment);
 				this.root = el;
 			}
+			else
+				throw new Error('Cannot create a standalone text node');
 			Globals.nodeGroups.set(this.root, this);
 		}
+
+
 		else {
 
 			// If adding NodeGroup to an element.
@@ -60,7 +66,7 @@ export default class RootNodeGroup extends NodeGroup {
 							el.setAttribute(attrib.name, attrib.value);
 
 					// Go one level deeper into all of shell's paths.
-					offset = 1;
+					startingPathDepth = 1;
 				}
 
 				else {
@@ -101,17 +107,17 @@ export default class RootNodeGroup extends NodeGroup {
 				this.root = singleEl || fragment; // We return the whole fragment when calling h() with a collection of nodes.
 
 				if (singleEl)
-					offset = 1;
+					startingPathDepth = 1;
 			}
 			Globals.nodeGroups.set(this.root, this);
-			this.updatePaths(this.root, shell.paths, offset);
+			this.updatePaths(this.root, shell.paths, startingPathDepth);
 
 			// Static web components can sometimes have children created via expressions.
 			// But calling applyExprs() will mess up the shell's path to them.
 			// So we find them first, then call activateStaticComponents() after their children have been created.
-			this.staticComponents = this.findStaticComponents(this.root, shell, offset);
+			this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
 
-			this.activateEmbeds(this.root, shell, offset);
+			this.activateEmbeds(this.root, shell, startingPathDepth);
 
 			// Apply exprs
 			this.applyExprs(template.exprs);

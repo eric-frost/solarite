@@ -201,9 +201,13 @@ export default class Shell {
 			path.nodeMarkerPath = getNodePath(path.nodeMarker)
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
-			if (path.type === ExprPathType.AttribValue && path.nodeMarker.nodeType === 1 &&
+			if ((path.type === ExprPathType.AttribValue || path.type === ExprPathType.Event) && path.nodeMarker.nodeType === 1 &&
 				(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
-				path.type = ExprPathType.ComponentAttribValue;
+				path.isComponent2 = true;
+				// console.log(path.type)
+				path.type = path.type === ExprPathType.Event
+					? ExprPathType.ComponentEvent
+					: ExprPathType.ComponentAttribValue;
 			}
 		}
 

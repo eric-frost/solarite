@@ -933,6 +933,7 @@ class ExprPath {
 				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
 				break;
 			case 6: // PathType.Event:
+			case 7:
 				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
 				break;
 			default: // TODO: Is this still used?  Lots of tests fail without it.
@@ -1014,7 +1015,6 @@ class ExprPath {
 			// Fast clear method
 			let isNowEmpty = oldNodes.length && !newNodes.length;
 			if (!isNowEmpty || !path.fastClear())
-
 				// Rearrange nodes.
 				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker);
 
@@ -1037,11 +1037,6 @@ class ExprPath {
 				}
 			}
 		}
-
-		//for (let component of components)
-		//	if (component.render)
-		//		this.parentNg.instantiateComponent(component, false, );
-
 
 		
 	}
@@ -1707,11 +1702,15 @@ class ExprPath {
 		return result;
 	}
 
+	/**
+	 * Is the path either:
+	 * 1.  A component attribute value.
+	 * 2.  Or an ExprPathType.Event attribute on a component.
+	 * @return {boolean} */
 	isComponent() {
 		// Events won't have type===Component.
 		// TODO: Have a special flag for components instead of it being on the type?
-		return (this.type === ExprPathType.ComponentAttribValue) ||
-			(this.attrName && this.nodeMarker.tagName && this.nodeMarker.tagName.includes('-'));
+		return (this.type === ExprPathType.ComponentAttribValue || this.type===ExprPathType.ComponentEvent);
 	}
 
 	/**
@@ -1786,6 +1785,8 @@ const ExprPathType = {
 
 	/** Value of an attribute. */
 	Event: 6,
+
+	ComponentEvent: 7,
 };
 
 
@@ -2099,9 +2100,13 @@ class Shell {
 			path.nodeMarkerPath = getNodePath(path.nodeMarker);
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
-			if (path.type === ExprPathType.AttribValue && path.nodeMarker.nodeType === 1 &&
+			if ((path.type === ExprPathType.AttribValue || path.type === ExprPathType.Event) && path.nodeMarker.nodeType === 1 &&
 				(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
-				path.type = ExprPathType.ComponentAttribValue;
+				path.isComponent2 = true;
+				// console.log(path.type)
+				path.type = path.type === ExprPathType.Event
+					? ExprPathType.ComponentEvent
+					: ExprPathType.ComponentAttribValue;
 			}
 		}
 
@@ -2267,6 +2272,7 @@ class NodeGroup {
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
 
+	dynamicComponents = new Set();
 	staticComponents = [];
 
 	/** @type {Template} */
@@ -2593,11 +2599,15 @@ class NodeGroup {
 	}
 
 
-	updatePaths(fragment, paths, offset) {
+	/**
+	 * @param fragment {DocumentFragment}
+	 * @param paths
+	 * @param startingPathDepth {int} */
+	updatePaths(fragment, paths, startingPathDepth) {
 		let pathLength = paths.length;
 		this.paths.length = pathLength;
 		for (let i=0; i<pathLength; i++) {
-			let path = paths[i].clone(fragment, offset);
+			let path = paths[i].clone(fragment, startingPathDepth);
 			path.parentNg = this;
 			this.paths[i] = path;
 		}
@@ -2614,7 +2624,7 @@ class NodeGroup {
 
 	
 
-	findStaticComponents(root, shell, pathOffset=0) {
+	findStaticComponents(root, shell, startingPathDepth=0) {
 		let result = [];
 
 		// static components.  These are WebComponents that do not have any constructor arguments that are expressions.
@@ -2622,8 +2632,8 @@ class NodeGroup {
 		// Maybe someday these two paths will be merged?
 		// Must happen before ids because instantiateComponent will replace the element.
 		for (let path of shell.staticComponents) {
-			if (pathOffset)
-				path = path.slice(0, -pathOffset);
+			if (startingPathDepth)
+				path = path.slice(0, -startingPathDepth);
 			let el = resolveNodePath(root, path);
 
 			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
@@ -2713,7 +2723,9 @@ class RootNodeGroup extends NodeGroup {
 
 		let [fragment, shell] = this.populateFromTemplate(template);
 
-		let offset = 0;
+		let startingPathDepth = 0;
+
+
 		if (fragment instanceof Text) {
 
 			if (el) {
@@ -2723,8 +2735,12 @@ class RootNodeGroup extends NodeGroup {
 					el.append(fragment);
 				this.root = el;
 			}
+			else
+				throw new Error('Cannot create a standalone text node');
 			Globals$1.nodeGroups.set(this.root, this);
 		}
+
+
 		else {
 
 			// If adding NodeGroup to an element.
@@ -2748,7 +2764,7 @@ class RootNodeGroup extends NodeGroup {
 							el.setAttribute(attrib.name, attrib.value);
 
 					// Go one level deeper into all of shell's paths.
-					offset = 1;
+					startingPathDepth = 1;
 				}
 
 				else {
@@ -2789,17 +2805,17 @@ class RootNodeGroup extends NodeGroup {
 				this.root = singleEl || fragment; // We return the whole fragment when calling h() with a collection of nodes.
 
 				if (singleEl)
-					offset = 1;
+					startingPathDepth = 1;
 			}
 			Globals$1.nodeGroups.set(this.root, this);
-			this.updatePaths(this.root, shell.paths, offset);
+			this.updatePaths(this.root, shell.paths, startingPathDepth);
 
 			// Static web components can sometimes have children created via expressions.
 			// But calling applyExprs() will mess up the shell's path to them.
 			// So we find them first, then call activateStaticComponents() after their children have been created.
-			this.staticComponents = this.findStaticComponents(this.root, shell, offset);
+			this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
 
-			this.activateEmbeds(this.root, shell, offset);
+			this.activateEmbeds(this.root, shell, startingPathDepth);
 
 			// Apply exprs
 			this.applyExprs(template.exprs);

@@ -53,6 +53,7 @@ export default class NodeGroup {
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
 
+	dynamicComponents = new Set();
 	staticComponents = [];
 
 	/** @type {Template} */
@@ -382,11 +383,15 @@ export default class NodeGroup {
 	}
 
 
-	updatePaths(fragment, paths, offset) {
+	/**
+	 * @param fragment {DocumentFragment}
+	 * @param paths
+	 * @param startingPathDepth {int} */
+	updatePaths(fragment, paths, startingPathDepth) {
 		let pathLength = paths.length;
 		this.paths.length = pathLength;
 		for (let i=0; i<pathLength; i++) {
-			let path = paths[i].clone(fragment, offset)
+			let path = paths[i].clone(fragment, startingPathDepth)
 			path.parentNg = this;
 			this.paths[i] = path;
 		}
@@ -468,7 +473,7 @@ export default class NodeGroup {
 	}
 	//#ENDIF
 
-	findStaticComponents(root, shell, pathOffset=0) {
+	findStaticComponents(root, shell, startingPathDepth=0) {
 		let result = [];
 
 		// static components.  These are WebComponents that do not have any constructor arguments that are expressions.
@@ -476,8 +481,8 @@ export default class NodeGroup {
 		// Maybe someday these two paths will be merged?
 		// Must happen before ids because instantiateComponent will replace the element.
 		for (let path of shell.staticComponents) {
-			if (pathOffset)
-				path = path.slice(0, -pathOffset);
+			if (startingPathDepth)
+				path = path.slice(0, -startingPathDepth);
 			let el = resolveNodePath(root, path);
 
 			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
