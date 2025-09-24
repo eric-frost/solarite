@@ -1041,14 +1041,13 @@ class ExprPath {
 			case 2: // PathType.Multiple:
 				this.applyMultipleAttribs(this.nodeMarker, exprs[0]);
 				break;
-			case 5: // PathType.Comment:
+			case 4: // PathType.Comment:
 				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
 				break;
-			case 6: // PathType.Event:
-			case 7:
+			case 5: // PathType.Event:
 				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
 				break;
-			default: // TODO: Is this still used?  Lots of tests fail without it.
+			default: // 3 PathType.Attribute
 				// One attribute value may have multiple expressions.  Here we apply them all at once.
 				this.applyValueAttrib(this.nodeMarker, exprs);
 				break;
@@ -1950,10 +1949,10 @@ const ExprPathType = {
 	AttribValue: 3,
 
 	/** Expressions inside Html comments. */
-	Comment: 5,
+	Comment: 4,
 
 	/** Value of an attribute. */
-	Event: 6,
+	Event: 5,
 };
 
 
