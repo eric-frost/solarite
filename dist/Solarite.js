@@ -2278,9 +2278,12 @@ class NodeGroup {
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
 	 * @param parentPath {?ExprPath} */
 	constructor(template, parentPath=null) {
+		this.rootNg = parentPath?.parentNg?.rootNg || this;
+		this.parentPath = parentPath;
+
 		if (!(this instanceof RootNodeGroup)) {
 
-			let [fragment, shell] = this.init(template, parentPath);
+			let [fragment, shell] = this.populateFromTemplate(template);
 
 			if (fragment && template.exprs.length) {
 				this.updatePaths(fragment, shell.paths);
@@ -2306,19 +2309,12 @@ class NodeGroup {
 	 * Common init shared by RootNodeGroup and NodeGroup constructors.
 	 * But in a separate function because they need to do this at a different step.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param parentPath {?ExprPath}
-	 * @param exactKey {?string} Optional, if already calculated.
-	 * @param closeKey {?string}
-	 * @returns {[DocumentFragment, Shell]} */
-	init(template, parentPath=null, exactKey=null, closeKey=null) {
-		this.parentPath = parentPath;
-		this.rootNg = parentPath?.parentNg?.rootNg || this;
-		this.template = template;
-		this.exactKey = exactKey || template.getExactKey();
-		this.closeKey = closeKey || template.getCloseKey();
+	 * @returns {[DocumentFragment, Shell]} The Shell created from the template,a nd the fragment cloned from the Shell.*/
+	populateFromTemplate(template) {
 		
-
-
+		this.template = template;
+		this.exactKey = template.getExactKey();
+		this.closeKey = template.getCloseKey();
 
 		// If it's just a text node, skip a bunch of unnecessary steps.
 		if (template.isText) {
@@ -2598,7 +2594,6 @@ class NodeGroup {
 
 
 	updatePaths(fragment, paths, offset) {
-		// Update paths to point to the fragment.
 		let pathLength = paths.length;
 		this.paths.length = pathLength;
 		for (let i=0; i<pathLength; i++) {
@@ -2708,19 +2703,17 @@ class RootNodeGroup extends NodeGroup {
 	exprsToRender = new Map();
 
 	/**
-	 *
-	 * @param template
-	 * @param el
-	 * @param options {?object}
-	 */
+	 * @param template {Template}
+	 * @param el {?HTMLElement} Optional, pre-existing htmlElement tat will be the root.
+	 * @param options {?object} */
 	constructor(template, el, options) {
 		super(template);
 
 		this.options = options;
 
-		this.rootNg = this;
-		let [fragment, shell] = this.init(template);
+		let [fragment, shell] = this.populateFromTemplate(template);
 
+		let offset = 0;
 		if (fragment instanceof Text) {
 
 			if (el) {
@@ -2735,10 +2728,8 @@ class RootNodeGroup extends NodeGroup {
 		else {
 
 			// If adding NodeGroup to an element.
-			let offset = 0;
-			let root = fragment; // TODO: Rename so it's not confused with this.root.
 			if (el) {
-				Globals$1.nodeGroups.set(el, this);
+				this.root = el;
 
 				// Save slot children
 				let slotChildren;
@@ -2746,8 +2737,6 @@ class RootNodeGroup extends NodeGroup {
 					slotChildren = document.createDocumentFragment();
 					slotChildren.append(...el.childNodes);
 				}
-
-				this.root = el;
 
 				// If el should replace the root node of the fragment.
 				if (isReplaceEl(fragment, el)) {
@@ -2760,7 +2749,9 @@ class RootNodeGroup extends NodeGroup {
 
 					// Go one level deeper into all of shell's paths.
 					offset = 1;
-				} else {
+				}
+
+				else {
 					let isEmpty = fragment.childNodes.length === 1 && fragment.childNodes[0].nodeType === 3 && fragment.childNodes[0].textContent === '';
 					if (!isEmpty)
 						el.append(...fragment.childNodes);
@@ -2788,35 +2779,35 @@ class RootNodeGroup extends NodeGroup {
 						el.append(slotChildren);
 				}
 
-				root = el;
-
 				this.startNode = el;
 				this.endNode = el;
-			} else {
+			}
+
+			// Instantiate as a standalone element.
+			else {
 				let singleEl = getSingleEl(fragment);
 				this.root = singleEl || fragment; // We return the whole fragment when calling h() with a collection of nodes.
 
-				Globals$1.nodeGroups.set(this.root, this);
-				if (singleEl) {
-					root = singleEl;
+				if (singleEl)
 					offset = 1;
-				}
 			}
-
-			this.updatePaths(root, shell.paths, offset);
+			Globals$1.nodeGroups.set(this.root, this);
+			this.updatePaths(this.root, shell.paths, offset);
 
 			// Static web components can sometimes have children created via expressions.
 			// But calling applyExprs() will mess up the shell's path to them.
 			// So we find them first, then call activateStaticComponents() after their children have been created.
-			this.staticComponents = this.findStaticComponents(root, shell, offset);
+			this.staticComponents = this.findStaticComponents(this.root, shell, offset);
 
-			this.activateEmbeds(root, shell, offset);
+			this.activateEmbeds(this.root, shell, offset);
 
 			// Apply exprs
 			this.applyExprs(template.exprs);
 
 			this.instantiateStaticComponents(this.staticComponents);
 		}
+
+
 	}
 }
 

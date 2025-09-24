@@ -64,9 +64,12 @@ export default class NodeGroup {
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
 	 * @param parentPath {?ExprPath} */
 	constructor(template, parentPath=null) {
+		this.rootNg = parentPath?.parentNg?.rootNg || this;
+		this.parentPath = parentPath;
+
 		if (!(this instanceof RootNodeGroup)) {
 
-			let [fragment, shell] = this.init(template, parentPath);
+			let [fragment, shell] = this.populateFromTemplate(template);
 
 			if (fragment && template.exprs.length) {
 				this.updatePaths(fragment, shell.paths);
@@ -92,19 +95,12 @@ export default class NodeGroup {
 	 * Common init shared by RootNodeGroup and NodeGroup constructors.
 	 * But in a separate function because they need to do this at a different step.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param parentPath {?ExprPath}
-	 * @param exactKey {?string} Optional, if already calculated.
-	 * @param closeKey {?string}
-	 * @returns {[DocumentFragment, Shell]} */
-	init(template, parentPath=null, exactKey=null, closeKey=null) {
-		this.parentPath = parentPath;
-		this.rootNg = parentPath?.parentNg?.rootNg || this;
-		this.template = template;
-		this.exactKey = exactKey || template.getExactKey();
-		this.closeKey = closeKey || template.getCloseKey();
+	 * @returns {[DocumentFragment, Shell]} The Shell created from the template,a nd the fragment cloned from the Shell.*/
+	populateFromTemplate(template) {
 		/*#IFDEV*/assert(this.rootNg);/*#ENDIF*/
-
-
+		this.template = template;
+		this.exactKey = template.getExactKey();
+		this.closeKey = template.getCloseKey();
 
 		// If it's just a text node, skip a bunch of unnecessary steps.
 		if (template.isText) {
@@ -387,7 +383,6 @@ export default class NodeGroup {
 
 
 	updatePaths(fragment, paths, offset) {
-		// Update paths to point to the fragment.
 		let pathLength = paths.length;
 		this.paths.length = pathLength;
 		for (let i=0; i<pathLength; i++) {
