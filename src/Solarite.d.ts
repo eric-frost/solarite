@@ -5,7 +5,9 @@
  */
 
 export default function h(htmlStrings?: HTMLElement | string | string[] | Function | {render: Function}, ...exprs: any[]): Node | HTMLElement | Template | Function;
-export { default as h, default as r } from './h.js';
+export { default as r } from './h.js';
+
+export function t(html: string): Template;
 
 export const ArgType: {
 	Bool: string;

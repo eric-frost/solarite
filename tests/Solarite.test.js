@@ -1,17 +1,14 @@
 // noinspection DuplicatedCode
 
-import h, {getArg, Solarite} from '../src/Solarite.js';
-//import h, {Solarite, r, getArg} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
+import h, {getArg, Solarite, Template, Globals, SolariteUtil} from '../src/Solarite.js';
+//import h, {getArg, Solarite, Template, Globals, SolariteUtil} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 
 import {watch, renderWatched} from "../src/watch.js";
-import Util from "../src/Util.js";
 import HtmlParser from "../src/HtmlParser.js";
 import NodeGroup from "../src/NodeGroup.js";
-import Template from "../src/Template.js";
 import Shell from "../src/Shell.js";
 
 import Testimony, {assert} from './Testimony.js';
-import Globals from "../src/Globals.js";
 
 // This function is used by the various tests.
 window.getHtml = (item, includeComments=false) => {
@@ -210,7 +207,7 @@ Testimony.test('Solarite.NodeGroup.arrayReverse', () => {
 
 //<editor-fold desc="util">
 /* ┌─────────────────╮
- * | Util            |
+ * | SolariteUtil    |
  * └─────────────────╯*/
 
 Testimony.test('Solarite.Util.htmlContext', () => {
@@ -228,11 +225,11 @@ Testimony.test('Solarite.Util.htmlContext', () => {
 });
 
 Testimony.test('Solarite.Util.camelToDashes', () => {
-	assert.eq(Util.camelToDashes('ProperName'), 'proper-name');
-	assert.eq(Util.camelToDashes('HTMLElement'), 'html-element');
-	assert.eq(Util.camelToDashes('BigUI'), 'big-ui');
-	assert.eq(Util.camelToDashes('UIForm'), 'ui-form');
-	assert.eq(Util.camelToDashes('A100'), 'a-100');
+	assert.eq(SolariteUtil.camelToDashes('ProperName'), 'proper-name');
+	assert.eq(SolariteUtil.camelToDashes('HTMLElement'), 'html-element');
+	assert.eq(SolariteUtil.camelToDashes('BigUI'), 'big-ui');
+	assert.eq(SolariteUtil.camelToDashes('UIForm'), 'ui-form');
+	assert.eq(SolariteUtil.camelToDashes('A100'), 'a-100');
 });
 //</editor-fold>
 
@@ -2866,12 +2863,10 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 
 
 	let a = new C520();
-	window.debug = true;
 	a.render();
 
 	assert.eq(`<c-520><c-520-child>hi</c-520-child></c-520>`, getHtml(a));
 
-	window.debug = true;
 	renderCount = 0;
 	a.render();
 	console.log(getHtml(a))

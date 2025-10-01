@@ -113,6 +113,9 @@ function reset() {
 
 		div: document.createElement("div"),
 
+		/** @type {HTMLDocument} */
+		doc: document,
+
 		/**
 		 * @type {Record<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
 		elementClasses: {},
@@ -274,8 +277,9 @@ let Util = {
 		if (style.hasAttribute('global') || style.hasAttribute('data-global')) {
 			styleId = tagName;
 			attribSelector = '';
-			if (!document.head.querySelector(`style[data-style="${styleId}"]`)) {
-				document.head.append(style);
+			let doc = Globals$1.doc || root.ownerDocument || document;
+			if (!doc.head.querySelector(`style[data-style="${styleId}"]`)) {
+				doc.head.append(style);
 				style.setAttribute('data-style', styleId);
 			}
 			else // TODO: Make sure the style has no expressions.
@@ -3436,6 +3440,25 @@ const Solarite = new Proxy(createSolarite(), {
 		return createSolarite(...args)
 	}
 });
+
+
+/**
+ * Temporarily have all Solarite functions use a different document.
+ * This is useful
+ * Calls to this function can safely be nested.
+ * @param doc {HTMLDocument}
+ * @param callback {function}
+ * @returns {*} Return value of callback. */
+Solarite.useDocument = function(doc, callback) {
+	let oldDoc = Globals$1.doc;
+	Globals$1.doc = doc;
+	try {
+		return callback();
+	}
+	finally {
+		Globals$1.doc = oldDoc;
+	}
+};
 
 //export {default as watch, renderWatched} from './watch.js'; // unfinished
 

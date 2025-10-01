@@ -17,6 +17,7 @@ export {default as Template} from './Template.js';
 //--------------
 
 import Template from './Template.js';
+import Globals from './Globals.js';
 
 export function t(html) {
 	return new Template([html], []);
@@ -34,6 +35,26 @@ const Solarite = new Proxy(createSolarite(), {
 		return createSolarite(...args)
 	}
 });
+
+
+/**
+ * Temporarily have all Solarite functions use a different document.
+ * This is useful
+ * Calls to this function can safely be nested.
+ * @param doc {HTMLDocument}
+ * @param callback {function}
+ * @returns {*} Return value of callback. */
+Solarite.useDocument = function(doc, callback) {
+	let oldDoc = Globals.doc;
+	Globals.doc = doc;
+	try {
+		return callback();
+	}
+	finally {
+		Globals.doc = oldDoc;
+	}
+}
+
 
 /** @type {HTMLElement|Class} */
 export {Solarite}

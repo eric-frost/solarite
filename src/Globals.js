@@ -23,6 +23,9 @@ function reset() {
 
 		div: document.createElement("div"),
 
+		/** @type {HTMLDocument} */
+		doc: document,
+
 		/**
 		 * @type {Record<string, Class<Node>>} A map from built-in tag names to the constructors that create them. */
 		elementClasses: {},
