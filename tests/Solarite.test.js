@@ -4343,7 +4343,7 @@ Testimony.test('Solarite.watch.loopDeepPushPop', () => {
  * | Full            |
  * └─────────────────╯*/
 
-Testimony.test('Solarite.full._tree', ()=> {
+Testimony.test('Solarite.full.tree', ()=> {
 
 	class TreeItem extends HTMLElement {
 		treeData;

@@ -1200,14 +1200,14 @@ class ExprPath {
 					if (el instanceof HTMLElement) {
 
 						if (el.tagName.includes('-')) {
-							if (!expr.exprs.find(expr => expr.nodeMarker === el))
+							if (!expr.exprs.find(expr => expr?.nodeMarker === el))
 								this.parentNg.handleComponent(el, null, true);
 							else // Commenting out this "else" causes render() to be called too often, but other UI code fails if it's present.
 								apply = true;
 						}
 						for (let child of el.querySelectorAll('*')) {
 							if (child.tagName.includes('-')) {
-								if (!expr.exprs.find(expr => expr.nodeMarker === child))
+								if (!expr.exprs.find(expr => expr?.nodeMarker === child))
 									this.parentNg.handleComponent(child, null, true);
 								else
 									apply = true;
