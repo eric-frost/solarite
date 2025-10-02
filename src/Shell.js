@@ -53,7 +53,7 @@ export default class Shell {
 		//#ENDIF
 
 		if (html.length === 1 && !html[0].match(/[<&]/)) {
-			this.fragment = document.createTextNode(html[0]);
+			this.fragment = Globals.doc.createTextNode(html[0]);
 			return;
 		}
 
@@ -61,18 +61,18 @@ export default class Shell {
 		// 1.  Add placeholders
 		let joinedHtml = Shell.addPlaceholders(html);
 
-		let template = document.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
+		let template = Globals.doc.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
 		if (joinedHtml)
 			template.innerHTML = joinedHtml;
 		else // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
-			template.content.append(document.createTextNode(''))
+			template.content.append(Globals.doc.createTextNode(''))
 		this.fragment = template.content;
 
 		// 2. Find placeholders
 		let node;
 		let toRemove = [];
 		let placeholdersUsed = 0;
-		const walker = document.createTreeWalker(this.fragment, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
+		const walker = Globals.doc.createTreeWalker(this.fragment, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
 		while (node = walker.nextNode()) {
 
 			// Remove previous after each iteration, so paths will still be calculated correctly.
@@ -111,7 +111,7 @@ export default class Shell {
 				// Get or create nodeBefore.
 				let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
 				if (!nodeBefore) {
-					nodeBefore = document.createComment('ExprPath:'+this.paths.length);
+					nodeBefore = Globals.doc.createComment('ExprPath:'+this.paths.length);
 					node.parentNode.insertBefore(nodeBefore, node)
 				}
 				/*#IFDEV*/assert(nodeBefore);/*#ENDIF*/
@@ -162,7 +162,7 @@ export default class Shell {
 
 					let placeholders = [];
 					for (let i = 0; i<parts.length; i++) {
-						let current = document.createTextNode(parts[i]);
+						let current = Globals.doc.createTextNode(parts[i]);
 						node.parentNode.insertBefore(current, node);
 						if (i > 0)
 							placeholders.push(current)

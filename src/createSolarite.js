@@ -42,7 +42,7 @@ export default function createSolarite(extendsTag=null) {
 
 		BaseClass = Globals.elementClasses[extendsTag];
 		if (!BaseClass) { // TODO: Use Cache
-			BaseClass = document.createElement(extendsTag).constructor;
+			BaseClass = Globals.doc.createElement(extendsTag).constructor;
 			Globals.elementClasses[extendsTag] = BaseClass
 		}
 	}

@@ -4,6 +4,7 @@ import delve from "./delve.js";
 import Shell from "./Shell.js";
 import RootNodeGroup from './RootNodeGroup.js';
 import ExprPath, {ExprPathType, resolveNodePath} from "./ExprPath.js";
+import Globals from './Globals.js';
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
@@ -105,8 +106,7 @@ export default class NodeGroup {
 
 		// If it's just a text node, skip a bunch of unnecessary steps.
 		if (template.isText) {
-			let doc = this.rootNg.startNode?.ownerDocument || document;
-			let textNode = doc.createTextNode(template.html[0]);
+			let textNode = Globals.doc.createTextNode(template.html[0]);
 			this.startNode = this.endNode = textNode;
 			return [];
 		}
@@ -377,7 +377,7 @@ export default class NodeGroup {
 	 * Requires the nodeCache to be present. */
 	removeAndSaveOrphans() {
 		/*#IFDEV*/assert(this.nodesCache);/*#ENDIF*/
-		let fragment = document.createDocumentFragment();
+		let fragment = Globals.doc.createDocumentFragment();
 		for (let node of this.getNodes())
 			fragment.append(node);
 	}

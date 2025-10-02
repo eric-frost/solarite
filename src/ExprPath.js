@@ -512,7 +512,7 @@ export default class ExprPath {
 	 * @param root */
 	applyEventAttrib(node, expr, root) {
 		/*#IFDEV*/
-		assert(this.type === ExprPathType.Event || this.type === ExprPathType.ComponentEvent);
+		assert(this.type === ExprPathType.Event);
 		assert(root instanceof HTMLElement);
 		/*#ENDIF*/
 
@@ -659,7 +659,7 @@ export default class ExprPath {
 			if (!multiple) {
 				Globals.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
-					if (this.type === 4) { // Don't evaluate functions before passing them to components
+					if (this.isComponent) { // Don't evaluate functions before passing them to components
 						return
 					}
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()

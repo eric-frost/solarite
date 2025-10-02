@@ -102,7 +102,7 @@ export default function h(htmlStrings=undefined, ...exprs) {
 
 		// We create a new one each time because otherwise
 		// the returned fragment will have its content replaced by a subsequent call.
-		let templateEl = document.createElement('template');
+		let templateEl = Globals.doc.createElement('template');
 		templateEl.innerHTML = htmlStrings;
 
 		// 4+5. Return Node if there's one child.

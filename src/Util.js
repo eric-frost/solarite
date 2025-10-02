@@ -61,7 +61,7 @@ let Util = {
 		if (style.hasAttribute('global') || style.hasAttribute('data-global')) {
 			styleId = tagName;
 			attribSelector = '';
-			let doc = Globals.doc || root.ownerDocument || document;
+			let doc = Globals.doc;
 			if (!doc.head.querySelector(`style[data-style="${styleId}"]`)) {
 				doc.head.append(style)
 				style.setAttribute('data-style', styleId);

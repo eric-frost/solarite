@@ -286,7 +286,7 @@ let Util = {
 		if (style.hasAttribute('global') || style.hasAttribute('data-global')) {
 			styleId = tagName;
 			attribSelector = '';
-			let doc = Globals$1.doc || root.ownerDocument || document;
+			let doc = Globals$1.doc;
 			if (!doc.head.querySelector(`style[data-style="${styleId}"]`)) {
 				doc.head.append(style);
 				style.setAttribute('data-style', styleId);
@@ -1427,7 +1427,7 @@ class ExprPath {
 	 * @param root */
 	applyEventAttrib(node, expr, root) {
 		/*#IFDEV*/
-		assert(this.type === ExprPathType.Event || this.type === ExprPathType.ComponentEvent);
+		assert(this.type === ExprPathType.Event);
 		assert(root instanceof HTMLElement);
 		/*#ENDIF*/
 
@@ -1574,7 +1574,7 @@ class ExprPath {
 			if (!multiple) {
 				Globals$1.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
-					if (this.type === 4) { // Don't evaluate functions before passing them to components
+					if (this.isComponent) { // Don't evaluate functions before passing them to components
 						return
 					}
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
@@ -2124,7 +2124,7 @@ class Shell {
 		//#ENDIF
 
 		if (html.length === 1 && !html[0].match(/[<&]/)) {
-			this.fragment = document.createTextNode(html[0]);
+			this.fragment = Globals$1.doc.createTextNode(html[0]);
 			return;
 		}
 
@@ -2132,18 +2132,18 @@ class Shell {
 		// 1.  Add placeholders
 		let joinedHtml = Shell.addPlaceholders(html);
 
-		let template = document.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
+		let template = Globals$1.doc.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
 		if (joinedHtml)
 			template.innerHTML = joinedHtml;
 		else // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
-			template.content.append(document.createTextNode(''));
+			template.content.append(Globals$1.doc.createTextNode(''));
 		this.fragment = template.content;
 
 		// 2. Find placeholders
 		let node;
 		let toRemove = [];
 		let placeholdersUsed = 0;
-		const walker = document.createTreeWalker(this.fragment, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
+		const walker = Globals$1.doc.createTreeWalker(this.fragment, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
 		while (node = walker.nextNode()) {
 
 			// Remove previous after each iteration, so paths will still be calculated correctly.
@@ -2182,7 +2182,7 @@ class Shell {
 				// Get or create nodeBefore.
 				let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
 				if (!nodeBefore) {
-					nodeBefore = document.createComment('ExprPath:'+this.paths.length);
+					nodeBefore = Globals$1.doc.createComment('ExprPath:'+this.paths.length);
 					node.parentNode.insertBefore(nodeBefore, node);
 				}
 				/*#IFDEV*/assert(nodeBefore);/*#ENDIF*/
@@ -2233,7 +2233,7 @@ class Shell {
 
 					let placeholders = [];
 					for (let i = 0; i<parts.length; i++) {
-						let current = document.createTextNode(parts[i]);
+						let current = Globals$1.doc.createTextNode(parts[i]);
 						node.parentNode.insertBefore(current, node);
 						if (i > 0)
 							placeholders.push(current);
@@ -2500,8 +2500,7 @@ class NodeGroup {
 
 		// If it's just a text node, skip a bunch of unnecessary steps.
 		if (template.isText) {
-			let doc = this.rootNg.startNode?.ownerDocument || document;
-			let textNode = doc.createTextNode(template.html[0]);
+			let textNode = Globals$1.doc.createTextNode(template.html[0]);
 			this.startNode = this.endNode = textNode;
 			return [];
 		}
@@ -2772,7 +2771,7 @@ class NodeGroup {
 	 * Requires the nodeCache to be present. */
 	removeAndSaveOrphans() {
 		/*#IFDEV*/assert(this.nodesCache);/*#ENDIF*/
-		let fragment = document.createDocumentFragment();
+		let fragment = Globals$1.doc.createDocumentFragment();
 		for (let node of this.getNodes())
 			fragment.append(node);
 	}
@@ -2994,7 +2993,7 @@ class RootNodeGroup extends NodeGroup {
 				// Save slot children
 				let slotChildren;
 				if (el.childNodes.length) {
-					slotChildren = document.createDocumentFragment();
+					slotChildren = Globals$1.doc.createDocumentFragment();
 					slotChildren.append(...el.childNodes);
 				}
 
@@ -3327,7 +3326,7 @@ function h(htmlStrings=undefined, ...exprs) {
 
 		// We create a new one each time because otherwise
 		// the returned fragment will have its content replaced by a subsequent call.
-		let templateEl = document.createElement('template');
+		let templateEl = Globals$1.doc.createElement('template');
 		templateEl.innerHTML = htmlStrings;
 
 		// 4+5. Return Node if there's one child.
@@ -3580,7 +3579,7 @@ function createSolarite(extendsTag=null) {
 
 		BaseClass = Globals$1.elementClasses[extendsTag];
 		if (!BaseClass) { // TODO: Use Cache
-			BaseClass = document.createElement(extendsTag).constructor;
+			BaseClass = Globals$1.doc.createElement(extendsTag).constructor;
 			Globals$1.elementClasses[extendsTag] = BaseClass;
 		}
 	}

@@ -52,7 +52,7 @@ export default class RootNodeGroup extends NodeGroup {
 				// Save slot children
 				let slotChildren;
 				if (el.childNodes.length) {
-					slotChildren = document.createDocumentFragment();
+					slotChildren = Globals.doc.createDocumentFragment();
 					slotChildren.append(...el.childNodes);
 				}
 
