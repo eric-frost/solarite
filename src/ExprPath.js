@@ -226,7 +226,7 @@ export default class ExprPath {
 			// Instantiate components created within ${...} expressions.
 			// Also see this.applyExactNodes() which handles calling render() on web components even if they are unchanged.
 			for (let el of newNodes) {
-				if (el instanceof HTMLElement) {
+				if (el?.nodeType === 1) { // HTMLElement
 					if (el.hasAttribute('solarite-placeholder'))
 						this.parentNg.handleComponent(el, null, true);
 					for (let child of el.querySelectorAll('[solarite-placeholder]'))
@@ -347,7 +347,7 @@ export default class ExprPath {
 		}
 
 		// String/Number/Date/Boolean
-		else if (!(expr instanceof Template) && !(expr instanceof Node)){
+		else if (!(expr instanceof Template) && !(expr?.nodeType)){
 			// Convert expression to a string.
 			if (expr === undefined || expr === false || expr === null) // Util.isFalsy() inlined
 				expr = '';
@@ -396,7 +396,7 @@ export default class ExprPath {
 				// Also see similar code at the end of this.applyNodes() which handles web components being instantiated the first time.
 				let apply = false;
 				for (let el of newestNodes) {
-					if (el instanceof HTMLElement) {
+					if (el?.nodeType === 1) { // HTMLElement
 
 						if (el.tagName.includes('-')) {
 							if (!expr.exprs.find(expr => expr?.nodeMarker === el))
@@ -433,10 +433,10 @@ export default class ExprPath {
 		}
 
 		// Node(s) created by an expression.
-		else if (expr instanceof Node) {
+		else if (expr?.nodeType) {
 
 			// DocumentFragment created by an expression.
-			if (expr instanceof DocumentFragment)
+			if (expr?.nodeType === 11) // DocumentFragment
 				newNodes.push(...expr.childNodes);
 			else
 				newNodes.push(expr);
@@ -513,7 +513,7 @@ export default class ExprPath {
 	applyEventAttrib(node, expr, root) {
 		/*#IFDEV*/
 		assert(this.type === ExprPathType.Event);
-		assert(root instanceof HTMLElement);
+		assert(root?.nodeType === 1);
 		/*#ENDIF*/
 
 		let eventName = this.attrName.slice(2); // remove "on-" prefix.
@@ -972,7 +972,7 @@ export default class ExprPath {
 			`parentNode: ${this.nodeBefore.parentNode?.tagName?.toLowerCase()}`,
 			'nodes:',
 			...setIndent(this.getNodes().map(item => {
-				if (item instanceof Node)
+				if (item?.nodeType)
 					return item.outerHTML || item.textContent
 				else if (item instanceof NodeGroup)
 					return item.debug

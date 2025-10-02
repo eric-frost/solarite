@@ -39,7 +39,7 @@ export default function h(htmlStrings=undefined, ...exprs) {
 		throw new Error('h() cannot be called with undefined.');
 
 	// TODO: Make this a more flat if/else and call other functions for the logic.
-	if (htmlStrings instanceof Node) {
+	if (htmlStrings?.nodeType) {
 		let parent = htmlStrings, template = exprs[0];
 
 		// 1

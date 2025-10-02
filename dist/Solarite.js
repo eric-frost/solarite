@@ -252,7 +252,7 @@ let Util = {
 		if (id) { // If something hasn't removed the id.
 
 			// Don't allow overwriting existing class properties if they already have a non-Node value.
-			if (root[id] && !(root[id] instanceof Node))
+			if (root[id] && !(root[id]?.nodeType))
 				throw new Error(`${root.constructor.name}.${id} already has a value.  ` +
 					`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
 
@@ -277,7 +277,7 @@ let Util = {
 		if (style.hasAttribute('global') || style.hasAttribute('data-global')) {
 			styleId = tagName;
 			attribSelector = '';
-			let doc = Globals$1.doc;
+			let doc = Globals$1.doc || root.ownerDocument || document;
 			if (!doc.head.querySelector(`style[data-style="${styleId}"]`)) {
 				doc.head.append(style);
 				style.setAttribute('data-style', styleId);
@@ -654,8 +654,6 @@ class MultiValueMap {
  * @returns {Node[]} The same list of future children.
  */
 const udomdiff = (parentNode, a, b, before) => {
-	
-
 	const bLength = b.length;
 	let aEnd = a.length;
 	let bEnd = bLength;
@@ -677,8 +675,6 @@ const udomdiff = (parentNode, a, b, before) => {
 			while (bStart < bEnd) {
 				let bNode = b[bStart++];
 				parentNode.insertBefore(bNode, node);
-
-				
 			}
 		}
 		// remove head or tail: fast path
@@ -688,8 +684,6 @@ const udomdiff = (parentNode, a, b, before) => {
 				let aNode = a[aStart];
 				if (!map || !map.has(aNode)) {
 					parentNode.removeChild(aNode);
-
-					
 				}
 				aStart++;
 			}
@@ -726,12 +720,9 @@ const udomdiff = (parentNode, a, b, before) => {
 				a2,
 				b2.nextSibling
 			);
-			
 
 			let bNode = b[--bEnd];
 			parentNode.insertBefore(bNode, node);
-
-			
 
 			// mark the future index as identical (yeah, it's dirty, but cheap 👍)
 			// The main reason to do this, is that when a[aEnd] will be reached,
@@ -780,8 +771,6 @@ const udomdiff = (parentNode, a, b, before) => {
 						while (bStart < index) {
 							let bNode = b[bStart++];
 							parentNode.insertBefore(bNode, node);
-
-							
 						}
 					}
 						// if the effort wasn't good enough, fallback to a replace,
@@ -794,8 +783,6 @@ const udomdiff = (parentNode, a, b, before) => {
 							bNode,
 							aNode
 						);
-
-						
 					}
 				}
 				// otherwise move the source forward, 'cause there's nothing to do
@@ -808,8 +795,6 @@ const udomdiff = (parentNode, a, b, before) => {
 			else {
 				let aNode = a[aStart++];
 				parentNode.removeChild(aNode);
-
-				
 			}
 		}
 	}
@@ -1032,7 +1017,7 @@ class ExprPath {
 			// Instantiate components created within ${...} expressions.
 			// Also see this.applyExactNodes() which handles calling render() on web components even if they are unchanged.
 			for (let el of newNodes) {
-				if (el instanceof HTMLElement) {
+				if (el?.nodeType === 1) { // HTMLElement
 					if (el.hasAttribute('solarite-placeholder'))
 						this.parentNg.handleComponent(el, null, true);
 					for (let child of el.querySelectorAll('[solarite-placeholder]'))
@@ -1148,7 +1133,7 @@ class ExprPath {
 		}
 
 		// String/Number/Date/Boolean
-		else if (!(expr instanceof Template) && !(expr instanceof Node)){
+		else if (!(expr instanceof Template) && !(expr?.nodeType)){
 			// Convert expression to a string.
 			if (expr === undefined || expr === false || expr === null) // Util.isFalsy() inlined
 				expr = '';
@@ -1197,7 +1182,7 @@ class ExprPath {
 				// Also see similar code at the end of this.applyNodes() which handles web components being instantiated the first time.
 				let apply = false;
 				for (let el of newestNodes) {
-					if (el instanceof HTMLElement) {
+					if (el?.nodeType === 1) { // HTMLElement
 
 						if (el.tagName.includes('-')) {
 							if (!expr.exprs.find(expr => expr?.nodeMarker === el))
@@ -1234,10 +1219,10 @@ class ExprPath {
 		}
 
 		// Node(s) created by an expression.
-		else if (expr instanceof Node) {
+		else if (expr?.nodeType) {
 
 			// DocumentFragment created by an expression.
-			if (expr instanceof DocumentFragment)
+			if (expr?.nodeType === 11) // DocumentFragment
 				newNodes.push(...expr.childNodes);
 			else
 				newNodes.push(expr);
@@ -2318,7 +2303,7 @@ class NodeGroup {
 			let shell = Shell.get(template.html);
 			let fragment = shell.fragment.cloneNode(true);
 
-			if (fragment instanceof DocumentFragment) {
+			if (fragment?.nodeType === 11) { // DocumentFragment
 				let childNodes = fragment.childNodes;
 				this.startNode = childNodes[0];
 				this.endNode = childNodes[childNodes.length - 1];
@@ -2995,7 +2980,7 @@ function h(htmlStrings=undefined, ...exprs) {
 		throw new Error('h() cannot be called with undefined.');
 
 	// TODO: Make this a more flat if/else and call other functions for the logic.
-	if (htmlStrings instanceof Node) {
+	if (htmlStrings?.nodeType) {
 		let parent = htmlStrings, template = exprs[0];
 
 		// 1
@@ -3448,11 +3433,11 @@ const Solarite = new Proxy(createSolarite(), {
  * @param doc {HTMLDocument}
  * @param callback {function}
  * @returns {*} Return value of callback. */
-Solarite.useDocument = function(doc, callback) {
+Solarite.useDocument = async function(doc, callback) {
 	let oldDoc = Globals$1.doc;
 	Globals$1.doc = doc;
 	try {
-		return callback();
+		return await callback();
 	}
 	finally {
 		Globals$1.doc = oldDoc;

@@ -28,11 +28,6 @@ import NodeGroup from "./NodeGroup.js";
  * @returns {Node[]} The same list of future children.
  */
 const udomdiff = (parentNode, a, b, before) => {
-	//#IFDEV
-	// if (parentNode instanceof ExprPath)
-	// 	parentNode.verify();
-	//#ENDIF
-
 	const bLength = b.length;
 	let aEnd = a.length;
 	let bEnd = bLength;
@@ -54,13 +49,6 @@ const udomdiff = (parentNode, a, b, before) => {
 			while (bStart < bEnd) {
 				let bNode = b[bStart++];
 				parentNode.insertBefore(bNode, node);
-
-				//#IFDEV
-				if (bNode instanceof NodeGroup)
-					bNode.verify();
-				// if (parentNode instanceof ExprPath)
-				// 	parentNode.verify();
-				//#ENDIF
 			}
 		}
 		// remove head or tail: fast path
@@ -70,13 +58,6 @@ const udomdiff = (parentNode, a, b, before) => {
 				let aNode = a[aStart];
 				if (!map || !map.has(aNode)) {
 					parentNode.removeChild(aNode);
-
-					//#IFDEV
-					if (aNode instanceof NodeGroup)
-						aNode.verify();
-					// if (parentNode instanceof ExprPath)
-					// 	parentNode.verify();
-					//#ENDIF
 				}
 				aStart++;
 			}
@@ -113,23 +94,9 @@ const udomdiff = (parentNode, a, b, before) => {
 				a2,
 				b2.nextSibling
 			);
-			//#IFDEV
-			if (a2 instanceof NodeGroup)
-				a2.verify();
-			// if (parentNode instanceof ExprPath)
-			// 	parentNode.verify();
-			//#ENDIF
 
 			let bNode = b[--bEnd];
 			parentNode.insertBefore(bNode, node);
-
-			//#IFDEV
-			if (bNode instanceof NodeGroup)
-				bNode.verify();
-			// if (parentNode instanceof ExprPath)
-			// 	parentNode.verify();
-
-			//#ENDIF
 
 			// mark the future index as identical (yeah, it's dirty, but cheap 👍)
 			// The main reason to do this, is that when a[aEnd] will be reached,
@@ -178,14 +145,6 @@ const udomdiff = (parentNode, a, b, before) => {
 						while (bStart < index) {
 							let bNode = b[bStart++];
 							parentNode.insertBefore(bNode, node);
-
-							//#IFDEV
-							if (bNode instanceof NodeGroup)
-								bNode.verify();
-							// if (parentNode instanceof ExprPath)
-							// 	parentNode.verify();
-
-							//#ENDIF
 						}
 					}
 						// if the effort wasn't good enough, fallback to a replace,
@@ -198,13 +157,6 @@ const udomdiff = (parentNode, a, b, before) => {
 							bNode,
 							aNode
 						);
-
-						//#IFDEV
-						if (aNode instanceof NodeGroup)
-							aNode.verify();
-						// if (parentNode instanceof ExprPath)
-						// 	parentNode.verify();
-						//#ENDIF
 					}
 				}
 				// otherwise move the source forward, 'cause there's nothing to do
@@ -217,13 +169,6 @@ const udomdiff = (parentNode, a, b, before) => {
 			else {
 				let aNode = a[aStart++];
 				parentNode.removeChild(aNode);
-
-				//#IFDEV
-				if (aNode instanceof NodeGroup)
-					aNode.verify();
-				// if (parentNode instanceof ExprPath)
-				// 	parentNode.verify();
-				//#ENDIF
 			}
 		}
 	}

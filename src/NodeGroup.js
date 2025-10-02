@@ -116,7 +116,7 @@ export default class NodeGroup {
 			let shell = Shell.get(template.html);
 			let fragment = shell.fragment.cloneNode(true);
 
-			if (fragment instanceof DocumentFragment) {
+			if (fragment?.nodeType === 11) { // DocumentFragment
 				let childNodes = fragment.childNodes;
 				this.startNode = childNodes[0];
 				this.endNode = childNodes[childNodes.length - 1];
@@ -418,7 +418,7 @@ export default class NodeGroup {
 			`parentNode: ${this.parentNode?.tagName?.toLowerCase()}`,
 			'nodes:',
 			...setIndent(this.getNodes().map(item => {
-				if (item instanceof Node) {
+				if (item?.nodeType) {
 
 					let tree = nodeToArrayTree(item, nextNode => {
 

@@ -44,11 +44,11 @@ const Solarite = new Proxy(createSolarite(), {
  * @param doc {HTMLDocument}
  * @param callback {function}
  * @returns {*} Return value of callback. */
-Solarite.useDocument = function(doc, callback) {
+Solarite.useDocument = async function(doc, callback) {
 	let oldDoc = Globals.doc;
 	Globals.doc = doc;
 	try {
-		return callback();
+		return await callback();
 	}
 	finally {
 		Globals.doc = oldDoc;

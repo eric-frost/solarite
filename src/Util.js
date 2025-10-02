@@ -36,7 +36,7 @@ let Util = {
 		if (id) { // If something hasn't removed the id.
 
 			// Don't allow overwriting existing class properties if they already have a non-Node value.
-			if (root[id] && !(root[id] instanceof Node))
+			if (root[id] && !(root[id]?.nodeType))
 				throw new Error(`${root.constructor.name}.${id} already has a value.  ` +
 					`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
 
@@ -61,7 +61,7 @@ let Util = {
 		if (style.hasAttribute('global') || style.hasAttribute('data-global')) {
 			styleId = tagName;
 			attribSelector = '';
-			let doc = Globals.doc;
+			let doc = Globals.doc || root.ownerDocument || document;
 			if (!doc.head.querySelector(`style[data-style="${styleId}"]`)) {
 				doc.head.append(style)
 				style.setAttribute('data-style', styleId);
