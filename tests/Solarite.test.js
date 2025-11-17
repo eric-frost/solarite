@@ -3627,6 +3627,36 @@ Testimony.test('Solarite.binding.textarea', () => {
 	b.remove();
 });
 
+Testimony.test('Solarite.binding.contenteditable', () => {
+
+	class B24 extends HTMLElement {
+		text = 1
+
+		render() {
+			h(this)`<div contenteditable data-id="input" value=${[this, 'text']}></div>`
+		}
+	}
+	customElements.define('b-24', B24);
+
+	let b = new B24();
+	b.render();
+	document.body.append(b);
+	assert.eq(b.input.textContent, '1')
+
+	b.text = 2
+	b.render()
+	assert.eq(b.input.textContent, '2')
+
+	b.input.innerHTML = 3;
+	b.input.dispatchEvent(new Event('input', {
+		bubbles: true,
+		cancelable: true,
+	}));
+	assert.eq(b.text, '3')
+
+	b.remove();
+});
+
 // TODO: Set select.value when option children are rendered and don't exist when the value attrib is evaluated by ExprPath.applyValueAttrib()
 Testimony.test('Solarite.binding.select', () => {
 

@@ -1,9 +1,11 @@
 /**
- * Solarite JavasCript UI library.
- * MIT License
- * https://vorticode.github.io/solarite/
- */
-
+┏┓  ┓    •
+┗┓┏┓┃┏┓┏┓┓╋▗▖
+┗┛┗┛┗┗┻╹ ╹╹┗
+JavasCript UI library
+@license MIT
+@copyright Vorticode LLC
+https://vorticode.github.io/solarite/ */
 import h from './h.js';
 export default h;
 export {default as h, default as r} from './h.js'; //Named exports for h() are deprecated.

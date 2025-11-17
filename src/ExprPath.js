@@ -392,7 +392,7 @@ export default class ExprPath {
 				// New!
 				// Re-apply all expressions if there's a web component, so we can pass them to its constructor.
 				// NodeGroup.applyExprs() is used to call applyComponentExprs() on web components that have expression attributes.
-				// For those that don't, ,we call applyComponentExprs() directly here.
+				// For those that don't, we call applyComponentExprs() directly here.
 				// Also see similar code at the end of this.applyNodes() which handles web components being instantiated the first time.
 				let apply = false;
 				for (let el of newestNodes) {
@@ -593,7 +593,7 @@ export default class ExprPath {
 	}
 
 	/**
-	 * Handle values, including two-way binding.
+	 * Set the value of an attribute.  This can be for any attribute, not just attributes named "value".
 	 * @param node
 	 * @param exprs */
 	// TODO: node is always this.nodeMarker?
@@ -623,12 +623,21 @@ export default class ExprPath {
 			}
 			else {
 				// TODO: should we remove isFalsy, since these are always props?
-				let strValue = Util.isFalsy(value) ? '' : value;
+				const strValue = Util.isFalsy(value) ? '' : value;
 
-				// If we don't have this condition, when we call render(), the browser will scroll to the currently
-				// selected item in a <select> and mess up manually scrolling to a different value.
-				if (strValue !== node[this.attrName])
-					node[this.attrName] = strValue;
+				// Special case for contenteditable
+				if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
+					const existingValue = node.innerHTML;
+					if (strValue !== existingValue)
+						node.innerHTML = strValue;
+				}
+				else {
+
+					// If we don't have this condition, when we call render(), the browser will scroll to the currently
+					// selected item in a <select> and mess up manually scrolling to a different value.
+					if (strValue !== node[this.attrName])
+						node[this.attrName] = strValue;
+				}
 			}
 
 			// TODO: We need to remove any old listeners, like in bindEventAttribute.
@@ -750,9 +759,6 @@ export default class ExprPath {
 		result.isComponent = this.isComponent;
 
 		//#IFDEV
-		result.nodeMarker.exprPath = result;
-		if (result.nodeBefore)
-			result.nodeBefore.prevExprPath = result;
 		result.verify();
 		//#ENDIF
 

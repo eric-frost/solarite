@@ -175,7 +175,7 @@ let Util = {
 
 	/**
 	 * Get the value of an input as the most appropriate JavaScript type.
-	 * @param node {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|HTMLDivElement}
+	 * @param node {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|HTMLElement}
 	 * @return {string|string[]|number|[]|File[]|Date|boolean} */
 	getInputValue(node) {
 		// .type is a built-in DOM property
@@ -189,6 +189,8 @@ let Util = {
 			return node.valueAsDate; // Date Object
 		if (node.type === 'select-multiple') // <select multiple>
 			return [...node.selectedOptions].map(option => option.value); // Array of Strings
+		if (node.hasAttribute('contenteditable'))
+			return node.innerHTML;
 
 		return node.value; // String
 	},

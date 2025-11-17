@@ -461,7 +461,7 @@ customElements.define('binding-demo', BindingDemo);
 document.body.append(new BindingDemo());
 ```
 
-In addition to `<input>`,  `<select>` and `<textarea>` can also use the `value` attribute to set their value on render.  Likewise so can any custom web component that defines a `value` property.
+`<input>`,  `<select>`, `<textarea>`, and elements with the `contenteditable` attribute can all use the `value` attribute to set their value on render.  Likewise so can any custom web component that defines a `value` property.
 
 #### Shorthand Two-Way Binding
 

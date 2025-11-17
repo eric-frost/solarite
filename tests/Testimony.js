@@ -1,27 +1,33 @@
 /**
- * Provide functionality for running Deno tests in a web browser.
- * Has no external dependencies.
- *
- * TODO:
- *
- * 4.  Integrate with IntelliJ file watcher so we run cmd line tests when files change.
- * 5.  Run tests from @expect doc tags.
- * 6.  Documentation - Web tests, deno tests, intellij integration
- * 7.  Add to github.
- * 8.  Command line via node or Deno
- * 9.  Support other Deno options.
- * 11. URLs only mark which tests to include or exclude, to make url shorter
- * 12. Auto-expand to failed tests.
- *
- * Can't have a test with part of the name being "constructor"
- */
+┏┳┓   •
+ ┃▗▖┏╋╻┏┳┓┏┓┏┓┓┏
+ ┻┗ ┛┗┗╹╹┗┗┛╹┗┗┫
+@copyright Vort┛icode LLC
+A testing framework that can run tests in the browser, or command line via Puppeteer.
 
+TODO:
+4.  Integrate with IntelliJ file watcher so we run cmd line tests when files change.
+5.  Run tests from @expect doc tags.
+6.  Documentation - Web tests, deno tests, intellij integration
+7.  Add to github.
+8.  Command line via node or Deno
+9.  Support other Deno options.
+11. URLs only mark which tests to include or exclude, to make url shorter
+12. Auto-expand to failed tests.
+
+Can't have a test with part of the name being "constructor"
+*/
+
+
+/*┌──────────────────╮
+  | Asserts          |
+  └──────────────────╯*/
 class AssertError extends Error {
-	constructor(msgOrExpected='Assertion Failed', actual, op) {
-		if (actual)
-			super(`Failed:  \`${escapeHtml(msgOrExpected)}\` ${escapeHtml(op)} \`${escapeHtml(actual)}\``);
+	constructor(msgOrActual='Assertion Failed', expected, op) {
+		if (expected)
+			super(`Failed:  \`${escapeHtml(msgOrActual)}\` ${escapeHtml(op)} \`${escapeHtml(expected)}\``);
 		else
-			super(msgOrExpected);
+			super(msgOrActual);
 		this.name = "AssertError";
 		// this.expected = expected;
 		// this.actual = actual;
@@ -29,28 +35,30 @@ class AssertError extends Error {
 	}
 }
 
-function assert(val) {
+function assert(val, message='zZz_unused') {
 	if (!val) {
 		if (Testimony.debugOnAssertFail)
 			debugger;
-		throw new AssertError(val, true);
+		if (message === 'zZz_unused')
+			message = val;
+		throw new AssertError(message, true);
 	}
 }
 
 Object.assign(assert, {
-	eq(expected, actual) {
-		if (!isSame(expected, actual)) { // JUnit, PhpUnit, and mocha all use the order: expected, actual.
+	eq(actual, expected, message) {
+		if (!isSame(actual, expected)) { // JUnit, PhpUnit, and mocha all use the order: expected, actual.
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(expected, actual, '==');
+			throw new AssertError(actual, expected, '==');
 		}
 	},
 
-	eqJson(expected, actual) {
+	eqJson(actual, expected) {
 		if (JSON.stringify(actual) !== JSON.stringify(expected)) {
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(expected, actual, 'eqJson');
+			throw new AssertError(actual, expected, 'eqJson');
 		}
 	},
 
@@ -67,6 +75,30 @@ Object.assign(assert, {
 			if (Testimony.debugOnAssertFail)
 				debugger;
 			throw new AssertError(val1, val2, ' > ');
+		}
+	},
+
+	lt(val1, val2) {
+		if (val1 >= val2) {
+			if (Testimony.debugOnAssertFail)
+				debugger;
+			throw new AssertError(val1, val2, ' >= ');
+		}
+	},
+
+	gt(val1, val2) {
+		if (val1 <= val2) {
+			if (Testimony.debugOnAssertFail)
+				debugger;
+			throw new AssertError(val1, val2, ' <= ');
+		}
+	},
+
+	gte(val1, val2) {
+		if (val1 < val2) {
+			if (Testimony.debugOnAssertFail)
+				debugger;
+			throw new AssertError(val1, val2, ' < ');
 		}
 	},
 
@@ -93,6 +125,11 @@ Object.assign(assert, {
 	}
 });
 
+
+
+/*┌──────────────────╮
+  | Utility Functions|
+  └──────────────────╯*/
 
 function createEl(html) {
 	let el = document.createElement('div');
@@ -157,6 +194,59 @@ function h(text, quotes='"') {
 function escapeHtml(text) {
 	return import.meta.main ? text : h(text);
 }
+
+/**
+ * Run fn() inside the iframe, await'ing for it to complete, then returning the result.
+ * If the iframe is not initialized, first wait for it to init.
+ * @param iframe {HTMLIFrameElement}
+ * @param fn {function}
+ * @param args {any[]}
+ * @return {Promise<any>} */
+async function runWithinIframe(iframe, fn, args) {
+	// Ensure the iframe exists and is initialized enough for scripting
+	if (!iframe.contentWindow || !iframe.contentDocument) {
+		await new Promise(resolve => iframe.addEventListener('load', () => resolve(), {once: true}));
+	}
+
+	// If the iframe is blank or lacks a <base>, write minimal HTML so dynamic import() resolves URLs the same as parent.
+	// const doc = iframe.contentDocument;
+	// const needsInit = !doc.documentElement || !doc.head || !doc.head.querySelector('base');
+	// if (needsInit) {
+	// 	doc.open();
+	// 	doc.write(`<!doctype html><html><head><base href="${document.baseURI}"></head><body></body></html>`);
+	// 	doc.close();
+	// }
+
+	// Stash args on both the iframe and parent windows so we can pass complex objects by reference
+	const w = iframe.contentWindow;
+	const argsKey = `__runWithinArgs_${Math.random().toString(36).slice(2)}`;
+	const fnKey = `__runWithinFn_${Math.random().toString(36).slice(2)}`;
+	w[argsKey] = args;
+	window[argsKey] = args;
+
+	// Define the function inside the iframe realm and invoke it there so 'document' refers to the iframe's document.
+	w.eval(`window["${fnKey}"] = ${fn.toString()}`);
+	try {
+		let code = `(async () => { 
+			try {		
+				return await window["${fnKey}"].apply(null, window["${argsKey}"])
+			} finally { 
+				delete window["${fnKey}"]; 
+				delete window["${argsKey}"] 
+			} 
+		})()`
+		return await w.eval(code);
+	} finally {
+		try { delete w[argsKey] } catch {}
+		try { delete window[argsKey] } catch {}
+	}
+}
+
+
+
+/*┌──────────────────╮
+  | TestComponent UI |
+  └──────────────────╯*/
 
 if (!globalThis.HTMLElement) // Don't define this when running from command line.
 	globalThis.HTMLElement = function(){};
@@ -256,9 +346,6 @@ class TestComponent extends HTMLElement {
 				this.className = 'runningChildFailed';
 
 			if (this.lastStatus !== TestStatus.Running && this.lastStatus !== TestStatus.RunningChildFailed) {
-				if (this.test.name === 'DBTestMySQLi')
-					console.log(this.lastStatus, this.test.status)
-
 				this.statusContainer.innerHTML = 0;
 				clearInterval(this.interval);
 				this.interval = setInterval(() => {
@@ -278,9 +365,8 @@ class TestComponent extends HTMLElement {
 
 		if (this.test.status instanceof Error) {
 			let msg = Testimony.shortenError(this.test.status);
-
 			this.errorMessage.innerHTML = msg;
-			}
+		}
 		else
 			this.errorMessage.innerHTML = '';
 
@@ -288,6 +374,9 @@ class TestComponent extends HTMLElement {
 	}
 
 	render() {
+		// If it's html, print it as is, instead of our own style with 50% opacity.
+		const descIsHtml = /^<[^>]+>/.test(this.test.desc.trim());
+
 		// TODO: Add these styles once in the document head.
 		this.innerHTML = `
 		<style>		
@@ -326,9 +415,9 @@ class TestComponent extends HTMLElement {
 				
 				<!-- Name -->
 				<span>
-					${h(this.test.getShortName())}${this.test.link ? `<a 
-						href="${h(this.test.link)}" target="_blank" title="Open external test url in new tab">🡵</a>` : ''}
-					<span style="opacity: .5">${h(this.test.desc)}</span>
+					${h(this.test.getShortName())}${this.test.externalUrl ? `<a 
+						href="${h(this.test.externalUrl)}" target="_blank" title="Open external test url in new tab">🡵</a>` : ''}
+					${descIsHtml ? this.test.desc : `<span style="opacity: .5">${this.test.desc}</span>`}
 				</span>
 			</label>	
 			
@@ -368,10 +457,17 @@ export const TestStatus = {
 class Test {
 	name;
 	desc;
+	html;
+	setup;
+	teardown;
 
-	link;
+	/** If set, this is an external test. */
+	externalUrl;
 
 	isSynchronous = false;
+	isIframe = false;
+
+	iframeTestArgs = []; // arguments given to iframe function
 
 	/** @type Test */
 	parent = null;
@@ -398,7 +494,7 @@ class Test {
 	/**
 	 * @param name {string}
 	 * @param desc {string}
-	 * @param fn {function
+	 * @param fn {function}
 	 * @param isSynchronous {boolean}
 	 * @param parent {?Test}} */
 	constructor(name='', desc='', fn=null, isSynchronous=false, parent=null) {
@@ -492,89 +588,184 @@ class Test {
 	async run(synchronous=false) {
 
 		// A test to run.
-		if (this.fn && this.enabled) {
-			let doIt = async () => {
-				let status = await this.fn(this);
-				if (Object.keys(TestStatus).includes(status))
-					this.status = status;
-				else if (status !== false)
-					this.status = TestStatus.Pass;
-				return status;
-			};
-
-			this.status = TestStatus.Running;
-			if (this.element)
-				this.element.renderStatus();
-
-			let pass = false;
-			try {
-				if (Testimony.throwOnError) {
-					await doIt();
-					pass = true;
-				} else {
-					try {
-						await doIt();
-						pass = true;
-					} catch (e) {
-						this.status = e;
-						console.error(e)
-						Testimony.failedTests.push([this.name, Testimony.shortenError(e, '\n')]);
-					}
-				}
-			}
-			finally {
-				if (!pass && !(this.status instanceof Error))
-					this.status = TestStatus.Fail;
-
-				if (this.element)
-					this.element.renderStatus();
-				if (this.parent)
-					this.parent.updateStatusFromChildren();
-			}
-		}
+		if (this.fn && this.enabled)
+			await this.runTest();
 
 		// A node containing other tests.
-		if (!this.fn) {
+		if (!this.fn)
+			await this.runChildren(synchronous);
 
-			let childTests = Object.values(this.children || {})
-				.filter(t => t.children || t.isSynchronous===synchronous);   // includes test groups
+		return this.status;
+	}
 
-			// Sync tests
-			if (synchronous) {
-				for (let child of childTests)
-					if (child.enabled && child.status === TestStatus.NotStarted)
-						child.status = TestStatus.Running;
-				this.updateStatusFromChildren();
+	async runTest() {
+		let doIt = async (setupResponse) => {
+			let el, iframe;
 
-				for (let child of childTests)
-					await child.run(synchronous); // One at a time.
+			// update func to create and destroy html before and after test.
 
-				this.updateStatusFromChildren();
+			// As an iframe.
+			if (this.isIframe) {
+				iframe = document.createElement('iframe');
+				iframe.setAttribute('style', 'width: 100%; height: 600px; border: none;');
+				//el.style.display = 'none';
+				document.body.append(iframe);
+				const doc = iframe.contentDocument;
+
+				const trimmedHtml = (this.html || '').trim();
+				const isFullDoc = trimmedHtml.startsWith('<html') || trimmedHtml.startsWith('<!');
+				const html = isFullDoc
+					? this.html
+					: `<!DOCTYPE html>
+						<html lang="en">
+							<head>
+								<meta charset="UTF-8">
+								<base href="${document.baseURI}">
+								<style>body { background: white }</style>
+							</head>
+							<body>${this.html || ''}</body>
+						</html>`;
+				doc.open();
+				doc.write(html);
+				doc.close();
 			}
-			else {
 
-				// Async tests
-				let promises = [];
-				for (let child of childTests) {
-					if (child.fn && child.enabled)
-						child.status = TestStatus.Running;
+			// As part of the regular document
+			else if (this.html) {
+				el = createEl(this.html);
+				document.body.append(el);
+			}
 
-					let promise = child.run(synchronous); // All at once.
-					promise.then(() => {
-						this.updateStatusFromChildren();
-					});
-					promises.push(promise);
+			let context = new TestimonyContext(this, iframe, {
+				assert,
+				testName: this.name,
+				setupResult: setupResponse,
+
+				// Let a frame screenshot itself by calling await context.screenshot();
+				screenshot2: async () => {
+					if (this.isIframe) {
+
+						if (!globalThis.__testimonyScreenshot)
+							return null;
+
+						// Mark the iframe so Puppeteer can find it on the outer page.
+						iframe.setAttribute('id', 'screenshot-iframe');
+						// When running under Puppeteer, a bridge function is exposed.
+						let result = await globalThis.__testimonyScreenshot(this.name);
+						iframe.removeAttribute('id');
+						return result;
+					}
 				}
+			});
 
-				this.updateStatusFromChildren();
-				await Promise.all(promises);
+			// Run
+			let status;
+			if (this.isIframe) {
+				let args = [
+					...this.iframeTestArgs,
+					context
+				]
+				status = await runWithinIframe(iframe, this.fn, args);
+				iframe.remove();
 			}
+			else if (el)
+				status = await this.fn(el, setupResponse);
+			else
+				status = await this.fn(setupResponse);
+
+			// Remove html
+			if (el)
+				el.parentNode.removeChild(el);
+
+			if (Object.keys(TestStatus).includes(status))
+				this.status = status;
+			else if (status !== false)
+				this.status = TestStatus.Pass;
+
+			return status;
+		};
+
+		let setupResponse;
+		if (this.setup)
+			setupResponse = await this.setup();
+
+		// If running under Puppeteer/Deno, clear old screenshots for this test name before the run.
+		try {
+			if (globalThis.__testimonyCleanupScreenshots)
+				await globalThis.__testimonyCleanupScreenshots(this.name);
+		} catch {}
+
+		this.status = TestStatus.Running;
+		if (this.element)
+			this.element.renderStatus();
+
+		let pass = false;
+		try {
+			if (Testimony.throwOnError) {
+				await doIt(setupResponse);
+				pass = true;
+			} else {
+				try {
+					await doIt(setupResponse);
+					pass = true;
+					Testimony.passedTests.push(this.name);
+				} catch (e) {
+					this.status = e;
+					console.error(e && (e.stack || e.message) ? (e.stack || e.message) : e)
+					Testimony.failedTests.push([this.name, Testimony.shortenError(e, '\n')]);
+				}
+			}
+		}
+		finally {
+			if (this.teardown) // Always call teardown() even on error.
+				await this.teardown(setupResponse);
+
+			if (!pass && !(this.status instanceof Error))
+				this.status = TestStatus.Fail;
+
+			if (this.element)
+				this.element.renderStatus();
+			if (this.parent)
+				this.parent.updateStatusFromChildren();
+		}
+	}
+
+	async runChildren(synchronous=false) {
+		let childTests = Object.values(this.children || {})
+			.filter(t => t.children || t.isSynchronous===synchronous);   // includes test groups
+
+		// Sync tests
+		if (synchronous) {
+			for (let child of childTests)
+				if (child.enabled && child.status === TestStatus.NotStarted)
+					child.status = TestStatus.Running;
+			this.updateStatusFromChildren();
+
+			for (let child of childTests)
+				await child.run(synchronous); // One at a time.
 
 			this.updateStatusFromChildren();
 		}
+		else {
 
+			// Async tests
+			let promises = [];
+			for (let child of childTests) {
+				if (child.fn && child.enabled)
+					child.status = TestStatus.Running;
 
-		return this.status;
+				let promise = child.run(synchronous); // All at once.
+				promise.then(() => {
+					this.updateStatusFromChildren();
+				});
+				promises.push(promise);
+			}
+
+			this.updateStatusFromChildren();
+			await Promise.all(promises);
+		}
+
+		this.updateStatusFromChildren();
 	}
 
 	/**
@@ -592,6 +783,49 @@ class Test {
 	}
 }
 
+class TestimonyContext {
+	assert;
+	testName;
+
+	/** The result of the setup() function. */
+	setupResult;
+
+	/**
+	 * @type {function():string} Take a screenshot and save the result to tests/screenshots/,
+	 * returning the path relative to the document root.
+	 * This is useful for AI's that want to see what they're building while they run tests.  */
+
+
+	constructor(test, iframe, fields) {
+		for (let name in fields)
+			if (name in this)
+				this[name] = fields[name];
+
+		this.test = test;
+		this.iframe = iframe;
+	}
+
+	// Let a frame screenshot itself by calling await context.screenshot();
+	async screenshot() {
+		if (this.test.isIframe) {
+
+			if (!globalThis.__testimonyScreenshot)
+				return null;
+
+			// Mark the iframe so Puppeteer can find it on the outer page.
+			this.iframe.setAttribute('id', 'screenshot-iframe');
+			// When running under Puppeteer, a bridge function is exposed.
+			let result = await globalThis.__testimonyScreenshot(this.test.name);
+			this.iframe.removeAttribute('id');
+			return result;
+		}
+	}
+}
+
+
+/*┌──────────────────╮
+  | Testimony Class  |
+  └──────────────────╯*/
 var Testimony = {
 
 	debugOnAssertFail: false,
@@ -599,6 +833,7 @@ var Testimony = {
 	expandLevel: 1,
 
 	rootTest: new Test(),
+	passedTests: [],
 	failedTests: [],
 
 	finished: false,
@@ -624,79 +859,19 @@ var Testimony = {
 
 	/**
 	 * Add a test.
-	 *
-	 * Arguments can be given in any order, except that name must occur before desc.
-	 * TODO: Make this instead take name, func, and options.
-	 * @param name {string}
-	 * @param options {?{desc:string=, html:string=, synchronous:string|boolean=}=}
-	 * @param func {function()=}
-	 * @param desc {string|function()=} Deprecated.  Use options.
-	 * @param html {string|function()=} Deprecated.  Use options.
-	 * @param synchronous {?boolean} Deprecated.  Use options.*/
-	test(name, options=null, func, desc, html=null, synchronous=null) {
-
-		// Sort arguments
-		let name2, desc2='', html2, func2, synchronous2;
-		for (let arg of arguments) {
-			if (typeof arg === 'function')
-				func2 = arg;
-			else if (typeof arg === 'boolean')
-				synchronous2 = arg;
-			else if (arg && typeof arg === 'object') { // new path
-				if (arg.desc)
-					desc2 = arg.desc;
-				if (arg.html)
-					html2 = arg.html;
-				if (arg.func)
-					func2 = arg.func;
-				if (arg.synchronous)
-					synchronous2 = arg.synchronous;
-			}
-			else if ((arg+'').trim().match(/^<[!a-z]/i)) // an open tag.
-				html2 = arg;
-			else if (!name2)
-				name2 = arg;
-			else
-				desc2 = arg || '';
-		}
-
-		// update func to create and destroy html before and after test.
-		// TODO: Move this to TestComponent?
-		if (html2) {
-			let oldFunc = func2;
-
-			// As an iframe.
-			if (html2.startsWith('<html') || html2.startsWith('<!')) {
-				func2 = async () => {
-					var iframe = document.createElement('iframe');
-					iframe.style.display = 'none';
-					document.body.append(iframe);
-
-					var doc = iframe.contentDocument || iframe.contentWindow.document;
-					doc.open();
-					doc.write(html2);
-					doc.close();
-
-					let result = await oldFunc(doc);
-					iframe.parentNode.removeChild(iframe);
-					return result;
-				};
-			}
-
-			// As part of the regular document
-			else {
-				func2 = async () => {
-					let el = createEl(html2);
-					document.body.append(el);
-					let result = await oldFunc(el);
-					document.body.removeChild(el);
-					return result;
-				}
-			}
-		}
+	 * @param name {string} Name of the test shown in the test list.  Use dots for categorization.
+	 *    E.g:  'users.account.resetPassword'
+	 * @param args {*} The arguments can appear in this order.  Everything is optional except the function.
+	 *  - {string} description - shown in the user interface in dark text, next to the test.
+	 *  - {string} Html to create an element to pass to the function, if the trimmed version starts with <
+	 *  - {synchronous:string|boolean=, setup:?function(), teardown:?function(setupResult:*)}
+	 *      If set, run setup() before the test and teardown() after the test passing the result of setup() to teardown().
+	 *  - {function(el:HTMLElement|HTMLDocument, setupResult:*)=} The function that performs the test.
+	 * @return Test */
+	test(name, ...args) {
 
 		// Add to rootTest tree.
-		let path = name2.split(/\./g);
+		let path = name.split(/\./g).filter(part => part.trim().length);
 		let pathSoFar = [];
 		let test = this.rootTest;
 		for (let item of path) {
@@ -706,39 +881,78 @@ var Testimony = {
 				test.children = {};
 
 			// If at leaf
-			if (pathSoFar.length === path.length)
-				return test.children[item] = new Test(name2, desc2, func2, synchronous2, test); //{name: name2, desc: desc2, func: func2};
+			if (pathSoFar.length === path.length) {
+
+				let parent = test;
+				test = new Test(name, '', null, false, parent);
+
+				// Sort arguments
+				for (let arg of args) {
+					if (typeof arg === 'function')
+						test.fn = arg;
+					else if (typeof arg === 'boolean')
+						test.isSynchronous = arg;
+					else if (arg && typeof arg === 'object') { // new path
+						if (arg.desc)
+							test.desc = arg.desc;
+						if (arg.html)
+							test.html = arg.html;
+						if (arg.setup)
+							test.setup = arg.setup;
+						if (arg.teardown)
+							test.teardown = arg.teardown;
+						if (arg.synchronous)
+							test.isSynchronous = arg.synchronous;
+					}
+					else if ((arg+'').trim().match(/^<[!a-z]/i)) // an open tag.
+						test.html = arg;
+					else if (typeof arg === 'string')
+						test.desc = arg || '';
+					else
+						throw new Error('Unsupported arg: ' + arg + ' of type ' + typeof arg);
+				}
+
+				parent.children[item] = test;
+				return test;
+			}
 
 			// Create test if it doesn't exist.
 			else {
-				test.children[item] = test.children[item] || new Test(pathSoFar.join('.'), '', null, synchronous2, test);
+				test.children[item] = test.children[item] || new Test(pathSoFar.join('.'), '', null, false, test);
 				test = test.children[item];
 			}
 		}
 	},
 
-	// Untested
-	testIframe(name, options, html, func) {
-		if (typeof options === 'string') {
-			func = html;
-			html = options;
-			options = {};
-		}
+	/**
+	 * Add a test that runs inside the context of an iframe that will be created and appended to the document.
+	 * Arguments are the same as Testimony.test() except for the test function arguments array at the end.
+	 * @param name {string} Name of the test shown in the test list.  Use dots for categorization.
+	 *    E.g:  'users.account.resetPassword'
+	 * @param args {*} Arguments are the same as Testimony.test() except for an additional arguments array at the end.
+	 *  - {any[]} An array of arguments to pass to the test function that will run inside the iframe.
+	 * @return Test */
+	testIframe(name, ...args) {
 
-		return this.test(name, options, async () => {
-			var iframe = document.createElement('iframe');
-			//iframe.style.display = 'none';
-			document.body.append(iframe);
+		// Capture payload from args
+		let iframeTestArgs = null;
+		for (let i in args)
+			if (Array.isArray(args[i])) {
+				iframeTestArgs = args[i];
+				args.splice(i, 1);
+				break;
+			}
+		if (!iframeTestArgs)
+			for (let i in args)
+				if (typeof args[i] === 'function') {
+					iframeTestArgs = args.splice(parseInt(i)+1);
+					break;
+			}
 
-			var doc = iframe.contentDocument || iframe.contentWindow.document;
-			doc.open();
-			doc.write(html);
-			doc.close();
-
-			let result = await func(doc);
-			iframe.parentNode.removeChild(iframe);
-			return result;
-		});
+		let result = this.test(name, ...args);
+		result.isIframe = true;
+		result.iframeTestArgs = iframeTestArgs || [];
+		return result;
 	},
 
 	/**
@@ -767,9 +981,43 @@ var Testimony = {
 		});
 
 		// Allow clicking the link icon to go directly to the test.
-		test.link = url;
+		test.externalUrl = url;
 
 		return test;
+	},
+
+	/** Used for external tests. */
+	async safeImport(path) {
+		function parseError(str) {
+			// crude tag check
+			const hasHtmlTags = /<[^>]+>/.test(str);
+			const hasXdebugMarker = /class='xdebug-error/i.test(str);
+
+			if (hasHtmlTags && hasXdebugMarker) {
+				const text = str.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(); // strip HTML
+				const match = text.match(/(Fatal error|Parse error|Warning|Notice):.*?(?=( in |$))/i);
+				return match ? match[0] : text;
+			}
+
+			return str;
+		}
+
+		try {
+			await import(`${path}?forTestimony=1`); // server must send JS + correct MIME
+		} catch (err) {
+			// fallback: fetch the same URL manually to see error output
+			const resp = await fetch(path);
+			const text = await resp.text();
+
+			// List the test with the error in red as the description:
+			Testimony.test(
+				h(path.split(/[/\\]/).pop().replace(/\./g, '_')),
+				{desc: `<span style="color:#f00">${h(path)} failed to load:<br>${parseError(text)}</span>`}, () => {
+				throw new Error(text)
+			});
+			console.error('Import failed:', err);
+			console.error('Server output:', text);
+		}
 	},
 
 	// Internal functions:
@@ -780,11 +1028,8 @@ var Testimony = {
 	 * @returns {string} */
 	shortenError(error, br='<br>&nbsp;&nbsp;') {
 		// slice(0, -3) to remove the 3 stacktrace lines inside Testimony.js that calls runtests.
-
 		let lines = error.stack.split(/\n/g).filter(line => !line.includes('Testimony.js'));
-
-		let errorStack = lines.slice(0, -1).join('\r\n'); // Remove the line that invokes Testimony.js
-
+		let errorStack = lines.join('\r\n'); // Remove the line that invokes Testimony.js
 		errorStack = errorStack.replace(/\r?\n/g, br);
 		return errorStack.replace(new RegExp(window.location.origin, 'g'), ''); // Remove server name to shorten error stack.
 	},
@@ -794,16 +1039,9 @@ var Testimony = {
 
 
 
-
-
-
-
-
-
-
-
-
-
+/*┌──────────────────╮
+  | Command Line     |
+  └──────────────────╯*/
 
 // Here and below is code for running from the command line via Deno
 // with a headless Chrome browser and optionally a Deno web server.
@@ -812,14 +1050,14 @@ var Testimony = {
 /**
  * Requires Deno and a regular Chrome installation.
  * These arguments could be re-thought.
- * @param page {string}
- * @param webServer {string} Url to use if not running our own webserver.
+ * @param path {string}
+ * @param webServer {?string} Url to use if not running our own webserver.
  * @param webRoot {?string}  Used only if webServer is null
  * @param tests {?string[]}
  * @param headless {boolean}
  * @param port {int} Used only if webserer is null.  Defaults to 8004 to not conflict with commonly used development ports like 8000 or 8080.
  * @returns {Promise<void>} */
-async function runPage(page, webServer=null, webRoot=null, tests=null, headless=false, port=8004) {
+async function runPage(path, webServer=null, webRoot=null, tests=null, headless=false, port=8004) {
 
 	/*
 	import puppeteer from 'https://esm.sh/puppeteer@13.0.0';
@@ -844,14 +1082,13 @@ async function runPage(page, webServer=null, webRoot=null, tests=null, headless=
 	const startServer = () => {
 
 		const absWebRoot = Deno.realPathSync(webRoot);
-		const server = serve({port: 8004});
-		//console.log("HTTP web server running. Access it at: http://localhost:8000/");
+		const server = serve({port});
+		//console.log(`HTTP web server running. Access it at: http://localhost:${port}/`);
 
 		(async () => {
 			for await (const request of server) {
 				const url = new URL(request.url, `http://${request.headers.get("host")}`);
 				const filepath = `${absWebRoot}${url.pathname}`;
-				//console.log(filepath)
 				try {
 					const content = await serveFile(request, filepath);
 					request.respond(content);
@@ -881,29 +1118,56 @@ async function runPage(page, webServer=null, webRoot=null, tests=null, headless=
 
 	// Start Browser
 	const browser = await puppeteer.launch({headless, executablePath});
-	const browserPage = await browser.newPage();
-	let args = [];
+	const page = await browser.newPage();
+
 
 	// Set tests
+	let urlArgs = [];
 	if (!tests)
-		args.push('allTests');
+		urlArgs.push('allTests=1');
 	else
 		for (let test of tests)
-			args.push(`&r=${test}`);
+			urlArgs.push(`r=${test}`);
 
+
+	const counts = Object.create(null);
+
+
+	// Cleanup: Expose bridges for taking and cleaning up screenshots of the test's iframe.
+	await page.exposeFunction('__testimonyCleanupScreenshots', testName => CommandLineUtil.screenshotCleanup(testName, counts));
+	await page.exposeFunction('__testimonyScreenshot', testName => CommandLineUtil.screenshot(testName, page, counts));
+
+	// Forward page console output to our terminal, preserving error stacks when possible.
+	page.on('console', CommandLineUtil.consoleLog);
+
+	let rejectFailure;
+	const failure = new Promise((_, reject) => {
+		rejectFailure = reject;
+	});
+	page.on('pageerror', err => {
+		const text = `Page error: ${err && (err.stack || err.message) ? (err.stack || err.message) : String(err)}`;
+		console.error(`%c${text}`, 'color: #c00');
+		rejectFailure(err);
+	});
+
+	// Wait for the tests to finish
+	// TODO: Also collect errors.
+	const success = page.waitForFunction(() => window.Testimony?.finished === true);
 
 	// Go to test pages.
 	const url = webServer
-		? `${webServer}/${page}?${args.join('&')}`
-		: `http:/localhost:${port}/${page}?${args.join('&')}`;
-	//console.log(url)
-	await browserPage.goto(url);
+		? `${webServer}/${path}?${urlArgs.join('&')}`
+		: `http:/localhost:${port}/${path}?${urlArgs.join('&')}`;
+	await page.goto(url);
 
-	// Wait for the tests to finish
-	await browserPage.waitForFunction(() => window.Testimony?.finished === true);
+	await Promise.race([success, failure]);
 
-	const failedTests = await browserPage.evaluate(() => window.Testimony?.failedTests);
-	printTestResult(failedTests);
+	const failedTests = await page.evaluate(() => window.Testimony?.failedTests);
+	const passedTests = await page.evaluate(() => window.Testimony?.passedTests);
+	CommandLineUtil.printTestResult(passedTests, failedTests);
+
+	// Sleep for manual testing.
+	//await new Promise(resolve => setTimeout(resolve, 500000));
 
 	await browser.close();
 	if (server)
@@ -912,16 +1176,123 @@ async function runPage(page, webServer=null, webRoot=null, tests=null, headless=
 	Deno.exit(failedTests.length ? 1 : 0);
 }
 
-function printTestResult(failedTests) {
-	if (!failedTests.length)
-		console.log(`%cAll tests passed.`, 'color: #0c0');
-	else {
-		console.log(`These tests failed:`);
-		for (const [testName, testError] of failedTests) {
-			console.error(`${testName} - %c${testError}`, 'color: red');
+const CommandLineUtil = {
+
+	async consoleLog(msg) {
+		const type = msg.type(); // log, warning, error, etc.
+		try {
+			const parts = await Promise.all(msg.args().map(arg => arg.executionContext().evaluate(v => {
+				if (v instanceof Error)
+					return v.stack || v.message;
+				if (typeof v === 'string')
+					return v;
+				try {
+					return JSON.stringify(v);
+				} catch {
+					return String(v);
+				}
+			}, arg)));
+			const text = parts.join(' ');
+			if (type === 'error')
+				console.error(`%c${text}`, 'color: #c00');
+			else
+				console.log(text);
+		} catch (e) {
+			// Fallback if serialization fails
+			const text = msg.text();
+			if (type === 'error')
+				console.error(`%c${text}`, 'color: #c00');
+			else
+				console.log(text);
 		}
+	},
+
+	printTestResult(passedTests, failedTests) {
+		if (passedTests.length)
+			console.log(`%cThese ${passedTests.length} tests passed:\n - ${passedTests.join('\n - ')}`, 'color: #0c0');
+
+		if (!failedTests.length)
+			console.log(`%cAll tests passed.`, 'color: #0c0');
+		else {
+			console.log(`These tests failed:`);
+			for (const [testName, testError] of failedTests)
+				console.error(`%c${testName} - ${testError}`, 'color: #c00');
+		}
+	},
+
+	sanitizePath(path) {
+		return path.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, ' ').trim();
+	},
+
+	async screenshot(testName, page, counts) {
+		const sep = Deno.build.os === 'windows' ? '\\' : '/';
+		const abs = (rel) => `${Deno.cwd()}${sep}screenshots${sep}${rel}`;
+
+		const iframeHandle = await page.$('iframe#screenshot-iframe');
+		if (!iframeHandle)
+			throw new Error('test iframe not found');
+
+		const base = CommandLineUtil.sanitizePath(testName || 'screenshot');
+		const n = (counts[base] || 0) + 1;
+		counts[base] = n;
+		const filename = `${base}${n > 1 ? n : ''}.png`;
+		const path = abs(filename);
+		await Deno.mkdir('screenshots', {recursive: true});
+
+		// Measure the full content size inside the iframe
+		const frame = await iframeHandle.contentFrame();
+		if (!frame) throw new Error('no contentFrame for test iframe');
+		const contentSize = await frame.evaluate(() => {
+			const de = document.documentElement;
+			const b = document.body || document.documentElement;
+			const w = Math.max(de.scrollWidth, de.offsetWidth, b.scrollWidth, b.offsetWidth);
+			const h = Math.max(de.scrollHeight, de.offsetHeight, b.scrollHeight, b.offsetHeight);
+			return {w, h};
+		});
+
+		// Temporarily resize the iframe element and the page viewport to fit full content
+		const originalStyle = await page.evaluate(el => el.getAttribute('style') || '', iframeHandle);
+		const vp = page.viewport();
+		const newWidth = Math.max(vp.width, Math.min(contentSize.w, 10000));
+		const newHeight = Math.max(vp.height, Math.min(contentSize.h, 10000));
+		await page.setViewport({width: newWidth, height: newHeight});
+		await page.evaluate((el, size) => {
+			el.style.width = size.w + 'px';
+			el.style.height = size.h + 'px';
+			el.style.display = 'block';
+		}, iframeHandle, contentSize);
+
+		// Take the screenshot of the entire iframe box
+		await iframeHandle.screenshot({ path});
+
+		// Restore styles and viewport
+		await page.evaluate((el, style) => { if (style) el.setAttribute('style', style); else el.removeAttribute('style') }, iframeHandle, originalStyle);
+		await page.setViewport(vp);
+
+		console.log(`%cScreenshot saved to "${path}".`, 'color: #80f');
+		return path;
+	},
+
+	async screenshotCleanup(testName, counts) {
+		try {
+			const base = CommandLineUtil.sanitizePath(testName);
+			const sep = Deno.build.os === 'windows' ? '\\' : '/';
+			for await (const entry of Deno.readDir(Deno.cwd())) {
+				if (!entry.isFile)
+					continue;
+				if (!entry.name.toLowerCase().endsWith('.png'))
+					continue;
+				if (!entry.name.startsWith(base))
+					continue;
+				try {
+					await Deno.remove(`${Deno.cwd()}${sep}screenshots${sep}${entry.name}`)
+				} catch {}
+			}
+			counts[base] = 0;
+		} catch {}
 	}
 }
+
 
 
 globalThis.Testimony = Testimony; // used by command line test runner.
