@@ -2059,7 +2059,7 @@ Testimony.test('Solarite.attrib.pseudoRoot2', 'Static attribute overrides.', () 
 	}
 	R472.define();
 
-	let b = h(`<r-472 style="color: green"></r-472>`);
+	let b = toEl(`<r-472 style="color: green"></r-472>`);
 	document.body.append(b);
 	assert.eq(b.outerHTML, `<r-472 style="color: green" title="Hello">World</r-472>`);
 	b.remove();
@@ -2077,7 +2077,7 @@ Testimony.test('Solarite.attrib.pseudoRoot3', 'Dynamic attribute overrides.', ()
 	R473.define();
 
 
-	let a = h(`<r-473 title="Goodbye"></r-473>`);
+	let a = toEl(`<r-473 title="Goodbye"></r-473>`);
 	document.body.append(a);
 
 	// Dynamic attributes take precedence
@@ -3317,7 +3317,7 @@ Testimony.test('Solarite.slots.basic', () => {
 	}
 	S10.define();
 
-	let div = h('<div><s-10>test</s-10></div>')
+	let div = toEl('<div><s-10>test</s-10></div>')
 	document.body.append(div);
 
 	assert.eq(div.outerHTML, `<div><s-10><div>slot content:<slot>test</slot></div></s-10></div>`)
@@ -3334,7 +3334,7 @@ Testimony.test('Solarite.slots.named', () => {
 	}
 	S20.define();
 
-	let div = h('<div><s-20>zero<div slot="one">One</div><div slot="one">One Again</div><div slot="two">Two</div>Three</s-20></div>')
+	let div = toEl('<div><s-20>zero<div slot="one">One</div><div slot="one">One Again</div><div slot="two">Two</div>Three</s-20></div>')
 	document.body.append(div);
 
 	assert.eq(div.outerHTML, `<div><s-20><div>slot content:<slot name="one"><div slot="one">One</div><div slot="one">One Again</div></slot><slot>zeroThree</slot><slot name="two"><div slot="two">Two</div></slot></div></s-20></div>`)
@@ -3351,7 +3351,7 @@ Testimony.test('Solarite.slots.slotless', `Add children even when no slots prese
 	}
 	S30.define();
 
-	let div = h('<div><s-30>child2<br>child3</s-30></div>')
+	let div = toEl('<div><s-30>child2<br>child3</s-30></div>')
 	document.body.append(div);
 
 	assert.eq(div.outerHTML, `<div><s-30><div>child1</div>child2<br>child3</s-30></div>`)
