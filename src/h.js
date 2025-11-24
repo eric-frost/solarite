@@ -33,7 +33,6 @@ import toEl from "./toEl.js";
  * Create top-level element
  * 7. h()`Hello<b>${'World'}!</b>`
  *
- * 9. h({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
  * 10. h(string, object, ...)          // JSX TODO
  * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
@@ -96,7 +95,7 @@ export default function h(htmlStrings=undefined, ...exprs) {
 		if (typeof arguments[1] === 'string' || arguments[1] instanceof Template)
 			throw new Error('Unsupported');
 
-		// 7. Create a static element
+		// 7. Create a static element  h()'<div></div>'
 		else {
 			return (htmlStrings, ...exprs) => {
 				let template = h(htmlStrings, ...exprs);
@@ -105,7 +104,7 @@ export default function h(htmlStrings=undefined, ...exprs) {
 		}
 	}
 
-	// 9. Create dynamic element with render() function.
+	// 9. Help toEl() with objects.
 	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (typeof htmlStrings === 'object') {
 		let obj = htmlStrings;
@@ -122,32 +121,6 @@ export default function h(htmlStrings=undefined, ...exprs) {
 				let el = template.render();
 				Globals.objToEl.set(obj, el);
 			}.bind(obj);
-		}
-
-		// Normal path
-		else {
-			Globals.objToEl.set(obj, null);
-			obj[renderF](); // Calls the Special rebound render path above, when the render function calls h(this)
-			let el = Globals.objToEl.get(obj);
-			Globals.objToEl.delete(obj);
-
-			for (let name in obj)
-				if (typeof obj[name] === 'function')
-					el[name] = obj[name].bind(el);  // Make the "this" of functions be el.
-					// TODO: But this doesn't work for passing an object with functions as a constructor arg via an attribute:
-				// <my-element arg=${{myFunc() { return this }}}
-				else
-					el[name] = obj[name];
-
-			// Bind id's
-			// This doesn't work for id's referenced by attributes.
-			// for (let idEl of el.querySelectorAll('[id],[data-id]')) {
-			// 	Util.bindId(el, idEl);
-			// 	Util.bindId(obj, idEl);
-			// }
-			// TODO: Bind styles
-
-			return el;
 		}
 	}
 

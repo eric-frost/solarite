@@ -2453,7 +2453,7 @@ Testimony.test('Solarite.h.element', () => {
 })
 
 Testimony.test('Solarite.h.standalone1', () => {
-	let button = h({
+	let button = toEl({
 		count: 0,
 
 		inc() {
@@ -2479,7 +2479,7 @@ Testimony.test('Solarite.h.standalone1', () => {
 });
 
 Testimony.test('Solarite.h.standalone2', () => {
-	let list = h({
+	let list = toEl({
 		items: [],
 
 		add() {
@@ -2520,7 +2520,7 @@ Testimony.test('Solarite.h.standalone2', () => {
 });
 
 Testimony.test('Solarite.h.standaloneId', "Test id's on standalone elmenets.", () => {
-	let list = h({
+	let list = toEl({
 		items: [],
 
 		add() {
@@ -2540,7 +2540,7 @@ Testimony.test('Solarite.h.standaloneId', "Test id's on standalone elmenets.", (
 });
 
 Testimony.test('Solarite.h.standaloneStyle', "Test id's on standalone elmenets.", () => {
-	let box = h({
+	let box = toEl({
 		render() {
 			h(this)`
 			<div>
@@ -2556,7 +2556,7 @@ Testimony.test('Solarite.h.standaloneStyle', "Test id's on standalone elmenets."
 Testimony.test('Solarite.h.standalone3', () => {
 
 	// Make sure a div inside a div doesn't replace the parent div.
-	let list = h({
+	let list = toEl({
 		items: [],
 
 		render() {
@@ -2617,7 +2617,7 @@ Testimony.test('Solarite.h.standalone3', () => {
 Testimony.test('Solarite.h.standaloneChild', () => {
 
 	function createItem(item) {
-		return h({
+		return toEl({
 			item: item,
 			render(attribs = null) {
 				// If attributes passed to constructor have changed.
@@ -2632,7 +2632,7 @@ Testimony.test('Solarite.h.standaloneChild', () => {
 	}
 
 	function createList(items) {
-		return h({
+		return toEl({
 			items: items,
 			render() {
 				h(this)`
@@ -3118,7 +3118,7 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 Testimony.test('Solarite.component.nestedTrLoop', () => {
 
 	function tableRow(user) {
-		let tr = h({
+		let tr = toEl({
 			render() {
 				h(this)`<tr><td>${user.name}</td><td>${user.email}</td></tr>`
 			}

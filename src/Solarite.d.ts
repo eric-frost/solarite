@@ -5,7 +5,7 @@
  */
 
 export default function h(htmlStrings?: HTMLElement | string | string[] | TemplateStringsArray | Function | {render: Function}, ...exprs: any[]): Node | HTMLElement | Template | Function;
-export function toEl(htmlOrTemplate: string|Template) : Node|HTMLElement|DocumentFragment;
+export function toEl(htmlOrTemplate: string|Template|{render:()=>void}) : Node|HTMLElement|DocumentFragment;
 
 // Deprecated:
 export function t(html: string): Template;

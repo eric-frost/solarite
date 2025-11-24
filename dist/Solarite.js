@@ -2956,37 +2956,86 @@ class Template {
  */
 
 /**
+ * Convert a template, string, or object into a DOM Node or Element
+ *
  * 1. h('Hello');                      // Create single text node.
  * 2. h('<b>Hello</b>');               // Create single HTMLElement
  * 3. h('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
- * 4. h(template)                      // Render Template created by h`<html>` or h();.
- *
- * @param htmlOrTemplate
- * @returns {Node|DocumentFragment|?DocumentFragment|HTMLElement}
+ * 4. h(template)                      // Render Template created by h`<html>` or h();
+ * 5. h({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
+ * @param arg {string|Template|{render:()=>void}}
+ * @returns {Node|DocumentFragment|HTMLElement}
  */
-function toEl(htmlOrTemplate) {
-	if (htmlOrTemplate instanceof Template) {
-		return htmlOrTemplate.render();
+function toEl(arg) {
+
+	if (typeof arg === 'string') {
+		let html = arg;
+
+		// If it's an element with whitespace before or after it, trim both ends.
+		if (html.match(/^\s^</) || html.match(/>\s+$/))
+			html = html.trim();
+
+		// We create a new one each time because otherwise
+		// the returned fragment will have its content replaced by a subsequent call.
+		let templateEl = Globals$1.doc.createElement('template');
+		templateEl.innerHTML = html;
+
+		// 1+2. Return Node if there's one child.
+		let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);
+		if (relevantNodes.length === 1)
+			return relevantNodes[0];
+
+		// 3. Otherwise return DocumentFragment.
+		return templateEl.content;
 	}
 
-	// If it starts with a string, trim both ends.
-	// TODO: Also trim if it ends with whitespace?
-	if (htmlOrTemplate.match(/^\s^</))
-		htmlOrTemplate = htmlOrTemplate.trim();
+	// 4.
+	if (arg instanceof Template) {
+		return arg.render();
+	}
 
-	// We create a new one each time because otherwise
-	// the returned fragment will have its content replaced by a subsequent call.
-	let templateEl = Globals$1.doc.createElement('template');
-	templateEl.innerHTML = htmlOrTemplate;
+	// 5. Create dynamic element with render() function.
+	// TODO: This path doesn't handle embeds like data-id="..."
+	else if (arg && typeof arg === 'object') {
+		let obj = arg;
 
-	// 4+5. Return Node if there's one child.
-	let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);
-	if (relevantNodes.length === 1)
-		return relevantNodes[0];
+		if (obj.constructor.name !== 'Object')
+			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
 
-	// 6. Otherwise return DocumentFragment.
-	return templateEl.content;
+		// Normal path
+		if (!Globals$1.objToEl.has(obj)) {
+			Globals$1.objToEl.set(obj, null);
+			obj[renderF](); // Calls the Special rebound render path above, when the render function calls h(this)
+			let el = Globals$1.objToEl.get(obj);
+			Globals$1.objToEl.delete(obj);
+
+			for (let name in obj)
+				if (typeof obj[name] === 'function')
+					el[name] = obj[name].bind(el);  // Make the "this" of functions be el.
+					// TODO: But this doesn't work for passing an object with functions as a constructor arg via an attribute:
+				// <my-element arg=${{myFunc() { return this }}}
+				else
+					el[name] = obj[name];
+
+			// Bind id's
+			// This doesn't work for id's referenced by attributes.
+			// for (let idEl of el.querySelectorAll('[id],[data-id]')) {
+			// 	Util.bindId(el, idEl);
+			// 	Util.bindId(obj, idEl);
+			// }
+			// TODO: Bind styles
+
+			return el;
+		}
+	}
+
+	throw new Error('Unsupported argument: ' + (arg ? typeof arg : arg));
+
 }
+
+
+// Trick to prevent minifier from renaming this function.
+let renderF = 'render';
 
 /**
  * Convert strings to HTMLNodes.
@@ -3017,7 +3066,6 @@ function toEl(htmlOrTemplate) {
  * Create top-level element
  * 7. h()`Hello<b>${'World'}!</b>`
  *
- * 9. h({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
  * 10. h(string, object, ...)          // JSX TODO
  * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
@@ -3080,7 +3128,7 @@ function h(htmlStrings=undefined, ...exprs) {
 		if (typeof arguments[1] === 'string' || arguments[1] instanceof Template)
 			throw new Error('Unsupported');
 
-		// 7. Create a static element
+		// 7. Create a static element  h()'<div></div>'
 		else {
 			return (htmlStrings, ...exprs) => {
 				let template = h(htmlStrings, ...exprs);
@@ -3089,7 +3137,7 @@ function h(htmlStrings=undefined, ...exprs) {
 		}
 	}
 
-	// 9. Create dynamic element with render() function.
+	// 9. Help toEl() with objects.
 	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (typeof htmlStrings === 'object') {
 		let obj = htmlStrings;
@@ -3106,32 +3154,6 @@ function h(htmlStrings=undefined, ...exprs) {
 				let el = template.render();
 				Globals$1.objToEl.set(obj, el);
 			}.bind(obj);
-		}
-
-		// Normal path
-		else {
-			Globals$1.objToEl.set(obj, null);
-			obj[renderF](); // Calls the Special rebound render path above, when the render function calls h(this)
-			let el = Globals$1.objToEl.get(obj);
-			Globals$1.objToEl.delete(obj);
-
-			for (let name in obj)
-				if (typeof obj[name] === 'function')
-					el[name] = obj[name].bind(el);  // Make the "this" of functions be el.
-					// TODO: But this doesn't work for passing an object with functions as a constructor arg via an attribute:
-				// <my-element arg=${{myFunc() { return this }}}
-				else
-					el[name] = obj[name];
-
-			// Bind id's
-			// This doesn't work for id's referenced by attributes.
-			// for (let idEl of el.querySelectorAll('[id],[data-id]')) {
-			// 	Util.bindId(el, idEl);
-			// 	Util.bindId(obj, idEl);
-			// }
-			// TODO: Bind styles
-
-			return el;
 		}
 	}
 
@@ -3158,9 +3180,6 @@ function h(htmlStrings=undefined, ...exprs) {
 	else
 		throw new Error('Unsupported arguments.')
 }
-
-// Trick to prevent minifier from renaming this function.
-let renderF = 'render';
 
 /**
  * There are three ways to create an instance of a Solarite Component:
