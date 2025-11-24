@@ -1,7 +1,7 @@
 // noinspection DuplicatedCode
 
-import h, {getArg, Solarite, Template, Globals, SolariteUtil} from '../src/Solarite.js';
-//import h, {getArg, Solarite, Template, Globals, SolariteUtil} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
+import h, {toEl, getArg, Solarite, Template, Globals, SolariteUtil} from '../src/Solarite.js';
+//import h, {toEl, getArg, Solarite, Template, Globals, SolariteUtil} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 
 import {watch, renderWatched} from "../src/watch.js";
 import HtmlParser from "../src/HtmlParser.js";
@@ -161,8 +161,8 @@ Testimony.test('Solarite.NodeGroup.paragraph', () => {
 });
 
 Testimony.test('Solarite.NodeGroup.node', () => {
-	let a = h('<p>a</p>')
-	let b = h('<p>b</p>')
+	let a = toEl('<p>a</p>')
+	let b = toEl('<p>b</p>')
 	let ng = new NodeGroup(new Template(['<div>', '</div>'], [a]))
 
 	assert.eq(getHtml(ng), '<div><p>a</p></div>')
@@ -273,7 +273,7 @@ Testimony.test('Solarite.basic.empty2', () => {
 	}
 	R11.define();
 
-	let a = h(`<r-11 title="Hello"></r-11>`);
+	let a = toEl(`<r-11 title="Hello"></r-11>`);
 	assert.eq(a.outerHTML, `<r-11 title="Hello"></r-11>`);
 });
 
@@ -2371,48 +2371,59 @@ Testimony.test('Solarite.comments.two', () => {
 
 
 
+//<editor-fold desc="toEl">
 
-//<editor-fold desc="r">
-/* ┌─────────────────╮
- * | r               |
- * └─────────────────╯*/
-Testimony.test('Solarite.h.staticElement', () => {
-	let button = h(`<button>hi</button>`);
+/*┌─────────────────╮
+  | toEl            |
+  └─────────────────╯*/
+
+Testimony.test('Solarite.toEl.staticElement', () => {
+	let button = toEl(`<button>hi</button>`);
 	assert(button instanceof HTMLElement); // Not a DocumentFragment
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
 
-Testimony.test('Solarite.h.staticElement2', () => {
-	let button = h(`
+Testimony.test('Solarite.toEl.staticElement2', () => {
+	let button = toEl(`
 		<button>hi</button>`);
 	assert(button instanceof HTMLElement); // Not a DocumentFragment
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
 
-Testimony.test('Solarite.h.staticElement3', () => {
-	let button = h(` <!-- comment -->
+Testimony.test('Solarite.toEl.staticElement3', () => {
+	let button = toEl(` <!-- comment -->
 		<button>hi</button>`);
 	assert(button instanceof HTMLElement); // Not a DocumentFragment
 	assert.eq(getHtml(button), `<button>hi</button>`)
 })
 
-Testimony.test('Solarite.h.staticElement4', () => {
-	let button = h(` Hello`);
+Testimony.test('Solarite.toEl.staticElement4', () => {
+	let button = toEl(` Hello`);
 	assert(button instanceof Text);
 	assert.eq(getHtml(button), ` Hello`)
 })
 
-Testimony.test('Solarite.h.staticElement5', () => {
-	let button = h(` <!--comment--> Hello`);
+Testimony.test('Solarite.toEl.staticElement5', () => {
+	let button = toEl(` <!--comment--> Hello`);
 	assert(button instanceof Text);
 	assert.eq(getHtml(button), ` Hello`)
 })
 
-Testimony.test('Solarite.h.fragment', () => {
-	let fragment = h(`Hello <button>hi</button>`);
+Testimony.test('Solarite.toEl.fragment', () => {
+	let fragment = toEl(`Hello <button>hi</button>`);
 	assert(fragment instanceof DocumentFragment);
 	assert.eq(getHtml(fragment), `Hello |<button>hi</button>`)
 });
+
+//</editor-fold>
+
+
+
+//<editor-fold desc="h">
+
+/*┌─────────────────╮
+  | h               |
+  └─────────────────╯*/
 
 Testimony.test('Solarite.h.fragment2', () => {
 	let fragment = h()`Hello <button>hi</button>`;

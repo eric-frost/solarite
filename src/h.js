@@ -15,7 +15,36 @@ import {assert} from "./assert.js";
  * 4. event binding
  * 5. TODO:  list more
  *
+
+
+ * General rule:
+ * If h() is a function with null or an HTMLElement as its first argument create a Node.
+ * Otherwise create a template
+ *
  * Currently supported:
+ *
+ * Create Tempataes
+ * 1. h`<b>Hello</b> ${'World'}!`      // Create Template that can later be used to create nodes.
+ * 2. h('<b>Hello</b><u>Goodbye</u>'); // Create Template from string, that can later be used to create nodes.
+ *
+ * Add children to an element.
+ * 3. h(el, h`<b>${'Hi'}</b>`, ?options)
+ * 4. h(el, ?options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
+ *
+ * Create HTMLElement or DocumentFragment if more than one root node.
+ * 5. h(null, `<b>${'Hi'}</b>`, ?options)  // Create HTMLElement
+ * 6. h(null, h`<b>${'Hi'}</b>`, ?options) // Create HTMLElement
+ * 7. h()`Hello<b>${'World'}!</b>`         // Create DocumentFragment
+ *
+ * 9. h({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
+ * 10. h(string, object, ...)          // JSX TODO
+ *
+ *
+ *
+ * ----------------
+ * Old:
+ * ----------------
+ *
  * 1. h(el, options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
  * 2. h(el, template, ?options)        // Render the Template created by #1 to element.
  *
@@ -34,6 +63,28 @@ import {assert} from "./assert.js";
  * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template} */
 export default function h(htmlStrings=undefined, ...exprs) {
+	if (arguments[0] === undefined && !exprs.length && arguments.length)
+		throw new Error('h() cannot be called with undefined.');
+
+	// 1. Tagged template
+	if (Array.isArray(htmlStrings)) {
+		return new Template(htmlStrings, exprs);
+	}
+
+	// 2. String to template.
+	// else if (typeof arguments[0] === 'string' || arguments[0] instanceof String) {
+	// 	let html = arguments[0];
+	//
+	// 	// If it starts with whitespace, trim both ends.
+	// 	// TODO: Also trim if it ends with whitespace?
+	// 	if (html.match(/^\s^</))
+	// 		html = html.trim();
+	//
+	// 	return new Template([html], []);
+	// }
+
+
+	// ---- old:
 
 	if (htmlStrings === undefined && !exprs.length && arguments.length)
 		throw new Error('h() cannot be called with undefined.');
@@ -94,6 +145,7 @@ export default function h(htmlStrings=undefined, ...exprs) {
 			return new Template(templateHtmlStrings, templateExprs);
 		}
 
+		// 4-6 are Deprecated:
 
 		// If it starts with a string, trim both ends.
 		// TODO: Also trim if it ends with whitespace?
@@ -178,6 +230,7 @@ export default function h(htmlStrings=undefined, ...exprs) {
 	else
 		throw new Error('Unsupported arguments.')
 }
+
 
 // Trick to prevent minifier from renaming this function.
 let renderF = 'render';

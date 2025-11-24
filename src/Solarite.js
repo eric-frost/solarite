@@ -12,7 +12,7 @@ export {default as h, default as r} from './h.js'; //Named exports for h() are d
 export {default as delve} from './delve.js';
 export {getArg, ArgType} from './getArg.js';
 export {default as Template} from './Template.js';
-
+export {default as toEl} from './toEl.js';
 
 
 // Experimental:

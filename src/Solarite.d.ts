@@ -1,13 +1,15 @@
 /**
- * Solarite JavasCript UI library.
+ * Solarite JavaScript UI library.
  * MIT License
  * https://vorticode.github.io/solarite/
  */
 
-export default function h(htmlStrings?: HTMLElement | string | string[] | Function | {render: Function}, ...exprs: any[]): Node | HTMLElement | Template | Function;
-export { default as r } from './h.js';
+export default function h(htmlStrings?: HTMLElement | string | string[] | TemplateStringsArray | Function | {render: Function}, ...exprs: any[]): Node | HTMLElement | Template | Function;
+export function toEl(htmlOrTemplate: string|Template) : Node|HTMLElement|DocumentFragment;
 
+// Deprecated:
 export function t(html: string): Template;
+
 
 export const ArgType: {
 	Bool: string;
