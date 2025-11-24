@@ -2,6 +2,7 @@ import Template from "./Template.js";
 import Util from "./Util.js";
 import Globals from "./Globals.js";
 import {assert} from "./assert.js";
+import toEl from "./toEl.js";
 
 /**
  * Convert strings to HTMLNodes.
@@ -30,8 +31,6 @@ import {assert} from "./assert.js";
  * 4. h(el, ?options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
  *
  * Create top-level element
- * 5. h(null, `<b>${'Hi'}</b>`, ?options) // Create HTMLElement or DocumentFragment if more than one root node.
- * 6. h(null, h`<b>${'Hi'}</b>`, ?options) // Create HTMLElement or DocumentFragment if more than one root node.
  * 7. h()`Hello<b>${'World'}!</b>`
  *
  * 9. h({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
@@ -93,37 +92,15 @@ export default function h(htmlStrings=undefined, ...exprs) {
 
 	else if ((arguments[0] === null || arguments[0] === undefined)) {
 
-		// 5.
-		if (typeof arguments[1] === 'string') {
-			//throw new Error('Unsupported');
-
-			// Old:
-
-			// We create a new one each time because otherwise
-			// the returned fragment will have its content replaced by a subsequent call.
-			let templateEl = document.createElement('template');
-			templateEl.innerHTML = arguments[1];
-
-			// 5a. Return Node if there's one child.
-			let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);
-			if (relevantNodes.length === 1)
-				return relevantNodes[0];
-
-			// 5b. Otherwise return DocumentFragment.
-			return templateEl.content;
-		}
-		// 6.
-		else if (arguments[1] instanceof Template) {
-
-			//throw new Error('Unsupported');
-			return arguments[1].render() // Doesn't replace solarite-placeholder.
-		}
+		// 5 & 6.
+		if (typeof arguments[1] === 'string' || arguments[1] instanceof Template)
+			throw new Error('Unsupported');
 
 		// 7. Create a static element
 		else {
 			return (htmlStrings, ...exprs) => {
 				let template = h(htmlStrings, ...exprs);
-				return h(null, template); // Go to path 6.
+				return toEl(template); // Go to path 6.
 			}
 		}
 	}

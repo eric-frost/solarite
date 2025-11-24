@@ -2956,6 +2956,39 @@ class Template {
  */
 
 /**
+ * 1. h('Hello');                      // Create single text node.
+ * 2. h('<b>Hello</b>');               // Create single HTMLElement
+ * 3. h('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
+ * 4. h(template)                      // Render Template created by h`<html>` or h();.
+ *
+ * @param htmlOrTemplate
+ * @returns {Node|DocumentFragment|?DocumentFragment|HTMLElement}
+ */
+function toEl(htmlOrTemplate) {
+	if (htmlOrTemplate instanceof Template) {
+		return htmlOrTemplate.render();
+	}
+
+	// If it starts with a string, trim both ends.
+	// TODO: Also trim if it ends with whitespace?
+	if (htmlOrTemplate.match(/^\s^</))
+		htmlOrTemplate = htmlOrTemplate.trim();
+
+	// We create a new one each time because otherwise
+	// the returned fragment will have its content replaced by a subsequent call.
+	let templateEl = Globals$1.doc.createElement('template');
+	templateEl.innerHTML = htmlOrTemplate;
+
+	// 4+5. Return Node if there's one child.
+	let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);
+	if (relevantNodes.length === 1)
+		return relevantNodes[0];
+
+	// 6. Otherwise return DocumentFragment.
+	return templateEl.content;
+}
+
+/**
  * Convert strings to HTMLNodes.
  * Using h`...` as a tag will always create a Template.
  * Using h() as a function() will always create a DOM element.
@@ -2982,8 +3015,6 @@ class Template {
  * 4. h(el, ?options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
  *
  * Create top-level element
- * 5. h(null, `<b>${'Hi'}</b>`, ?options) // Create HTMLElement or DocumentFragment if more than one root node.
- * 6. h(null, h`<b>${'Hi'}</b>`, ?options) // Create HTMLElement or DocumentFragment if more than one root node.
  * 7. h()`Hello<b>${'World'}!</b>`
  *
  * 9. h({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
@@ -3045,37 +3076,15 @@ function h(htmlStrings=undefined, ...exprs) {
 
 	else if ((arguments[0] === null || arguments[0] === undefined)) {
 
-		// 5.
-		if (typeof arguments[1] === 'string') {
-			//throw new Error('Unsupported');
-
-			// Old:
-
-			// We create a new one each time because otherwise
-			// the returned fragment will have its content replaced by a subsequent call.
-			let templateEl = document.createElement('template');
-			templateEl.innerHTML = arguments[1];
-
-			// 5a. Return Node if there's one child.
-			let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);
-			if (relevantNodes.length === 1)
-				return relevantNodes[0];
-
-			// 5b. Otherwise return DocumentFragment.
-			return templateEl.content;
-		}
-		// 6.
-		else if (arguments[1] instanceof Template) {
-
-			//throw new Error('Unsupported');
-			return arguments[1].render() // Doesn't replace solarite-placeholder.
-		}
+		// 5 & 6.
+		if (typeof arguments[1] === 'string' || arguments[1] instanceof Template)
+			throw new Error('Unsupported');
 
 		// 7. Create a static element
 		else {
 			return (htmlStrings, ...exprs) => {
 				let template = h(htmlStrings, ...exprs);
-				return h(null, template); // Go to path 6.
+				return toEl(template); // Go to path 6.
 			}
 		}
 	}
@@ -3284,39 +3293,6 @@ var ArgType = {
 	 * If it can't be evaluated, return the original string. */
 	Eval: 'Eval'
 };
-
-/**
- * 1. h('Hello');                      // Create single text node.
- * 2. h('<b>Hello</b>');               // Create single HTMLElement
- * 3. h('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
- * 4. h(template)                      // Render Template created by h`<html>` or h();.
- *
- * @param htmlOrTemplate
- * @returns {Node|DocumentFragment|?DocumentFragment|HTMLElement}
- */
-function toEl(htmlOrTemplate) {
-	if (htmlOrTemplate instanceof Template) {
-		return htmlOrTemplate.render();
-	}
-
-	// If it starts with a string, trim both ends.
-	// TODO: Also trim if it ends with whitespace?
-	if (htmlOrTemplate.match(/^\s^</))
-		htmlOrTemplate = htmlOrTemplate.trim();
-
-	// We create a new one each time because otherwise
-	// the returned fragment will have its content replaced by a subsequent call.
-	let templateEl = Globals$1.doc.createElement('template');
-	templateEl.innerHTML = htmlOrTemplate;
-
-	// 4+5. Return Node if there's one child.
-	let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);
-	if (relevantNodes.length === 1)
-		return relevantNodes[0];
-
-	// 6. Otherwise return DocumentFragment.
-	return templateEl.content;
-}
 
 function defineClass(Class, tagName, extendsTag) {
 	if (!customElements[getName](Class)) { // If not previously defined.

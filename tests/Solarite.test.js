@@ -2671,9 +2671,9 @@ Testimony.test('Solarite.h.standaloneChild', () => {
 
 
 //<editor-fold desc="component">
-/* ┌─────────────────╮
- * | Component       |
- * └─────────────────╯*/
+/*┌─────────────────╮
+  | Component       |
+  └─────────────────╯*/
 Testimony.test('Solarite.component.tr', () => {
 
 	class TR510 extends Solarite('tr') {
