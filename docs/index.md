@@ -150,21 +150,21 @@ Since these are just regular web components, they can define the [connectedCallb
 
 ### Regular Elements
 
-The `h()` function can create html elements:
+The `toEl()` function can create html elements:
 
 ```javascript
-import h from './dist/Solarite.min.js';
+import {toEl} from './dist/Solarite.min.js';
 
-let button = h(`<button>Hello World</button>`);
+let button = toEl(`<button>Hello World</button>`);
 document.body.append(button);
 ```
 
-You can also pass objects to h() with a `render()` method.  This object can optionally have additional properties and methods, which become bound to the resulting element.  When `render()` is called, only the changed nodes will be updated.
+You can also pass objects to `toEl()` with a `render()` method.  This object can optionally have additional properties and methods, which become bound to the resulting element.  When `render()` is called, only the changed nodes will be updated.
 
 ```javascript
-import h from './dist/Solarite.min.js';
+import h, {toEl} from './dist/Solarite.min.js';
 
-let button = h({
+let button = toEl({
     count: 0,
 
     inc() {
@@ -182,10 +182,10 @@ document.body.append(button);
 If you want multiple instances of such an element, the code above can be wrapped in a function:
 
 ```javascript
-import h from './dist/Solarite.min.js';
+import h, {toEl} from './dist/Solarite.min.js';
 
 function createButton(text) {
-	return h({
+	return toEl({
 		count: 0,
 
 		inc() {
@@ -208,7 +208,7 @@ document.body.append(createButton('tickles'));
 
 The `h` function, when used as a [tagged template literal](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals#tagged_templates), converts HTML and embedded expressions into a Solarite `Template`. This data structure efficiently stores processed HTML and expressions for optimal rendering.
 
-When you call `h(this)` with a template string, it renders that `Template` as the element's attributes and children. Conceptually, this is similar to assigning to the browser's built-in `this.outerHTML` property, but with a crucial difference: Solarite's updates are much faster because only the changed elements are replaced, not all nodes.
+When you call `h(this)` followed by a template string, it renders that `Template` as the element's attributes and children. Conceptually, this is similar to assigning to the browser's built-in `this.outerHTML` property, but with a crucial difference: Solarite's updates are much faster because only the changed elements are replaced, not all nodes.
 
 #### Manual Rendering
 
@@ -243,7 +243,7 @@ document.body.append(new MyComponent());
 
 If you do wrap the web component's html in its tag, that tag name must exactly match the tag name passed to `customElements.define()`.
 
-Note that by default, `h()` will render expressions as text, with escaped html entities.  To render as html, wrap a variable in the `h()` function:
+Note that by default, `h()` will render expressions as text, with escaped html entities.  To render as html, wrap a variable in the `h()` function to create a template:
 
 ```javascript
 import h from './dist/Solarite.min.js';
@@ -253,9 +253,10 @@ let folderIcon = `
 	<path fill="currentColor" d="M2 4h8l2 2h10v14H2V4Zm2 2v12h16V8h-8.825l-2-2H4Zm0 12V6v12Z"/>
 </svg>`;
 
+console.log(h(folderIcon));
 
 let icon1 = h({
-	render() {
+	render() { // Bad:  Renders svg as html entities.
 		h(this)`<div>${folderIcon}</div>`
 	}
 });
@@ -263,7 +264,7 @@ document.body.append(icon1);
 
 
 let icon2 = h({
-	render() { // string wrapped in h()
+	render() { // folderIcon html string wrapped in h()
 		h(this)`<div>${h(folderIcon)}</div>`
 	}
 });
@@ -288,13 +289,13 @@ These types of objects can be returned by in expressions with `h` tagged templat
 Dynamic attributes can be specified by inserting expressions inside a tag.  An expression can be part or all of an attribute value, or a string specifying multiple whole attributes.  For example:
 
 ```javascript
-import h from './dist/Solarite.min.js';
+import h, {toEl} from './dist/Solarite.min.js';
 
 let style = 'width: 100px; height: 40px; background: orange';
 let isEditable = true;
 let height = 40;
 
-let attributeDemo = h({
+let attributeDemo = toEl({
 	render() { 
 		h(this)`
         <div class="big">
@@ -358,9 +359,9 @@ Note that attributes can also be assigned to the root element, such as `class="b
 Any element in the html with an `id` or `data-id` attribute is automatically bound to a property with the same name on the class instance.  But this only happens after `render()` is first called:
 
 ```javascript
-import h from './dist/Solarite.min.js';
+import h, {toEl} from './dist/Solarite.min.js';
 
-let raceTeam = h({    
+let raceTeam = toEl({    
 	render() { 
         h(this)`
 		<div>
@@ -713,43 +714,19 @@ Multiple Ways to Use h():
 ```JavaScript
 import h from './dist/Solarite.min.js';
 
-// h`string`
 // Convert the html to a Solarite Template that can later be used to create nodes.
-let template = h`Hello ${"World"}!`;
+let template = h`<b>Hello ${"World"}!</b>`;
+let template = h(`<b>Hello ${"World"}!</b>`);
 
-// h(HTMLElement, Template)
-// Render the template created by #1 as a child of the <body> tag.
-h(document.body, template);  
+// Convert a string to an HTMLElement
+let el = h()`<b>Hello ${"World"}!</b>`;
 
-// h(Template):Node|HTMLElement
-// Render Template created by #1 creating a standaline HTML Element
-let el = h(template);
+// Convert a string with multiple-top-level nodes to a DocumentFragment
+let el = h()`Hello <b>${"World"}!</b>`;
 
 // h(HTMLElement)`string`
 // Create template and render its node(s) as a child of HTMLElement el.
-h(el)`<b>${'Hi'}</b>`;
-
-// h(html:string):TextNode
-// Create single text node.
-let textNode = h('Hello');           
-
-// h(html:string):HTMLElement
-// Create single HTMLElement.
-let el2 = h('<b>Hello</b>');
-
-// h(html:string):DocumentFragment
-// Create document fragment with two nodes as its children.
-let fragment = h('Hello <u>Goodbye</u>');
-
-// h(function():Template, Record<string, function|*>):HTMLElement
-// Crete a button element, with the fist function being the render function.
-let button = h({
-    render() {
-        h(this)`<button>Submit</button>`
-    }
-});
-document.body.append(button);
-
+h(el)`<b>Hello ${'World'}</b>`;
 ```
 
 ### Advanced Techniques
@@ -809,9 +786,9 @@ Following these guidelines ensures that Solarite's rendering system continues to
 This example creates a list inside a `div` element and demonstrates which manual DOM operations are allowed.
 
 ```javascript
-import h from './dist/Solarite.min.js';
+import h, {toEl} from './dist/Solarite.min.js';
 
-let list = h({
+let list = toEl({
     items: [],
 
     add() {

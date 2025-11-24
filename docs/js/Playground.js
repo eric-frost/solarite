@@ -1,4 +1,4 @@
-import {r, Solarite} from "../../src/Solarite.js";
+import h, {toEl, Solarite} from "../../src/Solarite.js";
 import "./ui/CodeEditor.js";
 import "./ui/FlexResizer.js";
 
@@ -45,7 +45,7 @@ export default class Playground extends Solarite {
 		}
 
 		// Create a new preview iframe and swap it for the old one once it's loaded.
-		let newIframe = r(`<iframe data-id="preview" frameborder="0" style="display: none; height: 0">`);
+		let newIframe = toEl(`<iframe data-id="preview" frameborder="0" style="display: none; height: 0">`);
 		newIframe.onload = () => {
 
 			newIframe.contentWindow.document.open();
@@ -60,7 +60,7 @@ export default class Playground extends Solarite {
 
 					let errorDiv = `<div style="color: red; font: 12px sans-serif; position: fixed; left: 0; bottom: 0;
 						width: 100%; padding: 5px; max-height: 50%; overflow-y: auto; background: white">${message}</div>`;
-					newIframe.contentWindow.document.body.append(r(errorDiv));
+					newIframe.contentWindow.document.body.append(toEl(errorDiv));
 				}, 0);
 			}
 			
@@ -135,7 +135,7 @@ export default class Playground extends Solarite {
 
 
 	render() {
-		r(this)`
+		h(this)`
 			<play-ground class="card row pad stretch-v  pad-small-tablet col-mobile pad-tiny-mobile">
 				<style>
 					@media (width < 768px) { /* On mobile, put preview below code */
