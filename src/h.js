@@ -33,7 +33,7 @@ import toEl from "./toEl.js";
  * Create top-level element
  * 7. h()`Hello<b>${'World'}!</b>`
  *
- * 10. h(string, object, ...)          // JSX TODO
+ * 10. h(string, object, ...)          // JSX
  * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template} */
@@ -43,20 +43,32 @@ export default function h(htmlStrings=undefined, ...exprs) {
 		throw new Error('h() cannot be called with undefined.');
 
 	// 1. Tagged template
-	if (Array.isArray(htmlStrings)) {
-		return new Template(htmlStrings, exprs);
+	if (Array.isArray(arguments[0])) {
+		return new Template(arguments[0], exprs);
 	}
 
-	// 2. String to template.
+	// 2. String to template, or JSX factory form h(tag, props, ...children)
 	else if (typeof arguments[0] === 'string' || arguments[0] instanceof String) {
-		let html = arguments[0];
+		let tagOrHtml = arguments[0];
 
-		// If it starts with whitespace, trim both ends.
-		// TODO: Also trim if it ends with whitespace?
-		if (html.match(/^\s^</))
-			html = html.trim();
+		// 2a. JSX: h("tag", {props}, ...children)
+		if (exprs.length && (typeof exprs[0] === 'object' || exprs[0] === null)) {
+			let tag = tagOrHtml + '';
+			let props = exprs[0] || {};
+			let children = exprs.slice(1);
 
-		return new Template([html], []);
+			return Template.fromJsx(tag, props, children);
+		}
+
+		// 2b. Plain html string => template
+		else {
+			let html = tagOrHtml;
+			// If it starts with whitespace, trim both ends.
+			// TODO: Also trim if it ends with whitespace?
+			if (html.match(/^\s^</))
+				html = html.trim();
+			return new Template([html], []);
+		}
 	}
 
 	else if (arguments[0] instanceof HTMLElement || arguments[0] instanceof DocumentFragment) {
@@ -106,48 +118,34 @@ export default function h(htmlStrings=undefined, ...exprs) {
 
 	// 9. Help toEl() with objects.
 	// TODO: This path doesn't handle embeds like data-id="..."
-	else if (typeof htmlStrings === 'object') {
-		let obj = htmlStrings;
+	else if (typeof arguments[0] === 'object') {
+		let obj = arguments[0];
 
 		if (obj.constructor.name !== 'Object')
 			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
 
 
 		// Special rebound render path, called by normal path.
-		// Intercepts the main r`...` function call inside render().
+		// Intercepts the main h(this)`...` function call inside render().
 		if (Globals.objToEl.has(obj)) {
-			return function(...args) {
-				let template = h(...args);
+
+			// Jsx with h(this, <jsx>)
+			if (arguments[1] instanceof Template) {
+				let template = arguments[1];
 				let el = template.render();
 				Globals.objToEl.set(obj, el);
-			}.bind(obj);
+			}
+
+			// h(this)`<div>...</div>
+			else
+				return function(...args) {
+					let template = h(...args);
+					let el = template.render();
+					Globals.objToEl.set(obj, el);
+				}.bind(obj);
 		}
 	}
-
-	else if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {
-		// 10. JSX
-		if (typeof exprs[0] === 'object') {
-			let tag = htmlStrings;
-			let props = exprs[0] || {};
-			let children = exprs.slice(1);
-
-			let templateHtmlStrings = [];
-			let templateExprs = [];
-
-			// TODO How to know which children are static html and which are expression placeholders?
-			// Perhaps we have to treat every text child as a string?
-
-			assert(templateHtmlStrings.length === templateExprs.length+1);
-			return new Template(templateHtmlStrings, templateExprs);
-		}
-	}
-
-
-
-
 	else
 		throw new Error('Unsupported arguments.')
 }
 
-// Trick to prevent minifier from renaming this function.
-let renderF = 'render';

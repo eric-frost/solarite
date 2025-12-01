@@ -3525,9 +3525,9 @@ Testimony.test('Solarite.events.onExprChild', () => {
 
 
 //<editor-fold desc="binding">
-/* ┌─────────────────╮
- * | Binding         |
- * └─────────────────╯*/
+/*┌─────────────────╮
+  | Binding         |
+  └─────────────────╯*/
 Testimony.test('Solarite.binding.input', () => {
 
 	class B10 extends Solarite {
@@ -3891,10 +3891,56 @@ Testimony.test('Solarite.binding.loop', 'similar to the loop.continuity2 test ab
 
 
 
+//<editor-fold desc="jsx">
+/*┌─────────────────╮
+  | JSX             |
+  └─────────────────╯*/
+
+Testimony.test('Solarite.jsx.full', () => {
+
+	let value = 1;
+	const increment = () => value++;
+
+	/*
+	<div>
+		<p data-id="label" class="big"><small>{'sum'}:</small> {this.value+''}</p>
+		<button onclick={increment}>Increment</button>
+	</div>
+	 */
+
+	const jsxTemplate =
+		h("div", null,
+			h("p", {"data-id": "label", class: 'big'},
+				h("small", null, "sum", ":"), " ", value),
+			h("button", { onclick: increment }, "Increment")
+		);
+
+	const template = new Template(
+		['<div><p data-id="label" class=', '><small>', '', '</small>', '', '</p><button onclick=', '>', '</button></div>'],
+		['big', 'sum', ':', ' ', 1, increment, 'Increment']
+	);
+
+	// console.log(template.html);
+	// console.log(jsxTemplate.html);
+	// console.log(template.exprs);
+	// console.log(jsxTemplate.exprs);
+
+	assert.eqJson(jsxTemplate.html, template.html);
+	assert.eqJson(jsxTemplate.exprs, template.exprs);
+
+});
+
+
+
+//</editor-fold>
+
+
+
+
 //<editor-fold desc="watch">
-/* ┌─────────────────╮
- * | Watch           |
- * └─────────────────╯*/
+/*┌─────────────────╮
+  | Watch           |
+  └─────────────────╯*/
 
 Testimony.test('Solarite.watch.primitive', () => {
 

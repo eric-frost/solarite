@@ -5,7 +5,8 @@
 /benchmarks/watch/Solarite.min.js
 /benchmarks/naive/Solarite.min.js
 /css
-/tests/.run
 /deno.lock
 /editor.html
 /editor2.html
+/tests/.run
+/tools

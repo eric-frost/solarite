@@ -41,7 +41,7 @@ export default function toEl(arg) {
 		return arg.render();
 	}
 
-	// 5. Create dynamic element with render() function.
+	// 5. Create dynamic element from an object with a render() function.
 	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (arg && typeof arg === 'object') {
 		let obj = arg;

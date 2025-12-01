@@ -25,7 +25,7 @@ Can't have a test with part of the name being "constructor"
 class AssertError extends Error {
 	constructor(msgOrActual='Assertion Failed', expected, op) {
 		if (expected)
-			super(`Failed:  \`${escapeHtml(msgOrActual)}\` ${escapeHtml(op)} \`${escapeHtml(expected)}\``);
+			super(`Failed:  \`${msgOrActual}\` ${op} \`${expected}\``);
 		else
 			super(msgOrActual);
 		this.name = "AssertError";
@@ -55,10 +55,13 @@ Object.assign(assert, {
 	},
 
 	eqJson(actual, expected) {
-		if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+		const jActual = JSON.stringify(actual, null, 2);
+		const jExpected = JSON.stringify(expected, null, 2);
+
+		if (jActual !== jExpected) {
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(actual, expected, 'eqJson');
+			throw new AssertError(jActual, jExpected, 'eqJson');
 		}
 	},
 
@@ -189,10 +192,6 @@ function h(text, quotes='"') {
 	if (quotes.includes('"'))
 		text = text.replace(/"/g, '&quot;');
 	return text;
-}
-
-function escapeHtml(text) {
-	return import.meta.main ? text : h(text);
 }
 
 /**

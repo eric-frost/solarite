@@ -2,6 +2,7 @@ import {assert} from "./assert.js";
 import {getObjectHash, getObjectId} from "./hash.js";
 import Globals from "./Globals.js";
 import RootNodeGroup from "./RootNodeGroup.js";
+import Util from "./Util.js";
 
 /**
  * The html strings and evaluated expressions from an html tagged template.
@@ -123,6 +124,124 @@ export default class Template {
 
 		return this.closeKey;
 	}
+
+	static fromJsx(tag, props, children) {
+
+		// HTML void elements that must not have closing tags
+		const isVoid = voidTags.has(tag.toLowerCase());
+
+		// Build htmlStrings/exprs so Shell can place placeholders in attribute values and child content.
+		let htmlStrings = [];
+		let templateExprs = [];
+
+		// Opening tag
+		let open = `<${tag}`;
+
+		// Attributes
+		if (props && typeof props === 'object') {
+			for (let name in props) {
+				let value = props[name];
+
+				// id and data-id are static in templates — never expressions
+				if (name === 'id' || name === 'data-id') {
+					// Write directly into the opening string with quotes
+					open += ` ${name}="${value}"`;
+					continue;
+				}
+
+				// Dynamic attribute value: functions are unquoted (e.g., onclick=${fn}), others quoted
+				if (typeof value === 'function') {
+					open += ` ${name}=`;
+					htmlStrings.push(open);
+					templateExprs.push(value);
+					open = ``;
+				}
+				else {
+					open += ` ${name}=`;
+					htmlStrings.push(open);
+					templateExprs.push(value);
+					// after the expression, we need the closing quote as part of next html segment
+					//open = `"`;
+				}
+			}
+		}
+
+		// Finalize opening tag precisely to match tagged template splitting
+		if (!isVoid) {
+			const pushedAny = htmlStrings.length > 0;
+			// If nothing pushed yet (no dynamic attrs), push the entire open + '>'
+			if (!pushedAny)
+				htmlStrings.push(open + '>');
+			else {
+				// If we were in a quoted attr (open === '"'), then the string after expr is '">' ;
+				// Otherwise (function-valued attr), the string after expr is just '>'
+				htmlStrings.push(open === '"' ? '">' : '>');
+			}
+
+			for (let child of children)
+				addChild(child, htmlStrings, templateExprs);
+		}
+
+		// Closing tag (not for void tags)
+		if (!isVoid) {
+			// If we never emitted the '>' for the open tag (no children were added),
+			// then it was appended above before children. Now just add the closing tag to the last html segment.
+			let lastIdx = htmlStrings.length - 1;
+			htmlStrings[lastIdx] += `</${tag}>`;
+		}
+
+		// Ensure invariant
+		//assert(htmlStrings.length === templateExprs.length + 1);
+		//console.log([htmlStrings, templateExprs])
+		return new Template(htmlStrings, templateExprs);
+	}
+}
+
+
+const voidTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
+
+
+// Children: insert expressions for dynamic children.
+const addChild = (template, html, exprs) => {
+
+	if (template === undefined || template === null || template === false)
+		return;
+
+	if (Array.isArray(template)) {
+		for (let c of template)
+			addChild(c, html, exprs);
+	}
+	else {
+		let flatten = false;
+		if (template instanceof Template) {
+			// Heuristic to match tagged-template splitting:
+			// - Flatten if the child has expressions (so JSX can inline attribute/value placeholders like tagged literals would).
+			// - Also flatten void elements (e.g., <img>) so they inline like literals.
+			// - Otherwise, keep as a dynamic child placeholder to match cases where the tagged template used an expression child.
+			const childHasExprs = template.exprs.length > 0;
+			if (childHasExprs)
+				flatten = true;
+			else {
+				const m = (template.html[0] || '').match(/^<([a-zA-Z][\w:-]*)/);
+				const childTag = m ? m[1].toLowerCase() : '';
+				flatten = voidTags.has(childTag);
+			}
+		}
+
+		if (flatten) {
+			// Flatten/interleave into current segment to match tagged template splitting
+			html[html.length - 1] += template.html[0];
+			for (let i = 0; i < template.exprs.length; i++) {
+				exprs.push(template.exprs[i]);
+				html.push(template.html[i + 1] ?? '');
+			}
+		} else {
+			// Keep as dynamic child
+			exprs.push(template);
+			html.push('');
+		}
+	}
+
 }
 
 

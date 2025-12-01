@@ -2940,7 +2940,125 @@ class Template {
 
 		return this.closeKey;
 	}
+
+	static fromJsx(tag, props, children) {
+
+		// HTML void elements that must not have closing tags
+		const isVoid = voidTags.has(tag.toLowerCase());
+
+		// Build htmlStrings/exprs so Shell can place placeholders in attribute values and child content.
+		let htmlStrings = [];
+		let templateExprs = [];
+
+		// Opening tag
+		let open = `<${tag}`;
+
+		// Attributes
+		if (props && typeof props === 'object') {
+			for (let name in props) {
+				let value = props[name];
+
+				// id and data-id are static in templates — never expressions
+				if (name === 'id' || name === 'data-id') {
+					// Write directly into the opening string with quotes
+					open += ` ${name}="${value}"`;
+					continue;
+				}
+
+				// Dynamic attribute value: functions are unquoted (e.g., onclick=${fn}), others quoted
+				if (typeof value === 'function') {
+					open += ` ${name}=`;
+					htmlStrings.push(open);
+					templateExprs.push(value);
+					open = ``;
+				}
+				else {
+					open += ` ${name}=`;
+					htmlStrings.push(open);
+					templateExprs.push(value);
+					// after the expression, we need the closing quote as part of next html segment
+					//open = `"`;
+				}
+			}
+		}
+
+		// Finalize opening tag precisely to match tagged template splitting
+		if (!isVoid) {
+			const pushedAny = htmlStrings.length > 0;
+			// If nothing pushed yet (no dynamic attrs), push the entire open + '>'
+			if (!pushedAny)
+				htmlStrings.push(open + '>');
+			else {
+				// If we were in a quoted attr (open === '"'), then the string after expr is '">' ;
+				// Otherwise (function-valued attr), the string after expr is just '>'
+				htmlStrings.push(open === '"' ? '">' : '>');
+			}
+
+			for (let child of children)
+				addChild(child, htmlStrings, templateExprs);
+		}
+
+		// Closing tag (not for void tags)
+		if (!isVoid) {
+			// If we never emitted the '>' for the open tag (no children were added),
+			// then it was appended above before children. Now just add the closing tag to the last html segment.
+			let lastIdx = htmlStrings.length - 1;
+			htmlStrings[lastIdx] += `</${tag}>`;
+		}
+
+		// Ensure invariant
+		//assert(htmlStrings.length === templateExprs.length + 1);
+		//console.log([htmlStrings, templateExprs])
+		return new Template(htmlStrings, templateExprs);
+	}
 }
+
+
+const voidTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
+
+
+// Children: insert expressions for dynamic children.
+const addChild = (template, html, exprs) => {
+
+	if (template === undefined || template === null || template === false)
+		return;
+
+	if (Array.isArray(template)) {
+		for (let c of template)
+			addChild(c, html, exprs);
+	}
+	else {
+		let flatten = false;
+		if (template instanceof Template) {
+			// Heuristic to match tagged-template splitting:
+			// - Flatten if the child has expressions (so JSX can inline attribute/value placeholders like tagged literals would).
+			// - Also flatten void elements (e.g., <img>) so they inline like literals.
+			// - Otherwise, keep as a dynamic child placeholder to match cases where the tagged template used an expression child.
+			const childHasExprs = template.exprs.length > 0;
+			if (childHasExprs)
+				flatten = true;
+			else {
+				const m = (template.html[0] || '').match(/^<([a-zA-Z][\w:-]*)/);
+				const childTag = m ? m[1].toLowerCase() : '';
+				flatten = voidTags.has(childTag);
+			}
+		}
+
+		if (flatten) {
+			// Flatten/interleave into current segment to match tagged template splitting
+			html[html.length - 1] += template.html[0];
+			for (let i = 0; i < template.exprs.length; i++) {
+				exprs.push(template.exprs[i]);
+				html.push(template.html[i + 1] ?? '');
+			}
+		} else {
+			// Keep as dynamic child
+			exprs.push(template);
+			html.push('');
+		}
+	}
+
+};
 
 
 /**
@@ -2994,7 +3112,7 @@ function toEl(arg) {
 		return arg.render();
 	}
 
-	// 5. Create dynamic element with render() function.
+	// 5. Create dynamic element from an object with a render() function.
 	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (arg && typeof arg === 'object') {
 		let obj = arg;
@@ -3066,7 +3184,7 @@ let renderF = 'render';
  * Create top-level element
  * 7. h()`Hello<b>${'World'}!</b>`
  *
- * 10. h(string, object, ...)          // JSX TODO
+ * 10. h(string, object, ...)          // JSX
  * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template} */
@@ -3076,20 +3194,32 @@ function h(htmlStrings=undefined, ...exprs) {
 		throw new Error('h() cannot be called with undefined.');
 
 	// 1. Tagged template
-	if (Array.isArray(htmlStrings)) {
-		return new Template(htmlStrings, exprs);
+	if (Array.isArray(arguments[0])) {
+		return new Template(arguments[0], exprs);
 	}
 
-	// 2. String to template.
+	// 2. String to template, or JSX factory form h(tag, props, ...children)
 	else if (typeof arguments[0] === 'string' || arguments[0] instanceof String) {
-		let html = arguments[0];
+		let tagOrHtml = arguments[0];
 
-		// If it starts with whitespace, trim both ends.
-		// TODO: Also trim if it ends with whitespace?
-		if (html.match(/^\s^</))
-			html = html.trim();
+		// 2a. JSX: h("tag", {props}, ...children)
+		if (exprs.length && (typeof exprs[0] === 'object' || exprs[0] === null)) {
+			let tag = tagOrHtml + '';
+			let props = exprs[0] || {};
+			let children = exprs.slice(1);
 
-		return new Template([html], []);
+			return Template.fromJsx(tag, props, children);
+		}
+
+		// 2b. Plain html string => template
+		else {
+			let html = tagOrHtml;
+			// If it starts with whitespace, trim both ends.
+			// TODO: Also trim if it ends with whitespace?
+			if (html.match(/^\s^</))
+				html = html.trim();
+			return new Template([html], []);
+		}
 	}
 
 	else if (arguments[0] instanceof HTMLElement || arguments[0] instanceof DocumentFragment) {
@@ -3139,44 +3269,33 @@ function h(htmlStrings=undefined, ...exprs) {
 
 	// 9. Help toEl() with objects.
 	// TODO: This path doesn't handle embeds like data-id="..."
-	else if (typeof htmlStrings === 'object') {
-		let obj = htmlStrings;
+	else if (typeof arguments[0] === 'object') {
+		let obj = arguments[0];
 
 		if (obj.constructor.name !== 'Object')
 			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
 
 
 		// Special rebound render path, called by normal path.
-		// Intercepts the main r`...` function call inside render().
+		// Intercepts the main h(this)`...` function call inside render().
 		if (Globals$1.objToEl.has(obj)) {
-			return function(...args) {
-				let template = h(...args);
+
+			// Jsx with h(this, <jsx>)
+			if (arguments[1] instanceof Template) {
+				let template = arguments[1];
 				let el = template.render();
 				Globals$1.objToEl.set(obj, el);
-			}.bind(obj);
+			}
+
+			// h(this)`<div>...</div>
+			else
+				return function(...args) {
+					let template = h(...args);
+					let el = template.render();
+					Globals$1.objToEl.set(obj, el);
+				}.bind(obj);
 		}
 	}
-
-	else if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {
-		// 10. JSX
-		if (typeof exprs[0] === 'object') {
-			exprs[0] || {};
-			exprs.slice(1);
-
-			let templateHtmlStrings = [];
-			let templateExprs = [];
-
-			// TODO How to know which children are static html and which are expression placeholders?
-			// Perhaps we have to treat every text child as a string?
-
-			assert(templateHtmlStrings.length === templateExprs.length+1);
-			return new Template(templateHtmlStrings, templateExprs);
-		}
-	}
-
-
-
-
 	else
 		throw new Error('Unsupported arguments.')
 }
