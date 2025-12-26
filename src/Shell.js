@@ -108,6 +108,9 @@ export default class Shell {
 			// Replace comment placeholders
 			else if (node.nodeType === 8 && node.nodeValue === '!✨!') {
 
+				if (node?.parentNode?.closest && node?.parentNode?.closest('[contenteditable]'))
+					throw new Error(`Contenteditable can't have expressions inside them. Use <div contenteditable value="\${...}"> instead.`);
+
 				// Get or create nodeBefore.
 				let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
 				if (!nodeBefore) {
@@ -136,9 +139,9 @@ export default class Shell {
 				placeholdersUsed ++;
 			}
 
+			// Comments become text nodes when inside textareas.
 			else if (node.nodeType === 3 && node.parentNode?.tagName === 'TEXTAREA' && node.textContent.includes('<!--!✨!-->'))
 				throw new Error(`Textarea can't have expressions inside them. Use <textarea value="\${...}"> instead.`);
-
 			
 			
 			// Sometimes users will comment out a block of html code that has expressions.

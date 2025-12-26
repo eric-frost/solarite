@@ -21,29 +21,31 @@
 
 <body>
 <script type="module">
-	import {Testimony} from './Testimony.js';
+	import Testimony from './Testimony.js';
 
 	import './Solarite.test.js';
 	import './Benchmark.test.js';
 
+	(async () => {
 
-	Testimony.debugOnAssertFail = false;
+		Testimony.debugOnAssertFail = false;
 
-	// Don't catch errors so debugger can catch them.
-	Testimony.throwOnError = new URL(window.location.href).searchParams.has('throwOnError');
-	if (Testimony.throwOnError)
-		document.querySelector('input[name=throwOnError]').checked = true;
+		// Don't catch errors so debugger can catch them.
+		Testimony.throwOnError = new URL(window.location.href).searchParams.has('throwOnError');
+		if (Testimony.throwOnError)
+			document.querySelector('input[name=throwOnError]').checked = true;
 
-
-	Testimony.render(document.getElementById('tests'));
-	Testimony.run();
+		await Testimony.render(document.getElementById('tests'));
+		await Testimony.run();
+	})();
 </script>
+
 <form>
 	<button>Run Tests</button>
 	<a href=".">Reset</a>
 	<label>
 		<input type="checkbox" name="throwOnError" value="">
-		Throw on Error
+		Throw on Error (So debugger can catch it)
 	</label>
 	<div id="tests"></div>
 	<br>

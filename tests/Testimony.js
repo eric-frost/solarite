@@ -804,7 +804,9 @@ class TestimonyContext {
 		this.iframe = iframe;
 	}
 
-	// Let a frame screenshot itself by calling await context.screenshot();
+	/**
+	 * Let a frame screenshot itself by calling await context.screenshot();
+	 * @return {Promise<string>} The path to the screenshot relative to the document root. */
 	async screenshot() {
 		if (this.test.isIframe) {
 
@@ -1223,6 +1225,11 @@ const CommandLineUtil = {
 		return path.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, ' ').trim();
 	},
 
+	/**
+	 * @param testName
+	 * @param page
+	 * @param counts
+	 * @return {Promise<string>} The path to the screenshot relative to the document root. */
 	async screenshot(testName, page, counts) {
 		const sep = Deno.build.os === 'windows' ? '\\' : '/';
 		const abs = (rel) => `${Deno.cwd()}${sep}screenshots${sep}${rel}`;

@@ -762,6 +762,83 @@ Testimony.test('Solarite.expr.textareaChild', 'Make sure we throw if an expressi
 	assert(error);
 	assert(error.message.includes(`Textarea can't have expressions`));
 });
+
+Testimony.test('Solarite.expr.textareaGrandchild', 'Make sure we throw if an expression is the child of a textarea.', () => {
+
+	class R120 extends HTMLElement {
+		text = 1
+
+		render() {
+			h(this)`<textarea><div>${this.text}</div></textarea>`
+		}
+	}
+	customElements.define('r-120', R120);
+
+
+	let a = new R120();
+
+	let error;
+	try {
+		a.render()
+	}
+	catch (e) {
+		error = e;
+	}
+	assert(error);
+	assert(error.message.includes(`Textarea can't have expressions`));
+});
+
+Testimony.test('Solarite.expr.contenteditableChild', 'Make sure we throw if an expression is the child of a contenteditable.', () => {
+
+	class R140 extends HTMLElement {
+		text = 1
+
+		render() {
+			h(this)`<div contenteditable style="width: 10px; height: 10px; background: red">${this.text}</div>`
+		}
+	}
+	customElements.define('r-140', R140);
+
+
+	let a = new R140();
+	document.body.append(a)
+
+	let error;
+	try {
+		a.render()
+	}
+	catch (e) {
+		error = e;
+	}
+	assert(error);
+	assert(error.message.includes(`Contenteditable can't have expressions`));
+});
+
+Testimony.test('Solarite.expr.contenteditableGrandchild', 'Make sure we throw if an expression is the child of a contenteditable.', () => {
+
+	class R140 extends HTMLElement {
+		text = 1
+
+		render() {
+			h(this)`<div contenteditable style="width: 10px; height: 10px; background: red">${this.text}</div>`
+		}
+	}
+	customElements.define('r-140', R140);
+
+
+	let a = new R140();
+	document.body.append(a)
+
+	let error;
+	try {
+		a.render()
+	}
+	catch (e) {
+		error = e;
+	}
+	assert(error);
+	assert(error.message.includes(`Contenteditable can't have expressions`));
+});
 //</editor-fold>
 
 
@@ -1961,11 +2038,11 @@ Testimony.test('Solarite.attrib.sparse', () => {
 
 Testimony.test('Solarite.attrib.doubleSparse', () => {
 
-	let isEdit = false;
+	let toggle = false;
 
 	class R450 extends Solarite {
 		render() {
-			h(this)`<div ${isEdit && 'contenteditable spellcheck="false"'}>${isEdit && 'Editable!'}</div>`;
+			h(this)`<div ${toggle && 'disabled spellcheck="false"'}>${toggle && 'Toggled!'}</div>`;
 		}
 	}
 
@@ -1973,22 +2050,22 @@ Testimony.test('Solarite.attrib.doubleSparse', () => {
 	a.render();
 	assert.eq(getHtml(a), `<r-450><div></div></r-450>`)
 
-	isEdit = true
+	toggle = true
 	a.render();
-	assert.eq(getHtml(a), `<r-450><div contenteditable="" spellcheck="false">Editable!</div></r-450>`)
+	assert.eq(getHtml(a), `<r-450><div disabled="" spellcheck="false">Toggled!</div></r-450>`)
 
-	isEdit = false
+	toggle = false
 	a.render();
 	assert.eq(getHtml(a), `<r-450><div></div></r-450>`)
 });
 
 Testimony.test('Solarite.attrib.toggle', () => {
 
-	let isEdit = false;
+	let toggle = false;
 
 	class R460 extends Solarite {
 		render() {
-			h(this)`<div contenteditable=${isEdit}>${isEdit && 'Editable!'}</div>`;
+			h(this)`<div disabled=${toggle}>${toggle && 'Toggled!'}</div>`;
 		}
 	}
 
@@ -1996,22 +2073,22 @@ Testimony.test('Solarite.attrib.toggle', () => {
 	a.render();
 	assert.eq(getHtml(a), `<r-460><div></div></r-460>`)
 
-	isEdit = true
+	toggle = true
 	a.render();
-	assert.eq(getHtml(a), `<r-460><div contenteditable="">Editable!</div></r-460>`)
+	assert.eq(getHtml(a), `<r-460><div disabled="">Toggled!</div></r-460>`)
 
-	isEdit = false
+	toggle = false
 	a.render();
 	assert.eq(getHtml(a), `<r-460><div></div></r-460>`)
 });
 
 Testimony.test('Solarite.attrib.toggleFunction', () => {
 
-	let isEdit = false;
+	let toggle = false;
 
 	class R465 extends Solarite {
 		render() {
-			h(this)`<div contenteditable=${()=>isEdit}>${isEdit && 'Editable!'}</div>`;
+			h(this)`<div disabled=${()=>toggle}>${toggle && 'Toggled!'}</div>`;
 		}
 	}
 
@@ -2019,11 +2096,11 @@ Testimony.test('Solarite.attrib.toggleFunction', () => {
 	a.render();
 	assert.eq(getHtml(a), `<r-465><div></div></r-465>`)
 
-	isEdit = true
+	toggle = true
 	a.render();
-	assert.eq(getHtml(a), `<r-465><div contenteditable="">Editable!</div></r-465>`)
+	assert.eq(getHtml(a), `<r-465><div disabled="">Toggled!</div></r-465>`)
 
-	isEdit = false
+	toggle = false
 	a.render();
 	assert.eq(getHtml(a), `<r-465><div></div></r-465>`)
 });
@@ -2271,6 +2348,33 @@ Testimony.test('Solarite.attrib.textareaValue', 'Make sure we can one-way bind t
 	a.text = 2
 	a.render()
 	assert.eq(a.textarea.value, '20')
+
+	a.remove();
+});
+
+Testimony.test('Solarite.attrib.contenteditableValue', 'Make sure we can one-way bind to the value of contenteditables.', () => {
+
+	class R550 extends Solarite {
+		text = 1
+
+		render() {
+			h(this)`<div contenteditable data-id="contenteditable" value=${this.text + '0'}></div>`
+		}
+	}
+
+	let a = new R550();
+	document.body.append(a);
+	assert.eq(a.contenteditable.innerHTML, '10')
+
+
+	// Simulate typing.
+	// This caused reseting it to '2' below to fail until I modified ExprPath.applyValueAttrib()
+	a.contenteditable.innerHTML += '3'
+	assert.eq(a.contenteditable.innerHTML, '103');
+
+	a.text = 2
+	a.render()
+	assert.eq(a.contenteditable.innerHTML, '20')
 
 	a.remove();
 });
@@ -3931,6 +4035,81 @@ Testimony.test('Solarite.jsx.full', () => {
 });
 
 
+
+//</editor-fold>
+
+
+//<editor-fold desc="additional jsx tests">
+/*┌─────────────────╮
+  | JSX - More      |
+  └─────────────────╯*/
+
+Testimony.test('Solarite.jsx.attributes', () => {
+
+    // <div id="x" data-id="y" class={"c"} title={"t"}></div>
+    const jsx = h('div', { id: 'x', 'data-id': 'y', class: 'c', title: 't' });
+
+    const template = new Template([
+        '<div id="x" data-id="y" class=',
+        ' title=',
+        '></div>'
+    ], ['c', 't']);
+
+    assert.eqJson(jsx.html, template.html);
+    assert.eqJson(jsx.exprs, template.exprs);
+});
+
+Testimony.test('Solarite.jsx.children.mix', () => {
+
+    const num = 42;
+    // <div>Hello {num}<span>!</span></div>
+    const jsx = h('div', null, 'Hello', num, h('span', null, '!'));
+
+    const template = new Template([
+        '<div>',
+        '',
+        '<span>',
+        '</span></div>'
+    ], ['Hello', 42, '!']);
+
+    assert.eqJson(jsx.html, template.html);
+    assert.eqJson(jsx.exprs, template.exprs);
+});
+
+Testimony.test('Solarite.jsx.void', () => {
+    // <img data-id="p" src={"/photo.jpg"}>
+    const jsx = h('img', { 'data-id': 'p', src: '/photo.jpg' });
+
+    const template = new Template([
+        '<img data-id="p" src=',
+        '>'
+    ], ['/photo.jpg']);
+
+    assert.eqJson(jsx.html, template.html);
+    assert.eqJson(jsx.exprs, template.exprs);
+});
+
+Testimony.test('Solarite.jsx.nullishChildren', () => {
+    // <p>{null}{false}{undefined}</p>
+    const jsx = h('p', null, null, false, undefined);
+    const template = new Template(['<p>', '', '', '</p>'], [null, false, undefined]);
+    assert.eqJson(jsx.html, template.html);
+    assert.eqJson(jsx.exprs, template.exprs);
+});
+
+Testimony.test('Solarite.jsx.arrayChildren', () => {
+    // <ul>{[<li>A</li>, <li>B</li>]}</ul>
+    const jsx = h('ul', null, [h('li', null, 'A'), h('li', null, 'B')]);
+
+    const template = new Template([
+        '<ul><li>',
+        '</li><li>',
+        '</li></ul>'
+    ], ['A', 'B']);
+
+    assert.eqJson(jsx.html, template.html);
+    assert.eqJson(jsx.exprs, template.exprs);
+});
 
 //</editor-fold>
 

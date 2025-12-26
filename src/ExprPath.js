@@ -726,6 +726,13 @@ export default class ExprPath {
 					// since we also prohibit expressions that are a child of textarea.
 					if (isProp)
 						node[this.attrName] = joinedValue;
+
+					// Allow one-way binding to contenteditable value attribute.
+					// Contenteditables normally don't have a value attribute and have their content set via innerHTML.
+					// Solarite doesn't allow contenteditables to have expressions as their children.
+					else if (node.hasAttribute('contenteditable'))
+						node.innerHTML = joinedValue;
+
 					// TODO: Putting an 'else' here would be more performant
 					node.setAttribute(this.attrName, joinedValue);
 				}

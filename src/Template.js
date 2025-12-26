@@ -125,10 +125,15 @@ export default class Template {
 		return this.closeKey;
 	}
 
+	/**
+	 * @param tag {string}
+	 * @param props {?Record<string, any>}
+	 * @param children
+	 * @returns {Template} */
 	static fromJsx(tag, props, children) {
 
 		// HTML void elements that must not have closing tags
-		const isVoid = voidTags.has(tag.toLowerCase());
+		const isVoid = selfClosingTags.has(tag.toLowerCase());
 
 		// Build htmlStrings/exprs so Shell can place placeholders in attribute values and child content.
 		let htmlStrings = [];
@@ -154,14 +159,15 @@ export default class Template {
 					open += ` ${name}=`;
 					htmlStrings.push(open);
 					templateExprs.push(value);
+					// reset so subsequent attributes start fresh (e.g., ' title=')
 					open = ``;
 				}
 				else {
 					open += ` ${name}=`;
 					htmlStrings.push(open);
 					templateExprs.push(value);
-					// after the expression, we need the closing quote as part of next html segment
-					//open = `"`;
+					// reset so subsequent attributes start fresh (e.g., ' title=')
+					open = ``;
 				}
 			}
 		}
@@ -189,6 +195,14 @@ export default class Template {
 			let lastIdx = htmlStrings.length - 1;
 			htmlStrings[lastIdx] += `</${tag}>`;
 		}
+		else {
+			// Void element: ensure we emitted a trailing '>' segment
+			const pushedAny = htmlStrings.length > 0;
+			if (!pushedAny)
+				htmlStrings.push(open + '>');
+			else
+				htmlStrings.push('>');
+		}
 
 		// Ensure invariant
 		//assert(htmlStrings.length === templateExprs.length + 1);
@@ -198,14 +212,15 @@ export default class Template {
 }
 
 
-const voidTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
+const selfClosingTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
 
 
-// Children: insert expressions for dynamic children.
+/**
+ * Add child Templates that were already created via h() and Template.fromJsx()
+ * @param template {Template}
+ * @param html {string[]}
+ * @param exprs {any[]} */
 const addChild = (template, html, exprs) => {
-
-	if (template === undefined || template === null || template === false)
-		return;
 
 	if (Array.isArray(template)) {
 		for (let c of template)
@@ -224,7 +239,7 @@ const addChild = (template, html, exprs) => {
 			else {
 				const m = (template.html[0] || '').match(/^<([a-zA-Z][\w:-]*)/);
 				const childTag = m ? m[1].toLowerCase() : '';
-				flatten = voidTags.has(childTag);
+				flatten = selfClosingTags.has(childTag);
 			}
 		}
 
@@ -241,7 +256,6 @@ const addChild = (template, html, exprs) => {
 			html.push('');
 		}
 	}
-
 }
 
 
