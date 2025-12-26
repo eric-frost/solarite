@@ -1,7 +1,5 @@
 import Template from "./Template.js";
-import Util from "./Util.js";
 import Globals from "./Globals.js";
-import {assert} from "./assert.js";
 import toEl from "./toEl.js";
 
 /**
@@ -38,9 +36,6 @@ import toEl from "./toEl.js";
  * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template} */
 export default function h(htmlStrings=undefined, ...exprs) {
-
-	if (arguments[0] === undefined && !exprs.length && arguments.length)
-		throw new Error('h() cannot be called with undefined.');
 
 	// 1. Tagged template
 	if (Array.isArray(arguments[0])) {
@@ -101,19 +96,12 @@ export default function h(htmlStrings=undefined, ...exprs) {
 		}
 	}
 
-	else if ((arguments[0] === null || arguments[0] === undefined)) {
-
-		// 5 & 6.
-		if (typeof arguments[1] === 'string' || arguments[1] instanceof Template)
-			throw new Error('Unsupported');
-
-		// 7. Create a static element  h()'<div></div>'
-		else {
-			return (htmlStrings, ...exprs) => {
+	// 7. Create a static element  h()'<div></div>' (Deprecated?)
+	else if (!arguments.length) {
+		return (htmlStrings, ...exprs) => {
 				let template = h(htmlStrings, ...exprs);
 				return toEl(template); // Go to path 6.
 			}
-		}
 	}
 
 	// 9. Help toEl() with objects.
@@ -142,6 +130,6 @@ export default function h(htmlStrings=undefined, ...exprs) {
 			}.bind(obj);
 	}
 	else
-		throw new Error('h() does not support arguments of type: ' + typeof arguments[0] + '')
+		throw new Error('h() does not support argument of type: ' + (arguments[0] ? typeof arguments[0] : arguments[0]))
 }
 

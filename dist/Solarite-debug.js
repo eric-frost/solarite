@@ -3332,8 +3332,7 @@ const addChild = (template, html, exprs) => {
  * 4. h(template)                      // Render Template created by h`<html>` or h();
  * 5. h({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
  * @param arg {string|Template|{render:()=>void}}
- * @returns {Node|DocumentFragment|HTMLElement}
- */
+ * @returns {Node|DocumentFragment|HTMLElement} */
 function toEl(arg) {
 
 	if (typeof arg === 'string') {
@@ -3397,7 +3396,7 @@ function toEl(arg) {
 		}
 	}
 
-	throw new Error('Unsupported argument: ' + (arg ? typeof arg : arg));
+	throw new Error('toEl() does not support argument of type: ' + (arg ? typeof arg : arg));
 
 }
 
@@ -3439,9 +3438,6 @@ let renderF = 'render';
  * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template} */
 function h(htmlStrings=undefined, ...exprs) {
-
-	if (arguments[0] === undefined && !exprs.length && arguments.length)
-		throw new Error('h() cannot be called with undefined.');
 
 	// 1. Tagged template
 	if (Array.isArray(arguments[0])) {
@@ -3502,19 +3498,12 @@ function h(htmlStrings=undefined, ...exprs) {
 		}
 	}
 
-	else if ((arguments[0] === null || arguments[0] === undefined)) {
-
-		// 5 & 6.
-		if (typeof arguments[1] === 'string' || arguments[1] instanceof Template)
-			throw new Error('Unsupported');
-
-		// 7. Create a static element  h()'<div></div>'
-		else {
-			return (htmlStrings, ...exprs) => {
+	// 7. Create a static element  h()'<div></div>' (Deprecated?)
+	else if (!arguments.length) {
+		return (htmlStrings, ...exprs) => {
 				let template = h(htmlStrings, ...exprs);
 				return toEl(template); // Go to path 6.
 			}
-		}
 	}
 
 	// 9. Help toEl() with objects.
@@ -3543,7 +3532,7 @@ function h(htmlStrings=undefined, ...exprs) {
 			}.bind(obj);
 	}
 	else
-		throw new Error('h() does not support arguments of type: ' + typeof arguments[0] + '')
+		throw new Error('h() does not support argument of type: ' + (arguments[0] ? typeof arguments[0] : arguments[0]))
 }
 
 /**
@@ -3830,7 +3819,7 @@ function createSolarite(extendsTag=null) {
 let define = 'define';
 let getName = 'getName';
 
-/**
+/*
 ┏┓  ┓    •
 ┗┓┏┓┃┏┓┏┓┓╋▗▖
 ┗┛┗┛┗┗┻╹ ╹╹┗
@@ -3838,10 +3827,6 @@ JavasCript UI library
 @license MIT
 @copyright Vorticode LLC
 https://vorticode.github.io/solarite/ */
-
-function t(html) {
-	return new Template([html], []);
-}
 
 /**
  * TODO: The Proxy and the multiple base classes mess up 'instanceof Solarite'
@@ -3852,26 +3837,7 @@ const Solarite = new Proxy(createSolarite(), {
 	}
 });
 
-
-/**
- * Temporarily have all Solarite functions use a different document.
- * This is useful
- * Calls to this function can safely be nested.
- * @param doc {HTMLDocument}
- * @param callback {function}
- * @returns {*} Return value of callback. */
-Solarite.useDocument = async function(doc, callback) {
-	let oldDoc = Globals$1.doc;
-	Globals$1.doc = doc;
-	try {
-		return await callback();
-	}
-	finally {
-		Globals$1.doc = oldDoc;
-	}
-};
-
 //export {default as watch, renderWatched} from './watch.js'; // unfinished
 
 export default h;
-export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, t, toEl };
+export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, getArg, h, h as r, setArgs, toEl };

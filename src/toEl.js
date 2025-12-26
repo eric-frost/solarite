@@ -11,8 +11,7 @@ import Util from "./Util.js";
  * 4. h(template)                      // Render Template created by h`<html>` or h();
  * 5. h({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
  * @param arg {string|Template|{render:()=>void}}
- * @returns {Node|DocumentFragment|HTMLElement}
- */
+ * @returns {Node|DocumentFragment|HTMLElement} */
 export default function toEl(arg) {
 
 	if (typeof arg === 'string') {
@@ -76,7 +75,7 @@ export default function toEl(arg) {
 		}
 	}
 
-	throw new Error('Unsupported argument: ' + (arg ? typeof arg : arg));
+	throw new Error('toEl() does not support argument of type: ' + (arg ? typeof arg : arg));
 
 }
 

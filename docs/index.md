@@ -10,7 +10,7 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite
 
-Solarite is a small (8KB min+gzip), fast, compilation-free JavaScript library for adding reactivity to web components.  This allows minimal DOM updates when data changes.
+Solarite is a small (9KB min+gzip), fast, compilation-free JavaScript library for performing minimal DOM updates on web components when data changes.
 
 ```javascript
 import h from './dist/Solarite.min.js';
@@ -104,7 +104,7 @@ Note that the JS Framework Benchmark separates keyed and non-keyed frameworks.  
 
 ### Web Components
 
-Solarite enhances [web components](https://developer.mozilla.org/en-US/docs/Web/API/Web_components) with efficient reactivity, re-rendering only the elements that change when your data updates. This approach minimizes DOM operations and improves performance.
+Solarite enhances [web components](https://developer.mozilla.org/en-US/docs/Web/API/Web_components) with efficient and minimal re-rendering of elements when your data changes. This approach minimizes DOM operations and improves performance.
 
 In this minimal example, we create a class called `MyComponent` which extends from `HTMLElement` (the standard way to create web components). We add a `render()` method to define its HTML content, and call it from the constructor when a new instance is created.
 
@@ -842,7 +842,7 @@ list.render();
 
 For a more streamlined development experience, you can inherit from the `Solarite` class instead of directly from `HTMLElement`. This adds several convenient features to your web components:
 
-1. **Automatic Rendering**: The `render()` method is automatically called when the element is added to the DOM, thanks to a built-in `connectedCallback()` implementation in the Solarite parent class.
+1. **Automatic Rendering**: The `render()` method is automatically called when the element is added to the DOM, if it hasn't previously been called, thanks to a built-in `connectedCallback()` implementation in the Solarite parent class.
 
 2. **Automatic Registration**: The `customElements.define()` call happens automatically when an element is instantiated via `new`. It derives the element name from your class name by:
    - Converting the class name to kebab-case (with dashes)
