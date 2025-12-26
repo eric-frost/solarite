@@ -238,7 +238,9 @@ class MyComponent extends HTMLElement {
 	}
 }
 customElements.define('my-component', MyComponent);
-document.body.append(new MyComponent());
+let myComponent = new MyComponent();
+myComponent.render();
+document.body.append(myComponent);
 ```
 
 If you do wrap the web component's html in its tag, that tag name must exactly match the tag name passed to `customElements.define()`.
@@ -246,7 +248,7 @@ If you do wrap the web component's html in its tag, that tag name must exactly m
 Note that by default, `h()` will render expressions as text, with escaped html entities.  To render as html, wrap a variable in the `h()` function to create a template:
 
 ```javascript
-import h from './dist/Solarite.min.js';
+import h, {toEl} from './dist/Solarite.min.js';
 
 let folderIcon = `
 <svg width="10em" height="10em" viewBox="0 0 24 24">
@@ -255,7 +257,7 @@ let folderIcon = `
 
 console.log(h(folderIcon));
 
-let icon1 = h({
+let icon1 = toEl({
 	render() { // Bad:  Renders svg as html entities.
 		h(this)`<div>${folderIcon}</div>`
 	}
@@ -263,7 +265,7 @@ let icon1 = h({
 document.body.append(icon1);
 
 
-let icon2 = h({
+let icon2 = toEl({
 	render() { // folderIcon html string wrapped in h()
 		h(this)`<div>${h(folderIcon)}</div>`
 	}

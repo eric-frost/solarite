@@ -117,35 +117,31 @@ export default function h(htmlStrings=undefined, ...exprs) {
 	}
 
 	// 9. Help toEl() with objects.
+	// Special rebound render path, called by normal path.
+	// Intercepts the main h(this)`...` function call inside render().
 	// TODO: This path doesn't handle embeds like data-id="..."
-	else if (typeof arguments[0] === 'object') {
+	else if (typeof arguments[0] === 'object' && Globals.objToEl.has(arguments[0])) {
 		let obj = arguments[0];
 
 		if (obj.constructor.name !== 'Object')
 			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
 
+		// Jsx with h(this, <jsx>)
+		if (arguments[1] instanceof Template) {
+			let template = arguments[1];
+			let el = template.render();
+			Globals.objToEl.set(obj, el);
+		}
 
-		// Special rebound render path, called by normal path.
-		// Intercepts the main h(this)`...` function call inside render().
-		if (Globals.objToEl.has(obj)) {
-
-			// Jsx with h(this, <jsx>)
-			if (arguments[1] instanceof Template) {
-				let template = arguments[1];
+		// h(this)`<div>...</div>
+		else
+			return function(...args) {
+				let template = h(...args);
 				let el = template.render();
 				Globals.objToEl.set(obj, el);
-			}
-
-			// h(this)`<div>...</div>
-			else
-				return function(...args) {
-					let template = h(...args);
-					let el = template.render();
-					Globals.objToEl.set(obj, el);
-				}.bind(obj);
-		}
+			}.bind(obj);
 	}
 	else
-		throw new Error('Unsupported arguments.')
+		throw new Error('h() does not support arguments of type: ' + typeof arguments[0] + '')
 }
 

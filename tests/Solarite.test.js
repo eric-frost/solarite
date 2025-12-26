@@ -816,17 +816,17 @@ Testimony.test('Solarite.expr.contenteditableChild', 'Make sure we throw if an e
 
 Testimony.test('Solarite.expr.contenteditableGrandchild', 'Make sure we throw if an expression is the child of a contenteditable.', () => {
 
-	class R140 extends HTMLElement {
+	class R150 extends HTMLElement {
 		text = 1
 
 		render() {
 			h(this)`<div contenteditable style="width: 10px; height: 10px; background: red">${this.text}</div>`
 		}
 	}
-	customElements.define('r-140', R140);
+	customElements.define('r-150', R150);
 
 
-	let a = new R140();
+	let a = new R150();
 	document.body.append(a)
 
 	let error;
@@ -2354,7 +2354,7 @@ Testimony.test('Solarite.attrib.textareaValue', 'Make sure we can one-way bind t
 
 Testimony.test('Solarite.attrib.contenteditableValue', 'Make sure we can one-way bind to the value of contenteditables.', () => {
 
-	class R550 extends Solarite {
+	class R555 extends Solarite {
 		text = 1
 
 		render() {
@@ -2362,7 +2362,7 @@ Testimony.test('Solarite.attrib.contenteditableValue', 'Make sure we can one-way
 		}
 	}
 
-	let a = new R550();
+	let a = new R555();
 	document.body.append(a);
 	assert.eq(a.contenteditable.innerHTML, '10')
 
