@@ -10,7 +10,7 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite
 
-Solarite is a small (9KB min+gzip), fast, compilation-free JavaScript library for performing minimal DOM updates on web components when data changes.
+Solarite is a small (9KB min+gzip), fast, compilation-free JavaScript library for enhancing vanilla web components with minimal DOM updates on re-render.
 
 ```javascript
 import h from './dist/Solarite.min.js';
@@ -65,12 +65,14 @@ document.body.append(new ShoppingList()); // add <shopping-list> element
 
 ## Key Features
 
-- **Explicit Rendering**: You control when rendering happens through the manually invoked `render()` method - no unexpected side effects.
+- **Compilation-Free**: No build step required. Standard ES6 modules work directly in the browser.
+- **Explicit Rendering**: You control exactly when updates happen by calling `render()`.  No unexpected side effects.
 - **Simple State Management**: No signals and no special state setup required. Use regular JavaScript variables and data structures of arbitrary depth.
-- **Scoped Styling**: Define styles that apply only to your web component and its children while still inheriting external styles.
-- **Automatic Element References**: Elements with `id` or `data-id` attributes automatically become properties of your component class.
+- **Two-Way Binding**: Built-in shorthand for connecting data to form elements.
+- **Scoped CSS**: Native styles that apply only to your component while still inheriting parent styles--without Shadow DOM.
+- **Automatic Element References**: Elements with `id` or `data-id` automatically become class properties.
+
 - **Component Composition**: Attributes are passed as constructor arguments to nested components for easy data flow.
-- **Zero Dependencies**: Single ES6 module with no build steps.  Just `import` Solarite.js or Solarite.min.js into your vanilla JavaScript and start coding.
 - **TypeScript Support**: Includes a comprehensive `.d.ts` file for excellent IDE support and type safety in TypeScript projects.
 - **MIT License**: Free for commercial use with no attribution required.
 
@@ -78,16 +80,15 @@ document.body.append(new ShoppingList()); // add <shopping-list> element
 
 ### Quick Start
 
-Import one of these pre-bundled ES6 modules directly into your project:
+Import the module directly from a CDN:
 
-- [Solarite.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.js) - 109KB (unminified)
-- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) - 25KB / 8.6KB gzipped
+- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) (8.6KB gzipped)
 
-Alternatively, get Solarite from GitHub or NPM:
+Or install via NPM:
 
-- [Solarite GitHub Repository](https://github.com/Vorticode/solarite)  <a class="github-button" href="https://github.com/vorticode/solarite" data-color-scheme="no-preference: light; light: light; dark: dark;" data-icon="octicon-star" data-size="small" data-show-count="true" aria-label="Star vorticode/solarite on GitHub">Star</a>
-- Clone the repository: `git clone https://github.com/Vorticode/solarite.git`
-- Install via NPM: `npm install solarite`
+```bash
+npm install solarite
+```
 
 ### Development Tips
 
@@ -95,7 +96,7 @@ For the best development experience, use an IDE like [WebStorm](https://www.jetb
 
 ## Performance
 
-Here is Solarite on Stefan Krause's famous js-framework-benchmark versus some other common libraries.  Run on a Ryzen 7 3700X on Windows 10.  Performance is still improving.
+Solarite provides near-native performance by performing targeted DOM updates.  Benchmark is un on a Ryzen 7 3700X on Windows 10.  Performance is still improving.
 
 ![js-framework-benchmark](docs/js-framework-benchmark.png)
 
@@ -115,7 +116,7 @@ In this minimal example, we create a class called `MyComponent` which extends fr
 import h from './dist/Solarite.min.js';
 
 class MyComponent extends HTMLElement {
-	name = 'Solarite';
+	name = 'Fred';
 
     constructor() {
         super(); // JavaScript requires a super() call for sub-class construtors.
@@ -136,72 +137,21 @@ class MyComponent extends HTMLElement {
 // Browsers require this for all web components.
 customElements.define('my-component', MyComponent);
 
-document.body.append(new MyComponent());
+let mc = new MyComponent();
+document.body.append(mc);
+
+mc.name = 'Solarite';
+mc.render();
+
 ```
 
-Alternatively, instead of instantiating the element in JavaScript, we could can instantiate the element directly from html:
+We can alternatively instantiate the element directly from html:
 
 ```Html
 <my-component></my-component>
 ```
 
-JavaScript veterans will realize that other than the `h()` function, this is highly similar to one might create vanilla JavaScript web components.  This is by design!
-
-Since these are just regular web components, they can define the [connectedCallback()](https://developer.salesforce.com/docs/platform/lwc/guide/create-lifecycle-hooks-dom.html#connectedcallback) and [disconnectedCallback()](https://developer.salesforce.com/docs/platform/lwc/guide/create-lifecycle-hooks-dom.html#disconnectedcallback) methods that will be called when they're added and removed from the DOM, respectively.  These functions are only supported for web components and not regular elements.
-
-### Regular Elements
-
-The `toEl()` function can create html elements:
-
-```javascript
-import {toEl} from './dist/Solarite.min.js';
-
-let button = toEl(`<button>Hello World</button>`);
-document.body.append(button);
-```
-
-You can also pass objects to `toEl()` with a `render()` method.  This object can optionally have additional properties and methods, which become bound to the resulting element.  When `render()` is called, only the changed nodes will be updated.
-
-```javascript
-import h, {toEl} from './dist/Solarite.min.js';
-
-let button = toEl({
-    count: 0,
-
-    inc() {
-        this.count++;
-        this.render();
-    },
-
-    render() {
-        h(this)`<button onclick=${this.inc}>I've been clicked ${this.count} times.</button>`
-    }
-});
-document.body.append(button);
-```
-
-If you want multiple instances of such an element, the code above can be wrapped in a function:
-
-```javascript
-import h, {toEl} from './dist/Solarite.min.js';
-
-function createButton(text) {
-	return toEl({
-		count: 0,
-
-		inc() {
-			this.count++;
-			this.render();
-		},
-
-		render() {
-			h(this)`<button onclick=${this.inc}>${this.count} ${text}</button>`
-		}
-	})
-}
-document.body.append(createButton('clicks'));
-document.body.append(createButton('tickles'));
-```
+Since these are just regular web components, they can define the [connectedCallback()](https://developer.salesforce.com/docs/platform/lwc/guide/create-lifecycle-hooks-dom.html#connectedcallback) and [disconnectedCallback()](https://developer.salesforce.com/docs/platform/lwc/guide/create-lifecycle-hooks-dom.html#disconnectedcallback) methods that will be called when they're added and removed from the DOM, respectively.
 
 ### Rendering
 
@@ -469,13 +419,12 @@ document.body.append(new BindingDemo());
 
 #### Shorthand Two-Way Binding
 
-Solarite provides a convenient shorthand syntax for two-way binding by passing a property path as an array to an attribute. For example, with `value=${[this, 'count']}`:
+Solarite also provides a shortcut for two-way binding using array syntax: `value=${[this, 'count']}`:
 
-1. When the component renders, the input's value is set to `this.count`
-2. When a user types in the input, Solarite automatically updates `this.count` with the new value
-3. You still need to add an `oninput=${this.render}` attribute if you want to trigger re-rendering when the value changes
+1. When `render()` is called, the input's value is set to `this.count`
+2. When a user types in the input, an input event listener updates `this.count` with the new value.
 
-This approach reduces boilerplate code and makes your components more maintainable.
+Optionally add an `oninput=${this.render}` attribute to trigger re-rendering when the value changes.
 
 ```javascript
 import h from './dist/Solarite.min.js';
@@ -513,13 +462,7 @@ customElements.define('binding-demo', BindingDemo);
 document.body.append(new BindingDemo());
 ```
 
-
-
 ### Loops
-
-Solarite makes it easy to render dynamic lists of items using standard JavaScript array methods. This approach leverages your existing JavaScript knowledge rather than introducing custom directives or syntax.
-
-#### Using Array.map() for Lists
 
 The most common way to render lists is with JavaScript's [Array.map()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map) function:
 
@@ -552,22 +495,20 @@ list.render();
 
 #### Efficient List Updates
 
-When you change an element or add another element to the `items` list and call `render()`, Solarite only redraws the changed or new elements. The other list items remain untouched in the DOM.
+When you change an element or add another element to the `items` list and call `render()`, Solarite only redraws the changed elements.
 
 **Important**: Nested template literals must also have the `h` prefix. Without this prefix, they'll be rendered as escaped text instead of HTML elements.
 
 ### Scoped Styles
 
-Solarite provides a powerful scoped styling system that allows components to define styles that apply only to themselves and their children, while still inheriting styles from the rest of the document.
+Solarite provides a powerful scoped styling system that allows components to define styles that apply only to themselves and their children, while not using Shadow DOM so that styles are inhereted from the rest of the document.
 
-When you include a `<style>` element in your component template, Solarite automatically scopes those styles to your component instance. This prevents style leakage and conflicts with other components or the main document.
+When you include a `<style>` element in your component template, Solarite automatically scopes those styles to your component instance. This prevents style leakage and conflicts with other elements.
 
-Solarite implements scoped styles through a clever technique:
+Internally, scoped styles become:
 
-1. It adds a unique `data-style` attribute to the root element with an incrementing `data-style` attribute for each component instance
-2. It rewrites any `:host` selectors inside your style tags to target that specific instance (e.g., `:host` becomes `fancy-text[data-style="1"]`)
-
-This approach provides style inheritance instead of having to start as Shadow DOM requires.
+1. A unique `data-style` attribute to the root element with an incrementing `data-style` attribute for each component instance
+2.  `:host` selectors are replaced with the web component tag name and unique identifier:  `fancy-text[data-style="1"]`)
 
 ```javascript
 import h from './dist/Solarite.min.js';
@@ -602,9 +543,7 @@ customElements.define('fancy-text', FancyText);
 document.body.append(new FancyText());
 ```
 
-Note that if shadow-dom is used, the element will not replace the `:host` selector in styles, as  browsers natively support the `:host` selector when inside shadow DOM.
-
-The `global` attribute  on a `<style>` tag allows defining styles globally in the document head only once for every instance of a component.  This can improve rendering performance when you have many instances.  Global styles cannot have expressions within them.
+A style tag with the  `global` attribute defines the style only once in the document head, instead of for every instance of a component.  This improves rendering performance with many instances.  Global styles cannot have expressions within them.
 
 ```javascript
 import h from './dist/Solarite.min.js';
@@ -633,15 +572,13 @@ document.body.append(new FancyText());
 document.body.append(new FancyText());
 ```
 
-
-
 ### Child Components
 
-Solarite makes it easy to compose complex UIs by combining smaller, reusable components. This approach promotes code reuse and maintainability.
+Solarite makes it easy to compose complex UIs by combining smaller, reusable components.
 
 #### Passing Data to Child Components
 
-When one web component is embedded within another, its attributes and children are automatically passed as arguments to the constructor:
+When one web component is embedded within the html of another, its attributes and children are automatically passed as arguments to the constructor:
 
 ```javascript
 import h from './dist/Solarite.min.js';
@@ -710,11 +647,11 @@ list.render();
 
 #### Attribute Name Conversion
 
-Since HTML attributes are case-insensitive, Solarite automatically converts dash-case (kebab-case) attribute names to camelCase when passing them to components. For example, the `font-size` attribute becomes the `fontSize` argument in the component constructor and render method.
+Since HTML attributes are case-insensitive, Solarite automatically converts dash-case (kebab-case) attribute names to camelCase when passing them to component constructors. For example, the `font-size` attribute becomes the `fontSize` property of  the component constructor and render methods first argument.
 
 #### Component Rendering Hierarchy
 
-When you call `render()` on a parent component:
+When calling `render()` on a parent component:
 
 1. The parent component renders its template
 2. For each child component in the template, Solarite calls that child's `render()` method
@@ -722,9 +659,9 @@ When you call `render()` on a parent component:
 4. The child component can compare these attributes with its current state and decide whether to call h() to check if anything needs to re-render.
 5. If the child component calls `h(this)`, the process continues if that child component has child components of its own.
 
-This hierarchical rendering system gives each component control over its own rendering decisions while maintaining a predictable data flow.
+This allows each component to control its own rendering while maintaining a predictable data flow.
 
-In the above code, we alternatively could've created the `<notes-item>` element via the `new` keyword, but doing so would cause all `NotesItem` components to be recreated on every render.
+In the above code, we alternatively could've created the `<notes-item>` element via the `new` keyword, but this is ill-advised.  Doing so would cause all `NotesItem` components to be recreated on every render:
 
 ```JavaScript
 class NotesList extends HTMLElement {
@@ -741,9 +678,7 @@ class NotesList extends HTMLElement {
 
 ### The h() Function
 
-The `h()` function is the core of Solarite's rendering system. It handles template creation, DOM updates, and element instantiation. Understanding its various usage patterns will help you get the most out of Solarite.
-
-Multiple Ways to Use h():
+The `h()` function handles template creation, DOM updates, and element instantiation:
 
 ```JavaScript
 import h from './dist/Solarite.min.js';
@@ -752,10 +687,10 @@ import h from './dist/Solarite.min.js';
 let template = h`<b>Hello ${"World"}!</b>`;
 let template = h(`<b>Hello ${"World"}!</b>`);
 
-// Convert a string to an HTMLElement
+// Convert a template string to an HTMLElement
 let el = h()`<b>Hello ${"World"}!</b>`;
 
-// Convert a string with multiple-top-level nodes to a DocumentFragment
+// Convert a template string with multiple-top-level nodes to a DocumentFragment
 let el = h()`Hello <b>${"World"}!</b>`;
 
 // h(HTMLElement)`string`
@@ -815,9 +750,7 @@ You can safely perform manual DOM operations in these scenarios:
 
 3. **Temporary Modifications**: You can modify any node temporarily, as long as you restore its previous position and attributes before `render()` is called again.
 
-Following these guidelines ensures that Solarite's rendering system continues to work correctly alongside your manual DOM operations.
-
-This example creates a list inside a `div` element and demonstrates which manual DOM operations are allowed.
+Following these guidelines ensures that Solarite's rendering system continues to work correctly alongside your manual DOM operations.  This example creates a list inside a `div` element and demonstrates which manual DOM operations are allowed:
 
 ```javascript
 import h, {toEl} from './dist/Solarite.min.js';
@@ -866,6 +799,60 @@ list.render();
 // This will cause an error because we're modifying nodes created by an expression.
 // list.querySelector('p').remove();
 // list.render();
+```
+
+#### Regular Elements
+
+The `toEl()` function can create html elements:
+
+```javascript
+import {toEl} from './dist/Solarite.min.js';
+
+let button = toEl(`<button>Hello World</button>`);
+document.body.append(button);
+```
+
+You can also pass objects to `toEl()` with a `render()` method.  This object can optionally have additional properties and methods, which become bound to the resulting element.  When `render()` is called, only the changed nodes will be updated.
+
+```javascript
+import h, {toEl} from './dist/Solarite.min.js';
+
+let button = toEl({
+    count: 0,
+
+    inc() {
+        this.count++;
+        this.render();
+    },
+
+    render() {
+        h(this)`<button onclick=${this.inc}>I've been clicked ${this.count} times.</button>`
+    }
+});
+document.body.append(button);
+```
+
+If you want multiple instances of such an element, the code above can be wrapped in a function:
+
+```javascript
+import h, {toEl} from './dist/Solarite.min.js';
+
+function createButton(text) {
+	return toEl({
+		count: 0,
+
+		inc() {
+			this.count++;
+			this.render();
+		},
+
+		render() {
+			h(this)`<button onclick=${this.inc}>${this.count} ${text}</button>`
+		}
+	})
+}
+document.body.append(createButton('clicks'));
+document.body.append(createButton('tickles'));
 ```
 
 ## How Solarite Works

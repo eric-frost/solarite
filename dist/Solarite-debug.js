@@ -3362,7 +3362,7 @@ function toEl(arg) {
 		return arg.render();
 	}
 
-	// 5. Create dynamic element from an object with a render() function.
+		// 5. Create dynamic element from an object with a render() function.
 	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (arg && typeof arg === 'object') {
 		let obj = arg;
@@ -3411,7 +3411,7 @@ let renderF = 'render';
  * Using h() as a function() will always create a DOM element.
  *
  * Features beyond what standard js tagged template strings do:
- * 1. r`` sub-expressions
+ * 1. h`` sub-expressions
  * 2. functions, nodes, and arrays of nodes as sub-expressions.
  * 3. html-escape all expressions by default, unless wrapped in h()
  * 4. event binding
@@ -3437,10 +3437,10 @@ let renderF = 'render';
  * 6. h(string, object, ...)           // Used for JSX
  * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
- * @return {Node|HTMLElement|Template} */
+ * @return {Node|HTMLElement|Template|Function} */
 function h(htmlStrings=undefined, ...exprs) {
 
-	// 1. Tagged template
+	// 1. Tagged template: h`<div>...</div>`
 	if (Array.isArray(arguments[0])) {
 		return new Template(arguments[0], exprs);
 	}
@@ -3458,11 +3458,10 @@ function h(htmlStrings=undefined, ...exprs) {
 			return Template.fromJsx(tag, props, children);
 		}
 
-		// 2b. Plain html string => template
+		// 2b. Plain html string => template: h('<div>...</div>')
 		else {
 			let html = tagOrHtml;
-			// If it starts with whitespace, trim both ends.
-			// TODO: Also trim if it ends with whitespace?
+			// If it starts with whitespace and then a tag, trim it.
 			if (html.match(/^\s^</))
 				html = html.trim();
 			return new Template([html], []);
@@ -3471,21 +3470,21 @@ function h(htmlStrings=undefined, ...exprs) {
 
 	else if (arguments[0] instanceof HTMLElement || arguments[0] instanceof DocumentFragment) {
 
-		// 3. Render template to element.
+		// 3. Render template to element: h(el, template)
 		if (arguments[1] instanceof Template) {
 
 			/** @type Template */
 			let template = arguments[1];
 			let parent = arguments[0];
-			let options = arguments[2]; // deprecated?
+			let options = arguments[2];
 			template.render(parent, options);
 		}
 
-		// 4. Render tagged template to element
+		// 4. Render tagged template to element: h(el)`<div>...</div>`
 		else {
 			let parent = arguments[0], options = arguments[1];
 
-			// Remove shadowroot.  TODO: This could mess up paths?
+			// Remove shadowroot if present.  TODO: This could mess up paths?
 			if (parent.shadowRoot)
 				parent.innerHTML = '';
 
@@ -3499,16 +3498,15 @@ function h(htmlStrings=undefined, ...exprs) {
 		}
 	}
 
-	// 5. Create a static element  h()'<div></div>' (Deprecated?)
+	// 5. Create a static element: h()`<div></div>`
 	else if (!arguments.length) {
 		return (htmlStrings, ...exprs) => {
 				let template = h(htmlStrings, ...exprs);
-				return toEl(template); // Go to path 6.
+				return toEl(template);
 			}
 	}
 
-	// 6. Help toEl() with objects.
-	// Special rebound render path, called by normal path.
+	// 6. Help toEl() with objects: h(this)`<div>...</div>` inside an object's render()
 	// Intercepts the main h(this)`...` function call inside render().
 	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (typeof arguments[0] === 'object' && Globals$1.objToEl.has(arguments[0])) {
@@ -3524,7 +3522,7 @@ function h(htmlStrings=undefined, ...exprs) {
 			Globals$1.objToEl.set(obj, el);
 		}
 
-		// h(this)`<div>...</div>
+		// h(this)`<div>...</div>`
 		else
 			return function(...args) {
 				let template = h(...args);
@@ -3538,9 +3536,9 @@ function h(htmlStrings=undefined, ...exprs) {
 
 /**
  * There are three ways to create an instance of a Solarite Component:
- * 1.  new ComponentName();                                         // direct class instantiation
- * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another RedComponent.
- * 3.  <body><component-name></component-name></body>               // in the Document html.
+ * 1.  new ComponentName(3);                                               // direct class instantiation
+ * 2.  h(this)`<div><component-name user-id=${3}></component-name></div>;  // as a child of another Component.
+ * 3.  <body><component-name user-id="3"></component-name></body>          // in the Document html.
  *
  * When created via #3, Solarite has no way to pass attributes as arguments to the constructor.  So to make
  * sure we get the correct value via all three paths, we write our constructors according to the following
@@ -3548,33 +3546,31 @@ function h(htmlStrings=undefined, ...exprs) {
  * Browsers make all html attribute names lowercase.
  *
  * @example
- * constructor({name, userid=1}={}) {
+ * constructor({name, userId=1}={}) {
  *     super();
  *
  *     // Get value from "name" attriute if persent, otherwise from name constructor arg.
  *     this.name = getArg(this, 'name', name);
  *
  *     // Optionally convert the value to an integer.
- *     this.userId = getArg(this, 'userid', userid, ArgType.Int);
+ *     this.userId = getArg(this, 'user-id', userId, ArgType.Int);
  * }
  *
  * @param el {HTMLElement}
  * @param attributeName {string} Attribute name.  Not case-sensitive.
- * @param defaultValue {*} Default value to use if attribute doesn't exist.
+ * @param defaultValue {*} Default value to use if attribute doesn't exist.  Typically the argument from the constructor.
  * @param type {ArgType|function|Class|*[]}
  *     If an array, use the value if it's in the array, otherwise return undefined.
  *     If it's a function, pass the value to the function and return the result.
- * @param fallback {*} If the defaultValue is undefiend and type can't be parsed as the given type, use this value.
- *     TODO: Should this be merged with the defaultValue argument?
- * @return {*} Undefined if attribute isn't set.  */
-function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, fallback=undefined) {
+ * @return {*} Undefined if attribute isn't set and there's no defaultValue, or if the value couldn't be parsed as the type.  */
+function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String) {
 	let val = defaultValue;
 	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util.camelToDashes(attributeName));
 	if (attrVal !== null) // If attribute doesn't exist.
 		val = attrVal;
 		
 	if (Array.isArray(type))
-		return type.includes(val) ? val : fallback;
+		return type.includes(val) ? val : undefined;
 	
 	if (typeof type === 'function') {
 		return type.constructor
@@ -3589,20 +3585,17 @@ function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, 
 			return false;
 		if (['true', true].includes(lAttrVal) || parseFloat(lAttrVal) !== 0)
 			return true;
-		return fallback;
+		return undefined;
 	}
 	
 	// Attribute doesn't exist
-	let result;
 	switch (type) {
 		case ArgType.Int:
-			result = parseInt(val);
-			return isNaN(result) ? fallback : result;
+			return parseInt(val);
 		case ArgType.Float:
-			result = parseFloat(val);
-			return isNaN(result) ? fallback : result;
+			return parseFloat(val);
 		case ArgType.String:
-			return [undefined, null, false].includes(val) ? '' : val+'';
+			return [undefined, null, false].includes(val) ? '' : (val+'');
 		case ArgType.Json:
 		case ArgType.Eval:
 			if (typeof val === 'string' && val.length)
@@ -3632,6 +3625,10 @@ function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, 
  * @example
  * constructor({user, path}={}) {
  *     setArgs(this, arguments[0], {user: User, path: ArgType.String});
+ *
+ *     // Equivalent to:
+ *     this.user = getArg(this, user, 'user', User); // or new User(user);
+ *     this.path = getArg(this, path, 'path', ArgType.String);
  * }
  */
 function setArgs(el, args, types) {
@@ -3688,7 +3685,7 @@ function defineClass(Class, tagName, extendsTag) {
  * 1.  customElements.define() is called automatically when you create the first instance.
  * 2.  Calls render() when added to the DOM, if it hasn't been called already.
  * 3.  Child elements are added before constructor is called.  But they're also passed to the constructor. (deprecated?)
- * 4.  We can use this.html = r`...` to set html. (deprecated)
+ * 4.  We can use this.html = h`...` to set html. (deprecated)
  * 5.  We have the onConnect, onFirstConnect, and onDisconnect methods.
  *     Can't figure out how to have these work standalone though, and still be synchronous.
  * 6.  Can we extend from other element types like TR?
