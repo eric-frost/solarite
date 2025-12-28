@@ -1592,8 +1592,9 @@ class ExprPath {
 					// Allow one-way binding to contenteditable value attribute.
 					// Contenteditables normally don't have a value attribute and have their content set via innerHTML.
 					// Solarite doesn't allow contenteditables to have expressions as their children.
-					else if (node.hasAttribute('contenteditable'))
+					else if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
 						node.innerHTML = joinedValue;
+					}
 
 					// TODO: Putting an 'else' here would be more performant
 					node.setAttribute(this.attrName, joinedValue);
@@ -3431,9 +3432,9 @@ let renderF = 'render';
  * 4. h(el, ?options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
  *
  * Create top-level element
- * 7. h()`Hello<b>${'World'}!</b>`
+ * 5. h()`Hello<b>${'World'}!</b>`
  *
- * 10. h(string, object, ...)          // JSX
+ * 6. h(string, object, ...)           // Used for JSX
  * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template} */
@@ -3498,7 +3499,7 @@ function h(htmlStrings=undefined, ...exprs) {
 		}
 	}
 
-	// 7. Create a static element  h()'<div></div>' (Deprecated?)
+	// 5. Create a static element  h()'<div></div>' (Deprecated?)
 	else if (!arguments.length) {
 		return (htmlStrings, ...exprs) => {
 				let template = h(htmlStrings, ...exprs);
@@ -3506,7 +3507,7 @@ function h(htmlStrings=undefined, ...exprs) {
 			}
 	}
 
-	// 9. Help toEl() with objects.
+	// 6. Help toEl() with objects.
 	// Special rebound render path, called by normal path.
 	// Intercepts the main h(this)`...` function call inside render().
 	// TODO: This path doesn't handle embeds like data-id="..."
