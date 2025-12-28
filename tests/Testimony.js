@@ -1147,21 +1147,31 @@ async function runPage(path, webServer=null, webRoot=null, tests=null, headless=
 	});
 	page.on('pageerror', err => {
 		const text = `Page error: ${err && (err.stack || err.message) ? (err.stack || err.message) : String(err)}`;
-		console.error(`%c${text}`, 'color: #c00');
+		Deno.stderr.writeSync(new TextEncoder().encode(`\x1b[31m${text}\x1b[0m\n`));
 		rejectFailure(err);
 	});
 
 	// Wait for the tests to finish
 	// TODO: Also collect errors.
-	const success = page.waitForFunction(() => window.Testimony?.finished === true);
+	const success = page.waitForFunction(() => {
+		return window.Testimony?.finished;
+	}, {timeout: 0});
 
 	// Go to test pages.
 	const url = webServer
 		? `${webServer}/${path}?${urlArgs.join('&')}`
-		: `http:/localhost:${port}/${path}?${urlArgs.join('&')}`;
-	await page.goto(url);
+		: `http://localhost:${port}/${path}?${urlArgs.join('&')}`;
 
-	await Promise.race([success, failure]);
+	console.log(`Navigating to: ${url}`);
+	try {
+		await page.goto(url);
+		await Promise.race([success, failure]);
+	} catch (err) {
+		await browser.close();
+		if (server)
+			stopServer(server);
+		Deno.exit(1);
+	}
 
 	const failedTests = await page.evaluate(() => window.Testimony?.failedTests);
 	const passedTests = await page.evaluate(() => window.Testimony?.passedTests);

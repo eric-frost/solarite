@@ -23,11 +23,11 @@ The second argument to Testimony.test() can optionally be a sentence describing 
 
 Tests are run using Testimony.js, which is a custom test runner that allows selecting checkboxes of tests to run in the browser, or can be run from the command line.  It is for both php and js tests.  You will run it from the command line via:
 
-cd tests
-./run.bat testGroup
+./html/tests/run.bat testGroup
 
 -or-
 
 cd tests
 ./run.bat testGroup.testName testGroup.testName2
 
+You can create new test files in the tests folder, using other tests there as a guide.

@@ -3,9 +3,9 @@ import Util from "./Util.js";
 
 /**
  * There are three ways to create an instance of a Solarite Component:
- * 1.  new ComponentName();                                         // direct class instantiation
- * 2.  this.html = r`<div><component-name></component-name></div>;  // as a child of another RedComponent.
- * 3.  <body><component-name></component-name></body>               // in the Document html.
+ * 1.  new ComponentName(3);                                               // direct class instantiation
+ * 2.  h(this)`<div><component-name user-id=${3}></component-name></div>;  // as a child of another Component.
+ * 3.  <body><component-name user-id="3"></component-name></body>          // in the Document html.
  *
  * When created via #3, Solarite has no way to pass attributes as arguments to the constructor.  So to make
  * sure we get the correct value via all three paths, we write our constructors according to the following
@@ -13,33 +13,31 @@ import Util from "./Util.js";
  * Browsers make all html attribute names lowercase.
  *
  * @example
- * constructor({name, userid=1}={}) {
+ * constructor({name, userId=1}={}) {
  *     super();
  *
  *     // Get value from "name" attriute if persent, otherwise from name constructor arg.
  *     this.name = getArg(this, 'name', name);
  *
  *     // Optionally convert the value to an integer.
- *     this.userId = getArg(this, 'userid', userid, ArgType.Int);
+ *     this.userId = getArg(this, 'user-id', userId, ArgType.Int);
  * }
  *
  * @param el {HTMLElement}
  * @param attributeName {string} Attribute name.  Not case-sensitive.
- * @param defaultValue {*} Default value to use if attribute doesn't exist.
+ * @param defaultValue {*} Default value to use if attribute doesn't exist.  Typically the argument from the constructor.
  * @param type {ArgType|function|Class|*[]}
  *     If an array, use the value if it's in the array, otherwise return undefined.
  *     If it's a function, pass the value to the function and return the result.
- * @param fallback {*} If the defaultValue is undefiend and type can't be parsed as the given type, use this value.
- *     TODO: Should this be merged with the defaultValue argument?
- * @return {*} Undefined if attribute isn't set.  */
-export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String, fallback=undefined) {
+ * @return {*} Undefined if attribute isn't set and there's no defaultValue, or if the value couldn't be parsed as the type.  */
+export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String) {
 	let val = defaultValue;
 	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util.camelToDashes(attributeName));
 	if (attrVal !== null) // If attribute doesn't exist.
 		val = attrVal;
 		
 	if (Array.isArray(type))
-		return type.includes(val) ? val : fallback;
+		return type.includes(val) ? val : undefined;
 	
 	if (typeof type === 'function') {
 		return type.constructor
@@ -54,20 +52,17 @@ export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.S
 			return false;
 		if (['true', true].includes(lAttrVal) || parseFloat(lAttrVal) !== 0)
 			return true;
-		return fallback;
+		return undefined;
 	}
 	
 	// Attribute doesn't exist
-	let result;
 	switch (type) {
 		case ArgType.Int:
-			result = parseInt(val);
-			return isNaN(result) ? fallback : result;
+			return parseInt(val);
 		case ArgType.Float:
-			result = parseFloat(val);
-			return isNaN(result) ? fallback : result;
+			return parseFloat(val);
 		case ArgType.String:
-			return [undefined, null, false].includes(val) ? '' : val+'';
+			return [undefined, null, false].includes(val) ? '' : (val+'');
 		case ArgType.Json:
 		case ArgType.Eval:
 			if (typeof val === 'string' && val.length)
@@ -97,6 +92,10 @@ export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.S
  * @example
  * constructor({user, path}={}) {
  *     setArgs(this, arguments[0], {user: User, path: ArgType.String});
+ *
+ *     // Equivalent to:
+ *     this.user = getArg(this, user, 'user', User); // or new User(user);
+ *     this.path = getArg(this, path, 'path', ArgType.String);
  * }
  */
 export function setArgs(el, args, types) {

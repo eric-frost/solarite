@@ -1,8 +1,18 @@
 {
   "name": "solarite",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Solarite is a small (9KB min+gzip), fast, compilation-free JavaScript library for adding reactivity to native web components, so that updates require minimal re-rendering.",
+  "type": "module",
   "main": "dist/Solarite.js",
+  "module": "dist/Solarite.js",
+  "types": "src/Solarite.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/Solarite.d.ts",
+      "import": "./dist/Solarite.js",
+      "default": "./dist/Solarite.js"
+    }
+  },
   "files": [
     "readme.md",
     "dist",

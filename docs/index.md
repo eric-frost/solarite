@@ -66,11 +66,12 @@ document.body.append(new ShoppingList()); // add <shopping-list> element
 ## Key Features
 
 - **Explicit Rendering**: You control when rendering happens through the manually invoked `render()` method - no unexpected side effects.
-- **Simple State Management**: No special state setup required. Use regular JavaScript variables and data structures.
+- **Simple State Management**: No signals and no special state setup required. Use regular JavaScript variables and data structures of arbitrary depth.
 - **Scoped Styling**: Define styles that apply only to your web component and its children while still inheriting external styles.
 - **Automatic Element References**: Elements with `id` or `data-id` attributes automatically become properties of your component class.
 - **Component Composition**: Attributes are passed as constructor arguments to nested components for easy data flow.
-- **Zero Dependencies**: Single file with no build steps or dependencies. Not even Node.js.  Just `import` Solarite.js or Solarite.min.js into your vanilla JavaScript and start coding.
+- **Zero Dependencies**: Single ES6 module with no build steps.  Just `import` Solarite.js or Solarite.min.js into your vanilla JavaScript and start coding.
+- **TypeScript Support**: Includes a comprehensive `.d.ts` file for excellent IDE support and type safety in TypeScript projects.
 - **MIT License**: Free for commercial use with no attribution required.
 
 ## Installation
@@ -90,7 +91,7 @@ Alternatively, get Solarite from GitHub or NPM:
 
 ### Development Tips
 
-For the best development experience, use a JetBrains IDE like [WebStorm](https://www.jetbrains.com/webstorm/), [PhpStorm](https://www.jetbrains.com/phpstorm/), or [IDEA](https://www.jetbrains.com/idea/) which will automatically syntax highlight the HTML template strings.
+For the best development experience, use an IDE like [WebStorm](https://www.jetbrains.com/webstorm/) or [VS Code](https://code.visualstudio.com/) with a Lit-html extension for syntax highlighting of HTML template strings. Solarite's included `Solarite.d.ts` provides auto-completion and type checking for all core APIs.
 
 ## Performance
 
@@ -555,9 +556,7 @@ When you change an element or add another element to the `items` list and call `
 
 **Important**: Nested template literals must also have the `h` prefix. Without this prefix, they'll be rendered as escaped text instead of HTML elements.
 
-### Component Styling
-
-#### Scoped Styles
+### Scoped Styles
 
 Solarite provides a powerful scoped styling system that allows components to define styles that apply only to themselves and their children, while still inheriting styles from the rest of the document.
 
@@ -574,6 +573,10 @@ This approach provides style inheritance instead of having to start as Shadow DO
 import h from './dist/Solarite.min.js';
 
 class FancyText extends HTMLElement {
+    constructor() {
+        super();
+        this.render();
+    }    
 	render() { 
         h(this)`
         <fancy-text>
@@ -596,12 +599,41 @@ class FancyText extends HTMLElement {
 	}
 }
 customElements.define('fancy-text', FancyText);
-let el = new FancyText();
-el.render();
-document.body.append(el);
+document.body.append(new FancyText());
 ```
 
 Note that if shadow-dom is used, the element will not replace the `:host` selector in styles, as  browsers natively support the `:host` selector when inside shadow DOM.
+
+The `global` attribute  on a `<style>` tag allows defining styles globally in the document head only once for every instance of a component.  This can improve rendering performance when you have many instances.  Global styles cannot have expressions within them.
+
+```javascript
+import h from './dist/Solarite.min.js';
+
+class FancyText extends HTMLElement {
+    constructor() {
+        super();
+        this.render();
+    }
+	render() { 
+        h(this)`
+        <fancy-text>
+            <style global>
+                :host { display: block; color: blue; margin: 10ps; background: #345 } 
+            </style>
+            <p>We all share the same style tag in the document &lt;head&gt;.</p>
+        </fancy-text>`
+	}
+}
+
+customElements.define('fancy-text', FancyText);
+
+document.body.append(new FancyText());
+document.body.append(new FancyText());
+document.body.append(new FancyText());
+document.body.append(new FancyText());
+```
+
+
 
 ### Child Components
 
@@ -834,48 +866,6 @@ list.render();
 // This will cause an error because we're modifying nodes created by an expression.
 // list.querySelector('p').remove();
 // list.render();
-```
-
-
-
-### The Solarite Class (Experimental)
-
-For a more streamlined development experience, you can inherit from the `Solarite` class instead of directly from `HTMLElement`. This adds several convenient features to your web components:
-
-1. **Automatic Rendering**: The `render()` method is automatically called when the element is added to the DOM, if it hasn't previously been called, thanks to a built-in `connectedCallback()` implementation in the Solarite parent class.
-
-2. **Automatic Registration**: The `customElements.define()` call happens automatically when an element is instantiated via `new`. It derives the element name from your class name by:
-   - Converting the class name to kebab-case (with dashes)
-   - Ensuring there's at least one dash in the name (required by browsers)
-   - Appending `-element` if no suitable place for a dash is found
-
-This approach reduces boilerplate code.
-
-If you want the component to have a tag name that's different than the name derived from the class name, you can pass a different name to `define()`:
-
-```javascript
-import h, {Solarite} from './dist/Solarite.min.js';
-
-class TodoList extends Solarite {
-	render() { 
-		h(this)`
-        <todo-list>
-            ${this.items.map(item => 
-                h`${item}<br>`
-            )}
-        </todo-list>`
-	}
-}
-// This is called automatically when we extend from Solarite:
-//customElements.define('todo-list', TodoList);
-
-let list = new TodoList();
-list.items = ['one', 'two', 'three'];
-//list.render(); render() is called automatically when appended to body.
-document.body.append(list);
-
-list.items[1] = '2';
-list.render();
 ```
 
 ## How Solarite Works

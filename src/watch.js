@@ -32,7 +32,7 @@ class WatchExample extends Solarite {
 		<watch-example>
 			${() => this.name + '!'}
 
-			${this.items.map(item => r`
+			${this.items.map(item => h`
 				<div>${item.name}</div>
 			`)}
 			${() => this.items.length}

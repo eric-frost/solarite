@@ -8,7 +8,7 @@ import toEl from "./toEl.js";
  * Using h() as a function() will always create a DOM element.
  *
  * Features beyond what standard js tagged template strings do:
- * 1. r`` sub-expressions
+ * 1. h`` sub-expressions
  * 2. functions, nodes, and arrays of nodes as sub-expressions.
  * 3. html-escape all expressions by default, unless wrapped in h()
  * 4. event binding
@@ -29,15 +29,15 @@ import toEl from "./toEl.js";
  * 4. h(el, ?options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
  *
  * Create top-level element
- * 7. h()`Hello<b>${'World'}!</b>`
+ * 5. h()`Hello<b>${'World'}!</b>`
  *
- * 10. h(string, object, ...)          // JSX
+ * 6. h(string, object, ...)           // Used for JSX
  * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
- * @return {Node|HTMLElement|Template} */
+ * @return {Node|HTMLElement|Template|Function} */
 export default function h(htmlStrings=undefined, ...exprs) {
 
-	// 1. Tagged template
+	// 1. Tagged template: h`<div>...</div>`
 	if (Array.isArray(arguments[0])) {
 		return new Template(arguments[0], exprs);
 	}
@@ -55,11 +55,10 @@ export default function h(htmlStrings=undefined, ...exprs) {
 			return Template.fromJsx(tag, props, children);
 		}
 
-		// 2b. Plain html string => template
+		// 2b. Plain html string => template: h('<div>...</div>')
 		else {
 			let html = tagOrHtml;
-			// If it starts with whitespace, trim both ends.
-			// TODO: Also trim if it ends with whitespace?
+			// If it starts with whitespace and then a tag, trim it.
 			if (html.match(/^\s^</))
 				html = html.trim();
 			return new Template([html], []);
@@ -68,21 +67,21 @@ export default function h(htmlStrings=undefined, ...exprs) {
 
 	else if (arguments[0] instanceof HTMLElement || arguments[0] instanceof DocumentFragment) {
 
-		// 3. Render template to element.
+		// 3. Render template to element: h(el, template)
 		if (arguments[1] instanceof Template) {
 
 			/** @type Template */
 			let template = arguments[1];
 			let parent = arguments[0];
-			let options = arguments[2]; // deprecated?
+			let options = arguments[2];
 			template.render(parent, options);
 		}
 
-		// 4. Render tagged template to element
+		// 4. Render tagged template to element: h(el)`<div>...</div>`
 		else {
 			let parent = arguments[0], options = arguments[1];
 
-			// Remove shadowroot.  TODO: This could mess up paths?
+			// Remove shadowroot if present.  TODO: This could mess up paths?
 			if (parent.shadowRoot)
 				parent.innerHTML = '';
 
@@ -96,16 +95,15 @@ export default function h(htmlStrings=undefined, ...exprs) {
 		}
 	}
 
-	// 7. Create a static element  h()'<div></div>' (Deprecated?)
+	// 5. Create a static element: h()`<div></div>`
 	else if (!arguments.length) {
 		return (htmlStrings, ...exprs) => {
 				let template = h(htmlStrings, ...exprs);
-				return toEl(template); // Go to path 6.
+				return toEl(template);
 			}
 	}
 
-	// 9. Help toEl() with objects.
-	// Special rebound render path, called by normal path.
+	// 6. Help toEl() with objects: h(this)`<div>...</div>` inside an object's render()
 	// Intercepts the main h(this)`...` function call inside render().
 	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (typeof arguments[0] === 'object' && Globals.objToEl.has(arguments[0])) {
@@ -121,7 +119,7 @@ export default function h(htmlStrings=undefined, ...exprs) {
 			Globals.objToEl.set(obj, el);
 		}
 
-		// h(this)`<div>...</div>
+		// h(this)`<div>...</div>`
 		else
 			return function(...args) {
 				let template = h(...args);

@@ -21,6 +21,8 @@
  * After that, Deno is the only external dependency needed to build.
  */
 
+const packageJson = JSON.parse(Deno.readTextFileSync('../package.json'));
+
 const rollupOptions = {
 	onwarn: function (message) { // Suppress messages about external dependencies.
 		if (message.code !== 'CIRCULAR_DEPENDENCY' && message.code !== 'EVAL')
@@ -34,7 +36,7 @@ const rollupOptions = {
 const terserOptions = {
 	ecma: 8, // Decreases size.
 	format: {
-		preamble: `// Version ${timestamp()}\r\n// License: MIT\r\n// http://vorticode.github.io/solarite`,
+		preamble: `// Version ${packageJson.version}\r\n// License: MIT\r\n// http://vorticode.github.io/solarite`,
 	},
 	compress: { // https://github.com/terser/terser#compress-options
 		passes: 5,
@@ -91,14 +93,6 @@ async function rollup(input, output, options) {
 		file: output,
 		format: 'es'
 	});
-}
-
-function timestamp() {
-	let d = new Date();
-	return d.getUTCFullYear() +
-		'.' + (d.getUTCMonth()+1) +
-		'.' + d.getUTCDate() +
-		'.' + (d.getUTCHours()+'').padStart(2, '0') + (d.getUTCMinutes()+'').padStart(2, '0')
 }
 
 async function terser(options) {
