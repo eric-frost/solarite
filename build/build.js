@@ -21,7 +21,7 @@
  * After that, Deno is the only external dependency needed to build.
  */
 
-const packageJson = JSON.parse(Deno.readTextFileSync('../package.json'));
+const packageJson = JSON.parse(Deno.readTextFileSync(new URL('../package.json', import.meta.url)));
 
 const rollupOptions = {
 	onwarn: function (message) { // Suppress messages about external dependencies.
@@ -37,6 +37,7 @@ const terserOptions = {
 	ecma: 8, // Decreases size.
 	format: {
 		preamble: `// Version ${packageJson.version}\r\n// License: MIT\r\n// http://vorticode.github.io/solarite`,
+		comments: false
 	},
 	compress: { // https://github.com/terser/terser#compress-options
 		passes: 5,
