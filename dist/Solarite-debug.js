@@ -106,6 +106,8 @@ var Globals;
 function reset() {
 	Globals = {
 
+		currentSlotChildren: null,
+
 		/**
 		 * Store which instances of Solarite have already been added to the DOM.
 		 * @type {WeakSet<HTMLElement>} */
@@ -2653,7 +2655,13 @@ class NodeGroup {
 			newEl.setAttribute('is', el.getAttribute('is').toLowerCase());
 
 		// Replace the placeholder tag with the instantiated web component.
+		//#IFDEV
+		assert(!Globals$1.currentSlotChildren); // Make sure we're not recursing.
+		//#ENDIF
+
+		Globals$1.currentSlotChildren = children; // Used by RootNodeGroup slot code. TODO: Does this need to be a stack?
 		el.replaceWith(newEl);
+		Globals$1.currentSlotChildren = null;
 
 		// If an id pointed at the placeholder, update it to point to the new element.
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
@@ -2965,9 +2973,9 @@ class RootNodeGroup extends NodeGroup {
 
 				// Save slot children
 				let slotChildren;
-				if (el.childNodes.length) {
+				if (Globals$1.currentSlotChildren || el.childNodes.length) {
 					slotChildren = Globals$1.doc.createDocumentFragment();
-					slotChildren.append(...el.childNodes);
+					slotChildren.append(...(Globals$1.currentSlotChildren || el.childNodes));
 				}
 
 				// If el should replace the root node of the fragment.
@@ -3040,7 +3048,13 @@ class RootNodeGroup extends NodeGroup {
 		}
 	}
 
+	/**
+	 * @param el {HTMLElement}
+	 * @returns {NodeList[]} */
 	static getSlotChildren(el) {
+		if (Globals$1.currentSlotChildren)
+			return Globals$1.currentSlotChildren;
+
 		// TODO: Cache path to slot for better performance:
 		let childNodes = (el.querySelector('slot') || el).childNodes;
 		return Array.prototype.filter.call(childNodes, node => // Remove node markers.

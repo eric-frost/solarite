@@ -288,7 +288,13 @@ export default class NodeGroup {
 			newEl.setAttribute('is', el.getAttribute('is').toLowerCase());
 
 		// Replace the placeholder tag with the instantiated web component.
+		//#IFDEV
+		assert(!Globals.currentSlotChildren); // Make sure we're not recursing.
+		//#ENDIF
+
+		Globals.currentSlotChildren = children; // Used by RootNodeGroup slot code. TODO: Does this need to be a stack?
 		el.replaceWith(newEl);
+		Globals.currentSlotChildren = null;
 
 		// If an id pointed at the placeholder, update it to point to the new element.
 		let id = el.getAttribute('data-id') || el.getAttribute('id');

@@ -5,6 +5,8 @@ var Globals;
 function reset() {
 	Globals = {
 
+		currentSlotChildren: null,
+
 		/**
 		 * Store which instances of Solarite have already been added to the DOM.
 		 * @type {WeakSet<HTMLElement>} */

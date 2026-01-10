@@ -51,9 +51,9 @@ export default class RootNodeGroup extends NodeGroup {
 
 				// Save slot children
 				let slotChildren;
-				if (el.childNodes.length) {
+				if (Globals.currentSlotChildren || el.childNodes.length) {
 					slotChildren = Globals.doc.createDocumentFragment();
-					slotChildren.append(...el.childNodes);
+					slotChildren.append(...(Globals.currentSlotChildren || el.childNodes));
 				}
 
 				// If el should replace the root node of the fragment.
@@ -126,7 +126,13 @@ export default class RootNodeGroup extends NodeGroup {
 		}
 	}
 
+	/**
+	 * @param el {HTMLElement}
+	 * @returns {NodeList[]} */
 	static getSlotChildren(el) {
+		if (Globals.currentSlotChildren)
+			return Globals.currentSlotChildren;
+
 		// TODO: Cache path to slot for better performance:
 		let childNodes = (el.querySelector('slot') || el).childNodes;
 		return Array.prototype.filter.call(childNodes, node => // Remove node markers.

@@ -3401,25 +3401,23 @@ Testimony.test('Solarite.slots.basic', () => {
 		}
 
 		render(attribs, children) {
-			debugger;
-			console.log(children)
-			slotChildren = children;
+			slotChildren = children; // Make sure children argument is correct.
 			h(this)`<s-10 title="test">slot content:<slot></slot></s-10>`
 		}
 	}
-	S10.define(); // registers as s-10.
+	S10.define(); // register as <s-10>.
 
-	// // 1. Test render() call when added to the DOM.
-	// let div = toEl('<div><s-10>test</s-10></div>'); // provide "test" as slot content.
-	// document.body.append(div); // will auto call render
-	//
-	// assert.eq(div.outerHTML, `<div><s-10 title="test">slot content:<slot>test</slot></s-10></div>`)
-	// assert.eq(slotChildren[0].textContent, 'test');
-	//
-	// div.remove();
+	// 1. Test render() call when added to the DOM.
+	let div = toEl('<div><s-10>test</s-10></div>'); // provide "test" as slot content.
+	document.body.append(div); // will auto call render
+
+	assert.eq(div.outerHTML, `<div><s-10 title="test">slot content:<slot>test</slot></s-10></div>`)
+	assert.eq(slotChildren[0].textContent, 'test');
+
+	div.remove();
 
 
-	// Slot on web component nested inside another web component.
+	// 2. Slot on web component nested inside another web component.
 	class P10 extends Solarite {
 		render() {
 			h(this)`<p-10><s-10>test2</s-10></p-10>`
@@ -3427,12 +3425,12 @@ Testimony.test('Solarite.slots.basic', () => {
 	}
 	P10.define();
 
-	let div = toEl('<div><p-10></p-10></div>'); // provide "test" as slot content.
+	div = toEl('<div><p-10></p-10></div>'); // provide "test" as slot content.
 	document.body.append(div); // will auto call render
 
 	assert.eq(div.outerHTML, `<div><p-10><s-10 title="test">slot content:<slot>test2</slot></s-10></p-10></div>`)
-	assert.eq(slotChildren[0].textContent, 'test');
-
+	assert.eq(slotChildren[0].textContent, 'test2');
+	div.remove();
 
 });
 
