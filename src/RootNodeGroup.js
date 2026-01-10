@@ -16,7 +16,7 @@ export default class RootNodeGroup extends NodeGroup {
 
 	/**
 	 * @param template {Template}
-	 * @param el {?HTMLElement} Optional, pre-existing htmlElement tat will be the root.
+	 * @param el {?HTMLElement} Optional, pre-existing htmlElement that will be the root.
 	 * @param options {?object} */
 	constructor(template, el, options) {
 		super(template);
@@ -124,8 +124,14 @@ export default class RootNodeGroup extends NodeGroup {
 
 			this.instantiateStaticComponents(this.staticComponents);
 		}
+	}
 
-
+	static getSlotChildren(el) {
+		// TODO: Cache path to slot for better performance:
+		let childNodes = (el.querySelector('slot') || el).childNodes;
+		return Array.prototype.filter.call(childNodes, node => // Remove node markers.
+			node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath')
+		);
 	}
 }
 

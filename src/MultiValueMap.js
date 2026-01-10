@@ -42,7 +42,7 @@ export default class MultiValueMap {
 
 		// Delete any value.
 		if (val === undefined) {
-			[result] = set; // Does the same as above and seems to be about the same speed.
+			[result] = set; //  Get the first value from the set.
 			set.delete(result);
 		}
 
@@ -59,7 +59,7 @@ export default class MultiValueMap {
 	}
 
 	/**
-	 * Remove one value from a key, and return it.
+	 * Remove any one value from a key, and return it.
 	 * @param key {string}
 	 * @returns {*|undefined} The deleted item. */
 	deleteAny(key) {
@@ -69,7 +69,7 @@ export default class MultiValueMap {
 		if (!set) // slower than pre-check.
 			return undefined;
 
-		[result] = set; // Does the same as above and seems to be about the same speed.
+		[result] = set; // Get the first value from the set.
 		set.delete(result);
 
 		if (set.size === 0)

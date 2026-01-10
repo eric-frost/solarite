@@ -19,13 +19,17 @@ Can't have a test with part of the name being "constructor"
 */
 
 
+function dump(obj) {
+	return JSON.stringify(obj).replace(/\\"/g, '"').replace(/^"/, '').replace(/"$/, '');
+}
+
 /*┌──────────────────╮
   | Asserts          |
   └──────────────────╯*/
 class AssertError extends Error {
 	constructor(msgOrActual='Assertion Failed', expected, op) {
 		if (expected)
-			super(`Failed:  \`${msgOrActual}\` ${op} \`${expected}\``);
+			super(`Failed:\n${dump(msgOrActual)}\n${op}\n${dump(expected)}`);
 		else
 			super(msgOrActual);
 		this.name = "AssertError";
@@ -181,8 +185,8 @@ function isSame( x, y ) {
 }
 
 // Html.encode()
-function h(text, quotes='"') {
-	text = (text === null || text === undefined ? '' : text+'')
+function enc(text, quotes='"') {
+	text = ((text === null || text === undefined) ? '' : text+'')
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;')
@@ -258,8 +262,9 @@ class TestComponent extends HTMLElement {
 	test;
 
 	statusContainer;
-	childContainer;
+	resultContainer;
 	errorMessage;
+	childContainer;
 
 	/** @type {HTMLInputElement} */
 	expandCB;
@@ -364,12 +369,16 @@ class TestComponent extends HTMLElement {
 
 		if (this.test.status instanceof Error) {
 			let msg = Testimony.shortenError(this.test.status);
-			this.errorMessage.innerHTML = msg;
+			this.errorMessage.innerHTML = enc(msg).replace(/\r?\n/g, '<br>');
 		}
 		else
 			this.errorMessage.innerHTML = '';
 
 		this.lastStatus = this.test.status;
+	}
+
+	renderResult() {
+		this.resultContainer.innerHTML = this.test.result === undefined ? '' : this.test.result;
 	}
 
 	render() {
@@ -397,7 +406,7 @@ class TestComponent extends HTMLElement {
 			<!-- Expand button -->
 			<div style="display: inline-block; min-width: 8px">
 				${Object.keys(this.test.children || {}).length
-			? `<input data-id="expandCB" type="checkbox" name="x" value="${h(this.test.name)}"
+			? `<input data-id="expandCB" type="checkbox" name="x" value="${enc(this.test.name)}"
 							${this.test.expanded ? 'checked' : ''}
 							onchange="this.closest('test-item').clickExpand()">`
 			: ``}
@@ -405,7 +414,7 @@ class TestComponent extends HTMLElement {
 			<label>
 			
 				<!-- Enabled -->
-				<span style="white-space: nowrap">[<input data-id="enableCB" type="checkbox" name="r" value="${h(this.test.name)}"
+				<span style="white-space: nowrap">[<input data-id="enableCB" type="checkbox" name="r" value="${enc(this.test.name)}"
 					${this.test.enabled ? 'checked' : ''}
 					onchange="this.closest('test-item').clickEnable()">]</span>
 				
@@ -414,12 +423,12 @@ class TestComponent extends HTMLElement {
 				
 				<!-- Name -->
 				<span>
-					${h(this.test.getShortName())}${this.test.externalUrl ? `<a 
-						href="${h(this.test.externalUrl)}" target="_blank" title="Open external test url in new tab">🡵</a>` : ''}
+					${enc(this.test.getShortName())}${this.test.externalUrl ? `<a 
+						href="${enc(this.test.externalUrl)}" target="_blank" title="Open external test url in new tab">🡵</a>` : ''}
 					${descIsHtml ? this.test.desc : `<span style="opacity: .5">${this.test.desc}</span>`}
 				</span>
 			</label>	
-			
+			<div data-id="resultContainer" style="color: #77f"></div>
 			<div data-id="errorMessage" style="color: red"></div>
 		</div>
 		<div data-id="childContainer" ${this.test.expanded ? `` : `style="display: none"`}></div>`;
@@ -701,11 +710,11 @@ class Test {
 		let pass = false;
 		try {
 			if (Testimony.throwOnError) {
-				await doIt(setupResponse);
+				this.result = await doIt(setupResponse);
 				pass = true;
 			} else {
 				try {
-					await doIt(setupResponse);
+					this.result = await doIt(setupResponse);
 					pass = true;
 					Testimony.passedTests.push(this.name);
 				} catch (e) {
@@ -722,8 +731,10 @@ class Test {
 			if (!pass && !(this.status instanceof Error))
 				this.status = TestStatus.Fail;
 
-			if (this.element)
+			if (this.element) {
 				this.element.renderStatus();
+				this.element.renderResult();
+			}
 			if (this.parent)
 				this.parent.updateStatusFromChildren();
 		}
@@ -1012,8 +1023,8 @@ var Testimony = {
 
 			// List the test with the error in red as the description:
 			Testimony.test(
-				h(path.split(/[/\\]/).pop().replace(/\./g, '_')),
-				{desc: `<span style="color:#f00">${h(path)} failed to load:<br>${parseError(text)}</span>`}, () => {
+				enc(path.split(/[/\\]/).pop().replace(/\./g, '_')),
+				{desc: `<span style="color:#f00">${enc(path)} failed to load:<br>${parseError(text)}</span>`}, () => {
 				throw new Error(text)
 			});
 			console.error('Import failed:', err);
@@ -1027,7 +1038,7 @@ var Testimony = {
 	 * @param error {Error}
 	 * @param br {string}
 	 * @returns {string} */
-	shortenError(error, br='<br>&nbsp;&nbsp;') {
+	shortenError(error, br='\n  ') {
 		// slice(0, -3) to remove the 3 stacktrace lines inside Testimony.js that calls runtests.
 		let lines = error.stack.split(/\n/g).filter(line => !line.includes('Testimony.js'));
 		let errorStack = lines.join('\r\n'); // Remove the line that invokes Testimony.js
@@ -1147,31 +1158,21 @@ async function runPage(path, webServer=null, webRoot=null, tests=null, headless=
 	});
 	page.on('pageerror', err => {
 		const text = `Page error: ${err && (err.stack || err.message) ? (err.stack || err.message) : String(err)}`;
-		Deno.stderr.writeSync(new TextEncoder().encode(`\x1b[31m${text}\x1b[0m\n`));
+		console.error(`%c${text}`, 'color: #c00');
 		rejectFailure(err);
 	});
 
 	// Wait for the tests to finish
 	// TODO: Also collect errors.
-	const success = page.waitForFunction(() => {
-		return window.Testimony?.finished;
-	}, {timeout: 0});
+	const success = page.waitForFunction(() => window.Testimony?.finished === true);
 
 	// Go to test pages.
 	const url = webServer
 		? `${webServer}/${path}?${urlArgs.join('&')}`
-		: `http://localhost:${port}/${path}?${urlArgs.join('&')}`;
+		: `http:/localhost:${port}/${path}?${urlArgs.join('&')}`;
+	await page.goto(url);
 
-	console.log(`Navigating to: ${url}`);
-	try {
-		await page.goto(url);
-		await Promise.race([success, failure]);
-	} catch (err) {
-		await browser.close();
-		if (server)
-			stopServer(server);
-		Deno.exit(1);
-	}
+	await Promise.race([success, failure]);
 
 	const failedTests = await page.evaluate(() => window.Testimony?.failedTests);
 	const passedTests = await page.evaluate(() => window.Testimony?.passedTests);

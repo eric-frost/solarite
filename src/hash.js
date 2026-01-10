@@ -20,7 +20,8 @@ export function getObjectId(obj) {
  * Control how JSON.stringify() handles Nodes and Functions.
  * Normally, we'd pass a replacer() function argument to JSON.stringify() to handle Nodes and Functions.
  * But that makes JSON.stringify() take twice as long to run.
- * Adding a toJSON method globally on these object prototypes doesn't incur that performance penalty. */
+ * Adding a toJSON method globally on these object prototypes doesn't incur that performance penalty.
+ * TODO: This needs to be benchmarked again after the json rewrite in Chrome 138. */
 let isHashing = true;
 function toJSON() {
 	return isHashing ? getObjectId(this) : this
@@ -48,6 +49,7 @@ export function getObjectHash(obj) {
 	// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
 	// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
 	// So we check the assignments on every run of getObjectHash()
+	// TODO: Cache references to Node.prototype and Function.prototype:
 	if (Node.prototype.toJSON !== toJSON) {
 		Node.prototype.toJSON = toJSON;
 		if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
@@ -67,7 +69,7 @@ export function getObjectHash(obj) {
 }
 
 /**
- * Slower hashing method that supports.
+ * Slower hashing method that supports circular references.
  * @param obj
  * @returns {string} */
 function getObjectHashCircular(obj) {

@@ -1,154 +1,123 @@
 import Util from './Util.js';
 import Globals from "./Globals.js";
+import RootNodeGroup from "./RootNodeGroup.js";
 
-function defineClass(Class, tagName, extendsTag) {
+// Trick to prevent minifier from renaming these methods.
+let define = 'define';
+let getName = 'getName';
+
+function defineClass(Class, tagName) {
 	if (!customElements[getName](Class)) { // If not previously defined.
 		tagName = tagName || Util.camelToDashes(Class.name)
 		if (!tagName.includes('-'))
 			tagName += '-element';
-
-		let options = null;
-		if (extendsTag)
-			options = {extends: extendsTag}
-
-		customElements[define](tagName, Class, options)
+		customElements[define](tagName, Class)
 	}
 }
 
+
 /**
  * Create a version of the Solarite class that extends from the given tag name.
- * Reasons to inherit from this instead of HTMLElement.  None of these are all that useful.
+ * Reasons to inherit from this instead of HTMLElement.
  * 1.  customElements.define() is called automatically when you create the first instance.
  * 2.  Calls render() when added to the DOM, if it hasn't been called already.
- * 3.  Child elements are added before constructor is called.  But they're also passed to the constructor. (deprecated?)
- * 4.  We can use this.html = h`...` to set html. (deprecated)
- * 5.  We have the onConnect, onFirstConnect, and onDisconnect methods.
+ * 3.  Populates the attribs and children arguments to the constructor.
+ * 4.  We have the onConnect, onFirstConnect, and onDisconnect methods.
  *     Can't figure out how to have these work standalone though, and still be synchronous.
- * 6.  Can we extend from other element types like TR?
- * 7.  Shows default text if render() function isn't defined.
+ * 5.  Shows an error if render() isn't defined.
  *
  * Advantages to inheriting from HTMLElement
  * 1.  Minimization won't break when it renames the Class and we call customElements.define() on the wrong name.
+ *     Is this still an issue?
  * 2.  We can inherit from things like HTMLTableRowElement directly.
  * 3.  There's less magic, since everyone is familiar with defining custom elements.
- *
- * @param extendsTag {?string}
- * @return {Class} */
-export default function createSolarite(extendsTag=null) {
+ * 4.  No confusion about how the class name becomes a tag name.
+ */
 
-	let BaseClass = HTMLElement;
-	if (extendsTag && !extendsTag.includes('-')) {
-		extendsTag = extendsTag.toLowerCase();
+/**
+ * Intercept the construct call to auto-define the class before the constructor is called.
+ * And populate the attribs and children arguments when the element is created from the regular DOM
+ * and not as a child of another web component.
+ * @type {HTMLElement|Proxy} */
+let HTMLElementAutoDefine = new Proxy(HTMLElement, {
+	construct(Parent, args, Class) {
 
-		BaseClass = Globals.elementClasses[extendsTag];
-		if (!BaseClass) { // TODO: Use Cache
-			BaseClass = Globals.doc.createElement(extendsTag).constructor;
-			Globals.elementClasses[extendsTag] = BaseClass
+		// 1. Call customElements.define() automatically.
+		defineClass(Class, null);
+
+		// 2. This line is equivalent the to super() call to HTMLElement:
+		let result = Reflect.construct(Parent, args, Class);
+
+		// 3. Populate attribs if it's an empty object.
+		if (!args[0] || typeof args[0] !== 'object')
+			throw new Error('First argument to custom element constructor must be an object.');
+
+		if (!Object.keys(args[0]).length) {
+			let attribs = Util.attribsToObject(result);
+			for (let name in attribs)
+				args[0][name] = attribs[name];
+		}
+
+		// 4. Populate children if it's an empty array.
+		if (!Array.isArray(args[1]))
+			throw new Error('Second argument to custom element constructor must be an array.');
+		if (!args[1].length) {
+			let slotChildren = (result.querySelector('slot') || result).childNodes; // TODO: What about named slots?
+			for (let child of slotChildren)
+				args[1].push(child);
+		}
+		return result;
+	}
+});
+
+/**
+ * @extends HTMLElement */
+export default class Solarite extends HTMLElementAutoDefine {
+
+	// Deprecated?
+	onConnect;
+	onFirstConnect;
+	onDisconnect;
+
+	constructor(attribs={}, children=[]) {
+		super(attribs, children);
+	}
+
+	render() {
+		throw new Error('render() is not defined for ' + this.constructor.name);
+	}
+
+	/**
+	 * Call render() only if it hasn't already been called.	 */
+	renderFirstTime() {
+		if (!Globals.rendered.has(this) && this.render) {
+			let attribs = Util.attribsToObject(this, 'solarite-placeholder');
+			let children = RootNodeGroup.getSlotChildren(this);
+			this.render(attribs, children);
 		}
 	}
 
 	/**
-	 * Intercept the construct call to auto-define the class before the constructor is called.
-	 * @type {HTMLElement} */
-	let HTMLElementAutoDefine = new Proxy(BaseClass, {
-		construct(Parent, args, Class) {
-			defineClass(Class, null, extendsTag)
-
-			// This is a good place to manipulate any args before they're sent to the constructor.
-			// Such as loading them from attributes, if I could find a way to do so.
-
-			// This line is equivalent the to super() call.
-			return Reflect.construct(Parent, args, Class);
+	 * Called automatically by the browser. */
+	connectedCallback() {
+		this.renderFirstTime();
+		if (!Globals.connected.has(this)) {
+			Globals.connected.add(this);
+			if (this.onFirstConnect)
+				this.onFirstConnect();
 		}
-	});
+		if (this.onConnect)
+			this.onConnect();
+	}
 
-	return class Solarite extends HTMLElementAutoDefine {
-		
-		
-		/**
-		 * TODO: Make these standalone functions.
-		 * Callbacks.
-		 * Use onConnect.push(() => ...); to add new callbacks. */
-		onConnect;
-		
-		onFirstConnect;
-		onDisconnect;
-
-		/**
-		 * @param options {RenderOptions} */
-		constructor(options={}) {
-			super();
-
-			// TODO: Is options.render ever used?
-			if (options.render===true)
-				this.render();
-
-			else if (options.render===false)
-				Globals.rendered.add(this); // Don't render on connectedCallback()
-
-			// Add slot children before constructor code executes.
-			// This breaks the styleStaticNested test.
-			// PendingChildren is setup in NodeGroup.instantiateComponent()
-			// TODO: Match named slots.
-			//let ch = Globals.pendingChildren.pop();
-			//if (ch) // TODO: how could there be a slot before render is called?
-			//	(this.querySelector('slot') || this).append(...ch);
-
-			/** @deprecated
-			Object.defineProperty(this, 'html', {
-				set(html) {
-					Globals.rendered.add(this);
-					if (typeof html === 'string') {
-						console.warn("Assigning to this.html without the r template prefix.")
-						this.innerHTML = html;
-					}
-					else
-						this.modifications = h(this, html, options);
-				}
-			})*/
-
-			/*
-			let pthis = new Proxy(this, {
-				get(obj, prop) {
-					return Reflect.get(obj, prop)
-				}
-			});
-			this.render = this.render.bind(pthis);
-			*/
-		}
-
-		/**
-		 * Call render() only if it hasn't already been called.	 */
-		renderFirstTime() {
-			if (!Globals.rendered.has(this) && this.render)
-				this.render();
-		}
-		
-		/**
-		 * Called automatically by the browser. */
-		connectedCallback() {
-			this.renderFirstTime();
-			if (!Globals.connected.has(this)) {
-				Globals.connected.add(this);
-				if (this.onFirstConnect)
-					this.onFirstConnect();
-			}
-			if (this.onConnect)
-				this.onConnect();
-		}
-		
-		disconnectedCallback() {
-			if (this.onDisconnect)
-				this.onDisconnect();
-		}
+	disconnectedCallback() {
+		if (this.onDisconnect)
+			this.onDisconnect();
+	}
 
 
-		static define(tagName=null) {
-			defineClass(this, tagName, extendsTag)
-		}
+	static define(tagName=null) {
+		defineClass(this, tagName)
 	}
 }
 
-// Trick to prevent minifier from renaming this method.
-let define = 'define';
-let getName = 'getName';

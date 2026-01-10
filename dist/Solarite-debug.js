@@ -31,7 +31,8 @@ function getObjectId(obj) {
  * Control how JSON.stringify() handles Nodes and Functions.
  * Normally, we'd pass a replacer() function argument to JSON.stringify() to handle Nodes and Functions.
  * But that makes JSON.stringify() take twice as long to run.
- * Adding a toJSON method globally on these object prototypes doesn't incur that performance penalty. */
+ * Adding a toJSON method globally on these object prototypes doesn't incur that performance penalty.
+ * TODO: This needs to be benchmarked again after the json rewrite in Chrome 138. */
 let isHashing = true;
 function toJSON() {
 	return isHashing ? getObjectId(this) : this
@@ -59,6 +60,7 @@ function getObjectHash(obj) {
 	// Sometimes these get unassigned by Chrome and Brave 119, as well as Firefox, seemingly randomly!
 	// The same tests sometimes pass, sometimes fail, even after browser and OS restarts.
 	// So we check the assignments on every run of getObjectHash()
+	// TODO: Cache references to Node.prototype and Function.prototype:
 	if (Node.prototype.toJSON !== toJSON) {
 		Node.prototype.toJSON = toJSON;
 		if (Function.prototype.toJSON !== toJSON) // Will it only unmap one but not the other?
@@ -78,7 +80,7 @@ function getObjectHash(obj) {
 }
 
 /**
- * Slower hashing method that supports.
+ * Slower hashing method that supports circular references.
  * @param obj
  * @returns {string} */
 function getObjectHashCircular(obj) {
@@ -103,11 +105,6 @@ var Globals;
  * Created with a reset() function because it's useful for testing. */
 function reset() {
 	Globals = {
-
-		/**
-		 * Dynamic values that should be passed to a Component's constructor and render() function.
-		 * @type {Map<HTMLElement, any[]>} */
-		componentArgs: new Map(),
 
 		/**
 		 * Store which instances of Solarite have already been added to the DOM.
@@ -245,6 +242,7 @@ let Util = {
 
 	/**
 	 * Convert HTMLElement attributes to an object.
+	 * Converts dash (kebob-case) attribute names to camelCase.
 	 * @param el {HTMLElement}
 	 * @param ignore {?string} Optionally ignore this attribute.
 	 * @return {Object} */
@@ -634,7 +632,7 @@ class MultiValueMap {
 
 		// Delete any value.
 		if (val === undefined) {
-			[result] = set; // Does the same as above and seems to be about the same speed.
+			[result] = set; //  Get the first value from the set.
 			set.delete(result);
 		}
 
@@ -651,7 +649,7 @@ class MultiValueMap {
 	}
 
 	/**
-	 * Remove one value from a key, and return it.
+	 * Remove any one value from a key, and return it.
 	 * @param key {string}
 	 * @returns {*|undefined} The deleted item. */
 	deleteAny(key) {
@@ -661,7 +659,7 @@ class MultiValueMap {
 		if (!set) // slower than pre-check.
 			return undefined;
 
-		[result] = set; // Does the same as above and seems to be about the same speed.
+		[result] = set; // Get the first value from the set.
 		set.delete(result);
 
 		if (set.size === 0)
@@ -1220,8 +1218,8 @@ class ExprPath {
 			// let template = Globals.stringTemplates[expr];
 			// if (!template) {
 
-				let template = new Template([expr], []);
-				template.isText = true;
+			let template = new Template([expr], []);
+			template.isText = true;
 			//	Globals.stringTemplates[expr] = template;
 			//}
 
@@ -1256,31 +1254,28 @@ class ExprPath {
 				// NodeGroup.applyExprs() is used to call applyComponentExprs() on web components that have expression attributes.
 				// For those that don't, we call applyComponentExprs() directly here.
 				// Also see similar code at the end of this.applyNodes() which handles web components being instantiated the first time.
+				// TODO: This adds significant time to the Benchmark.solarite._partialUpdate test.
 				let apply = false;
 				for (let el of newestNodes) {
 					if (el?.nodeType === 1) { // HTMLElement
 
-						if (el.tagName.includes('-')) {
-							if (!expr.exprs.find(expr => expr?.nodeMarker === el))
-								this.parentNg.handleComponent(el, null, true);
-							else // Commenting out this "else" causes render() to be called too often, but other UI code fails if it's present.
-								apply = true;
-						}
-						for (let child of el.querySelectorAll('*')) {
+						// Benchmarking shows that walkDOM is significantly faster than querySelectorAll('*') and document.createTreeWalker.
+						walkDOM(el, (child) => {
+							//console.log(child)
 							if (child.tagName.includes('-')) {
 								if (!expr.exprs.find(expr => expr?.nodeMarker === child))
 									this.parentNg.handleComponent(child, null, true);
 								else
 									apply = true;
 							}
-						}
+						});
 					}
 				}
 
 				// This calls render() on web components that have expressions as attributes.
 				if (apply)
 					ng.applyExprs(expr.exprs);
-				
+
 				this.nodeGroups.push(ng);
 
 				return ng;
@@ -1304,8 +1299,8 @@ class ExprPath {
 				newNodes.push(expr);
 		}
 
-		// Arrays and functions.
-		// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
+			// Arrays and functions.
+			// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
 		// but that consistently made the js-framework-benchmarks a few percentage points slower.
 		else
 			this.exprToTemplates(expr, template => {
@@ -1589,8 +1584,8 @@ class ExprPath {
 					if (isProp)
 						node[this.attrName] = joinedValue;
 
-					// Allow one-way binding to contenteditable value attribute.
-					// Contenteditables normally don't have a value attribute and have their content set via innerHTML.
+						// Allow one-way binding to contenteditable value attribute.
+						// Contenteditables normally don't have a value attribute and have their content set via innerHTML.
 					// Solarite doesn't allow contenteditables to have expressions as their children.
 					else if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
 						node.innerHTML = joinedValue;
@@ -1673,8 +1668,8 @@ class ExprPath {
 			// 	parent.replaceWith(replacement)
 			// }
 			// else {
-				parent.innerHTML = ''; // Faster than calling .removeChild() a thousand times.
-				parent.append(this.nodeBefore, this.nodeMarker);
+			parent.innerHTML = ''; // Faster than calling .removeChild() a thousand times.
+			parent.append(this.nodeBefore, this.nodeMarker);
 			//}
 			return true;
 		}
@@ -1760,9 +1755,9 @@ class ExprPath {
 				return null;
 		}
 
-		// Find a close match.
-		// This is a match that has matching html, but different expressions applied.
-		// We can then apply the expressions to make it an exact match.
+			// Find a close match.
+			// This is a match that has matching html, but different expressions applied.
+			// We can then apply the expressions to make it an exact match.
 		// If the template has no expressions, the key is the html, and we've already searched for an exact match.  There won't be an inexact match.
 		else if (template.exprs.length) {
 			result = collection.deleteAny(template.getCloseKey());
@@ -1943,6 +1938,18 @@ function resolveNodePath(root, path) {
 	for (let i=path.length-1; i>=0; i--)
 		root = root.childNodes[path[i]];
 	return root;
+}
+
+
+
+
+function walkDOM(el, callback) {
+	callback(el);
+	let child = el.firstElementChild;
+	while (child) {
+		walkDOM(child, callback);
+		child = child.nextElementSibling;
+	}
 }
 
 class HtmlParser {
@@ -2581,7 +2588,9 @@ class NodeGroup {
 	}
 
 	/**
-	 * Unified path to ensure a child component is instantiated (if placeholder) and optionally rendered.
+	 * Ensure:
+	 * 1. a child component is instantiated (if it's a placeholder)
+	 * 2. It's rendered if doRender=true
 	 * @param el {HTMLElement}
 	 * @param props {?Object}
 	 * @param doRender {boolean}
@@ -2593,11 +2602,11 @@ class NodeGroup {
 		if (isPreHtmlElement || isPreIsElement)
 			[el, attribs, children] = this.instantiateComponent(el, isPreHtmlElement, props);
 		if (doRender && el.render) {
-			if (!attribs) {
-				attribs = Util.attribsToObject(el);
+			if (!attribs) { // if not set by instantiateComponent
+				attribs = Util.attribsToObject(el, 'solarite-placeholder');
 				for (let name in props || {})
 					attribs[Util.dashesToCamel(name)] = props[name];
-				children = el.childNodes;
+				children = RootNodeGroup.getSlotChildren(el);
 			}
 			el.render(attribs, children);
 		}
@@ -2637,7 +2646,7 @@ class NodeGroup {
 
 		// Create the web component.
 		// Get the children that aren't Solarite's comment placeholders.
-		let children = [...el.childNodes].filter(node => node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath'));
+		let children = RootNodeGroup.getSlotChildren(el);
 		let newEl = new Constructor(attribs, children);
 
 		if (!isPreHtmlElement)
@@ -2921,7 +2930,7 @@ class RootNodeGroup extends NodeGroup {
 
 	/**
 	 * @param template {Template}
-	 * @param el {?HTMLElement} Optional, pre-existing htmlElement tat will be the root.
+	 * @param el {?HTMLElement} Optional, pre-existing htmlElement that will be the root.
 	 * @param options {?object} */
 	constructor(template, el, options) {
 		super(template);
@@ -3029,8 +3038,14 @@ class RootNodeGroup extends NodeGroup {
 
 			this.instantiateStaticComponents(this.staticComponents);
 		}
+	}
 
-
+	static getSlotChildren(el) {
+		// TODO: Cache path to slot for better performance:
+		let childNodes = (el.querySelector('slot') || el).childNodes;
+		return Array.prototype.filter.call(childNodes, node => // Remove node markers.
+			node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath')
+		);
 	}
 }
 
@@ -3665,157 +3680,124 @@ var ArgType = {
 	Eval: 'Eval'
 };
 
-function defineClass(Class, tagName, extendsTag) {
+// Trick to prevent minifier from renaming these methods.
+let define = 'define';
+let getName = 'getName';
+
+function defineClass(Class, tagName) {
 	if (!customElements[getName](Class)) { // If not previously defined.
 		tagName = tagName || Util.camelToDashes(Class.name);
 		if (!tagName.includes('-'))
 			tagName += '-element';
-
-		let options = null;
-		if (extendsTag)
-			options = {extends: extendsTag};
-
-		customElements[define](tagName, Class, options);
+		customElements[define](tagName, Class);
 	}
 }
 
+
 /**
  * Create a version of the Solarite class that extends from the given tag name.
- * Reasons to inherit from this instead of HTMLElement.  None of these are all that useful.
+ * Reasons to inherit from this instead of HTMLElement.
  * 1.  customElements.define() is called automatically when you create the first instance.
  * 2.  Calls render() when added to the DOM, if it hasn't been called already.
- * 3.  Child elements are added before constructor is called.  But they're also passed to the constructor. (deprecated?)
- * 4.  We can use this.html = h`...` to set html. (deprecated)
- * 5.  We have the onConnect, onFirstConnect, and onDisconnect methods.
+ * 3.  Populates the attribs and children arguments to the constructor.
+ * 4.  We have the onConnect, onFirstConnect, and onDisconnect methods.
  *     Can't figure out how to have these work standalone though, and still be synchronous.
- * 6.  Can we extend from other element types like TR?
- * 7.  Shows default text if render() function isn't defined.
+ * 5.  Shows an error if render() isn't defined.
  *
  * Advantages to inheriting from HTMLElement
  * 1.  Minimization won't break when it renames the Class and we call customElements.define() on the wrong name.
+ *     Is this still an issue?
  * 2.  We can inherit from things like HTMLTableRowElement directly.
  * 3.  There's less magic, since everyone is familiar with defining custom elements.
- *
- * @param extendsTag {?string}
- * @return {Class} */
-function createSolarite(extendsTag=null) {
+ * 4.  No confusion about how the class name becomes a tag name.
+ */
 
-	let BaseClass = HTMLElement;
-	if (extendsTag && !extendsTag.includes('-')) {
-		extendsTag = extendsTag.toLowerCase();
+/**
+ * Intercept the construct call to auto-define the class before the constructor is called.
+ * And populate the attribs and children arguments when the element is created from the regular DOM
+ * and not as a child of another web component.
+ * @type {HTMLElement|Proxy} */
+let HTMLElementAutoDefine = new Proxy(HTMLElement, {
+	construct(Parent, args, Class) {
 
-		BaseClass = Globals$1.elementClasses[extendsTag];
-		if (!BaseClass) { // TODO: Use Cache
-			BaseClass = Globals$1.doc.createElement(extendsTag).constructor;
-			Globals$1.elementClasses[extendsTag] = BaseClass;
+		// 1. Call customElements.define() automatically.
+		defineClass(Class, null);
+
+		// 2. This line is equivalent the to super() call to HTMLElement:
+		let result = Reflect.construct(Parent, args, Class);
+
+		// 3. Populate attribs if it's an empty object.
+		if (!args[0] || typeof args[0] !== 'object')
+			throw new Error('First argument to custom element constructor must be an object.');
+
+		if (!Object.keys(args[0]).length) {
+			let attribs = Util.attribsToObject(result);
+			for (let name in attribs)
+				args[0][name] = attribs[name];
+		}
+
+		// 4. Populate children if it's an empty array.
+		if (!Array.isArray(args[1]))
+			throw new Error('Second argument to custom element constructor must be an array.');
+		if (!args[1].length) {
+			let slotChildren = (result.querySelector('slot') || result).childNodes; // TODO: What about named slots?
+			for (let child of slotChildren)
+				args[1].push(child);
+		}
+		return result;
+	}
+});
+
+/**
+ * @extends HTMLElement */
+class Solarite extends HTMLElementAutoDefine {
+
+	// Deprecated?
+	onConnect;
+	onFirstConnect;
+	onDisconnect;
+
+	constructor(attribs={}, children=[]) {
+		super(attribs, children);
+	}
+
+	render() {
+		throw new Error('render() is not defined for ' + this.constructor.name);
+	}
+
+	/**
+	 * Call render() only if it hasn't already been called.	 */
+	renderFirstTime() {
+		if (!Globals$1.rendered.has(this) && this.render) {
+			let attribs = Util.attribsToObject(this, 'solarite-placeholder');
+			let children = RootNodeGroup.getSlotChildren(this);
+			this.render(attribs, children);
 		}
 	}
 
 	/**
-	 * Intercept the construct call to auto-define the class before the constructor is called.
-	 * @type {HTMLElement} */
-	let HTMLElementAutoDefine = new Proxy(BaseClass, {
-		construct(Parent, args, Class) {
-			defineClass(Class, null, extendsTag);
-
-			// This is a good place to manipulate any args before they're sent to the constructor.
-			// Such as loading them from attributes, if I could find a way to do so.
-
-			// This line is equivalent the to super() call.
-			return Reflect.construct(Parent, args, Class);
+	 * Called automatically by the browser. */
+	connectedCallback() {
+		this.renderFirstTime();
+		if (!Globals$1.connected.has(this)) {
+			Globals$1.connected.add(this);
+			if (this.onFirstConnect)
+				this.onFirstConnect();
 		}
-	});
+		if (this.onConnect)
+			this.onConnect();
+	}
 
-	return class Solarite extends HTMLElementAutoDefine {
-		
-		
-		/**
-		 * TODO: Make these standalone functions.
-		 * Callbacks.
-		 * Use onConnect.push(() => ...); to add new callbacks. */
-		onConnect;
-		
-		onFirstConnect;
-		onDisconnect;
-
-		/**
-		 * @param options {RenderOptions} */
-		constructor(options={}) {
-			super();
-
-			// TODO: Is options.render ever used?
-			if (options.render===true)
-				this.render();
-
-			else if (options.render===false)
-				Globals$1.rendered.add(this); // Don't render on connectedCallback()
-
-			// Add slot children before constructor code executes.
-			// This breaks the styleStaticNested test.
-			// PendingChildren is setup in NodeGroup.instantiateComponent()
-			// TODO: Match named slots.
-			//let ch = Globals.pendingChildren.pop();
-			//if (ch) // TODO: how could there be a slot before render is called?
-			//	(this.querySelector('slot') || this).append(...ch);
-
-			/** @deprecated
-			Object.defineProperty(this, 'html', {
-				set(html) {
-					Globals.rendered.add(this);
-					if (typeof html === 'string') {
-						console.warn("Assigning to this.html without the r template prefix.")
-						this.innerHTML = html;
-					}
-					else
-						this.modifications = h(this, html, options);
-				}
-			})*/
-
-			/*
-			let pthis = new Proxy(this, {
-				get(obj, prop) {
-					return Reflect.get(obj, prop)
-				}
-			});
-			this.render = this.render.bind(pthis);
-			*/
-		}
-
-		/**
-		 * Call render() only if it hasn't already been called.	 */
-		renderFirstTime() {
-			if (!Globals$1.rendered.has(this) && this.render)
-				this.render();
-		}
-		
-		/**
-		 * Called automatically by the browser. */
-		connectedCallback() {
-			this.renderFirstTime();
-			if (!Globals$1.connected.has(this)) {
-				Globals$1.connected.add(this);
-				if (this.onFirstConnect)
-					this.onFirstConnect();
-			}
-			if (this.onConnect)
-				this.onConnect();
-		}
-		
-		disconnectedCallback() {
-			if (this.onDisconnect)
-				this.onDisconnect();
-		}
+	disconnectedCallback() {
+		if (this.onDisconnect)
+			this.onDisconnect();
+	}
 
 
-		static define(tagName=null) {
-			defineClass(this, tagName, extendsTag);
-		}
+	static define(tagName=null) {
+		defineClass(this, tagName);
 	}
 }
-
-// Trick to prevent minifier from renaming this method.
-let define = 'define';
-let getName = 'getName';
 
 /*
 ┏┓  ┓    •
@@ -3825,15 +3807,6 @@ JavasCript UI library
 @license MIT
 @copyright Vorticode LLC
 https://vorticode.github.io/solarite/ */
-
-/**
- * TODO: The Proxy and the multiple base classes mess up 'instanceof Solarite'
- * @type {Node|Class<HTMLElement>|function(tagName:string):Node|Class<HTMLElement>} */
-const Solarite = new Proxy(createSolarite(), {
-	apply(self, _, args) {
-		return createSolarite(...args)
-	}
-});
 
 //export {default as watch, renderWatched} from './watch.js'; // unfinished
 

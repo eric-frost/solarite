@@ -43,9 +43,9 @@ window.getHtml = (item, includeComments=false) => {
 
 
 //<editor-fold desc="shell">
-/* ┌─────────────────╮
- * | Shell           |
- * └─────────────────╯*/
+/*┌─────────────────╮
+  | Shell           |
+  └─────────────────╯*/
 Testimony.test('Solarite.Shell.empty', () => {
 	let shell = new Shell(['', ''])
 	assert.eq(getHtml(shell, true), '<!--ExprPath:0-->|<!--ExprPathEnd:0-->')
@@ -110,9 +110,9 @@ Testimony.test('Solarite.Shell.nodesAroundPathsNested', () => {
 
 
 //<editor-fold desc="nodegroup">
-/* ┌─────────────────╮
- * | NodeGroup       |
- * └─────────────────╯*/
+/*┌─────────────────╮
+  | NodeGroup       |
+  └─────────────────╯*/
 Testimony.test('Solarite.NodeGroup.empty', () => {
 
 	let ng = new NodeGroup(new Template([``], []))
@@ -121,7 +121,6 @@ Testimony.test('Solarite.NodeGroup.empty', () => {
 	ng.applyExprs([])
 	assert.eq(getHtml(ng), '')
 });
-
 
 Testimony.test('Solarite.NodeGroup.oneExpr', () => {
 
@@ -147,7 +146,6 @@ Testimony.test('Solarite.NodeGroup.emptyAdjacent', () => {
 	ng.applyExprs([[1, 2, 3], [4, 5, 6]])
 	assert.eq(getHtml(ng), '1|2|3|4|5|6')
 });
-
 
 Testimony.test('Solarite.NodeGroup.paragraph', () => {
 	let ng = new NodeGroup(new Template(['<p>', '</p>'], ['1']))
@@ -189,7 +187,6 @@ Testimony.test('Solarite.NodeGroup._nodeSwap', () => {
 	assert.eq(getHtml(ng), '<div><p>b</p><p>a</p></div>');
 });
 
-
 Testimony.test('Solarite.NodeGroup.arrayReverse', () => {
 	let list = [h('a'), h('b')];
 
@@ -206,10 +203,9 @@ Testimony.test('Solarite.NodeGroup.arrayReverse', () => {
 
 
 //<editor-fold desc="util">
-/* ┌─────────────────╮
- * | SolariteUtil    |
- * └─────────────────╯*/
-
+/*┌─────────────────╮
+  | SolariteUtil    |
+  └─────────────────╯*/
 Testimony.test('Solarite.Util.htmlContext', () => {
 	let htmlContext = new HtmlParser();
 	assert.eq(htmlContext.parse('<div class="test'), HtmlParser.Attribute)
@@ -236,9 +232,9 @@ Testimony.test('Solarite.Util.camelToDashes', () => {
 
 
 //<editor-fold desc="basic">
-/* ┌─────────────────╮
- * | Basic           |
- * └─────────────────╯*/
+/*┌─────────────────╮
+  | Basic           |
+  └─────────────────╯*/
 Testimony.test('Solarite.basic.empty', () => {
 	class A extends HTMLElement {
 		constructor() {
@@ -258,7 +254,6 @@ Testimony.test('Solarite.basic.empty', () => {
 	assert.eq(a.childNodes.length, 0);
 });
 
-
 Testimony.test('Solarite.basic.empty2', () => {
 
 	class R11 extends Solarite {
@@ -277,8 +272,6 @@ Testimony.test('Solarite.basic.empty2', () => {
 	assert.eq(a.outerHTML, `<r-11 title="Hello"></r-11>`);
 });
 
-
-
 Testimony.test('Solarite.basic.text', () => {
 	class A extends Solarite {
 		render() {
@@ -295,7 +288,6 @@ Testimony.test('Solarite.basic.text', () => {
 
 	a.remove();
 });
-
 
 Testimony.test('Solarite.basic.manualRender', () => {
 
@@ -322,8 +314,6 @@ Testimony.test('Solarite.basic.manualRender', () => {
 	assert.eq(children2[0].textContent, 'Solarite Component');
 });
 
-
-
 Testimony.test('Solarite.basic.pseudoRoot', () => {
 	class R30 extends Solarite {
 		render() {
@@ -336,7 +326,6 @@ Testimony.test('Solarite.basic.pseudoRoot', () => {
 
 	assert.eq(getHtml(a), `<r-30 title="Hello">World</r-30>`)
 });
-
 
 Testimony.test('Solarite.basic.createElement', () => {
 	class R35 extends Solarite {
@@ -360,14 +349,27 @@ Testimony.test('Solarite.basic.createElement', () => {
 	a.render();
 	assert.eq(getHtml(a), `<r-35><div>Hello!</div></r-35>`);
 });
+
+Testimony.test('Solarite.basic.instanceof', () => {
+	class R37 extends Solarite {
+		render() {
+			h(this)`<r-37>Hello!</r-37>`
+		}
+	}
+
+	const r = new R37();
+	assert(r instanceof Solarite);
+	assert(r instanceof HTMLElement);
+	assert(r instanceof Node);
+});
 //</editor-fold>
 
 
 
 //<editor-fold desc="expr">
-/* ┌─────────────────╮
- * | Expr            |
- * └─────────────────╯*/
+/*┌─────────────────╮
+  | Expr            |
+  └─────────────────╯*/
 Testimony.test('Solarite.expr.staticString', () => {
 	class R40 extends HTMLElement {
 		render() {
@@ -384,7 +386,6 @@ Testimony.test('Solarite.expr.staticString', () => {
 
 	a.remove();
 });
-
 
 Testimony.test('Solarite.expr.htmlString', () => {
 
@@ -403,7 +404,6 @@ Testimony.test('Solarite.expr.htmlString', () => {
 	let a = new A();
 	assert.eq(getHtml(a), '<r-41>This text is <b>Bold</b>!</r-41>');
 });
-
 
 Testimony.test('Solarite.expr.htmlEncodedString', () => {
 
@@ -424,9 +424,7 @@ Testimony.test('Solarite.expr.htmlEncodedString', () => {
 	assert.eq(getHtml(a), '<r-42>This text is not &lt;b&gt;Bold&lt;/b&gt;!</r-42>');
 });
 
-
 Testimony.test('Solarite.expr.table', () => {
-
 	class R43 extends Solarite {
 		constructor() {
 			super();
@@ -441,7 +439,6 @@ Testimony.test('Solarite.expr.table', () => {
 
 	assert.eq(getHtml(a), `<r-43><table><tbody><tr><td>Table Cell</td></tr></tbody></table></r-43>`)
 });
-
 
 Testimony.test('Solarite.expr.documentFragment', () => {
 
@@ -495,7 +492,6 @@ Testimony.test('Solarite.expr.staticNumber', () => {
 	assert.eq(getHtml(a), '<r-46>Solarite 123 Component</r-46>');
 });
 
-
 Testimony.test('Solarite.expr.staticDate', () => {
 	class A extends Solarite {
 		constructor() {
@@ -530,7 +526,6 @@ Testimony.test('Solarite.expr.staticArray', () => {
 	assert.eq(getHtml(a), '<r-52>Items: 123</r-52>');
 });
 
-
 Testimony.test('Solarite.expr.array', () => {
 	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
@@ -559,7 +554,6 @@ Testimony.test('Solarite.expr.array', () => {
 
 	a.remove();
 });
-
 
 Testimony.test('Solarite.expr.arrayReverse', () => {
 	class A extends Solarite {
@@ -591,8 +585,6 @@ Testimony.test('Solarite.expr.arrayReverse', () => {
 	a.render();
 	assert.eq(getHtml(a), '<r-62>DragonfruitCherryBanana</r-62>');
 });
-
-
 
 Testimony.test('Solarite.expr.twoArrays', () => {
 	class A extends Solarite {
@@ -737,7 +729,6 @@ Testimony.test('Solarite.expr.cyclicRef', () => {
 	assert.eq(getHtml(a), '<r-100>The fruit is Cherry!</r-100>');
 });
 
-
 Testimony.test('Solarite.expr.textareaChild', 'Make sure we throw if an expression is the child of a textarea.', () => {
 
 	class R110 extends HTMLElement {
@@ -844,9 +835,9 @@ Testimony.test('Solarite.expr.contenteditableGrandchild', 'Make sure we throw if
 
 
 //<editor-fold desc="loop">
-/* ┌─────────────────╮
- * | Loop            |
- * └─────────────────╯*/
+/*┌─────────────────╮
+  | Loop            |
+  └─────────────────╯*/
 Testimony.test('Solarite.loop.strings', () => {
 	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
@@ -1513,9 +1504,9 @@ Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 
 
 //<editor-fold desc="embed">
-/* ┌─────────────────╮
- * | Embed            |
- * └─────────────────╯*/
+/*┌─────────────────╮
+  | Embed           |
+  └─────────────────╯*/
 
 Testimony.test('Solarite.embed.styleStatic', () => {
 	let count = 0;
@@ -1826,10 +1817,9 @@ Testimony.test('Solarite.embed._scriptDynamic', () => {
 
 
 //<editor-fold desc="attrib">
-/* ┌─────────────────╮
- * | Attrib          |
- * └─────────────────╯*/
-
+/*┌─────────────────╮
+  | Attrib          |
+  └─────────────────╯*/
 Testimony.test('Solarite.attrib.single', () => {
 
 	let val = 'one';
@@ -1990,8 +1980,6 @@ Testimony.test('Solarite.attrib.doubleAndText', () => {
 	assert.eq(getHtml(a), `<r-430><div class="a oneB b twoB c">oneB</div></r-430>`)
 });
 
-
-
 Testimony.test('Solarite.attrib.duplicate', 'Warn on duplicate attributes', () => {
 
 	let val = 'one';
@@ -2011,7 +1999,6 @@ Testimony.test('Solarite.attrib.duplicate', 'Warn on duplicate attributes', () =
 
 	assert(errorMessage.includes('malformed html'));
 });
-
 
 Testimony.test('Solarite.attrib.sparse', () => {
 
@@ -2232,8 +2219,6 @@ Testimony.test('Solarite.attrib.idsDelve', () => {
 	assert(a.path.to.p.tagName === 'P')
 });
 
-
-
 Testimony.test('Solarite.attrib.property', () => {
 	class R530 extends Solarite {
 		enabled;
@@ -2296,7 +2281,6 @@ Testimony.test('Solarite.attrib.property2', 'same as above, but with disabled at
 
 	button.remove();
 });
-
 
 Testimony.test('Solarite.attrib.inputValue', 'Make sure we can one-way bind to the value of input.', () => {
 
@@ -2440,9 +2424,9 @@ Testimony.test('Solarite.attrib.objectAttributes', 'Make sure we can specify att
 
 
 //<editor-fold desc="comments">
-/* ┌─────────────────╮
- * | comments        |
- * └─────────────────╯*/
+/*┌─────────────────╮
+  | comments        |
+  └─────────────────╯*/
 Testimony.test('Solarite.comments.one', () => {
 
 	class A480 extends Solarite {
@@ -2780,11 +2764,16 @@ Testimony.test('Solarite.h.standaloneChild', () => {
   └─────────────────╯*/
 Testimony.test('Solarite.component.tr', () => {
 
-	class TR510 extends Solarite('tr') {
+	class TR510 extends HTMLTableRowElement {
+		constructor() {
+			super();
+			this.render();
+		}
 		render() {
 			h(this)`<td>hello</td>`
 		}
 	}
+	customElements.define('tr-510', TR510, {extends: 'tr'});
 
 	let table = document.createElement('table')
 
@@ -2897,8 +2886,6 @@ Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...
 	assert.eq(a.outerHTML, `<a-513><div><b-513 name="User" user-id="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-513></div></a-513>`);
 });
 
-
-
 Testimony.test('Solarite.component.dynamicAttribsAdjacent', 'Attribs specified via ${...}', () => {
 
 	class B515 extends Solarite {
@@ -2927,7 +2914,6 @@ Testimony.test('Solarite.component.dynamicAttribsAdjacent', 'Attribs specified v
 	//assert.eq(a.outerHTML, `<a-515><div><b-515 name="User" userid="1"><!--ExprPath:0-->User | 1<!--ExprPathEnd:1--></b-515><b-515 name="User2" userid="2"><!--ExprPath:0-->User2 | 2<!--ExprPathEnd:1--></b-515></div></a-515>`);
 });
 
-
 Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Solarite component.', () => {
 
 	class B517 extends Solarite {
@@ -2952,8 +2938,6 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 	assert.eq(div.outerHTML, `<div><b-517 name="User" userid="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-517></div>`)
 
 });
-
-
 
 Testimony.test('Solarite.component.componentFromExpr', 'Make sure child component is instantiated and not left as -solarite-placeholder', () => {
 	let renderCount = 0;
@@ -2991,7 +2975,6 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 	a.render();
 	assert.eq(renderCount, 1);
 });
-
 
 Testimony.test('Solarite.component.componentFromExpr2', () => {
 	let renderCount = 0;
@@ -3038,7 +3021,6 @@ Testimony.test('Solarite.component.componentFromExpr2', () => {
 	assert.eq(renderCount, 1);
 
 });
-
 
 Testimony.test('Solarite.component.nested', () => {
 
@@ -3262,7 +3244,7 @@ Testimony.test('Solarite.component.nestedTrLoop', () => {
 
 Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
-	class TR540 extends Solarite('tr') {
+	class TR540 extends HTMLTableRowElement {
 		constructor({user}={}) {
 			super();
 			this.user = user;
@@ -3278,6 +3260,8 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 					this._user = value;
 				}
 			})
+
+			this.render();
 		}
 
 
@@ -3291,7 +3275,7 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 			h(this)`<td>${this.user.name}</td><td>${this.user.email}</td>`
 		}
 	}
-	TR540.define('tr-540');
+	customElements.define('tr-540', TR540, {extends: 'tr'});
 
 	class Table540 extends Solarite {
 
@@ -3332,7 +3316,6 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
 	table.remove();
 });
-
 
 // Written by Junie:
 Testimony.test('Solarite.component.staticChildConstructorChildrenBefore', () => {
@@ -3400,33 +3383,57 @@ Testimony.test('Solarite.component.staticNoExprRendersOncePerParentRender', () =
 	a.render();
 	assert.eq(prev2 + 1, renderCount);
 });
-
-
-
 //</editor-fold>
 
 
 
-
 //<editor-fold desc="slots">
-/* ┌─────────────────╮
- * | Slots           |
- * └─────────────────╯*/
+/*┌─────────────────╮
+  | Slots           |
+  └─────────────────╯*/
 Testimony.test('Solarite.slots.basic', () => {
 
+	let slotChildren = [];
+
 	class S10 extends Solarite {
-		render() {
-			h(this)`<div>slot content:<slot></slot></div>`
+		constructor(attribs={}, children=[]) {
+			super(attribs, children);
+		}
+
+		render(attribs, children) {
+			debugger;
+			console.log(children)
+			slotChildren = children;
+			h(this)`<s-10 title="test">slot content:<slot></slot></s-10>`
 		}
 	}
-	S10.define();
+	S10.define(); // registers as s-10.
 
-	let div = toEl('<div><s-10>test</s-10></div>')
-	document.body.append(div);
+	// // 1. Test render() call when added to the DOM.
+	// let div = toEl('<div><s-10>test</s-10></div>'); // provide "test" as slot content.
+	// document.body.append(div); // will auto call render
+	//
+	// assert.eq(div.outerHTML, `<div><s-10 title="test">slot content:<slot>test</slot></s-10></div>`)
+	// assert.eq(slotChildren[0].textContent, 'test');
+	//
+	// div.remove();
 
-	assert.eq(div.outerHTML, `<div><s-10><div>slot content:<slot>test</slot></div></s-10></div>`)
 
-	div.remove();
+	// Slot on web component nested inside another web component.
+	class P10 extends Solarite {
+		render() {
+			h(this)`<p-10><s-10>test2</s-10></p-10>`
+		}
+	}
+	P10.define();
+
+	let div = toEl('<div><p-10></p-10></div>'); // provide "test" as slot content.
+	document.body.append(div); // will auto call render
+
+	assert.eq(div.outerHTML, `<div><p-10><s-10 title="test">slot content:<slot>test2</slot></s-10></p-10></div>`)
+	assert.eq(slotChildren[0].textContent, 'test');
+
+
 });
 
 Testimony.test('Solarite.slots.named', () => {
@@ -3468,9 +3475,9 @@ Testimony.test('Solarite.slots.slotless', `Add children even when no slots prese
 
 
 //<editor-fold desc="events">
-/* ┌─────────────────╮
- * | Events          |
- * └─────────────────╯*/
+/*┌─────────────────╮
+  | Events          |
+  └─────────────────╯*/
 Testimony.test('Solarite.events.classic', () => {
 
 	class Ev10 extends Solarite {
@@ -3660,8 +3667,6 @@ Testimony.test('Solarite.binding.input', () => {
 	b.remove();
 });
 
-
-
 Testimony.test('Solarite.binding.inputReuse', () => {
 
 	class B12 extends Solarite {
@@ -3687,7 +3692,6 @@ Testimony.test('Solarite.binding.inputReuse', () => {
 
 	b.remove();
 });
-
 
 Testimony.test('Solarite.binding.checkbox', () => {
 
@@ -3899,8 +3903,6 @@ Testimony.test('Solarite.binding.number', () => {
 	b.remove();
 });
 
-
-
 Testimony.test('Solarite.binding.undefined', () => {
 
 	class B50 extends Solarite {
@@ -3999,7 +4001,6 @@ Testimony.test('Solarite.binding.loop', 'similar to the loop.continuity2 test ab
 /*┌─────────────────╮
   | JSX             |
   └─────────────────╯*/
-
 Testimony.test('Solarite.jsx.full', () => {
 
 	let value = 1;
@@ -4043,7 +4044,6 @@ Testimony.test('Solarite.jsx.full', () => {
 /*┌─────────────────╮
   | JSX - More      |
   └─────────────────╯*/
-
 Testimony.test('Solarite.jsx.attributes', () => {
 
     // <div id="x" data-id="y" class={"c"} title={"t"}></div>
@@ -4120,7 +4120,6 @@ Testimony.test('Solarite.jsx.arrayChildren', () => {
 /*┌─────────────────╮
   | Watch           |
   └─────────────────╯*/
-
 Testimony.test('Solarite.watch.primitive', () => {
 
 	class W10 extends HTMLElement {
@@ -4502,7 +4501,6 @@ Testimony.test('Solarite.watch.loopObjAssign', `update array elements and their 
 	a.remove();
 });
 
-
 Testimony.test('Solarite.watch.loopPushPop', () => {
 
 	class W60 extends HTMLElement {
@@ -4605,10 +4603,9 @@ Testimony.test('Solarite.watch.loopDeepPushPop', () => {
 
 
 //<editor-fold desc="full">
-/* ┌─────────────────╮
- * | Full            |
- * └─────────────────╯*/
-
+/*┌─────────────────╮
+  | Full            |
+  └─────────────────╯*/
 Testimony.test('Solarite.full.tree', ()=> {
 
 	class TreeItem extends HTMLElement {
@@ -4657,7 +4654,6 @@ Testimony.test('Solarite.full.tree', ()=> {
 	dt.render();
 	document.body.append(dt);
 });
-
 
 Testimony.test('Solarite.full.reRender', `Render a child web component multiple times`, ()=> {
 
@@ -4780,9 +4776,6 @@ Testimony.test('Solarite.full._treeItems', () => {
 	document.body.append(root);
 	root.remove();
 });
-
-
-
 
 
 // An attempt to create a simpler version that reproduces the same bug as full.misc.
@@ -4937,5 +4930,3 @@ Testimony.test('Solarite.full._misc', () => {
 
 
 //</editor-fold desc="full">
-
-

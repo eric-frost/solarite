@@ -223,7 +223,9 @@ export default class NodeGroup {
 	}
 
 	/**
-	 * Unified path to ensure a child component is instantiated (if placeholder) and optionally rendered.
+	 * Ensure:
+	 * 1. a child component is instantiated (if it's a placeholder)
+	 * 2. It's rendered if doRender=true
 	 * @param el {HTMLElement}
 	 * @param props {?Object}
 	 * @param doRender {boolean}
@@ -235,11 +237,11 @@ export default class NodeGroup {
 		if (isPreHtmlElement || isPreIsElement)
 			[el, attribs, children] = this.instantiateComponent(el, isPreHtmlElement, props);
 		if (doRender && el.render) {
-			if (!attribs) {
-				attribs = Util.attribsToObject(el);
+			if (!attribs) { // if not set by instantiateComponent
+				attribs = Util.attribsToObject(el, 'solarite-placeholder');
 				for (let name in props || {})
 					attribs[Util.dashesToCamel(name)] = props[name];
-				children = el.childNodes;
+				children = RootNodeGroup.getSlotChildren(el);
 			}
 			el.render(attribs, children);
 		}
@@ -279,7 +281,7 @@ export default class NodeGroup {
 
 		// Create the web component.
 		// Get the children that aren't Solarite's comment placeholders.
-		let children = [...el.childNodes].filter(node => node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath'));
+		let children = RootNodeGroup.getSlotChildren(el);
 		let newEl = new Constructor(attribs, children);
 
 		if (!isPreHtmlElement)

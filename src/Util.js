@@ -20,6 +20,7 @@ let Util = {
 
 	/**
 	 * Convert HTMLElement attributes to an object.
+	 * Converts dash (kebob-case) attribute names to camelCase.
 	 * @param el {HTMLElement}
 	 * @param ignore {?string} Optionally ignore this attribute.
 	 * @return {Object} */

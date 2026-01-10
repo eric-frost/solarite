@@ -358,8 +358,8 @@ export default class ExprPath {
 			// let template = Globals.stringTemplates[expr];
 			// if (!template) {
 
-				let template = new Template([expr], []);
-				template.isText = true;
+			let template = new Template([expr], []);
+			template.isText = true;
 			//	Globals.stringTemplates[expr] = template;
 			//}
 
@@ -394,31 +394,28 @@ export default class ExprPath {
 				// NodeGroup.applyExprs() is used to call applyComponentExprs() on web components that have expression attributes.
 				// For those that don't, we call applyComponentExprs() directly here.
 				// Also see similar code at the end of this.applyNodes() which handles web components being instantiated the first time.
+				// TODO: This adds significant time to the Benchmark.solarite._partialUpdate test.
 				let apply = false;
 				for (let el of newestNodes) {
 					if (el?.nodeType === 1) { // HTMLElement
 
-						if (el.tagName.includes('-')) {
-							if (!expr.exprs.find(expr => expr?.nodeMarker === el))
-								this.parentNg.handleComponent(el, null, true);
-							else // Commenting out this "else" causes render() to be called too often, but other UI code fails if it's present.
-								apply = true;
-						}
-						for (let child of el.querySelectorAll('*')) {
+						// Benchmarking shows that walkDOM is significantly faster than querySelectorAll('*') and document.createTreeWalker.
+						walkDOM(el, (child) => {
+							//console.log(child)
 							if (child.tagName.includes('-')) {
 								if (!expr.exprs.find(expr => expr?.nodeMarker === child))
 									this.parentNg.handleComponent(child, null, true);
 								else
 									apply = true;
 							}
-						}
+						});
 					}
 				}
 
 				// This calls render() on web components that have expressions as attributes.
 				if (apply)
 					ng.applyExprs(expr.exprs);
-				
+
 				this.nodeGroups.push(ng);
 
 				return ng;
@@ -442,8 +439,8 @@ export default class ExprPath {
 				newNodes.push(expr);
 		}
 
-		// Arrays and functions.
-		// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
+			// Arrays and functions.
+			// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
 		// but that consistently made the js-framework-benchmarks a few percentage points slower.
 		else
 			this.exprToTemplates(expr, template => {
@@ -727,8 +724,8 @@ export default class ExprPath {
 					if (isProp)
 						node[this.attrName] = joinedValue;
 
-					// Allow one-way binding to contenteditable value attribute.
-					// Contenteditables normally don't have a value attribute and have their content set via innerHTML.
+						// Allow one-way binding to contenteditable value attribute.
+						// Contenteditables normally don't have a value attribute and have their content set via innerHTML.
 					// Solarite doesn't allow contenteditables to have expressions as their children.
 					else if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
 						node.innerHTML = joinedValue;
@@ -811,8 +808,8 @@ export default class ExprPath {
 			// 	parent.replaceWith(replacement)
 			// }
 			// else {
-				parent.innerHTML = ''; // Faster than calling .removeChild() a thousand times.
-				parent.append(this.nodeBefore, this.nodeMarker)
+			parent.innerHTML = ''; // Faster than calling .removeChild() a thousand times.
+			parent.append(this.nodeBefore, this.nodeMarker)
 			//}
 			return true;
 		}
@@ -898,9 +895,9 @@ export default class ExprPath {
 				return null;
 		}
 
-		// Find a close match.
-		// This is a match that has matching html, but different expressions applied.
-		// We can then apply the expressions to make it an exact match.
+			// Find a close match.
+			// This is a match that has matching html, but different expressions applied.
+			// We can then apply the expressions to make it an exact match.
 		// If the template has no expressions, the key is the html, and we've already searched for an exact match.  There won't be an inexact match.
 		else if (template.exprs.length) {
 			result = collection.deleteAny(template.getCloseKey());
@@ -1115,4 +1112,16 @@ export function resolveNodePath(root, path) {
 	for (let i=path.length-1; i>=0; i--)
 		root = root.childNodes[path[i]];
 	return root;
+}
+
+
+
+
+function walkDOM(el, callback) {
+	callback(el);
+	let child = el.firstElementChild;
+	while (child) {
+		walkDOM(child, callback);
+		child = child.nextElementSibling;
+	}
 }

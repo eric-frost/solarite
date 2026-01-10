@@ -10,8 +10,8 @@ import {getObjectHash} from '../src/hash.js'
 */
 import Testimony from "./Testimony.js";
 
-//import {r, Solarite} from "../src/Solarite.js";
-import {h, Solarite} from "../dist/Solarite.min.js";
+import {h, Solarite} from "../dist/Solarite.js";
+//import {h, Solarite} from "../dist/Solarite.min.js";
 
 
 window.verify = false;
@@ -82,8 +82,57 @@ Testimony.test('Benchmark.vanilla._createRows',  `Create ${rowCount} rows`, () =
 	}, 100)
 });
 
+Testimony.test('Benchmark.vanilla._partialUpdate',  'Add text to every 10th row', async () => {
 
-Testimony.test('Benchmark.solarite._createRows',  `Create ${rowCount.toLocaleString()} rows`, () => {
+	// Build table and data
+	let table = document.createElement(`div`);
+	table.setAttribute('style', 'display: flex; flex-direction: row')
+	let tbody = document.createElement('div');
+	table.append(tbody)
+	document.body.append(table);
+
+	let data = buildData()
+
+	function createRows() {
+		for (let rowData of data) {
+			let tr = rowTemplate.cloneNode(true);
+			tr.firstChild.textContent = rowData.id
+			tr.children[1].firstChild.textContent = rowData.label;
+			tbody.append(tr);
+		}
+	}
+
+	createRows();
+
+	function updateRows() {
+		let i = 0;
+		let children = [...tbody.children]
+		for (let tr of children) {
+			if (i % 10 === 0) {
+				let a = tr.children[1].firstChild;
+
+				a.textContent = a.textContent.slice(0, -4) +  ' ' + Math.round(Math.random()*1000)
+
+				// Alternate.  Seems to be about the same speed.
+				// let b = document.createTextNode(a.textContent + '!!!');
+				// a.parentNode.insertBefore(b, a);
+				// a.remove();
+			}
+			i++;
+		}
+	}
+
+	await new Promise(resolve => setTimeout(resolve, 1000));
+
+	let start = performance.now();
+	updateRows()
+	const time = performance.now() - start;
+	console.log(time)
+	return time;
+
+});
+
+Testimony.test('Benchmark.solarite._createRows',  `Create ${rowCount.toLocaleString()} rows`, async () => {
 
 	// Setup performance monitoring
 	let startTime;
@@ -125,66 +174,16 @@ Testimony.test('Benchmark.solarite._createRows',  `Create ${rowCount.toLocaleStr
 		a.render();
 	}
 
-	setTimeout(() => {
-		startTime = performance.now();
-		createRows();
-	}, 100)
-
-});
-
-
-
-
-Testimony.test('Benchmark.vanilla._partialUpdate',  'Add text to every 10th row', () => {
-
-	// Build table and data
-	let table = document.createElement(`div`);
-	table.setAttribute('style', 'display: flex; flex-direction: row')
-	let tbody = document.createElement('div');
-	table.append(tbody)
-	document.body.append(table);
-
-	let data = buildData()
-
-	function createRows() {
-		for (let rowData of data) {
-			let tr = rowTemplate.cloneNode(true);
-			tr.firstChild.textContent = rowData.id
-			tr.children[1].firstChild.textContent = rowData.label;
-			tbody.append(tr);
-		}
-	}
-
+	await new Promise(resolve => setTimeout(resolve, 100));
+	startTime = performance.now();
 	createRows();
-
-	function updateRows() {
-		let i = 0;
-		let children = [...tbody.children]
-		for (let tr of children) {
-			if (i % 10 === 0) {
-				let a = tr.children[1].firstChild;
-
-				a.textContent = a.textContent.slice(0, -4) +  ' ' + Math.round(Math.random()*1000)
-
-				// Alternate.  Seems to be about the same speed.
-				// let b = document.createTextNode(a.textContent + '!!!');
-				// a.parentNode.insertBefore(b, a);
-				// a.remove();
-			}
-			i++;
-		}
-	}
-
-	setTimeout(() => {
-		let start = performance.now()
-		updateRows()
-		console.log(performance.now() - start)
-	}, 1200)
+	const time = performance.now() - startTime;
+	console.log(time);
+	return time;
 
 });
 
-
-Testimony.test('Benchmark.solarite._partialUpdate',  `Update ${rowCount.toLocaleString()} rows`, () => {
+Testimony.test('Benchmark.solarite._partialUpdate',  `Update ${rowCount.toLocaleString()} rows`, async () => {
 	
 	class R810 extends Solarite {
 		data = []
@@ -230,20 +229,24 @@ Testimony.test('Benchmark.solarite._partialUpdate',  `Update ${rowCount.toLocale
 		}
 	}
 
-	setTimeout(async () => {
-		let testCount = 10;
-		let times = [];
-		for (let i=0; i<testCount; i++) {
-			let start = performance.now()
-			updateRows();
-			a.render();
-			times.push(performance.now() - start)
-		}
+	// Sleep 1000 ms to allow the browser to catch up.
+	// Otherwise the first measurement is skewed.
+	await new Promise(resolve => setTimeout(resolve, 1000));
 
-		let min = Math.min(...times);
-		const avg = times.reduce((a, b) => a + b, 0) / times.length;
-		console.log(`partialUpdate: ${min.toLocaleString()}ms best, ${avg.toLocaleString()}ms avg`)
-	}, 1300)
+	let testCount = 10;
+	let times = [];
+	for (let i=0; i<testCount; i++) {
+		let start = performance.now()
+		updateRows();
+		a.render();
+		times.push(performance.now() - start)
+	}
+
+	let min = Math.min(...times);
+	const avg = times.reduce((a, b) => a + b, 0) / times.length;
+	console.log(`partialUpdate: ${min.toLocaleString()}ms best, ${avg.toLocaleString()}ms avg`)
+
+	return min;
 
 });
 
@@ -253,9 +256,7 @@ Testimony.test('Benchmark._memoize',  () => {
 	let data = buildData(100_000)
 	let start = performance.now();
 	JSON.stringify(memoize(data));
-
 	console.log(performance.now() - start)
-
 });
 
 
