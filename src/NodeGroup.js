@@ -289,10 +289,10 @@ export default class NodeGroup {
 
 		// Replace the placeholder tag with the instantiated web component.
 		//#IFDEV
-		assert(!Globals.currentSlotChildren); // Make sure we're not recursing.
+		assert(!Globals.currentSlotChildren); // Make sure we're not recursing.  If so we need to make it a stack.
 		//#ENDIF
 
-		Globals.currentSlotChildren = children; // Used by RootNodeGroup slot code. TODO: Does this need to be a stack?
+		Globals.currentSlotChildren = children; // Used by RootNodeGroup slot code.
 		el.replaceWith(newEl);
 		Globals.currentSlotChildren = null;
 

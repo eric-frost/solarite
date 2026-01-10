@@ -97,6 +97,9 @@ var Globals;
 function reset() {
 	Globals = {
 
+		/**
+		 * Set by NodeGroup.instantiateComponent()
+		 * Used by RootNodeGroup.getSlotChildren(). */
 		currentSlotChildren: null,
 
 		/**
@@ -146,11 +149,6 @@ function reset() {
 		rendered: new WeakSet(),
 
 		/**
-		 * Elements that are currently rendering via the h() function.
-		 * @type {WeakSet<HTMLElement>} */
-		rendering: new WeakSet(),
-
-		/**
 		 * Map from array of Html strings to a Shell created from them.
 		 * @type {WeakMap<string[], Shell>} */
 		shells: new WeakMap(),
@@ -162,9 +160,7 @@ function reset() {
 		 * @type {Record<string, Template>} */
 		//stringTemplates: {},
 
-		reset,
-
-		count: 0
+		reset
 	};
 }
 reset();
@@ -2505,7 +2501,7 @@ class NodeGroup {
 		// Replace the placeholder tag with the instantiated web component.
 		
 
-		Globals$1.currentSlotChildren = children; // Used by RootNodeGroup slot code. TODO: Does this need to be a stack?
+		Globals$1.currentSlotChildren = children; // Used by RootNodeGroup slot code.
 		el.replaceWith(newEl);
 		Globals$1.currentSlotChildren = null;
 
@@ -3597,4 +3593,4 @@ https://vorticode.github.io/solarite/ */
 //export {default as watch, renderWatched} from './watch.js'; // unfinished
 
 export default h;
-export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, getArg, h, h as r, setArgs, toEl };
+export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, toEl };

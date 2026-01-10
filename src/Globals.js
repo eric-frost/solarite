@@ -5,6 +5,9 @@ var Globals;
 function reset() {
 	Globals = {
 
+		/**
+		 * Set by NodeGroup.instantiateComponent()
+		 * Used by RootNodeGroup.getSlotChildren(). */
 		currentSlotChildren: null,
 
 		/**
@@ -54,11 +57,6 @@ function reset() {
 		rendered: new WeakSet(),
 
 		/**
-		 * Elements that are currently rendering via the h() function.
-		 * @type {WeakSet<HTMLElement>} */
-		rendering: new WeakSet(),
-
-		/**
 		 * Map from array of Html strings to a Shell created from them.
 		 * @type {WeakMap<string[], Shell>} */
 		shells: new WeakMap(),
@@ -70,9 +68,7 @@ function reset() {
 		 * @type {Record<string, Template>} */
 		//stringTemplates: {},
 
-		reset,
-
-		count: 0
+		reset
 	};
 }
 reset();
