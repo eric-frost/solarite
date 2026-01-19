@@ -874,7 +874,6 @@ export default class ExprPath {
 	 *         or createa  new NodeGroup from the template.
 	 * @return {NodeGroup} */
 	getNodeGroup(template, exact=true) {
-
 		let result;
 		let collection = this.nodeGroupsAttachedAvailable;
 
@@ -895,9 +894,9 @@ export default class ExprPath {
 				return null;
 		}
 
-			// Find a close match.
-			// This is a match that has matching html, but different expressions applied.
-			// We can then apply the expressions to make it an exact match.
+		// Find a close match.
+		// This is a match that has matching html, but different expressions applied.
+		// We can then apply the expressions to make it an exact match.
 		// If the template has no expressions, the key is the html, and we've already searched for an exact match.  There won't be an inexact match.
 		else if (template.exprs.length) {
 			result = collection.deleteAny(template.getCloseKey());
@@ -912,14 +911,20 @@ export default class ExprPath {
 
 				// Update this close match with the new expression values.
 				result.applyExprs(template.exprs);
-				result.exactKey = template.getExactKey(); // TODO: Should this be set elsewhere?
+				result.exactKey = template.getExactKey(); // TODO: Should this be set in applyExprs?
 			}
 		}
 
-		if (!result)
+		if (!result) {
 			result = new NodeGroup(template, this);
+			result.applyExprs(template.exprs);
 
-		// old:
+			// TODO: All tests still pass if this is commetned out:
+			// Perhaps I need a test with a child NodeGroup instantiating a static component?
+			result.instantiateStaticComponents(result.staticComponents);
+		}
+
+
 		this.nodeGroupsRendered.push(result);
 
 		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/

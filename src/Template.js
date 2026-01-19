@@ -67,7 +67,7 @@ export default class Template {
 		// Typical path used in render() methods.
 		let ng = el && Globals.nodeGroups.get(el);
 		if (!ng) {
-			ng = new RootNodeGroup(this, el, options);
+			ng = new RootNodeGroup(this, null, el, options);
 			if (!el) // null if it's a standalone elment.
 				el = ng.getRootNode();
 			Globals.nodeGroups.set(el, ng); // All tests still pass if this is commented out!

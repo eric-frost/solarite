@@ -123,8 +123,9 @@ Testimony.test('Solarite.NodeGroup.empty', () => {
 });
 
 Testimony.test('Solarite.NodeGroup.oneExpr', () => {
-
-	let ng = new NodeGroup(new Template([``, ``], ['1']))
+	const template = new Template([``, ``], ['1']);
+	let ng = new NodeGroup(template);
+	ng.applyExprs(template.exprs);
 	assert.eq(getHtml(ng), '1')
 
 	ng.applyExprs([2])
@@ -135,7 +136,9 @@ Testimony.test('Solarite.NodeGroup.oneExpr', () => {
 });
 
 Testimony.test('Solarite.NodeGroup.emptyAdjacent', () => {
-	let ng = new NodeGroup(new Template([``, ``, ``], ['1', '2']))
+	const template =new Template([``, ``, ``], ['1', '2']);
+	let ng = new NodeGroup(template)
+	ng.applyExprs(template.exprs);
 	ng.verify();
 
 	assert.eq(getHtml(ng), '1|2')
@@ -148,7 +151,10 @@ Testimony.test('Solarite.NodeGroup.emptyAdjacent', () => {
 });
 
 Testimony.test('Solarite.NodeGroup.paragraph', () => {
-	let ng = new NodeGroup(new Template(['<p>', '</p>'], ['1']))
+	const template = new Template(['<p>', '</p>'], ['1']);
+	let ng = new NodeGroup(template);
+	ng.applyExprs(template.exprs);
+
 	assert.eq(getHtml(ng), '<p>1</p>')
 
 	ng.applyExprs([2])
@@ -161,7 +167,9 @@ Testimony.test('Solarite.NodeGroup.paragraph', () => {
 Testimony.test('Solarite.NodeGroup.node', () => {
 	let a = toEl('<p>a</p>')
 	let b = toEl('<p>b</p>')
-	let ng = new NodeGroup(new Template(['<div>', '</div>'], [a]))
+	const template = new Template(['<div>', '</div>'], [a]);
+	let ng = new NodeGroup(template)
+	ng.applyExprs(template.exprs);
 
 	assert.eq(getHtml(ng), '<div><p>a</p></div>')
 
@@ -420,7 +428,6 @@ Testimony.test('Solarite.expr.htmlEncodedString', () => {
 	A.define('r-42');
 
 	let a = new A();
-	console.log(getHtml(a))
 	assert.eq(getHtml(a), '<r-42>This text is not &lt;b&gt;Bold&lt;/b&gt;!</r-42>');
 });
 
@@ -2955,8 +2962,7 @@ Testimony.test('Solarite.component.dynamicAttribsAndDynamicChildren', () => {
 		}
 
 		render(attribs={}, children=[]) {
-			console.log(attribs, children)
-
+			//console.log(attribs, children)
 			h(this)`<b-517>${this.user.name} | ${this.user.id}${children}</b-517>`
 		}
 	}
@@ -2970,12 +2976,10 @@ Testimony.test('Solarite.component.dynamicAttribsAndDynamicChildren', () => {
 	A517.define();
 
 	let a = new A517();
-	console.log(1)
 	a.render();
 	assert.eq(getHtml(a), `<a-517><div><b-517 user="">Fred | 3<span>Moderator</span><span>Administrator</span></b-517></div></a-517>`);
 
 	//roles.push('Archivist');
-	console.log(2)
 	a.render();
 	assert.eq(getHtml(a), `<a-517><div><b-517 user="">Fred | 3<span>Moderator</span><span>Administrator</span></b-517></div></a-517>`);
 });
@@ -3034,7 +3038,7 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 
 	renderCount = 0;
 	a.render();
-	console.log(getHtml(a))
+	//console.log(getHtml(a))
 	assert.eq(renderCount, 1);
 
 	renderCount = 0;
@@ -3970,7 +3974,6 @@ Testimony.test('Solarite.binding.number', () => {
 Testimony.test('Solarite.binding.undefined', () => {
 
 	class B50 extends Solarite {
-
 		render() {
 			h(this)`<input data-id="input" value=${[this, 'count']}>`
 		}
@@ -3978,9 +3981,8 @@ Testimony.test('Solarite.binding.undefined', () => {
 
 	let b = new B50();
 	document.body.append(b);
-	console.log(b.input.value);
+//	console.log(b.input.value);
 	assert.eq(b.input.value, '')
-
 
 	b.remove();
 });
