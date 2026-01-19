@@ -26,7 +26,7 @@ import toEl from "./toEl.js";
  *
  * Add children to an element.
  * 3. h(el, h`<b>${'Hi'}</b>`, ?options)
- * 4. h(el, ?options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
+ * 4. h(el, ?options)`<b>${'Hi'}</b>`   // typical path used in render(). Create template and render its nodes to el.
  *
  * Create top-level element
  * 5. h()`Hello<b>${'World'}!</b>`

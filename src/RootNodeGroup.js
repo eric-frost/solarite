@@ -15,21 +15,20 @@ export default class RootNodeGroup extends NodeGroup {
 	exprsToRender = new Map();
 
 	/**
+	 * Create all the elements from the template's fragment.
+	 * But don't call applyExprs() yet.
 	 * @param template {Template}
 	 * @param el {?HTMLElement} Optional, pre-existing htmlElement that will be the root.
 	 * @param options {?object} */
 	constructor(template, el, options) {
 		super(template);
-
 		this.options = options;
+		let startingPathDepth = 0;
 
 		let [fragment, shell] = this.populateFromTemplate(template);
 
-		let startingPathDepth = 0;
-
-
+		// Fast path for text-only:
 		if (fragment instanceof Text) {
-
 			if (el) {
 				this.startNode = el;
 				this.endNode = el;
@@ -41,8 +40,6 @@ export default class RootNodeGroup extends NodeGroup {
 				throw new Error('Cannot create a standalone text node');
 			Globals.nodeGroups.set(this.root, this);
 		}
-
-
 		else {
 
 			// If adding NodeGroup to an element.
@@ -118,11 +115,6 @@ export default class RootNodeGroup extends NodeGroup {
 			this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
 
 			this.activateEmbeds(this.root, shell, startingPathDepth);
-
-			// Apply exprs
-			this.applyExprs(template.exprs);
-
-			this.instantiateStaticComponents(this.staticComponents);
 		}
 	}
 
@@ -133,7 +125,7 @@ export default class RootNodeGroup extends NodeGroup {
 		if (Globals.currentSlotChildren)
 			return Globals.currentSlotChildren;
 
-		// TODO: Cache path to slot for better performance:
+		// TODO: Have Shell cache the path to slot for better performance:
 		let childNodes = (el.querySelector('slot') || el).childNodes;
 		return Array.prototype.filter.call(childNodes, node => // Remove node markers.
 			node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath')

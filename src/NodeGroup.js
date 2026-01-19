@@ -293,7 +293,7 @@ export default class NodeGroup {
 		//#ENDIF
 
 		Globals.currentSlotChildren = children; // Used by RootNodeGroup slot code.
-		el.replaceWith(newEl);
+		el.replaceWith(newEl); // Calls render() when it's a Solarite component and it's added to the DOM
 		Globals.currentSlotChildren = null;
 
 		// If an id pointed at the placeholder, update it to point to the new element.

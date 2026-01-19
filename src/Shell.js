@@ -20,7 +20,7 @@ export default class Shell {
 	/** @type {ExprPath[]} Paths to where expressions should go. */
 	paths = [];
 
-	// Elements with events.  Not yet used.
+	// Elements with events.  Is there a reason to use this?  We already mark event Exprs in Shell.js.
 	// events = [];
 
 	/** @type {int[][]} Array of paths */

@@ -47,9 +47,6 @@ function reset() {
 		 * Used by h() path 9. */
 		objToEl: new WeakMap(),
 
-		//pendingChildren: [],
-
-
 		/**
 		 * Elements that have been rendered to by h() at least once.
 		 * This is used by the Solarite class to know when to call onFirstConnect()

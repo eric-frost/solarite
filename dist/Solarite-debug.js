@@ -148,9 +148,6 @@ function reset() {
 		 * Used by h() path 9. */
 		objToEl: new WeakMap(),
 
-		//pendingChildren: [],
-
-
 		/**
 		 * Elements that have been rendered to by h() at least once.
 		 * This is used by the Solarite class to know when to call onFirstConnect()
@@ -2057,7 +2054,7 @@ class Shell {
 	/** @type {ExprPath[]} Paths to where expressions should go. */
 	paths = [];
 
-	// Elements with events.  Not yet used.
+	// Elements with events.  Is there a reason to use this?  We already mark event Exprs in Shell.js.
 	// events = [];
 
 	/** @type {int[][]} Array of paths */
@@ -2656,7 +2653,7 @@ class NodeGroup {
 		//#ENDIF
 
 		Globals$1.currentSlotChildren = children; // Used by RootNodeGroup slot code.
-		el.replaceWith(newEl);
+		el.replaceWith(newEl); // Calls render() when it's a Solarite component and it's added to the DOM
 		Globals$1.currentSlotChildren = null;
 
 		// If an id pointed at the placeholder, update it to point to the new element.
@@ -2933,21 +2930,20 @@ class RootNodeGroup extends NodeGroup {
 	exprsToRender = new Map();
 
 	/**
+	 * Create all the elements from the template's fragment.
+	 * But don't call applyExprs() yet.
 	 * @param template {Template}
 	 * @param el {?HTMLElement} Optional, pre-existing htmlElement that will be the root.
 	 * @param options {?object} */
 	constructor(template, el, options) {
 		super(template);
-
 		this.options = options;
+		let startingPathDepth = 0;
 
 		let [fragment, shell] = this.populateFromTemplate(template);
 
-		let startingPathDepth = 0;
-
-
+		// Fast path for text-only:
 		if (fragment instanceof Text) {
-
 			if (el) {
 				this.startNode = el;
 				this.endNode = el;
@@ -2959,8 +2955,6 @@ class RootNodeGroup extends NodeGroup {
 				throw new Error('Cannot create a standalone text node');
 			Globals$1.nodeGroups.set(this.root, this);
 		}
-
-
 		else {
 
 			// If adding NodeGroup to an element.
@@ -3036,11 +3030,6 @@ class RootNodeGroup extends NodeGroup {
 			this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
 
 			this.activateEmbeds(this.root, shell, startingPathDepth);
-
-			// Apply exprs
-			this.applyExprs(template.exprs);
-
-			this.instantiateStaticComponents(this.staticComponents);
 		}
 	}
 
@@ -3051,7 +3040,7 @@ class RootNodeGroup extends NodeGroup {
 		if (Globals$1.currentSlotChildren)
 			return Globals$1.currentSlotChildren;
 
-		// TODO: Cache path to slot for better performance:
+		// TODO: Have Shell cache the path to slot for better performance:
 		let childNodes = (el.querySelector('slot') || el).childNodes;
 		return Array.prototype.filter.call(childNodes, node => // Remove node markers.
 			node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath')
@@ -3135,44 +3124,40 @@ class Template {
 	}
 
 	/**
-	 * Render the main template, which may indirectly call renderTemplate() to create children.
-	 * @param el {HTMLElement}
+	 * Render the main (root) template.
+	 * @param el {?HTMLElement} Null if we're rendering to a standalone element.
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
 	render(el=null, options={}) {
-		let ng;
-		let standalone = !el;
 		let firstTime = false;
 
-		// Rendering a standalone element.
-		// TODO: figure out when to not use RootNodeGroup
-		if (standalone) {
-			ng = new RootNodeGroup(this, null, options);
-			el = ng.getRootNode();
-			Globals$1.nodeGroups.set(el, ng); // Why was this commented out?
+		// Typical path used in render() methods.
+		let ng = el && Globals$1.nodeGroups.get(el);
+		if (!ng) {
+			ng = new RootNodeGroup(this, el, options);
+			if (!el) // null if it's a standalone elment.
+				el = ng.getRootNode();
+			Globals$1.nodeGroups.set(el, ng); // All tests still pass if this is commented out!
 			firstTime = true;
 		}
-		else {
-			ng = Globals$1.nodeGroups.get(el);
-			if (!ng) {
-				ng = new RootNodeGroup(this, el, options);
-				Globals$1.nodeGroups.set(el, ng); // Why was this commented out?
-				firstTime = true;
-			}
 
-			// This can happen if we try manually rendering one template to a NodeGroup that was created expecting a different template.
-			// These don't always have the same length, for example if one attribute has multiple expressions.
-			if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
-				throw new Error(`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length} \${value} placeholders can't accomodate a Template with ${this.exprs.length} values.`);		}
+		// Make sure the expresion count matches match the exprPath "hole" count.
+		// This can happen if we try manually rendering one template to a NodeGroup that was created expecting a different template.
+		// These don't always have the same length, for example if one attribute has multiple expressions.
+		if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
+			throw new Error(
+				`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length} \${value} ` +
+				`placeholders can't accomodate a Template with ${this.exprs.length} values.`);
 
 		// Creating the root nodegroup also renders it.
 		// If we didn't just create it, we need to render it.
-		if (!firstTime) {
-			if (this.html?.length === 1 && !this.html[0])
-				el.innerHTML = ''; // Fast path for empty component.
-			else {
-				ng.applyExprs(this.exprs);
-			}
+		if (this.html?.length === 1 && !this.html[0]) // An empty string.
+			el.innerHTML = ''; // Fast path for empty component.
+		else {
+			ng.applyExprs(this.exprs);
+
+			if (firstTime)
+				ng.instantiateStaticComponents(ng.staticComponents);
 		}
 
 		ng.exprsToRender = new Map();
@@ -3454,7 +3439,7 @@ let renderF = 'render';
  *
  * Add children to an element.
  * 3. h(el, h`<b>${'Hi'}</b>`, ?options)
- * 4. h(el, ?options)`<b>${'Hi'}</b>`   // Create template and render its nodes to el.
+ * 4. h(el, ?options)`<b>${'Hi'}</b>`   // typical path used in render(). Create template and render its nodes to el.
  *
  * Create top-level element
  * 5. h()`Hello<b>${'World'}!</b>`

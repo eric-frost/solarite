@@ -2886,7 +2886,7 @@ Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...
 	assert.eq(a.outerHTML, `<a-513><div><b-513 name="User" user-id="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-513></div></a-513>`);
 });
 
-Testimony.test('Solarite.component.dynamicAttribsAdjacent', 'Attribs specified via ${...}', () => {
+Testimony.test('Solarite.component.dynamicAttribsTwoComponents', 'Attribs specified via ${...}', () => {
 
 	class B515 extends Solarite {
 		constructor({name, userid}={}) {
@@ -2914,9 +2914,75 @@ Testimony.test('Solarite.component.dynamicAttribsAdjacent', 'Attribs specified v
 	//assert.eq(a.outerHTML, `<a-515><div><b-515 name="User" userid="1"><!--ExprPath:0-->User | 1<!--ExprPathEnd:1--></b-515><b-515 name="User2" userid="2"><!--ExprPath:0-->User2 | 2<!--ExprPathEnd:1--></b-515></div></a-515>`);
 });
 
-Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Solarite component.', () => {
+
+Testimony.test('Solarite.component.dynamicAttribsAndChildren', () => {
+
+	class B516 extends Solarite {
+		constructor(attribs={}) {
+			super();
+			this.user = attribs.user;
+		}
+
+		render(attribs={}, children=[]) {
+			h(this)`<b-516>${this.user.name} | ${this.user.id}${children}</b-516>`
+		}
+	}
+	B516.define();
+
+	class A516 extends Solarite {
+		render() {
+			h(this)`<div><b-516 user=${{name: 'Fred', id: 3}}><span>Moderator</span><span>Administrator</span></b-516></div>`;
+		}
+	}
+	A516.define();
+
+	let a = new A516();
+	a.render();
+	assert.eq(getHtml(a), `<a-516><div><b-516 user="">Fred | 3<span>Moderator</span><span>Administrator</span></b-516></div></a-516>`);
+
+
+	a.render();
+	assert.eq(getHtml(a), `<a-516><div><b-516 user="">Fred | 3<span>Moderator</span><span>Administrator</span></b-516></div></a-516>`);
+});
+Testimony.test('Solarite.component.dynamicAttribsAndDynamicChildren', () => {
+
+	const roles = ['Moderator', 'Administrator'];
 
 	class B517 extends Solarite {
+		constructor(attribs={}) {
+			super();
+			this.user = attribs.user;
+		}
+
+		render(attribs={}, children=[]) {
+			console.log(attribs, children)
+
+			h(this)`<b-517>${this.user.name} | ${this.user.id}${children}</b-517>`
+		}
+	}
+	B517.define();
+
+	class A517 extends Solarite {
+		render() {
+			h(this)`<div><b-517 user=${{name: 'Fred', id: 3}}>${roles.map(role => h`<span>${role}</span>`)}</b-517></div>`;
+		}
+	}
+	A517.define();
+
+	let a = new A517();
+	console.log(1)
+	a.render();
+	assert.eq(getHtml(a), `<a-517><div><b-517 user="">Fred | 3<span>Moderator</span><span>Administrator</span></b-517></div></a-517>`);
+
+	//roles.push('Archivist');
+	console.log(2)
+	a.render();
+	assert.eq(getHtml(a), `<a-517><div><b-517 user="">Fred | 3<span>Moderator</span><span>Administrator</span></b-517></div></a-517>`);
+});
+
+Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Solarite component.', () => {
+
+	class B519 extends Solarite {
 		constructor({name, userid}={}) {
 			super();
 
@@ -2926,16 +2992,16 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 		}
 
 		render() {
-			h(this)`<b-517>${this.name} | ${this.userId}</b-517>`
+			h(this)`<b-519>${this.name} | ${this.userId}</b-519>`
 		}
 	}
-	B517.define();
+	B519.define();
 
 
 	let div = document.createElement('div');
-	div.innerHTML = `<b-517 name="User" userid="2"></b-517>`
+	div.innerHTML = `<b-519 name="User" userid="2"></b-519>`
 
-	assert.eq(div.outerHTML, `<div><b-517 name="User" userid="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-517></div>`)
+	assert.eq(getHtml(div), `<div><b-519 name="User" userid="2">User | 2</b-519></div>`)
 
 });
 
