@@ -10,6 +10,7 @@ import {getObjectHash} from '../src/hash.js'
 */
 import Testimony from "./Testimony.js";
 
+//import {h, Solarite} from "../src/Solarite.js";
 import {h, Solarite} from "../dist/Solarite.js";
 //import {h, Solarite} from "../dist/Solarite.min.js";
 
@@ -194,9 +195,9 @@ Testimony.test('Benchmark.solarite._partialUpdate',  `Update ${rowCount.toLocale
 			let options = {scripts: false, styles: false, ids: false}
 			h(this, options)`
 				<div>
-					<div style="display: flex: flex-direction: column">
+					<div style='display: flex: flex-direction: column'>
 						${this.data.map((row, i) => h`
-							<div style="display: flex">
+							<div style='display: flex'>
 								<div class='col-md-1'>${row.id}</div>
 								<div class='col-md-4'><a class='lbl'>${row.label}</a></div>
 								<div class='col-md-1'><a class='remove'><span class='remove glyphicon glyphicon-remove' aria-hidden='true'></span></a></div>

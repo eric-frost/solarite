@@ -1098,7 +1098,6 @@ async function runPage(path, webServer=null, webRoot=null, tests=null, headless=
 	const startServer = () => {
 
 		const absWebRoot = Deno.realPathSync(webRoot);
-		console.log(absWebRoot);
 		const server = serve({port});
 		//console.log(`HTTP web server running. Access it at: http://localhost:${port}/`);
 

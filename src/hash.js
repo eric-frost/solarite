@@ -9,8 +9,8 @@ export function getObjectId(obj) {
 	// 	return obj.toString(); // This fails to detect when a function's bound variables changes.
 	
 	let result = objectIds.get(obj);
-	if (!result) { // convert to string, store in result, then add 1 to lastObjectId.
-		result = '~\f' + (lastObjectId++); // We use a unique, 2-byte prefix to ensure it doesn't collide w/ strings not from getObjectId()
+	if (result===undefined) { // convert to string, store in result, then add 1 to lastObjectId.
+		result = '~@' + (lastObjectId++); // We use a unique, 2-byte prefix to ensure it doesn't collide w/ strings not from getObjectId()
 		objectIds.set(obj, result)
 	}
 	return result;

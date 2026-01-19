@@ -13,20 +13,20 @@ export default class Template {
 	exprs = []
 
 	/** @type {string[]} */
-	html = [];
+	#html = [];
 
 	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
-	hashedFields;
+	//hashedFields;
 
 	/** @type {boolean} */
-	isText;
+	//isText;
 
 	/**
 	 *
 	 * @param htmlStrings {string[]}
 	 * @param exprs {*[]} */
 	constructor(htmlStrings, exprs) {
-		this.html = htmlStrings;
+		this.#html = htmlStrings;
 		this.exprs = exprs;
 
 		//this.trace = new Error().stack.split(/\n/g)
@@ -40,7 +40,7 @@ export default class Template {
 
 		Object.defineProperty(this, 'debug', {
 			get() {
-				return JSON.stringify([this.html, this.exprs]);
+				return JSON.stringify([this.#html, this.exprs]);
 			}
 		})
 		//#ENDIF
@@ -51,7 +51,7 @@ export default class Template {
 	 * This prevents the hashed version from being too large. */
 	toJSON() {
 		if (!this.hashedFields)
-			this.hashedFields = [getObjectId(this.html), this.exprs];
+			this.hashedFields = [getObjectId(this.#html), this.exprs];
 
 		return this.hashedFields
 	}
@@ -79,12 +79,12 @@ export default class Template {
 		// These don't always have the same length, for example if one attribute has multiple expressions.
 		if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
 			throw new Error(
-				`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length} \${value} ` +
+				`Solarite Error:  Parent HTMLElement ${ng.template.#html.join('${...}')} and ${ng.paths.length} \${value} ` +
 				`placeholders can't accomodate a Template with ${this.exprs.length} values.`);
 
 		// Creating the root nodegroup also renders it.
 		// If we didn't just create it, we need to render it.
-		if (this.html?.length === 1 && !this.html[0]) // An empty string.
+		if (this.#html?.length === 1 && !this.#html[0]) // An empty string.
 			el.innerHTML = ''; // Fast path for empty component.
 		else {
 			ng.applyExprs(this.exprs);
@@ -98,30 +98,56 @@ export default class Template {
 		return el;
 	}
 
-	// TODO: Can this be faster if we only have an html key and an expression key?
-	// Instead of hashing the html as part of both keys?
-	getExactKey() {
-		if (!this.exactKey) {
-			if (this.exprs.length)
-				this.exactKey = getObjectHash(this);// calls this.toJSON().
-			else // Don't hash plain html.
-				this.exactKey = this.html[0];
-		}
-		return this.exactKey;
+
+	#closeKey;
+	#exactKey;
+
+	get html() {
+		return this.#html;
 	}
 
-	getCloseKey() {
-		//console.log(this.exprs.length)
-		if (!this.closeKey) {
-			if (this.exprs.length)
-				this.closeKey = /*'@' + */this.toJSON()[0];
-			else
-				this.closeKey = this.html[0];
-		}
-		// Use the joined html when debugging?  But it breaks some tests.
-		//return '@'+this.html.join('|')
+	#isText;
 
-		return this.closeKey;
+	get isText() {
+		return this.#isText;
+	}
+
+	set isText(val) { this.#isText = val; }
+
+
+	// get exprs() {
+	// 	return this.#exprs;
+	// }
+
+	// TODO: Can this be faster if we only have an html key and an expression key?
+	// Instead of hashing the html as part of both keys?
+
+	getCloseKey() {
+		if (!this.#closeKey) {
+			this.#closeKey = getObjectId(this.#html);
+		}
+		return this.#closeKey;
+	}
+
+
+
+	// TODO: Can this be faster if we only have an html key and an expression key?
+	// Instead of hashing the html as part of both keys?
+	getExactKeyFastButBroken() {
+		if (this.#exactKey===undefined) {
+			this.#exactKey = /*this.getCloseKey() +*/ getObjectHash(this.exprs);
+		}
+		return this.#exactKey;
+	}
+
+	getExactKey() {
+		if (!this.#exactKey) {
+			if (this.exprs.length)
+				this.#exactKey = getObjectHash(this);// calls this.toJSON().
+			else
+				this.#exactKey = this.html[0];
+		}
+		return this.#exactKey;
 	}
 
 	/**
