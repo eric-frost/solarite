@@ -2,7 +2,6 @@ import {assert} from "./assert.js";
 import {getObjectHash, getObjectId} from "./hash.js";
 import Globals from "./Globals.js";
 import RootNodeGroup from "./RootNodeGroup.js";
-import Util from "./Util.js";
 
 /**
  * The html strings and evaluated expressions from an html tagged template.
@@ -19,6 +18,7 @@ export default class Template {
 	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
 
+	/** @type {boolean} */
 	isText;
 
 	/**
@@ -88,6 +88,7 @@ export default class Template {
 			el.innerHTML = ''; // Fast path for empty component.
 		else {
 			ng.applyExprs(this.exprs);
+			ng.exactKey = this.getExactKey();
 
 			if (firstTime)
 				ng.instantiateStaticComponents(ng.staticComponents);
@@ -97,6 +98,8 @@ export default class Template {
 		return el;
 	}
 
+	// TODO: Can this be faster if we only have an html key and an expression key?
+	// Instead of hashing the html as part of both keys?
 	getExactKey() {
 		if (!this.exactKey) {
 			if (this.exprs.length)

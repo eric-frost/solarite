@@ -1078,6 +1078,10 @@ async function runPage(path, webServer=null, webRoot=null, tests=null, headless=
 	import { Launcher } from 'https://esm.sh/chrome-launcher@0.15.0';
 	 */
 
+	// Set cwd to the same path as Testimony.js.  Is this only needed on windows?
+	const scriptDir = new URL(".", import.meta.url);
+	Deno.chdir(scriptDir);
+
 	// Dynamically import so we only pull them in if necessary.
 	const [
 		{default: puppeteer},
@@ -1094,6 +1098,7 @@ async function runPage(path, webServer=null, webRoot=null, tests=null, headless=
 	const startServer = () => {
 
 		const absWebRoot = Deno.realPathSync(webRoot);
+		console.log(absWebRoot);
 		const server = serve({port});
 		//console.log(`HTTP web server running. Access it at: http://localhost:${port}/`);
 
