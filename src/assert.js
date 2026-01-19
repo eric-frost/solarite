@@ -2,7 +2,7 @@
 /*@__NO_SIDE_EFFECTS__*/
 export function assert(val) {
 	if (!val) {
-		debugger;
+		//debugger;
 		throw new Error('Assertion failed: ' + val);
 	}
 }

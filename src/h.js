@@ -39,7 +39,7 @@ export default function h(htmlStrings=undefined, ...exprs) {
 
 	// 1. Tagged template: h`<div>...</div>`
 	if (Array.isArray(arguments[0])) {
-		return new Template(arguments[0], exprs);
+		return new Template(arguments);
 	}
 
 	// 2. String to template, or JSX factory form h(tag, props, ...children)
@@ -61,7 +61,7 @@ export default function h(htmlStrings=undefined, ...exprs) {
 			// If it starts with whitespace and then a tag, trim it.
 			if (html.match(/^\s^</))
 				html = html.trim();
-			return new Template([html], []);
+			return new Template([[html]]);
 		}
 	}
 
@@ -86,9 +86,9 @@ export default function h(htmlStrings=undefined, ...exprs) {
 				parent.innerHTML = '';
 
 			// Return a tagged template function that applies the tagged template to parent.
-			let taggedTemplate = (htmlStrings, ...exprs) => {
+			let taggedTemplate = function() {
 				Globals.rendered.add(parent)
-				let template = new Template(htmlStrings, exprs);
+				let template = new Template(arguments);
 				return template.render(parent, options);
 			}
 			return taggedTemplate;

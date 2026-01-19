@@ -358,7 +358,7 @@ export default class ExprPath {
 			// let template = Globals.stringTemplates[expr];
 			// if (!template) {
 
-			let template = new Template([expr], []);
+			let template = new Template([[expr]]);
 			template.isText = true;
 			//	Globals.stringTemplates[expr] = template;
 			//}

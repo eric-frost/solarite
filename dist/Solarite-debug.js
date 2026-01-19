@@ -2,7 +2,7 @@
 /*@__NO_SIDE_EFFECTS__*/
 function assert(val) {
 	if (!val) {
-		debugger;
+		//debugger;
 		throw new Error('Assertion failed: ' + val);
 	}
 }
@@ -1213,7 +1213,7 @@ class ExprPath {
 			// let template = Globals.stringTemplates[expr];
 			// if (!template) {
 
-			let template = new Template([expr], []);
+			let template = new Template([[expr]]);
 			template.isText = true;
 			//	Globals.stringTemplates[expr] = template;
 			//}
@@ -3053,7 +3053,7 @@ class RootNodeGroup extends NodeGroup {
 class Template {
 
 	/** @type {(Template|string|function)|(Template|string|function)[]} Evaulated expressions.  */
-	exprs = []
+	#exprs = []
 
 	/** @type {string[]} */
 	#html = [];
@@ -3069,35 +3069,45 @@ class Template {
 	 * @param htmlStrings {string[]}
 	 * @param exprs {*[]} */
 	constructor(htmlStrings, exprs) {
-		this.#html = htmlStrings;
-		this.exprs = exprs;
 
-		//this.trace = new Error().stack.split(/\n/g)
+		//if (!Array.isArray(htmlStrings) && 'length' in htmlStrings && typeof htmlStrings !== 'string') {
+			//console.log(1)
+			this.#html = htmlStrings[0];
+			this.#exprs = Array.prototype.slice.call(htmlStrings, 1);
+			this.all = htmlStrings;
+		//}
 
-		// Multiple templates can share the same htmlStrings array.
-		//this.hashedFields = [getObjectId(htmlStrings), exprs]
-
-		//#IFDEV
-		assert(Array.isArray(htmlStrings));
-		assert(Array.isArray(exprs));
-
-		Object.defineProperty(this, 'debug', {
-			get() {
-				return JSON.stringify([this.#html, this.exprs]);
-			}
-		});
-		//#ENDIF
+		// // old way:
+		// else {
+		// 	this.#html = htmlStrings;
+		// 	this.#exprs = exprs;
+		// 	this.all = [htmlStrings, ...exprs];
+		//
+		// 	//#IFDEV
+		// 	assert(Array.isArray(htmlStrings))
+		// 	assert(Array.isArray(exprs))
+		//
+		// 	Object.defineProperty(this, 'debug', {
+		// 		get() {
+		// 			return JSON.stringify([this.#html, this.#exprs]);
+		// 		}
+		// 	})
+		// 	//#ENDIF
+		// }
+		this.all[0] = getObjectId(this.all[0]);
 	}
 
 	/**
 	 * Called by JSON.serialize when it encounters a Template.
 	 * This prevents the hashed version from being too large. */
-	toJSON() {
-		if (!this.hashedFields)
-			this.hashedFields = [getObjectId(this.#html), this.exprs];
+	// toJSON() {
+	// 	if (!this.#hashedFields)
+	// 		this.#hashedFields = this.all;
+	//
+	// 	return this.#hashedFields
+	// }
 
-		return this.hashedFields
-	}
+	#hashedFields;
 
 	/**
 	 * Render the main (root) template.
@@ -3120,17 +3130,17 @@ class Template {
 		// Make sure the expresion count matches match the exprPath "hole" count.
 		// This can happen if we try manually rendering one template to a NodeGroup that was created expecting a different template.
 		// These don't always have the same length, for example if one attribute has multiple expressions.
-		if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
+		if (ng.paths.length === 0 && this.#exprs.length || ng.paths.length > this.#exprs.length)
 			throw new Error(
 				`Solarite Error:  Parent HTMLElement ${ng.template.#html.join('${...}')} and ${ng.paths.length} \${value} ` +
-				`placeholders can't accomodate a Template with ${this.exprs.length} values.`);
+				`placeholders can't accomodate a Template with ${this.#exprs.length} values.`);
 
 		// Creating the root nodegroup also renders it.
 		// If we didn't just create it, we need to render it.
 		if (this.#html?.length === 1 && !this.#html[0]) // An empty string.
 			el.innerHTML = ''; // Fast path for empty component.
 		else {
-			ng.applyExprs(this.exprs);
+			ng.applyExprs(this.#exprs);
 			ng.exactKey = this.getExactKey();
 
 			if (firstTime)
@@ -3147,6 +3157,10 @@ class Template {
 
 	get html() {
 		return this.#html;
+	}
+
+	get exprs() {
+		return this.#exprs;
 	}
 
 	#isText;
@@ -3176,19 +3190,20 @@ class Template {
 
 	// TODO: Can this be faster if we only have an html key and an expression key?
 	// Instead of hashing the html as part of both keys?
-	getExactKeyFastButBroken() {
+	getExactKey2() {
 		if (this.#exactKey===undefined) {
-			this.#exactKey = /*this.getCloseKey() +*/ getObjectHash(this.exprs);
+			this.#exactKey = /*this.getCloseKey() +*/ getObjectHash(this);
+			//console.log(this.#exactKey)
 		}
 		return this.#exactKey;
 	}
 
 	getExactKey() {
 		if (!this.#exactKey) {
-			if (this.exprs.length)
+			if (this.#exprs.length)
 				this.#exactKey = getObjectHash(this);// calls this.toJSON().
 			else
-				this.#exactKey = this.html[0];
+				this.#exactKey = this.getCloseKey();
 		}
 		return this.#exactKey;
 	}
@@ -3275,7 +3290,7 @@ class Template {
 		// Ensure invariant
 		//assert(htmlStrings.length === templateExprs.length + 1);
 		//console.log([htmlStrings, templateExprs])
-		return new Template(htmlStrings, templateExprs);
+		return new Template([htmlStrings, ...templateExprs]);
 	}
 }
 
@@ -3457,7 +3472,7 @@ function h(htmlStrings=undefined, ...exprs) {
 
 	// 1. Tagged template: h`<div>...</div>`
 	if (Array.isArray(arguments[0])) {
-		return new Template(arguments[0], exprs);
+		return new Template(arguments);
 	}
 
 	// 2. String to template, or JSX factory form h(tag, props, ...children)
@@ -3479,7 +3494,7 @@ function h(htmlStrings=undefined, ...exprs) {
 			// If it starts with whitespace and then a tag, trim it.
 			if (html.match(/^\s^</))
 				html = html.trim();
-			return new Template([html], []);
+			return new Template([[html]]);
 		}
 	}
 
@@ -3504,9 +3519,9 @@ function h(htmlStrings=undefined, ...exprs) {
 				parent.innerHTML = '';
 
 			// Return a tagged template function that applies the tagged template to parent.
-			let taggedTemplate = (htmlStrings, ...exprs) => {
+			let taggedTemplate = function() {
 				Globals$1.rendered.add(parent);
-				let template = new Template(htmlStrings, exprs);
+				let template = new Template(arguments);
 				return template.render(parent, options);
 			};
 			return taggedTemplate;
