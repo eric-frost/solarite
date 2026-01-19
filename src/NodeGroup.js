@@ -54,18 +54,12 @@ export default class NodeGroup {
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
 
-	dynamicComponents = new Set();
+	//dynamicComponents = new Set();
+
 	staticComponents = [];
 
 	/** @type {Template} */
 	template;
-
-
-	// Temporary.  Only used in constructor
-	fragment;
-	shell;
-	slotChildren;
-	startingPathDepth;
 
 	/**
 	 * Root node at the top of the hierarchy.
@@ -82,31 +76,31 @@ export default class NodeGroup {
 		this.rootNg = parentPath?.parentNg?.rootNg || this;
 		this.parentPath = parentPath;
 
-		[this.fragment, this.shell] = this.populateFromTemplate(template);
+		let [fragment, shell] = this.populateFromTemplate(template);
 
 		if (!(this instanceof RootNodeGroup)) {
-			if (this.fragment && template.exprs.length) {
-				this.updatePaths(this.fragment, this.shell.paths);
+			if (fragment && template.exprs.length) {
+				this.updatePaths(fragment, shell.paths);
 
 				// Static web components can sometimes have children created via expressions.
 				// But calling applyExprs() will mess up the shell's path to them.
 				// So we find them first, then call instantiateStaticComponents() after their children have been created.
-				this.staticComponents = this.findStaticComponents(this.fragment, this.shell);
+				this.staticComponents = this.findStaticComponents(fragment, shell);
 
-				this.activateEmbeds(this.fragment, this.shell);
+				this.activateEmbeds(fragment, shell);
 			}
-			else if (this.shell)
-				this.activateEmbeds(this.fragment, this.shell);
+			else if (shell)
+				this.activateEmbeds(fragment, shell);
 		}
 		else {
 			this.options = options;
-			this.startingPathDepth = 0;
-			if (this.fragment instanceof Text) {
+			let startingPathDepth = 0;
+			if (fragment instanceof Text) {
 				if (el) {
 					this.startNode = el;
 					this.endNode = el;
-					if (this.fragment.nodeValue.length)
-						el.append(this.fragment);
+					if (fragment.nodeValue.length)
+						el.append(fragment);
 					this.root = el;
 				}
 				else
@@ -116,41 +110,41 @@ export default class NodeGroup {
 			else {
 				if (el) {
 					this.root = el;
-
+					let slotChildren;
 
 					// Save slot children
 					if (Globals.currentSlotChildren || el.childNodes.length) {
-						this.slotChildren = Globals.doc.createDocumentFragment();
-						this.slotChildren.append(...(Globals.currentSlotChildren || el.childNodes));
+						slotChildren = Globals.doc.createDocumentFragment();
+						slotChildren.append(...(Globals.currentSlotChildren || el.childNodes));
 					}
 
 					// If el should replace the root node of the fragment.
-					if (isReplaceEl(this.fragment, el)) {
-						el.append(...this.fragment.children[0].childNodes);
+					if (isReplaceEl(fragment, el)) {
+						el.append(...fragment.children[0].childNodes);
 
 						// Copy attributes
-						for (let attrib of this.fragment.children[0].attributes)
+						for (let attrib of fragment.children[0].attributes)
 							if (!el.hasAttribute(attrib.name) && attrib.name !== 'solarite-placeholder')
 								el.setAttribute(attrib.name, attrib.value);
 
 						// Go one level deeper into all of shell's paths.
-						this.startingPathDepth = 1;
+						startingPathDepth = 1;
 					}
 
 					else {
-						let isEmpty = this.fragment.childNodes.length === 1 && this.fragment.childNodes[0].nodeType === 3 && this.fragment.childNodes[0].textContent === '';
+						let isEmpty = fragment.childNodes.length === 1 && fragment.childNodes[0].nodeType === 3 && fragment.childNodes[0].textContent === '';
 						if (!isEmpty)
-							el.append(...this.fragment.childNodes);
+							el.append(...fragment.childNodes);
 					}
 
 					// Setup children
-					if (this.slotChildren) {
+					if (slotChildren) {
 
 						// Named slots
 						for (let slot of el.querySelectorAll('slot[name]')) {
 							let name = slot.getAttribute('name')
 							if (name) {
-								let slotChildren2 = this.slotChildren.querySelectorAll(`[slot='${name}']`);
+								let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
 								slot.append(...slotChildren2);
 							}
 						}
@@ -158,11 +152,11 @@ export default class NodeGroup {
 						// Unnamed slots
 						let unamedSlot = el.querySelector('slot:not([name])')
 						if (unamedSlot)
-							unamedSlot.append(this.slotChildren);
+							unamedSlot.append(slotChildren);
 
 						// No slots
 						else
-							el.append(this.slotChildren);
+							el.append(slotChildren);
 					}
 
 					this.startNode = el;
@@ -171,21 +165,21 @@ export default class NodeGroup {
 
 				// Instantiate as a standalone element.
 				else {
-					let singleEl = getSingleEl(this.fragment);
-					this.root = singleEl || this.fragment; // We return the whole fragment when calling h() with a collection of nodes.
+					let singleEl = getSingleEl(fragment);
+					this.root = singleEl || fragment; // We return the whole fragment when calling h() with a collection of nodes.
 
 					if (singleEl)
-						this.startingPathDepth = 1;
+						startingPathDepth = 1;
 				}
 				Globals.nodeGroups.set(this.root, this);
-				this.updatePaths(this.root, this.shell.paths, this.startingPathDepth);
+				this.updatePaths(this.root, shell.paths, startingPathDepth);
 
 				// Static web components can sometimes have children created via expressions.
 				// But calling applyExprs() will mess up the shell's path to them.
 				// So we find them first, then call activateStaticComponents() after their children have been created.
-				this.staticComponents = this.findStaticComponents(this.root, this.shell, this.startingPathDepth);
+				this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
 
-				this.activateEmbeds(this.root, this.shell, this.startingPathDepth);
+				this.activateEmbeds(this.root, shell, startingPathDepth);
 			}
 		}
 	}
