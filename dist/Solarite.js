@@ -58,16 +58,16 @@ function getObjectHash(obj) {
 			Function.prototype.toJSON = toJSON;
 	}
 
-	let result;
 	isHashing = true;
 	try {
-		result = JSON.stringify(obj);
+		return JSON.stringify(obj);
 	}
 	catch(e) {
-		result = getObjectHashCircular(obj);
+		return getObjectHashCircular(obj);
 	}
-	isHashing = false;
-	return result;
+	finally {
+		isHashing = false;
+	}
 }
 
 /**
@@ -1139,7 +1139,7 @@ class ExprPath {
 			// let template = Globals.stringTemplates[expr];
 			// if (!template) {
 
-			let template = new Template([[expr]]);
+			let template = new Template([expr], []);
 			template.isText = true;
 			//	Globals.stringTemplates[expr] = template;
 			//}
@@ -1194,8 +1194,10 @@ class ExprPath {
 				}
 
 				// This calls render() on web components that have expressions as attributes.
-				if (apply)
+				if (apply) {
 					ng.applyExprs(expr.exprs);
+					ng.exactKey = expr.getExactKey();
+				}
 
 				this.nodeGroups.push(ng);
 
@@ -1685,10 +1687,9 @@ class ExprPath {
 
 				// Update this close match with the new expression values.
 				result.applyExprs(template.exprs);
-				result.exactKey = template.getExactKey(); // TODO: Should this be set in applyExprs?
+				result.exactKey = template.getExactKey();
 			}
 		}
-
 
 		if (!result) {
 			result = new NodeGroup(template, this);
@@ -2281,129 +2282,159 @@ class NodeGroup {
 
 	/**
 	 * Root node at the top of the hierarchy.
-	 * Should be moved to RootNodeGroup.
+	 * Should be moved to RootNodeGroup
 	 * @type {HTMLElement} */
 	root;
 
 
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
-	 * Don't call applyExprs yet.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param parentPath {?ExprPath}
-	 * @param el {?HTMLElement} Optional, pre-existing htmlElement that will be the root.
-	 * @param options {?object} Only used for RootNodeGroup */
+	 * @param parentPath {?ExprPath} */
 	constructor(template, parentPath=null, el=null, options=null) {
 		this.rootNg = parentPath?.parentNg?.rootNg || this;
 		this.parentPath = parentPath;
 
+		let [fragment, shell] = this.populateFromTemplate(template);
+
+		if (!(this instanceof RootNodeGroup)) {
+			if (fragment && template.exprs.length) {
+				this.updatePaths(fragment, shell.paths);
+
+				// Static web components can sometimes have children created via expressions.
+				// But calling applyExprs() will mess up the shell's path to them.
+				// So we find them first, then call instantiateStaticComponents() after their children have been created.
+				this.staticComponents = this.findStaticComponents(fragment, shell);
+
+				this.activateEmbeds(fragment, shell);
+			}
+			else if (shell)
+				this.activateEmbeds(fragment, shell);
+		}
+		else {
+			this.options = options;
+			let startingPathDepth = 0;
+			if (fragment instanceof Text) {
+				if (el) {
+					this.startNode = el;
+					this.endNode = el;
+					if (fragment.nodeValue.length)
+						el.append(fragment);
+					this.root = el;
+				}
+				else
+					throw new Error('Cannot create a standalone text node');
+				Globals$1.nodeGroups.set(this.root, this);
+			}
+			else {
+				if (el) {
+					this.root = el;
+					let slotChildren;
+
+					// Save slot children
+					if (Globals$1.currentSlotChildren || el.childNodes.length) {
+						slotChildren = Globals$1.doc.createDocumentFragment();
+						slotChildren.append(...(Globals$1.currentSlotChildren || el.childNodes));
+					}
+
+					// If el should replace the root node of the fragment.
+					if (isReplaceEl(fragment, el)) {
+						el.append(...fragment.children[0].childNodes);
+
+						// Copy attributes
+						for (let attrib of fragment.children[0].attributes)
+							if (!el.hasAttribute(attrib.name) && attrib.name !== 'solarite-placeholder')
+								el.setAttribute(attrib.name, attrib.value);
+
+						// Go one level deeper into all of shell's paths.
+						startingPathDepth = 1;
+					}
+
+					else {
+						let isEmpty = fragment.childNodes.length === 1 && fragment.childNodes[0].nodeType === 3 && fragment.childNodes[0].textContent === '';
+						if (!isEmpty)
+							el.append(...fragment.childNodes);
+					}
+
+					// Setup children
+					if (slotChildren) {
+
+						// Named slots
+						for (let slot of el.querySelectorAll('slot[name]')) {
+							let name = slot.getAttribute('name');
+							if (name) {
+								let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
+								slot.append(...slotChildren2);
+							}
+						}
+
+						// Unnamed slots
+						let unamedSlot = el.querySelector('slot:not([name])');
+						if (unamedSlot)
+							unamedSlot.append(slotChildren);
+
+						// No slots
+						else
+							el.append(slotChildren);
+					}
+
+					this.startNode = el;
+					this.endNode = el;
+				} // end if el
+
+				// Instantiate as a standalone element.
+				else {
+					let singleEl = getSingleEl(fragment);
+					this.root = singleEl || fragment; // We return the whole fragment when calling h() with a collection of nodes.
+
+					if (singleEl)
+						startingPathDepth = 1;
+				}
+				Globals$1.nodeGroups.set(this.root, this);
+				this.updatePaths(this.root, shell.paths, startingPathDepth);
+
+				// Static web components can sometimes have children created via expressions.
+				// But calling applyExprs() will mess up the shell's path to them.
+				// So we find them first, then call activateStaticComponents() after their children have been created.
+				this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
+
+				this.activateEmbeds(this.root, shell, startingPathDepth);
+			}
+		}
+	}
+
+	/**
+	 * Common init shared by RootNodeGroup and NodeGroup constructors.
+	 * But in a separate function because they need to do this at a different step.
+	 * @param template {Template}  Create it from the html strings and expressions in this template.
+	 * @returns {[DocumentFragment, Shell]} The Shell created from the template,a nd the fragment cloned from the Shell.*/
+	populateFromTemplate(template) {
 		
 		this.template = template;
+		this.exactKey = template.getExactKey();
 		this.closeKey = template.getCloseKey();
 
 		// If it's just a text node, skip a bunch of unnecessary steps.
 		if (template.isText) {
-			this.startNode = this.endNode = Globals$1.doc.createTextNode(template.html[0]);
+			let textNode = Globals$1.doc.createTextNode(template.html[0]);
+			this.startNode = this.endNode = textNode;
+			return [];
 		}
 
+		// Get a cached version of the parsed and instantiated html, and ExprPaths:
 		else {
-			// Get a cached version of the parsed and instantiated html, and ExprPaths:
-			const shell = Shell.get(template.html);
-			const shellFragment = shell.fragment.cloneNode(true);
+			let shell = Shell.get(template.html);
+			let fragment = shell.fragment.cloneNode(true);
 
-			if (shellFragment?.nodeType === 11) { // DocumentFragment
-				this.startNode = shellFragment.childNodes[0];
-				this.endNode = shellFragment.childNodes[shellFragment.childNodes.length - 1];
-			} else
-				this.startNode = this.endNode = shellFragment;
-
-			let startingPathDepth = 0;
-
-			if (this instanceof RootNodeGroup) {
-				this.options = options;
-				if (shellFragment instanceof Text) {
-					if (!el)
-						throw new Error('Cannot create a standalone text node');
-
-					this.root = el;
-					if (shellFragment.nodeValue.length)
-						this.root.append(shellFragment);
-				}
-
-				else {
-					if (el) {
-						this.root = el;
-						let slotChildren;
-
-						// Save slot children (deprecated)
-						if (Globals$1.currentSlotChildren || el.childNodes.length) {
-							slotChildren = Globals$1.doc.createDocumentFragment();
-							slotChildren.append(...(Globals$1.currentSlotChildren || el.childNodes));
-						}
-
-						// If el should replace the root node of the fragment.
-						if (isReplaceEl(shellFragment, this.root.tagName)) {
-							this.root.append(...shellFragment.children[0].childNodes);
-
-							// Copy attributes
-							for (let attrib of shellFragment.children[0].attributes)
-								if (!this.root.hasAttribute(attrib.name) && attrib.name !== 'solarite-placeholder')
-									this.root.setAttribute(attrib.name, attrib.value);
-
-							// Go one level deeper into all of shell's paths.
-							startingPathDepth = 1;
-						}
-
-						else {
-							let isEmpty = shellFragment.childNodes.length === 1 && shellFragment.childNodes[0].nodeType === 3 && shellFragment.childNodes[0].textContent === '';
-							if (!isEmpty)
-								this.root.append(...shellFragment.childNodes);
-						}
-
-						// Setup slot children (deprecated)
-						if (slotChildren) {
-							// Named slots
-							for (let slot of el.querySelectorAll('slot[name]')) {
-								let name = slot.getAttribute('name');
-								if (name) {
-									let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
-									slot.append(...slotChildren2);
-								}
-							}
-							// Unnamed slots
-							let unamedSlot = el.querySelector('slot:not([name])');
-							if (unamedSlot)
-								unamedSlot.append(slotChildren);
-							// No slots
-							else
-								el.append(slotChildren);
-						}
-					}
-
-					// Instantiate as a standalone element.
-					else {
-						let onlyChild = getSingleEl(shellFragment);
-						this.root = onlyChild || shellFragment; // We return the whole fragment when calling h() with a collection of nodes.
-						if (onlyChild)
-							startingPathDepth = 1;
-					}
-
-					this.updatePaths(this.root, shell.paths, startingPathDepth);
-					this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
-					this.activateEmbeds(this.root, shell, startingPathDepth);
-				}
-				this.startNode = this.endNode = this.root;
-
-				Globals$1.nodeGroups.set(this.root, this);
+			if (fragment?.nodeType === 11) { // DocumentFragment
+				let childNodes = fragment.childNodes;
+				this.startNode = childNodes[0];
+				this.endNode = childNodes[childNodes.length - 1];
 			}
+			else
+				this.startNode = this.endNode = fragment;
 
-			else if (shell) {
-				if (shellFragment && template.exprs.length) {
-					this.updatePaths(shellFragment, shell.paths);
-					this.staticComponents = this.findStaticComponents(shellFragment, shell);
-				}
-				this.activateEmbeds(shellFragment, shell);
-			}
+			return [fragment, shell];
 		}
 	}
 
@@ -2523,7 +2554,7 @@ class NodeGroup {
 		}
 		return el;
 	}
-
+	
 	/**
 	 * We swap the placeholder element for the real element so we can pass its dynamic attributes
 	 * to its constructor.
@@ -2669,7 +2700,7 @@ class NodeGroup {
 	 * @param fragment {DocumentFragment|HTMLElement}
 	 * @param paths
 	 * @param startingPathDepth {int} */
-	updatePaths(fragment, paths, startingPathDepth=0) {
+	updatePaths(fragment, paths, startingPathDepth) {
 		let pathLength = paths.length;
 		this.paths.length = pathLength;
 		for (let i=0; i<pathLength; i++) {
@@ -2784,12 +2815,12 @@ function getSingleEl(fragment) {
 /**
  * Does the fragment have one child that's an element matching the tagname of el?
  * @param fragment {DocumentFragment}
- * @param tagName {string}
+ * @param el {HTMLElement}
  * @returns {boolean} */
-function isReplaceEl(fragment, tagName) {
+function isReplaceEl(fragment, el) {
 	return fragment.children.length===1
-		&& tagName.includes('-') // TODO: Check for solarite-placeholder attribute instead?
-		&& fragment.children[0].tagName.replace('-SOLARITE-PLACEHOLDER', '') === tagName;
+		&& el.tagName.includes('-') // TODO: Check for solarite-placeholder attribute instead?
+		&& fragment.children[0].tagName.replace('-SOLARITE-PLACEHOLDER', '') === el.tagName;
 }
 
 class RootNodeGroup extends NodeGroup {
@@ -2834,52 +2865,41 @@ class RootNodeGroup extends NodeGroup {
 class Template {
 
 	/** @type {(Template|string|function)|(Template|string|function)[]} Evaulated expressions.  */
-	#exprs = []
+	exprs = []
 
 	/** @type {string[]} */
-	#html = [];
+	html = [];
 
 	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
-	//hashedFields;
+	hashedFields;
 
-	/** @type {boolean} */
-	//isText;
+	isText;
 
 	/**
 	 *
 	 * @param htmlStrings {string[]}
 	 * @param exprs {*[]} */
 	constructor(htmlStrings, exprs) {
+		this.html = htmlStrings;
+		this.exprs = exprs;
 
-		//if (!Array.isArray(htmlStrings) && 'length' in htmlStrings && typeof htmlStrings !== 'string') {
-			//console.log(1)
-			this.#html = htmlStrings[0];
-			this.#exprs = Array.prototype.slice.call(htmlStrings, 1);
-			this.all = htmlStrings;
-		//}
+		//this.trace = new Error().stack.split(/\n/g)
 
-		// // old way:
-		// else {
-		// 	this.#html = htmlStrings;
-		// 	this.#exprs = exprs;
-		// 	this.all = [htmlStrings, ...exprs];
-		//
-		// 	
-		// }
-		this.all[0] = getObjectId(this.all[0]);
+		// Multiple templates can share the same htmlStrings array.
+		//this.hashedFields = [getObjectId(htmlStrings), exprs]
+
+		
 	}
 
 	/**
 	 * Called by JSON.serialize when it encounters a Template.
 	 * This prevents the hashed version from being too large. */
-	// toJSON() {
-	// 	if (!this.#hashedFields)
-	// 		this.#hashedFields = this.all;
-	//
-	// 	return this.#hashedFields
-	// }
+	toJSON() {
+		if (this.hashedFields===undefined)
+			this.hashedFields = [getObjectId(this.html), this.exprs];
 
-	#hashedFields;
+		return this.hashedFields
+	}
 
 	/**
 	 * Render the main (root) template.
@@ -2902,17 +2922,17 @@ class Template {
 		// Make sure the expresion count matches match the exprPath "hole" count.
 		// This can happen if we try manually rendering one template to a NodeGroup that was created expecting a different template.
 		// These don't always have the same length, for example if one attribute has multiple expressions.
-		if (ng.paths.length === 0 && this.#exprs.length || ng.paths.length > this.#exprs.length)
+		if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
 			throw new Error(
-				`Solarite Error:  Parent HTMLElement ${ng.template.#html.join('${...}')} and ${ng.paths.length} \${value} ` +
-				`placeholders can't accomodate a Template with ${this.#exprs.length} values.`);
+				`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length} \${value} ` +
+				`placeholders can't accomodate a Template with ${this.exprs.length} values.`);
 
 		// Creating the root nodegroup also renders it.
 		// If we didn't just create it, we need to render it.
-		if (this.#html?.length === 1 && !this.#html[0]) // An empty string.
+		if (this.html?.length === 1 && !this.html[0]) // An empty string.
 			el.innerHTML = ''; // Fast path for empty component.
 		else {
-			ng.applyExprs(this.#exprs);
+			ng.applyExprs(this.exprs);
 			ng.exactKey = this.getExactKey();
 
 			if (firstTime)
@@ -2923,61 +2943,28 @@ class Template {
 		return el;
 	}
 
-
-	#closeKey;
-	#exactKey;
-
-	get html() {
-		return this.#html;
+	getExactKey() {
+		if (this.exactKey===undefined) {
+			if (this.exprs.length)
+				this.exactKey = getObjectHash(this);// calls this.toJSON().
+			else // Don't hash plain html.
+				this.exactKey = this.html[0];
+		}
+		return this.exactKey;
 	}
-
-	get exprs() {
-		return this.#exprs;
-	}
-
-	#isText;
-
-	get isText() {
-		return this.#isText;
-	}
-
-	set isText(val) { this.#isText = val; }
-
-
-	// get exprs() {
-	// 	return this.#exprs;
-	// }
-
-	// TODO: Can this be faster if we only have an html key and an expression key?
-	// Instead of hashing the html as part of both keys?
 
 	getCloseKey() {
-		if (!this.#closeKey) {
-			this.#closeKey = getObjectId(this.#html);
-		}
-		return this.#closeKey;
-	}
-
-
-
-	// TODO: Can this be faster if we only have an html key and an expression key?
-	// Instead of hashing the html as part of both keys?
-	getExactKey2() {
-		if (this.#exactKey===undefined) {
-			this.#exactKey = /*this.getCloseKey() +*/ getObjectHash(this);
-			//console.log(this.#exactKey)
-		}
-		return this.#exactKey;
-	}
-
-	getExactKey() {
-		if (!this.#exactKey) {
-			if (this.#exprs.length)
-				this.#exactKey = getObjectHash(this);// calls this.toJSON().
+		//console.log(this.exprs.length)
+		if (this.closeKey===undefined) {
+			if (this.exprs.length)
+				this.closeKey = /*'@' + */this.toJSON()[0];
 			else
-				this.#exactKey = this.getCloseKey();
+				this.closeKey = this.html[0];
 		}
-		return this.#exactKey;
+		// Use the joined html when debugging?  But it breaks some tests.
+		//return '@'+this.html.join('|')
+
+		return this.closeKey;
 	}
 
 	/**
@@ -3062,7 +3049,7 @@ class Template {
 		// Ensure invariant
 		//assert(htmlStrings.length === templateExprs.length + 1);
 		//console.log([htmlStrings, templateExprs])
-		return new Template([htmlStrings, ...templateExprs]);
+		return new Template(htmlStrings, templateExprs);
 	}
 }
 
@@ -3244,7 +3231,7 @@ function h(htmlStrings=undefined, ...exprs) {
 
 	// 1. Tagged template: h`<div>...</div>`
 	if (Array.isArray(arguments[0])) {
-		return new Template(arguments);
+		return new Template(arguments[0], exprs);
 	}
 
 	// 2. String to template, or JSX factory form h(tag, props, ...children)
@@ -3266,7 +3253,7 @@ function h(htmlStrings=undefined, ...exprs) {
 			// If it starts with whitespace and then a tag, trim it.
 			if (html.match(/^\s^</))
 				html = html.trim();
-			return new Template([[html]]);
+			return new Template([html], []);
 		}
 	}
 
@@ -3291,9 +3278,9 @@ function h(htmlStrings=undefined, ...exprs) {
 				parent.innerHTML = '';
 
 			// Return a tagged template function that applies the tagged template to parent.
-			let taggedTemplate = function() {
+			let taggedTemplate = (htmlStrings, ...exprs) => {
 				Globals$1.rendered.add(parent);
-				let template = new Template(arguments);
+				let template = new Template(htmlStrings, exprs);
 				return template.render(parent, options);
 			};
 			return taggedTemplate;

@@ -56,16 +56,16 @@ export function getObjectHash(obj) {
 			Function.prototype.toJSON = toJSON;
 	}
 
-	let result;
 	isHashing = true;
 	try {
-		result = JSON.stringify(obj);
+		return JSON.stringify(obj);
 	}
 	catch(e) {
-		result = getObjectHashCircular(obj);
+		return getObjectHashCircular(obj);
 	}
-	isHashing = false;
-	return result;
+	finally {
+		isHashing = false;
+	}
 }
 
 /**

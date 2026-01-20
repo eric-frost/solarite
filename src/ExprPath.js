@@ -358,7 +358,7 @@ export default class ExprPath {
 			// let template = Globals.stringTemplates[expr];
 			// if (!template) {
 
-			let template = new Template([[expr]]);
+			let template = new Template([expr], []);
 			template.isText = true;
 			//	Globals.stringTemplates[expr] = template;
 			//}
@@ -413,8 +413,10 @@ export default class ExprPath {
 				}
 
 				// This calls render() on web components that have expressions as attributes.
-				if (apply)
+				if (apply) {
 					ng.applyExprs(expr.exprs);
+					ng.exactKey = expr.getExactKey();
+				}
 
 				this.nodeGroups.push(ng);
 
@@ -911,10 +913,9 @@ export default class ExprPath {
 
 				// Update this close match with the new expression values.
 				result.applyExprs(template.exprs);
-				result.exactKey = template.getExactKey(); // TODO: Should this be set in applyExprs?
+				result.exactKey = template.getExactKey();
 			}
 		}
-
 
 		if (!result) {
 			result = new NodeGroup(template, this);
