@@ -4224,7 +4224,7 @@ Testimony.test('Solarite.watch.primitive', () => {
 	assert.eq(modified.length, 1);
 	assert.eq(getHtml(a), `<w-10>Jim!</w-10>`);
 
-	let ng = Globals.nodeGroups.get(a);
+	let ng = Globals.rootNodeGroups.get(a);
 
 	// Make sure that render() clears the nodegroups to render.
 	a.name = 'Bob';
@@ -4284,7 +4284,7 @@ Testimony.test('Solarite.watch.attrib', () => {
 	assert.eq(getHtml(a), `<w-23><p title="Jim!"></p></w-23>`);
 	assert.eq(modified.length, 1);
 
-	let ng = Globals.nodeGroups.get(a);
+	let ng = Globals.rootNodeGroups.get(a);
 
 	// Make sure that render() clears the nodegroups to render.
 	a.name = 'Bob';
@@ -4316,7 +4316,7 @@ Testimony.test('Solarite.watch.mutliAttrib', () => {
 	assert.eq(getHtml(a), `<w-24><p title="Jim!"></p></w-24>`);
 	assert.eq(modified.length, 1);
 
-	let ng = Globals.nodeGroups.get(a);
+	let ng = Globals.rootNodeGroups.get(a);
 
 	// Make sure that render() clears the nodegroups to render.
 	a.name = 'Bob';
@@ -4352,7 +4352,7 @@ Testimony.test('Solarite.watch._componentAttrib', () => {
 	assert.eq(modified.length, 1);
 	assert.eq(getHtml(a), `<w-25 title="Jim!"></w-25>`);
 
-	let ng = Globals.nodeGroups.get(a);
+	let ng = Globals.rootNodeGroups.get(a);
 
 	// Make sure that render() clears the nodegroups to render.
 	a.name = 'Bob';

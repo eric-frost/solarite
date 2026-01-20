@@ -32,8 +32,10 @@ export default class Shell {
 	/** @type {int[][]} Array of paths */
 	styles = [];
 
-	/** @type {int[][]} Array of paths.  Used by activateEmbeds() to quickly find components. */
-	staticComponentPathss = [];
+	/**
+	 * @deprecated for componentPaths
+	 * @type {int[][]} Array of paths.  Used by activateEmbeds() to quickly find components. */
+	staticComponentPaths = [];
 
 	/** @type {int[][]} Array of paths to all components.  Used by activateEmbeds() to quickly find components. */
 	componentPaths = [];
@@ -294,12 +296,15 @@ export default class Shell {
 		for (let el of this.fragment.querySelectorAll('*')) {
 			if (el.tagName.includes('-') || el.hasAttribute('_is')) {
 
+				let path = getNodePath(el);
+				this.componentPaths.push(path);
+
 
 				// Dynamic components are components that have attributes with expression values.
 				// They are created from applyExprs()
 				// But static components are created in a separate path inside the NodeGroup constructor.
 				if (!this.paths.find(path => path.nodeMarker === el))
-					this.staticComponentPathss.push(getNodePath(el));
+					this.staticComponentPaths.push(path);
 			}
 		}
 	}

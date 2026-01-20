@@ -70,7 +70,7 @@ function removeProxy(obj) {
  * @param trackModified {boolean}
  * @returns {Node[]} Modified elements.  */
 export function renderWatched(root, trackModified=false) {
-	let rootNg = Globals.nodeGroups.get(root);
+	let rootNg = Globals.rootNodeGroups.get(root);
 	let modified;
 
 	if (trackModified)
@@ -300,7 +300,7 @@ class ProxyHandler {
 			}
 
 			else if (prop === 'push' || prop==='pop' || prop === 'splice') {
-				const rootNg = Globals.nodeGroups.get(this.root);
+				const rootNg = Globals.rootNodeGroups.get(this.root);
 				return new WatchedArray(rootNg, obj, this.exprPaths)[prop];
 			}
 		}
@@ -341,7 +341,7 @@ class ProxyHandler {
 
 		// 1. Add to the list of ExprPaths to re-render.
 		if (!this.rootNodeGroup)
-			this.rootNodeGroup = Globals.nodeGroups.get(this.root);
+			this.rootNodeGroup = Globals.rootNodeGroups.get(this.root);
 		const rootNg = this.rootNodeGroup
 
 		// New: // TODO: Should I instead be checking if the old value of val is a primitive?

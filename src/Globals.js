@@ -41,7 +41,7 @@ function reset() {
 		/**
 		 * Get the RootNodeGroup for an element.
 		 * @type {WeakMap<HTMLElement, RootNodeGroup>} */
-		nodeGroups: new WeakMap(),
+		rootNodeGroups: new WeakMap(),
 
 		/**
 		 * Used by h() path 9. */

@@ -56,7 +56,11 @@ export default class NodeGroup {
 
 	//dynamicComponents = new Set();
 
+	/** @deprecated for components. */
 	staticComponents = [];
+
+	/** @type {HTMLElement[]} All components that are not created by Expr's. */
+	components = [];
 
 	/** @type {Template} */
 	template;
@@ -70,7 +74,7 @@ export default class NodeGroup {
 
 	/**
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
-	 * Don't call applyExprs yet.
+	 * Don't call applyExprs() yet to apply expressions or instantiate components yet.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
 	 * @param parentPath {?ExprPath}
 	 * @param el {?HTMLElement} Optional, pre-existing htmlElement that will be the root.
@@ -93,14 +97,15 @@ export default class NodeGroup {
 			const shell = Shell.get(template.html);
 			const shellFragment = shell.fragment.cloneNode(true);
 
-			if (shellFragment?.nodeType === 11) { // DocumentFragment
-				this.startNode = shellFragment.childNodes[0];
-				this.endNode = shellFragment.childNodes[shellFragment.childNodes.length - 1];
+			if (shellFragment.nodeType === 11) { // DocumentFragment
+				this.startNode = shellFragment.firstChild;
+				this.endNode = shellFragment.lastChild;
 			} else
 				this.startNode = this.endNode = shellFragment;
 
 			let startingPathDepth = 0;
 
+			// Special setup for RootNodeGroup
 			if (this instanceof RootNodeGroup) {
 				this.options = options;
 				if (shellFragment instanceof Text) {
@@ -170,18 +175,18 @@ export default class NodeGroup {
 							startingPathDepth = 1;
 					}
 
-					this.updatePaths(this.root, shell.paths, startingPathDepth);
+					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
 					this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
 					this.activateEmbeds(this.root, shell, startingPathDepth);
 				}
 				this.startNode = this.endNode = this.root;
 
-				Globals.nodeGroups.set(this.root, this);
-			}
+				Globals.rootNodeGroups.set(this.root, this);
+			} // end if RootNodeGroup
 
 			else if (shell) {
-				if (shellFragment && template.exprs.length) {
-					this.updatePaths(shellFragment, shell.paths);
+				if (template.exprs.length) {
+					this.setPathsFromFragment(shellFragment, shell.paths);
 					this.staticComponents = this.findStaticComponents(shellFragment, shell);
 				}
 				this.activateEmbeds(shellFragment, shell);
@@ -448,17 +453,17 @@ export default class NodeGroup {
 	removeAndSaveOrphans() {
 		/*#IFDEV*/assert(this.nodesCache);/*#ENDIF*/
 		let fragment = Globals.doc.createDocumentFragment();
-		for (let node of this.getNodes())
-			fragment.append(node);
+		fragment.append(...this.getNodes());
 	}
 
 
 	/**
+	 * Copy paths in fragment to this.paths.
 	 * @param fragment {DocumentFragment|HTMLElement}
 	 * @param paths
 	 * @param startingPathDepth {int} */
-	updatePaths(fragment, paths, startingPathDepth=0) {
-		let pathLength = paths.length;
+	setPathsFromFragment(fragment, paths, startingPathDepth=0) {
+		let pathLength = paths.length; // For faster iteration
 		this.paths.length = pathLength;
 		for (let i=0; i<pathLength; i++) {
 			let path = paths[i].clone(fragment, startingPathDepth)
@@ -543,6 +548,8 @@ export default class NodeGroup {
 	}
 	//#ENDIF
 
+
+	/** @deprecated */
 	findStaticComponents(root, shell, startingPathDepth=0) {
 		let result = [];
 
@@ -550,7 +557,7 @@ export default class NodeGroup {
 		// Those are instead created by applyExpr() which calls applyComponentExprs() which calls instantiateComponent().
 		// Maybe someday these two paths will be merged?
 		// Must happen before ids because instantiateComponent will replace the element.
-		for (let path of shell.staticComponentPathss) {
+		for (let path of shell.staticComponentPaths) {
 			if (startingPathDepth)
 				path = path.slice(0, -startingPathDepth);
 			let el = resolveNodePath(root, path);
@@ -563,6 +570,7 @@ export default class NodeGroup {
 		return result;
 	}
 
+	/** @deprecated */
 	instantiateStaticComponents(staticComponents) {
 		// TODO: Why do we not call render() on the static component here?  The tests pass either way.
 		for (let i in staticComponents)

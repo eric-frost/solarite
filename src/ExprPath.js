@@ -87,7 +87,7 @@ export default class ExprPath {
 	 * TODO: What if one ExprPath has two .map() calls?  Maybe we just won't support that. */
 	mapCallback
 
-	isHtmlProperty = undefined;
+	isHtmlProperty;
 
 	/**
 	 * @param nodeBefore {Node}
@@ -752,13 +752,15 @@ export default class ExprPath {
 		// Resolve node paths.
 		let nodeMarker, nodeBefore;
 		let root = newRoot;
-		let path = pathOffset ? this.nodeMarkerPath.slice(0, -pathOffset) : this.nodeMarkerPath;
-		let length = path.length-1;
-		for (let i=length; i>0; i--) // Resolve the path.
+		let path = this.nodeMarkerPath;
+		let pathLength = path.length - pathOffset;
+		for (let i=pathLength-1; i>0; i--) // Resolve the path.
 			root = root.childNodes[path[i]];
 		let childNodes = root.childNodes;
 
-		nodeMarker = path.length ? childNodes[path[0]] : newRoot;
+		nodeMarker = pathLength
+			? childNodes[path[0]]
+			: newRoot;
 		if (this.nodeBefore)
 			nodeBefore = childNodes[this.nodeBeforeIndex];
 
