@@ -63,7 +63,7 @@ export default class Template {
 	render(el=null, options={}) {
 		let firstTime = false;
 
-		// Typical path used in render() methods.
+
 		let ng = el && Globals.nodeGroups.get(el);
 		if (!ng) {
 			ng = new RootNodeGroup(this, null, el, options);
