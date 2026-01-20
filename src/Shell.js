@@ -3,6 +3,10 @@ import ExprPath, {ExprPathType, getNodePath} from "./ExprPath.js";
 import Util from "./Util.js";
 import Globals from "./Globals.js";
 import HtmlParser from "./HtmlParser.js";
+import ExprPathEvent from "./ExprPathEvent.js";
+import ExprPathAttribValue from "./ExprPathAttribValue.js";
+import ExprPathAttribs from "./ExprPathAttribs.js";
+import ExprPathNodes from "./ExprPathNodes.js";
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -92,7 +96,7 @@ export default class Shell {
 					// Whole attribute
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/)
 					if (matches) {
-						this.paths.push(new ExprPath(null, node, ExprPathType.AttribMultiple));
+						this.paths.push(new ExprPathAttribs(null, node, ExprPathType.AttribMultiple));
 						placeholdersUsed ++;
 						node.removeAttribute(matches[0]);
 					}
@@ -102,9 +106,12 @@ export default class Shell {
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
-							let type = Util.isEvent(attr.name) ? ExprPathType.Event : ExprPathType.AttribValue;
 
-							this.paths.push(new ExprPath(null, node, type, attr.name, nonEmptyParts));
+							this.paths.push(
+								Util.isEvent(attr.name)
+									? new ExprPathEvent(null, node, null, attr.name, nonEmptyParts)
+									: new ExprPathAttribValue(null, node, null, attr.name, nonEmptyParts)
+							);
 							placeholdersUsed += parts.length - 1;
 							node.setAttribute(attr.name, parts.join(''));
 						}
@@ -140,7 +147,7 @@ export default class Shell {
 				}
 				/*#IFDEV*/assert(nodeMarker);/*#ENDIF*/
 
-				let path = new ExprPath(nodeBefore, nodeMarker, ExprPathType.Content);
+				let path = new ExprPathNodes(nodeBefore, nodeMarker, ExprPathType.Content);
 				this.paths.push(path);
 				placeholdersUsed ++;
 			}
@@ -157,8 +164,7 @@ export default class Shell {
 			else if (node.nodeType === Node.COMMENT_NODE) {
 				let parts = node.textContent.split(/[\ue000-\uf8ff]/g);
 				for (let i=0; i<parts.length-1; i++) {
-					let path = new ExprPath(node.previousSibling, node)
-					path.type = ExprPathType.Comment;
+					let path = new ExprPath(node.previousSibling, node, ExprPathType.Comment)
 					this.paths.push(path);
 					placeholdersUsed ++;
 				}
@@ -178,7 +184,7 @@ export default class Shell {
 					}
 
 					for (let i=0, node; node=placeholders[i]; i++) {
-						let path = new ExprPath(node.previousSibling, node, ExprPathType.Content);
+						let path = new ExprPathNodes(node.previousSibling, node, ExprPathType.Content);
 						this.paths.push(path);
 						placeholdersUsed ++;
 
