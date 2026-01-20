@@ -2,7 +2,6 @@ import {assert} from "./assert.js";
 import {getObjectHash, getObjectId} from "./hash.js";
 import Globals from "./Globals.js";
 import RootNodeGroup from "./RootNodeGroup.js";
-import Util from "./Util.js";
 
 /**
  * The html strings and evaluated expressions from an html tagged template.

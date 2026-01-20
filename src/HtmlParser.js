@@ -18,7 +18,7 @@ export default class HtmlParser {
 	/**
 	 * Parse the next chunk of html, starting with the same context we left off with from the previous chunk.
 	 * @param html {string}
-	 * @param onContextChange {?function(html:string, index:int, oldContext:string, newContext:string)}
+	 * @param onContextChange {?function(html:string, index:int, prevContext:string, nextContext:string)}
 	 *     Called every time the context changes, and again at the last context.
 	 * @return {('Attribute','Text','Tag')} The context at the end of html.  */
 	parse(html, onContextChange=null) {

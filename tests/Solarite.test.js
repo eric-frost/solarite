@@ -2867,15 +2867,20 @@ Testimony.test('Solarite.component.staticWithDynamicChildren', () => {
 
 Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...}', () => {
 
+	let bConstructorCalls = 0;
+	let bRenderCalls = 0;
+
 	class B513 extends Solarite {
 		constructor({name, userId}={}) {
 			super();
 			this.name = name;
 			this.userId = userId;
+			bConstructorCalls++;
 		}
 
 		render() {
 			h(this)`<b-513>${this.name} | ${this.userId}</b-513>`
+			bRenderCalls++;
 		}
 	}
 	B513.define();
@@ -2891,6 +2896,14 @@ Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...
 	a.render();
 
 	assert.eq(a.outerHTML, `<a-513><div><b-513 name="User" user-id="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-513></div></a-513>`);
+	assert.eq(bConstructorCalls, 1);
+
+	// TODO:
+	//assert.eq(bRenderCalls, 1);
+
+	// a.render(); // Should call b.render() but not b.constructor()
+	// assert.eq(bConstructorCalls, 1);
+	//assert.eq(bRenderCalls, 2);
 });
 
 Testimony.test('Solarite.component.dynamicAttribsTwoComponents', 'Attribs specified via ${...}', () => {

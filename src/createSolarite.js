@@ -9,7 +9,7 @@ let getName = 'getName';
 function defineClass(Class, tagName) {
 	if (!customElements[getName](Class)) { // If not previously defined.
 		tagName = tagName || Util.camelToDashes(Class.name)
-		if (!tagName.includes('-'))
+		if (!tagName.includes('-')) // Browsers require that web components always have a dash in the name.
 			tagName += '-element';
 		customElements[define](tagName, Class)
 	}

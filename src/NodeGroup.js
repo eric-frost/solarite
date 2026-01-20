@@ -326,8 +326,8 @@ export default class NodeGroup {
 		let isPreIsElement = el.hasAttribute('_is');
 		let attribs, children;
 		if (isPreHtmlElement || isPreIsElement)
-			[el, attribs, children] = this.instantiateComponent(el, isPreHtmlElement, props);
-		if (doRender && el.render) {
+			[el, attribs, children] = this.instantiateComponent(el, isPreHtmlElement, props); // calls render()
+		if (doRender && el.render /*&& !el.renderFirstTime*/) { // If render not already called.  But enabling this breaks tests.
 			if (!attribs) { // if not set by instantiateComponent
 				attribs = Util.attribsToObject(el, 'solarite-placeholder');
 				for (let name in props || {})
@@ -579,7 +579,7 @@ export default class NodeGroup {
 		// Those are instead created by applyExpr() which calls applyComponentExprs() which calls instantiateComponent().
 		// Maybe someday these two paths will be merged?
 		// Must happen before ids because instantiateComponent will replace the element.
-		for (let path of shell.staticComponents) {
+		for (let path of shell.staticComponentPathss) {
 			if (startingPathDepth)
 				path = path.slice(0, -startingPathDepth);
 			let el = resolveNodePath(root, path);

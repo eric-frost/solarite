@@ -27,15 +27,14 @@ function dump(obj) {
   | Asserts          |
   └──────────────────╯*/
 class AssertError extends Error {
-	constructor(msgOrActual='Assertion Failed', expected, op) {
-		if (expected)
+	constructor(msgOrActual='Assertion Failed', expected, op, message) {
+		if (message)
+			super(message);
+		else if (expected !== undefined)
 			super(`Failed:\n${dump(msgOrActual)}\n${op}\n${dump(expected)}`);
 		else
 			super(msgOrActual);
 		this.name = "AssertError";
-		// this.expected = expected;
-		// this.actual = actual;
-		// this.op = op;
 	}
 }
 
@@ -44,8 +43,8 @@ function assert(val, message='zZz_unused') {
 		if (Testimony.debugOnAssertFail)
 			debugger;
 		if (message === 'zZz_unused')
-			message = val;
-		throw new AssertError(message, true);
+			message = 'Assertion Failed';
+		throw new AssertError(message);
 	}
 }
 
@@ -54,58 +53,58 @@ Object.assign(assert, {
 		if (!isSame(actual, expected)) { // JUnit, PhpUnit, and mocha all use the order: expected, actual.
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(actual, expected, '==');
+			throw new AssertError(actual, expected, '==', message);
 		}
 	},
 
-	eqJson(actual, expected) {
+	eqJson(actual, expected, message) {
 		const jActual = JSON.stringify(actual, null, 2);
 		const jExpected = JSON.stringify(expected, null, 2);
 
 		if (jActual !== jExpected) {
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(jActual, jExpected, 'eqJson');
+			throw new AssertError(jActual, jExpected, 'eqJson', message);
 		}
 	},
 
-	neq(val1, val2) {
+	neq(val1, val2, message) {
 		if (isSame(val1, val2)) {
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(val1, val2, '!=');
+			throw new AssertError(val1, val2, '!=', message);
 		}
 	},
 
-	lte(val1, val2) {
+	lte(val1, val2, message) {
 		if (val1 > val2) {
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(val1, val2, ' > ');
+			throw new AssertError(val1, val2, ' > ', message);
 		}
 	},
 
-	lt(val1, val2) {
+	lt(val1, val2, message) {
 		if (val1 >= val2) {
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(val1, val2, ' >= ');
+			throw new AssertError(val1, val2, ' >= ', message);
 		}
 	},
 
-	gt(val1, val2) {
+	gt(val1, val2, message) {
 		if (val1 <= val2) {
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(val1, val2, ' <= ');
+			throw new AssertError(val1, val2, ' <= ', message);
 		}
 	},
 
-	gte(val1, val2) {
+	gte(val1, val2, message) {
 		if (val1 < val2) {
 			if (Testimony.debugOnAssertFail)
 				debugger;
-			throw new AssertError(val1, val2, ' < ');
+			throw new AssertError(val1, val2, ' < ', message);
 		}
 	},
 
@@ -846,9 +845,26 @@ var Testimony = {
 
 	rootTest: new Test(),
 	passedTests: [],
+
+	/** @type {[string, string][]} E.g: [ [ 'users.account.resetPassword', 'Error: expected 1 to equal 2']] */
 	failedTests: [],
 
 	finished: false,
+
+	/**
+	 * Check if a test with the given name exists.
+	 * @param name {string}
+	 * @returns {boolean} */
+	testExists(name) {
+		let path = name.split(/\./g).filter(part => part.trim().length);
+		let test = this.rootTest;
+		for (let item of path) {
+			if (!test.children || !test.children[item])
+				return false;
+			test = test.children[item];
+		}
+		return true;
+	},
 
 	/**
 	 * Run the root test and any of the root tests children.
@@ -862,6 +878,22 @@ var Testimony = {
 	},
 
 	async run() {
+		// Verify that all tests requested via 'r=' exist.
+		if (globalThis.window?.location) {
+			let url = new URL(window.location);
+			let requested = url.searchParams.getAll('r');
+			for (let name of requested) {
+				if (!this.testExists(name)) {
+					//this.failedTests.push([name, `Test does not exist.`]);
+
+					// Doing it this way puts a red x on its parent:
+					Testimony.test(name, () => {
+					 	throw new Error(`Test "${name}" does not exist.`);
+					});
+				}
+			}
+		}
+
 		// Let all async tests run and finish before starting any sync tests.
 		// This gets us results faster than if we run them in the opposite order.
 		await this.rootTest.run(false);

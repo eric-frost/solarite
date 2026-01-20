@@ -1974,7 +1974,7 @@ class HtmlParser {
 	/**
 	 * Parse the next chunk of html, starting with the same context we left off with from the previous chunk.
 	 * @param html {string}
-	 * @param onContextChange {?function(html:string, index:int, oldContext:string, newContext:string)}
+	 * @param onContextChange {?function(html:string, index:int, prevContext:string, nextContext:string)}
 	 *     Called every time the context changes, and again at the last context.
 	 * @return {('Attribute','Text','Tag')} The context at the end of html.  */
 	parse(html, onContextChange=null) {
@@ -2075,7 +2075,10 @@ class Shell {
 	styles = [];
 
 	/** @type {int[][]} Array of paths.  Used by activateEmbeds() to quickly find components. */
-	staticComponents = [];
+	staticComponentPathss = [];
+
+	/** @type {int[][]} Array of paths to all components.  Used by activateEmbeds() to quickly find components. */
+	componentPaths = [];
 
 	/** @type {{path:int[], attribs:Record<string, string>}[]} */
 	//componentAttribs = [];
@@ -2094,6 +2097,7 @@ class Shell {
 		this._html = html.join('');
 		//#ENDIF
 
+		// If no html tags or entities, just create a text node.
 		if (html.length === 1 && !html[0].match(/[<&]/)) {
 			this.fragment = Globals$1.doc.createTextNode(html[0]);
 			return;
@@ -2101,11 +2105,11 @@ class Shell {
 
 
 		// 1.  Add placeholders
-		let joinedHtml = Shell.addPlaceholders(html);
+		let htmlWithPlaceholders = Shell.addPlaceholders(html);
 
 		let template = Globals$1.doc.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
-		if (joinedHtml)
-			template.innerHTML = joinedHtml;
+		if (htmlWithPlaceholders)
+			template.innerHTML = htmlWithPlaceholders;
 		else // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
 			template.content.append(Globals$1.doc.createTextNode(''));
 		this.fragment = template.content;
@@ -2117,7 +2121,7 @@ class Shell {
 		const walker = Globals$1.doc.createTreeWalker(this.fragment, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
 		while (node = walker.nextNode()) {
 
-			// Remove previous after each iteration, so paths will still be calculated correctly.
+			// Remove previous elements after each iteration, so paths will still be calculated correctly.
 			toRemove.map(el => el.remove());
 			toRemove = [];
 			
@@ -2260,24 +2264,12 @@ class Shell {
 	/**
 	 * 1. Add a Unicode placeholder char for where expressions go within attributes.
 	 * 2. Add a comment placeholder for where expressions are children of other nodes.
-	 * 3. Append -solarite-placeholder to the tag names of custom components so that we can wait to instantiate them later.
+	 * 3. Append -solarite-placeholder to the tag names of custom components so that we can instantiate them later
+	 *    when we can manually call their constructors with the proper attribute and children arguments from evaluated expressions.
 	 * @param htmlChunks {string[]}
-	 * @returns {string} */
+	 * @returns {string} Html with the placeholders in place. */
 	static addPlaceholders(htmlChunks) {
-		let tokens = [];
-
-		function addToken(token, context) {
-
-			if (context === HtmlParser.Tag) {
-				// Find Solarite Components tags and append -solarite-placeholder to their tag names
-				// and give them a solarite-placeholder attribute so we can easily find them later.
-				// This way we can gather their constructor arguments and their children before we call their constructor.
-				// Later, NodeGroup.instantiateComponent() will replace them with the real components.
-				// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-				token = token.replace(/^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i, match => match + '-solarite-placeholder solarite-placeholder');
-			}
-			tokens.push(token);
-		}
+		let result = [];
 
 		let htmlParser = new HtmlParser(); // Reset the context.
 		for (let i = 0; i < htmlChunks.length; i++) {
@@ -2285,10 +2277,21 @@ class Shell {
 
 			// Append -solarite-placholder to web component tags, so we can pass args to them when they're instantiated.
 			let lastIndex = 0;
-			let context = htmlParser.parse(lastHtml, (html, index, oldContext, newContext) => {
+			let context = htmlParser.parse(lastHtml, (html, index, prevContext, nextContext) => { // This function is called every time the html context changes.
 				if (lastIndex !== index) {
 					let token = html.slice(lastIndex, index);
-					addToken(token, oldContext);
+
+					if (prevContext === HtmlParser.Tag) {
+						// Find Web Component tags and append -solarite-placeholder to their tag names
+						// and give them a solarite-placeholder attribute so we can easily find them later.
+						// This way we can gather their constructor arguments and their children before we call their constructor.
+						// Later, NodeGroup.instantiateComponent() will replace them with the real components.
+						// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
+						const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i;
+						token = token.replace(isWebComponentTagName, match => match + '-solarite-placeholder solarite-placeholder');
+					}
+
+					result.push(token);
 				}
 				lastIndex = index;
 			});
@@ -2296,13 +2299,13 @@ class Shell {
 			// Insert placeholders
 			if (i < htmlChunks.length - 1) {
 				if (context === HtmlParser.Text)
-					tokens.push(commentPlaceholder); // Comment Placeholder. because we can't put text in between <tr> tags for example.
+					result.push(commentPlaceholder); // Comment Placeholder. because we can't put text in between <tr> tags for example.
 				else
-					tokens.push(String.fromCharCode(attribPlaceholder + i));
+					result.push(String.fromCharCode(attribPlaceholder + i));
 			}
 		}
 
-		return tokens.join('');
+		return result.join('');
 	}
 
 	/**
@@ -2331,13 +2334,15 @@ class Shell {
 		this.ids = Array.prototype.map.call(idEls, el => getNodePath(el));
 
 		for (let el of this.fragment.querySelectorAll('*')) {
-			if (el.tagName.includes('-') || el.hasAttribute('_is'))
+			if (el.tagName.includes('-') || el.hasAttribute('_is')) {
+
 
 				// Dynamic components are components that have attributes with expression values.
 				// They are created from applyExprs()
 				// But static components are created in a separate path inside the NodeGroup constructor.
 				if (!this.paths.find(path => path.nodeMarker === el))
-					this.staticComponents.push(getNodePath(el));
+					this.staticComponentPathss.push(getNodePath(el));
+			}
 		}
 	}
 
@@ -2694,8 +2699,8 @@ class NodeGroup {
 		let isPreIsElement = el.hasAttribute('_is');
 		let attribs, children;
 		if (isPreHtmlElement || isPreIsElement)
-			[el, attribs, children] = this.instantiateComponent(el, isPreHtmlElement, props);
-		if (doRender && el.render) {
+			[el, attribs, children] = this.instantiateComponent(el, isPreHtmlElement, props); // calls render()
+		if (doRender && el.render /*&& !el.renderFirstTime*/) { // If render not already called.  But enabling this breaks tests.
 			if (!attribs) { // if not set by instantiateComponent
 				attribs = Util.attribsToObject(el, 'solarite-placeholder');
 				for (let name in props || {})
@@ -2947,7 +2952,7 @@ class NodeGroup {
 		// Those are instead created by applyExpr() which calls applyComponentExprs() which calls instantiateComponent().
 		// Maybe someday these two paths will be merged?
 		// Must happen before ids because instantiateComponent will replace the element.
-		for (let path of shell.staticComponents) {
+		for (let path of shell.staticComponentPathss) {
 			if (startingPathDepth)
 				path = path.slice(0, -startingPathDepth);
 			let el = resolveNodePath(root, path);
@@ -3043,24 +3048,6 @@ function isReplaceEl(fragment, el) {
 }
 
 class RootNodeGroup extends NodeGroup {
-
-
-
-	/**
-	 * Only used by watch:
-	 * When we call renderWatched() we re-render these expressions, then clear this to a new Map()
-	 * @type {Map<ExprPath, ValueOp|WholeArrayOp|ArraySpliceOp[]>} */
-	//exprsToRender = new Map();
-
-	/**
-	 * Create all the elements from the template's fragment.
-	 * But don't call applyExprs() yet.
-	 * @param template {Template}
-	 * @param el {?HTMLElement} Optional, pre-existing htmlElement that will be the root.
-	 * @param options {?object} */
-	constructor(template, parentPath, el, options) {
-		super(template, parentPath, el, options);
-	}
 
 	/**
 	 * @param el {HTMLElement}
@@ -3689,7 +3676,7 @@ let getName = 'getName';
 function defineClass(Class, tagName) {
 	if (!customElements[getName](Class)) { // If not previously defined.
 		tagName = tagName || Util.camelToDashes(Class.name);
-		if (!tagName.includes('-'))
+		if (!tagName.includes('-')) // Browsers require that web components always have a dash in the name.
 			tagName += '-element';
 		customElements[define](tagName, Class);
 	}
