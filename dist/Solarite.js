@@ -1098,82 +1098,6 @@ class ExprPath {
 		}
 	}
 
-
-	/**
-	 * Used by watch() for inserting/removing/replacing individual loop items.
-	 * @param op {ArraySpliceOp} */
-	applyWatchArrayOp(op) {
-
-		// Replace NodeGroups
-		let replaceCount = Math.min(op.deleteCount, op.items.length);
-		let deleteCount = op.deleteCount - replaceCount;
-		for (let i=0; i<replaceCount; i++) {
-			let oldNg = this.nodeGroups[op.index + i]; // TODO: One expr can create multiple nodegroups.
-
-			// Try to find an exact match
-			let func = this.mapCallback || this.watchFunction;
-			let expr = func(op.items[i]);
-
-			// If the result of func isn't a template, conver it to one or more templates.
-			this.exprToTemplates(expr, template => { // TODO: An expr can create multiple NodeGroups.  I need a way to group them.
-
-				let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
-				if (ng && ng === oldNg) ; else {
-
-					// Find a close match or create a new node group
-					if (!ng)
-						ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
-					this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
-
-					// Splice in the new nodes.
-					let insertBefore = oldNg.startNode;
-					for (let node of ng.getNodes())
-						insertBefore.parentNode.insertBefore(node, insertBefore);
-
-					// Remove the old nodes.
-					if (ng !== oldNg)
-						oldNg.removeAndSaveOrphans();
-				}
-			});
-		}
-
-		// Delete extra at the end.
-		if (deleteCount > 0) {
-			for (let i=0; i<deleteCount; i++) {
-				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
-				oldNg.removeAndSaveOrphans();
-			}
-			this.nodeGroups.splice(op.index + replaceCount, deleteCount);
-		}
-
-		// Add extra at the end.
-		else {
-			let newItems = op.items.slice(replaceCount);
-
-			let insertBefore = this.nodeGroups[op.index + replaceCount]?.startNode || this.nodeMarker;
-			for (let i = 0; i < newItems.length; i++) { // We use nodeMarker if the subequent (or all) nodeGroups have been removed.
-
-
-				// Try to find exact match
-				let template = this.mapCallback(newItems[i]);
-				let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
-				if (!ng) 	// Find a close match or create a new node group
-					ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
-
-				this.nodeGroups.push(ng);
-
-				// Splice in the new nodes.
-				for (let node of ng.getNodes())
-					insertBefore.parentNode.insertBefore(node, insertBefore);
-			}
-		}
-
-		
-
-		// TODO: update or invalidate the nodes cache?
-		this.nodesCache = null;
-	}
-
 	/**
 	 * Call function when eventName is triggerd on node.
 	 * @param node {HTMLElement}
@@ -1263,104 +1187,9 @@ class ExprPath {
 		return result;
 	}
 
-	/**
-	 * Clear the nodeCache of this ExprPath, as well as all parent and child ExprPaths that
-	 * share the same DOM parent node. */
-	clearNodesCache() {
-		let path = this;
-
-		// Clear cache parent ExprPaths that have the same parentNode
-		let parentNode = this.nodeMarker.parentNode;
-		while (path && path.nodeMarker.parentNode === parentNode) {
-			path.nodesCache = null;
-			path = path.parentNg?.parentPath;
-
-			// If stuck in an infinite loop here, the problem is likely due to Template hash colisions.
-			// Which cause one path to be the descendant of itself, creating a cycle.
-		}
-	}
-
 
 	/**
-	 * Attempt to remove all of this ExprPath's nodes from the DOM, if it can be done using a special fast method.
-	 * @returns {boolean} Returns false if Nodes weren't removed, and they should instead be removed manually. */
-	fastClear() {
-		let parent = this.nodeBefore.parentNode;
-		if (this.nodeBefore === parent.firstChild && this.nodeMarker === parent.lastChild) {
-
-			// If parent is the only child of the grandparent, replace the whole parent.
-			// And if it has no siblings, it's not created by a NodeGroup/path.
-			// Commented out because this will break any references.
-			// And because I don't see much performance difference.
-			// let grandparent = parent.parentNode
-			// if (grandparent && parent === grandparent.firstChild && parent === grandparent.lastChild && !parent.hasAttribute('id')) {
-			// 	let replacement = document.createElement(parent.tagName)
-			// 	replacement.append(this.nodeBefore, this.nodeMarker)
-			// 	for (let attrib of parent.attributes)
-			// 		replacement.setAttribute(attrib.name, attrib.value)
-			// 	parent.replaceWith(replacement)
-			// }
-			// else {
-			parent.innerHTML = ''; // Faster than calling .removeChild() a thousand times.
-			parent.append(this.nodeBefore, this.nodeMarker);
-			//}
-			return true;
-		}
-		return false;
-	}
-
-	/**
-	 * Recursively traverse expr.
-	 * If a value is a function, evaluate it.
-	 * If a value is an array, recurse on each item.
-	 * If it's a primitive, convert it to a Template.
-	 * Otherwise pass the item (which is now either a Template or a Node) to callback.
-	 * TODO: This could be static if not for the watch code, which doesn't work anyway.
-	 * @param expr
-	 * @param callback {function(Node|Template)}*/
-	exprToTemplates(expr, callback) {
-		if (Array.isArray(expr))
-			for (let subExpr of expr)
-				this.exprToTemplates(subExpr, callback);
-
-		else if (typeof expr === 'function') {
-			// TODO: One ExprPath can have multiple expr functions.
-			// But if using it as a watch, it should only have one at the top level.
-			// So maybe this is ok.
-			Globals$1.currentExprPath = this; // Used by watch()
-
-			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
-			Globals$1.currentExprPath = null;
-
-			this.exprToTemplates(expr, callback);
-		}
-
-		// String/Number/Date/Boolean
-		else if (!(expr instanceof Template) && !(expr?.nodeType)){
-			// Convert expression to a string.
-			if (expr === undefined || expr === false || expr === null) // Util.isFalsy() inlined
-				expr = '';
-			else if (typeof expr !== 'string')
-				expr += '';
-
-			// Get the same Template for the same string each time.
-			// let template = Globals.stringTemplates[expr];
-			// if (!template) {
-
-			let template = new Template([expr], []);
-			template.isText = true;
-			//	Globals.stringTemplates[expr] = template;
-			//}
-
-			// Recurse.
-			this.exprToTemplates(template, callback);
-		}
-		else
-			callback(expr);
-	}
-
-	/**
+	 * If not for watch.js, this could be moved to ExprPathNodes.js
 	 * @return {(Node|HTMLElement)[]} */
 	getNodes() {
 
@@ -1374,15 +1203,12 @@ class ExprPath {
 			return [this.nodeMarker];
 		}
 
-
 		let result;
 
 		// This shaves about 5ms off the partialUpdate benchmark.
 		result = this.nodesCache;
 		if (result) {
-
 			
-
 			return result
 		}
 
@@ -1396,132 +1222,6 @@ class ExprPath {
 
 		this.nodesCache = result;
 		return result;
-	}
-
-	/** @return {HTMLElement|ParentNode} */
-	getParentNode() {
-		return this.nodeMarker.parentNode
-	}
-
-	/**
-	 * Get an unused NodeGroup that matches the template's html and expressions (exact=true)
-	 * or at least the html (exact=false).
-	 * Remove it from nodeGroupsFree if it exists, or create it if not.
-	 * Then add it to nodeGroupsInUse.
-	 *
-	 * @param template {Template}
-	 * @param exact {boolean}
-	 *     If true, return an exact match, or null.
-	 *     If false, either find a match for the template's html and then apply the template's expressions,
-	 *         or createa  new NodeGroup from the template.
-	 * @return {NodeGroup} */
-	getNodeGroup(template, exact=true) {
-		let result;
-		let collection = this.nodeGroupsAttachedAvailable;
-
-		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
-		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
-			result = collection.deleteAny(template.getExactKey());
-			if (!result) { // try searching detached
-				collection = this.nodeGroupsDetachedAvailable;
-				result = collection.deleteAny(template.getExactKey());
-			}
-
-			if (result) {// also delete the matching close key.
-				collection.deleteSpecific(template.getCloseKey(), result);
-
-				//result.applyExprs(template.exprs);
-			}
-			else
-				return null;
-		}
-
-		// Find a close match.
-		// This is a match that has matching html, but different expressions applied.
-		// We can then apply the expressions to make it an exact match.
-		// If the template has no expressions, the key is the html, and we've already searched for an exact match.  There won't be an inexact match.
-		else if (template.exprs.length) {
-			result = collection.deleteAny(template.getCloseKey());
-			if (!result) { // try searching detached
-				collection = this.nodeGroupsDetachedAvailable;
-				result = collection.deleteAny(template.getCloseKey());
-			}
-
-			if (result) {
-				
-				collection.deleteSpecific(result.exactKey, result);
-
-				// Update this close match with the new expression values.
-				result.applyExprs(template.exprs);
-				result.exactKey = template.getExactKey();
-			}
-		}
-
-		if (!result) {
-			result = new NodeGroup(template, this);
-			result.applyExprs(template.exprs);
-			result.exactKey = template.getExactKey();
-
-			// TODO: All tests still pass if this is commetned out:
-			// Perhaps I need a test with a child NodeGroup instantiating a static component?
-			result.instantiateStaticComponents(result.staticComponents);
-		}
-
-
-		this.nodeGroupsRendered.push(result);
-
-		
-		return result;
-	}
-
-	/**
-	 * TODO: Rename this to nodeGroupsInUse, nodeGroupsAvialableAttached and nodeGroupsAvailableDetached?
-	 * Nodes that have been used during the current render().
-	 * Used with getNodeGroup() and freeNodeGroups().
-	 * TODO: Use an array of WeakRef so the gc can collect them?
-	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
-	 * @type {NodeGroup[]} */
-	nodeGroupsRendered = [];
-
-	/**
-	 * Nodes that were added to the web component during the last render(), but are available to be used again.
-	 * Used with getNodeGroup() and freeNodeGroups().
-	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
-	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
-	nodeGroupsAttachedAvailable = new MultiValueMap();
-
-	/**
-	 * Nodes that were not added to the web component during the last render(), and available to be used again.
-	 * @type {MultiValueMap} */
-	nodeGroupsDetachedAvailable = new MultiValueMap();
-
-
-	/**
-	 * Move everything from this.nodeGroupsRendered to this.nodeGroupsAttached and nodeGroupsDetached.
-	 * Called at the beginning of applyNodes() so it can have NodeGroups to use.
-	 * TODO: this could run as needed in getNodeGroup? */
-	freeNodeGroups() {
-		// Add nodes that weren't used during render() to nodeGroupsDetached
-		let previouslyAttached = this.nodeGroupsAttachedAvailable.data;
-		let detached = this.nodeGroupsDetachedAvailable.data;
-		for (let key in previouslyAttached) {
-			let set = detached[key];
-			if (!set)
-				detached[key] = previouslyAttached[key];
-			else
-				for (let ng of previouslyAttached[key])
-					set.add(ng);
-		}
-
-		// Add nodes that were used during render() to nodeGroupsRendered.
-		this.nodeGroupsAttachedAvailable = new MultiValueMap();
-		let nga = this.nodeGroupsAttachedAvailable;
-		for (let ng of this.nodeGroupsRendered) {
-			nga.add(ng.exactKey, ng);
-			nga.add(ng.closeKey, ng);
-		}
-
-		this.nodeGroupsRendered = [];
 	}
 
 	
@@ -1546,31 +1246,6 @@ const ExprPathType = {
 	/** Value of an attribute. */
 	Event: 5,
 };
-
-
-/** @return {int[]} Returns indices in reverse order, because doing it that way is faster. */
-function getNodePath(node) {
-	let result = [];
-	while(true) {
-		let parent = node.parentNode;
-		if (!parent)
-			break;
-		result.push(Array.prototype.indexOf.call(node.parentNode.childNodes, node));
-		node = parent;
-	}
-	return result;
-}
-
-/**
- * Note that the path is backward, with the outermost element at the end.
- * @param root {HTMLElement|Document|DocumentFragment|ParentNode}
- * @param path {int[]}
- * @returns {Node|HTMLElement|HTMLStyleElement} */
-function resolveNodePath(root, path) {
-	for (let i=path.length-1; i>=0; i--)
-		root = root.childNodes[path[i]];
-	return root;
-}
 
 class HtmlParser {
 	constructor() {
@@ -1925,6 +1600,307 @@ class ExprPathNodes extends ExprPath {
 			});
 	}
 
+
+
+
+	/**
+	 * Used by watch() for inserting/removing/replacing individual loop items.
+	 * @param op {ArraySpliceOp} */
+	applyWatchArrayOp(op) {
+
+		// Replace NodeGroups
+		let replaceCount = Math.min(op.deleteCount, op.items.length);
+		let deleteCount = op.deleteCount - replaceCount;
+		for (let i=0; i<replaceCount; i++) {
+			let oldNg = this.nodeGroups[op.index + i]; // TODO: One expr can create multiple nodegroups.
+
+			// Try to find an exact match
+			let func = this.mapCallback || this.watchFunction;
+			let expr = func(op.items[i]);
+
+			// If the result of func isn't a template, conver it to one or more templates.
+			this.exprToTemplates(expr, template => { // TODO: An expr can create multiple NodeGroups.  I need a way to group them.
+
+				let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
+				if (ng && ng === oldNg) ; else {
+
+					// Find a close match or create a new node group
+					if (!ng)
+						ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
+					this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
+
+					// Splice in the new nodes.
+					let insertBefore = oldNg.startNode;
+					for (let node of ng.getNodes())
+						insertBefore.parentNode.insertBefore(node, insertBefore);
+
+					// Remove the old nodes.
+					if (ng !== oldNg)
+						oldNg.removeAndSaveOrphans();
+				}
+			});
+		}
+
+		// Delete extra at the end.
+		if (deleteCount > 0) {
+			for (let i=0; i<deleteCount; i++) {
+				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
+				oldNg.removeAndSaveOrphans();
+			}
+			this.nodeGroups.splice(op.index + replaceCount, deleteCount);
+		}
+
+		// Add extra at the end.
+		else {
+			let newItems = op.items.slice(replaceCount);
+
+			let insertBefore = this.nodeGroups[op.index + replaceCount]?.startNode || this.nodeMarker;
+			for (let i = 0; i < newItems.length; i++) { // We use nodeMarker if the subequent (or all) nodeGroups have been removed.
+
+
+				// Try to find exact match
+				let template = this.mapCallback(newItems[i]);
+				let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
+				if (!ng) 	// Find a close match or create a new node group
+					ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
+
+				this.nodeGroups.push(ng);
+
+				// Splice in the new nodes.
+				for (let node of ng.getNodes())
+					insertBefore.parentNode.insertBefore(node, insertBefore);
+			}
+		}
+
+		
+
+		// TODO: update or invalidate the nodes cache?
+		this.nodesCache = null;
+	}
+
+
+	/**
+	 * Clear the nodeCache of this ExprPath, as well as all parent and child ExprPaths that
+	 * share the same DOM parent node. */
+	clearNodesCache() {
+		let path = this;
+
+		// Clear cache parent ExprPaths that have the same parentNode
+		let parentNode = this.nodeMarker.parentNode;
+		while (path && path.nodeMarker.parentNode === parentNode) {
+			path.nodesCache = null;
+			path = path.parentNg?.parentPath;
+
+			// If stuck in an infinite loop here, the problem is likely due to Template hash colisions.
+			// Which cause one path to be the descendant of itself, creating a cycle.
+		}
+	}
+
+
+	/**
+	 * Attempt to remove all of this ExprPath's nodes from the DOM, if it can be done using a special fast method.
+	 * @returns {boolean} Returns false if Nodes weren't removed, and they should instead be removed manually. */
+	fastClear() {
+		let parent = this.nodeBefore.parentNode;
+		if (this.nodeBefore === parent.firstChild && this.nodeMarker === parent.lastChild) {
+
+			// If parent is the only child of the grandparent, replace the whole parent.
+			// And if it has no siblings, it's not created by a NodeGroup/path.
+			// Commented out because this will break any references.
+			// And because I don't see much performance difference.
+			// let grandparent = parent.parentNode
+			// if (grandparent && parent === grandparent.firstChild && parent === grandparent.lastChild && !parent.hasAttribute('id')) {
+			// 	let replacement = document.createElement(parent.tagName)
+			// 	replacement.append(this.nodeBefore, this.nodeMarker)
+			// 	for (let attrib of parent.attributes)
+			// 		replacement.setAttribute(attrib.name, attrib.value)
+			// 	parent.replaceWith(replacement)
+			// }
+			// else {
+			parent.innerHTML = ''; // Faster than calling .removeChild() a thousand times.
+			parent.append(this.nodeBefore, this.nodeMarker);
+			//}
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Recursively traverse expr.
+	 * If a value is a function, evaluate it.
+	 * If a value is an array, recurse on each item.
+	 * If it's a primitive, convert it to a Template.
+	 * Otherwise pass the item (which is now either a Template or a Node) to callback.
+	 * TODO: This could be static if not for the watch code, which doesn't work anyway.
+	 * @param expr
+	 * @param callback {function(Node|Template)}*/
+	exprToTemplates(expr, callback) {
+		if (Array.isArray(expr))
+			for (let subExpr of expr)
+				this.exprToTemplates(subExpr, callback);
+
+		else if (typeof expr === 'function') {
+			// TODO: One ExprPath can have multiple expr functions.
+			// But if using it as a watch, it should only have one at the top level.
+			// So maybe this is ok.
+			Globals$1.currentExprPath = this; // Used by watch()
+
+			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
+			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
+			Globals$1.currentExprPath = null;
+
+			this.exprToTemplates(expr, callback);
+		}
+
+		// String/Number/Date/Boolean
+		else if (!(expr instanceof Template) && !(expr?.nodeType)){
+			// Convert expression to a string.
+			if (expr === undefined || expr === false || expr === null) // Util.isFalsy() inlined
+				expr = '';
+			else if (typeof expr !== 'string')
+				expr += '';
+
+			// Get the same Template for the same string each time.
+			// let template = Globals.stringTemplates[expr];
+			// if (!template) {
+
+			let template = new Template([expr], []);
+			template.isText = true;
+			//	Globals.stringTemplates[expr] = template;
+			//}
+
+			// Recurse.
+			this.exprToTemplates(template, callback);
+		}
+		else
+			callback(expr);
+	}
+
+	/**
+	 * Get an unused NodeGroup that matches the template's html and expressions (exact=true)
+	 * or at least the html (exact=false).
+	 * Remove it from nodeGroupsFree if it exists, or create it if not.
+	 * Then add it to nodeGroupsInUse.
+	 *
+	 * @param template {Template}
+	 * @param exact {boolean}
+	 *     If true, return an exact match, or null.
+	 *     If false, either find a match for the template's html and then apply the template's expressions,
+	 *         or createa  new NodeGroup from the template.
+	 * @return {NodeGroup} */
+	getNodeGroup(template, exact=true) {
+		let result;
+		let collection = this.nodeGroupsAttachedAvailable;
+
+		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
+		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
+			result = collection.deleteAny(template.getExactKey());
+			if (!result) { // try searching detached
+				collection = this.nodeGroupsDetachedAvailable;
+				result = collection.deleteAny(template.getExactKey());
+			}
+
+			if (result) {// also delete the matching close key.
+				collection.deleteSpecific(template.getCloseKey(), result);
+
+				//result.applyExprs(template.exprs);
+			}
+			else
+				return null;
+		}
+
+			// Find a close match.
+			// This is a match that has matching html, but different expressions applied.
+			// We can then apply the expressions to make it an exact match.
+		// If the template has no expressions, the key is the html, and we've already searched for an exact match.  There won't be an inexact match.
+		else if (template.exprs.length) {
+			result = collection.deleteAny(template.getCloseKey());
+			if (!result) { // try searching detached
+				collection = this.nodeGroupsDetachedAvailable;
+				result = collection.deleteAny(template.getCloseKey());
+			}
+
+			if (result) {
+				
+				collection.deleteSpecific(result.exactKey, result);
+
+				// Update this close match with the new expression values.
+				result.applyExprs(template.exprs);
+				result.exactKey = template.getExactKey();
+			}
+		}
+
+		if (!result) {
+			result = new NodeGroup(template, this);
+			result.applyExprs(template.exprs);
+			result.exactKey = template.getExactKey();
+
+			// TODO: All tests still pass if this is commetned out:
+			// Perhaps I need a test with a child NodeGroup instantiating a static component?
+			result.instantiateStaticComponents(result.staticComponents);
+		}
+
+
+		this.nodeGroupsRendered.push(result);
+
+		
+		return result;
+	}
+
+
+
+
+	/**
+	 * TODO: Rename this to nodeGroupsInUse, nodeGroupsAvialableAttached and nodeGroupsAvailableDetached?
+	 * Nodes that have been used during the current render().
+	 * Used with getNodeGroup() and freeNodeGroups().
+	 * TODO: Use an array of WeakRef so the gc can collect them?
+	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
+	 * @type {NodeGroup[]} */
+	nodeGroupsRendered = [];
+
+	/**
+	 * Nodes that were added to the web component during the last render(), but are available to be used again.
+	 * Used with getNodeGroup() and freeNodeGroups().
+	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
+	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
+	nodeGroupsAttachedAvailable = new MultiValueMap();
+
+	/**
+	 * Nodes that were not added to the web component during the last render(), and available to be used again.
+	 * @type {MultiValueMap} */
+	nodeGroupsDetachedAvailable = new MultiValueMap();
+
+
+	/**
+	 * Move everything from this.nodeGroupsRendered to this.nodeGroupsAttached and nodeGroupsDetached.
+	 * Called at the beginning of applyNodes() so it can have NodeGroups to use.
+	 * TODO: this could run as needed in getNodeGroup? */
+	freeNodeGroups() {
+		// Add nodes that weren't used during render() to nodeGroupsDetached
+		let previouslyAttached = this.nodeGroupsAttachedAvailable.data;
+		let detached = this.nodeGroupsDetachedAvailable.data;
+		for (let key in previouslyAttached) {
+			let set = detached[key];
+			if (!set)
+				detached[key] = previouslyAttached[key];
+			else
+				for (let ng of previouslyAttached[key])
+					set.add(ng);
+		}
+
+		// Add nodes that were used during render() to nodeGroupsRendered.
+		this.nodeGroupsAttachedAvailable = new MultiValueMap();
+		let nga = this.nodeGroupsAttachedAvailable;
+		for (let ng of this.nodeGroupsRendered) {
+			nga.add(ng.exactKey, ng);
+			nga.add(ng.closeKey, ng);
+		}
+
+		this.nodeGroupsRendered = [];
+	}
+
+	
 }
 
 
@@ -1936,6 +1912,33 @@ function walkDOM(el, callback) {
 		child = child.nextElementSibling;
 	}
 }
+
+var NodePath = {
+
+	/** @return {int[]} Returns indices in reverse order, because doing it that way is faster. */
+	get(node) {
+		let result = [];
+		while(true) {
+			let parent = node.parentNode;
+			if (!parent)
+				break;
+			result.push(Array.prototype.indexOf.call(node.parentNode.childNodes, node));
+			node = parent;
+		}
+		return result;
+	},
+
+	/**
+	 * Note that the path is backward, with the outermost element at the end.
+	 * @param root {HTMLElement|Document|DocumentFragment|ParentNode}
+	 * @param path {int[]}
+	 * @returns {Node|HTMLElement|HTMLStyleElement} */
+	resolve(root, path) {
+		for (let i=path.length-1; i>=0; i--)
+			root = root.childNodes[path[i]];
+		return root;
+	}
+};
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -2140,7 +2143,7 @@ class Shell {
 		for (let path of this.paths) {
 			if (path.nodeBefore)
 				path.nodeBeforeIndex = Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore);
-			path.nodeMarkerPath = getNodePath(path.nodeMarker);
+			path.nodeMarkerPath = NodePath.get(path.nodeMarker);
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
 			if ((path.type === ExprPathType.AttribValue || path.type === ExprPathType.Event) && path.nodeMarker.nodeType === 1 &&
@@ -2210,10 +2213,10 @@ class Shell {
 	 * this.ids
 	 * this.staticComponents */
 	findEmbeds() {
-		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => getNodePath(el));
+		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => NodePath.get(el));
 
 		// TODO: only find styles that have ExprPaths in them?
-		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => getNodePath(el));
+		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => NodePath.get(el));
 
 		let idEls = this.fragment.querySelectorAll('[id],[data-id]');
 
@@ -2224,12 +2227,12 @@ class Shell {
 				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement id property.`)
 		}
 
-		this.ids = Array.prototype.map.call(idEls, el => getNodePath(el));
+		this.ids = Array.prototype.map.call(idEls, el => NodePath.get(el));
 
 		for (let el of this.fragment.querySelectorAll('*')) {
 			if (el.tagName.includes('-') || el.hasAttribute('_is')) {
 
-				let path = getNodePath(el);
+				let path = NodePath.get(el);
 				this.componentPaths.push(path);
 
 
@@ -2704,10 +2707,6 @@ class NodeGroup {
 		return result;
 	}
 
-	getParentNode() {
-		return this.startNode?.parentNode
-	}
-
 	/**
 	 * Get the root element of the NodeGroup's RootNodeGroup.
 	 * @returns {HTMLElement|DocumentFragment} */
@@ -2772,7 +2771,7 @@ class NodeGroup {
 			//	debugger; // This shouldn't happen?
 				continue;
 			}
-			let el = resolveNodePath(root, path);
+			let el = NodePath.resolve(root, path);
 			result.push(el);
 		}
 		return result;
@@ -2792,7 +2791,7 @@ class NodeGroup {
 				path = path.slice(0, -startingPathDepth);
 			if (!path.length) // Don't find ourself
 				continue;
-			let el = resolveNodePath(root, path);
+			let el = NodePath.resolve(root, path);
 			result.push(el);
 		}
 		return result;
@@ -2820,7 +2819,7 @@ class NodeGroup {
 				for (let path of shell.ids) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
-					let el = resolveNodePath(root, path);
+					let el = NodePath.resolve(root, path);
 					Util.bindId(rootEl, el);
 				}
 			}
@@ -2834,7 +2833,7 @@ class NodeGroup {
 						path = path.slice(0, -pathOffset);
 
 					/** @type {HTMLStyleElement} */
-					let style = resolveNodePath(root, path);
+					let style = NodePath.resolve(root, path);
 					if (rootEl.nodeType === 1) {
 						Util.bindStyles(style, rootEl);
 						this.styles.set(style, style.textContent);
@@ -2847,7 +2846,7 @@ class NodeGroup {
 				for (let path of shell.scripts) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
-					let script = resolveNodePath(root, path);
+					let script = NodePath.resolve(root, path);
 					eval(script.textContent);
 				}
 			}

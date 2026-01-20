@@ -1,5 +1,5 @@
 import {assert} from "./assert.js";
-import ExprPath, {ExprPathType, getNodePath} from "./ExprPath.js";
+import ExprPath, {ExprPathType} from "./ExprPath.js";
 import Util from "./Util.js";
 import Globals from "./Globals.js";
 import HtmlParser from "./HtmlParser.js";
@@ -7,6 +7,7 @@ import ExprPathEvent from "./ExprPathEvent.js";
 import ExprPathAttribValue from "./ExprPathAttribValue.js";
 import ExprPathAttribs from "./ExprPathAttribs.js";
 import ExprPathNodes from "./ExprPathNodes.js";
+import NodePath from "./NodePath.js";
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -213,7 +214,7 @@ export default class Shell {
 		for (let path of this.paths) {
 			if (path.nodeBefore)
 				path.nodeBeforeIndex = Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore)
-			path.nodeMarkerPath = getNodePath(path.nodeMarker)
+			path.nodeMarkerPath = NodePath.get(path.nodeMarker)
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
 			if ((path.type === ExprPathType.AttribValue || path.type === ExprPathType.Event) && path.nodeMarker.nodeType === 1 &&
@@ -283,10 +284,10 @@ export default class Shell {
 	 * this.ids
 	 * this.staticComponents */
 	findEmbeds() {
-		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => getNodePath(el))
+		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => NodePath.get(el))
 
 		// TODO: only find styles that have ExprPaths in them?
-		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => getNodePath(el))
+		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => NodePath.get(el))
 
 		let idEls = this.fragment.querySelectorAll('[id],[data-id]');
 
@@ -297,12 +298,12 @@ export default class Shell {
 				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement id property.`)
 		}
 
-		this.ids = Array.prototype.map.call(idEls, el => getNodePath(el))
+		this.ids = Array.prototype.map.call(idEls, el => NodePath.get(el))
 
 		for (let el of this.fragment.querySelectorAll('*')) {
 			if (el.tagName.includes('-') || el.hasAttribute('_is')) {
 
-				let path = getNodePath(el);
+				let path = NodePath.get(el);
 				this.componentPaths.push(path);
 
 

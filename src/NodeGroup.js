@@ -6,6 +6,7 @@ import RootNodeGroup from './RootNodeGroup.js';
 import ExprPath, {ExprPathType, resolveNodePath} from "./ExprPath.js";
 import Globals from './Globals.js';
 import ComponentInfo from "./ComponentInfo.js";
+import NodePath from "./NodePath.js";
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
@@ -441,10 +442,6 @@ export default class NodeGroup {
 		return result;
 	}
 
-	getParentNode() {
-		return this.startNode?.parentNode
-	}
-
 	/**
 	 * Get the root element of the NodeGroup's RootNodeGroup.
 	 * @returns {HTMLElement|DocumentFragment} */
@@ -492,6 +489,11 @@ export default class NodeGroup {
 	}
 
 	//#IFDEV
+	getParentNode() {
+		return this.startNode?.parentNode
+	}
+
+
 	/**
 	 * @deprecated
 	 * An interleaved array of sets of nodes and top-level ExprPaths
@@ -574,7 +576,7 @@ export default class NodeGroup {
 			//	debugger; // This shouldn't happen?
 				continue;
 			}
-			let el = resolveNodePath(root, path);
+			let el = NodePath.resolve(root, path);
 			result.push(el);
 		}
 		return result;
@@ -594,7 +596,7 @@ export default class NodeGroup {
 				path = path.slice(0, -startingPathDepth);
 			if (!path.length) // Don't find ourself
 				continue;
-			let el = resolveNodePath(root, path);
+			let el = NodePath.resolve(root, path);
 			result.push(el);
 		}
 		return result;
@@ -622,7 +624,7 @@ export default class NodeGroup {
 				for (let path of shell.ids) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
-					let el = resolveNodePath(root, path);
+					let el = NodePath.resolve(root, path);
 					Util.bindId(rootEl, el);
 				}
 			}
@@ -636,7 +638,7 @@ export default class NodeGroup {
 						path = path.slice(0, -pathOffset);
 
 					/** @type {HTMLStyleElement} */
-					let style = resolveNodePath(root, path);
+					let style = NodePath.resolve(root, path);
 					if (rootEl.nodeType === 1) {
 						Util.bindStyles(style, rootEl);
 						this.styles.set(style, style.textContent);
@@ -649,7 +651,7 @@ export default class NodeGroup {
 				for (let path of shell.scripts) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
-					let script = resolveNodePath(root, path);
+					let script = NodePath.resolve(root, path);
 					eval(script.textContent)
 				}
 			}
