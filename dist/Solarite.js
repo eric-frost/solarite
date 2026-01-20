@@ -2334,10 +2334,10 @@ class NodeGroup {
 			} else
 				this.startNode = this.endNode = shellFragment;
 
-			let startingPathDepth = 0;
 
 			// Special setup for RootNodeGroup
 			if (this instanceof RootNodeGroup) {
+				let startingPathDepth = 0;
 				this.options = options;
 				if (shellFragment instanceof Text) {
 					if (!el)
@@ -2407,6 +2407,7 @@ class NodeGroup {
 					}
 
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
+					//this.components = this.resolvePaths(this.root, shell.componentPaths, startingPathDepth);
 					this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
 					this.activateEmbeds(this.root, shell, startingPathDepth);
 				}
@@ -2420,6 +2421,9 @@ class NodeGroup {
 					this.setPathsFromFragment(shellFragment, shell.paths);
 					this.staticComponents = this.findStaticComponents(shellFragment, shell);
 				}
+
+				//this.components = this.resolvePaths(shellFragment, shell.componentPaths, 0);
+
 				this.activateEmbeds(shellFragment, shell);
 			}
 		}
@@ -2710,6 +2714,27 @@ class NodeGroup {
 	
 
 
+	/**
+	 * This can be static.
+	 * @param root {HTMLElement|DocumentFragment}
+	 * @param paths {int[][]}
+	 * @param startingPathDepth
+	 * @returns {HTMLElement[]} */
+	resolvePaths(root, paths, startingPathDepth=0) {
+		let result = [];
+		for (let path of paths) {
+			if (startingPathDepth)
+				path = path.slice(0, -startingPathDepth);
+			if (!path.length) {// Don't find ourself
+			//	debugger; // This shouldn't happen?
+				continue;
+			}
+			let el = resolveNodePath(root, path);
+			result.push(el);
+		}
+		return result;
+	}
+
 	/** @deprecated */
 	findStaticComponents(root, shell, startingPathDepth=0) {
 		let result = [];
@@ -2719,14 +2744,13 @@ class NodeGroup {
 		// Maybe someday these two paths will be merged?
 		// Must happen before ids because instantiateComponent will replace the element.
 		for (let path of shell.staticComponentPaths) {
+
 			if (startingPathDepth)
 				path = path.slice(0, -startingPathDepth);
+			if (!path.length) // Don't find ourself
+				continue;
 			let el = resolveNodePath(root, path);
-
-			// Shell doesn't know if a web component is the pseudoRoot so we have to detect it here.
-			// Recreating it is necessary so we can pass the constructor args to it.
-			if (root !== el/* && !isReplaceEl(root, el)*/) // TODO: is isReplaceEl necessary?
-				result.push(el);
+			result.push(el);
 		}
 		return result;
 	}
