@@ -6,11 +6,6 @@ function reset() {
 	Globals = {
 
 		/**
-		 * Set by NodeGroup.instantiateComponent()
-		 * Used by RootNodeGroup.getSlotChildren(). */
-		currentSlotChildren: null,
-
-		/**
 		 * Store which instances of Solarite have already been added to the DOM.
 		 * @type {WeakSet<HTMLElement>} */
 		connected: new WeakSet(),
@@ -20,6 +15,11 @@ function reset() {
 		 * watch() then adds the ExprPath to the list of ExprPaths that should be re-rendered when the value changes.
 		 * @type {ExprPath}*/
 		currentExprPath: null,
+
+		/**
+		 * Set by NodeGroup.instantiateComponent()
+		 * Used by RootNodeGroup.getSlotChildren(). */
+		currentSlotChildren: null,
 
 		div: document.createElement("div"),
 

@@ -5,6 +5,7 @@ import Shell from "./Shell.js";
 import RootNodeGroup from './RootNodeGroup.js';
 import ExprPath, {ExprPathType, resolveNodePath} from "./ExprPath.js";
 import Globals from './Globals.js';
+import ComponentInfo from "./ComponentInfo.js";
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
@@ -60,6 +61,9 @@ export default class NodeGroup {
 	staticComponents = [];
 
 	/** @type {HTMLElement[]} All components that are not created by Expr's. */
+	//components = [];
+
+	/** @type {ComponentInfo[]} Save the arguments that we'll pass to a component constructor. */
 	components = [];
 
 	/** @type {Template} */
@@ -176,7 +180,7 @@ export default class NodeGroup {
 					}
 
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
-					//this.components = this.resolvePaths(this.root, shell.componentPaths, startingPathDepth);
+					this.components = this.resolvePaths(this.root, shell.componentPaths, startingPathDepth).map(c => new ComponentInfo(c));
 					this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
 					this.activateEmbeds(this.root, shell, startingPathDepth);
 				}
@@ -191,7 +195,7 @@ export default class NodeGroup {
 					this.staticComponents = this.findStaticComponents(shellFragment, shell);
 				}
 
-				//this.components = this.resolvePaths(shellFragment, shell.componentPaths, 0);
+				this.components = this.resolvePaths(shellFragment, shell.componentPaths, 0).map(c => new ComponentInfo(c));
 
 				this.activateEmbeds(shellFragment, shell);
 			}
@@ -294,6 +298,7 @@ export default class NodeGroup {
 	}
 
 	/**
+	 * @deprecated for applyComponent()
 	 * Ensure:
 	 * 1. a child component is instantiated (if it's a placeholder)
 	 * 2. It's rendered if doRender=true
@@ -320,6 +325,7 @@ export default class NodeGroup {
 	}
 	
 	/**
+	 * @deprecated for constructComponent()
 	 * We swap the placeholder element for the real element so we can pass its dynamic attributes
 	 * to its constructor.
 	 * This is only called by handleComponent()

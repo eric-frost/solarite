@@ -175,7 +175,7 @@ export function renderWatched(root, trackModified=false) {
 						);
 
 					op.markNodeGroupsAvailable(exprPath);
-					exprPath.applyArrayOp(op);
+					exprPath.applyWatchArrayOp(op);
 
 					if (trackModified && op.items.length) {
 						exprPath.nodeGroups.slice(op.index, op.index + op.items.length)

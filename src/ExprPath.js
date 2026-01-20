@@ -6,20 +6,12 @@ import Template from "./Template.js";
 import Globals from "./Globals.js";
 import MultiValueMap from "./MultiValueMap.js";
 import udomdiff from "./udomdiff.js";
-//import {ArraySpliceOp} from "./watch.js";
-//#IFDEV
-var exprPathId = 0;
-//#ENDIF
 
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup.
  * Path is only valid until the expressions before it are evaluated.
  * TODO: Make this based on parent and node instead of path? */
 export default class ExprPath {
-
-	//#IFDEV
-	eid = exprPathId++;
-	//#ENDIF
 
 	/**
 	 * @type {ExprPathType} */
@@ -238,138 +230,6 @@ export default class ExprPath {
 		/*#IFDEV*/path.verify();/*#ENDIF*/
 	}
 
-	/**
-	 * Used by watch() for inserting/removing/replacing individual loop items.
-	 * @param op {ArraySpliceOp} */
-	applyArrayOp(op) {
-
-		// Replace NodeGroups
-		let replaceCount = Math.min(op.deleteCount, op.items.length);
-		let deleteCount = op.deleteCount - replaceCount;
-		for (let i=0; i<replaceCount; i++) {
-			let oldNg = this.nodeGroups[op.index + i]; // TODO: One expr can create multiple nodegroups.
-
-			// Try to find an exact match
-			let func = this.mapCallback || this.watchFunction;
-			let expr = func(op.items[i]);
-
-			// If the result of func isn't a template, conver it to one or more templates.
-			this.exprToTemplates(expr, template => { // TODO: An expr can create multiple NodeGroups.  I need a way to group them.
-
-				let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
-				if (ng && ng === oldNg) {
-					// It's an exact match, so replace nothing.
-					// TODO: What if the found NodeGroup as at a differnet place?
-				} else {
-
-					// Find a close match or create a new node group
-					if (!ng)
-						ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
-					this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
-
-					// Splice in the new nodes.
-					let insertBefore = oldNg.startNode;
-					for (let node of ng.getNodes())
-						insertBefore.parentNode.insertBefore(node, insertBefore);
-
-					// Remove the old nodes.
-					if (ng !== oldNg)
-						oldNg.removeAndSaveOrphans();
-				}
-			});
-		}
-
-		// Delete extra at the end.
-		if (deleteCount > 0) {
-			for (let i=0; i<deleteCount; i++) {
-				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
-				oldNg.removeAndSaveOrphans();
-			}
-			this.nodeGroups.splice(op.index + replaceCount, deleteCount);
-		}
-
-		// Add extra at the end.
-		else {
-			let newItems = op.items.slice(replaceCount);
-
-			let insertBefore = this.nodeGroups[op.index + replaceCount]?.startNode || this.nodeMarker;
-			for (let i = 0; i < newItems.length; i++) { // We use nodeMarker if the subequent (or all) nodeGroups have been removed.
-
-
-				// Try to find exact match
-				let template = this.mapCallback(newItems[i]);
-				let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
-				if (!ng) 	// Find a close match or create a new node group
-					ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
-
-				this.nodeGroups.push(ng);
-
-				// Splice in the new nodes.
-				for (let node of ng.getNodes())
-					insertBefore.parentNode.insertBefore(node, insertBefore);
-			}
-		}
-
-		//#IFDEV
-		assert(this.nodeGroups.length === op.array.length);
-		//#ENDIF
-
-		// TODO: update or invalidate the nodes cache?
-		this.nodesCache = null;
-	}
-
-	/**
-	 * Recursively traverse expr.
-	 * If a value is a function, evaluate it.
-	 * If a value is an array, recurse on each item.
-	 * If it's a primitive, convert it to a Template.
-	 * Otherwise pass the item (which is now either a Template or a Node) to callback.
-	 * @param expr
-	 * @param callback {function(Node|Template)}
-	 *
-	 * TODO: have applyExactNodes() use this function. */
-	exprToTemplates(expr, callback) {
-		if (Array.isArray(expr))
-			for (let subExpr of expr)
-				this.exprToTemplates(subExpr, callback);
-
-		else if (typeof expr === 'function') {
-			// TODO: One ExprPath can have multiple expr functions.
-			// But if using it as a watch, it should only have one at the top level.
-			// So maybe this is ok.
-			Globals.currentExprPath = this; // Used by watch()
-
-			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
-			Globals.currentExprPath = null;
-
-			this.exprToTemplates(expr, callback);
-		}
-
-		// String/Number/Date/Boolean
-		else if (!(expr instanceof Template) && !(expr?.nodeType)){
-			// Convert expression to a string.
-			if (expr === undefined || expr === false || expr === null) // Util.isFalsy() inlined
-				expr = '';
-			else if (typeof expr !== 'string')
-				expr += '';
-
-			// Get the same Template for the same string each time.
-			// let template = Globals.stringTemplates[expr];
-			// if (!template) {
-
-			let template = new Template([expr], []);
-			template.isText = true;
-			//	Globals.stringTemplates[expr] = template;
-			//}
-
-			// Recurse.
-			this.exprToTemplates(template, callback);
-		}
-		else
-			callback(expr);
-	}
-
 
 	/**
 	 * Try to apply Nodes that are an exact match, by finding existing nodes from the last render
@@ -450,6 +310,39 @@ export default class ExprPath {
 			})
 	}
 
+	/**
+	 * Handle attributes for event binding, such as:
+	 * onclick=${(e, el) => this.doSomething(el, 'meow')}
+	 * oninput=${[this.doSomething, 'meow']}
+	 * onclick=${[this, 'doSomething', 'meow']}
+	 *
+	 * @param node
+	 * @param expr
+	 * @param root */
+	applyEventAttrib(node, expr, root) {
+		/*#IFDEV*/
+		assert(this.type === ExprPathType.Event);
+		assert(root?.nodeType === 1);
+		/*#ENDIF*/
+
+		let eventName = this.attrName.slice(2); // remove "on-" prefix.
+		let func;
+		let args = [];
+
+		// Convert array to function.
+		// oninput=${[this.doSomething, 'meow']}
+		if (Array.isArray(expr) && typeof expr[0] === 'function') {
+			func = expr[0];
+			args = expr.slice(1);
+		}
+		else if (typeof expr === 'function')
+			func = expr;
+		else
+			throw new Error(`Invalid event binding: <${node.tagName.toLowerCase()} ${this.attrName}=\${${JSON.stringify(expr)}}>`);
+
+		this.bindEvent(node, root, eventName, eventName, func, args);
+	}
+
 	applyMultipleAttribs(node, expr) {
 		/*#IFDEV*/assert(this.type === ExprPathType.AttribMultiple);/*#ENDIF*/
 
@@ -498,97 +391,6 @@ export default class ExprPath {
 		for (let oldName of oldNames)
 			if (!this.attrNames.has(oldName))
 				node.removeAttribute(oldName);
-	}
-
-	/**
-	 * Handle attributes for event binding, such as:
-	 * onclick=${(e, el) => this.doSomething(el, 'meow')}
-	 * oninput=${[this.doSomething, 'meow']}
-	 * onclick=${[this, 'doSomething', 'meow']}
-	 *
-	 * @param node
-	 * @param expr
-	 * @param root */
-	applyEventAttrib(node, expr, root) {
-		/*#IFDEV*/
-		assert(this.type === ExprPathType.Event);
-		assert(root?.nodeType === 1);
-		/*#ENDIF*/
-
-		let eventName = this.attrName.slice(2); // remove "on-" prefix.
-		let func;
-		let args = [];
-
-		// Convert array to function.
-		// oninput=${[this.doSomething, 'meow']}
-		if (Array.isArray(expr) && typeof expr[0] === 'function') {
-			func = expr[0];
-			args = expr.slice(1);
-		}
-		else if (typeof expr === 'function')
-			func = expr;
-		else
-			throw new Error(`Invalid event binding: <${node.tagName.toLowerCase()} ${this.attrName}=\${${JSON.stringify(expr)}}>`);
-
-		this.bindEvent(node, root, eventName, eventName, func, args);
-	}
-
-
-	/**
-	 * Call function when eventName is triggerd on node.
-	 * @param node {HTMLElement}
-	 * @param root {HTMLElement}
-	 * @param key {string}
-	 * @param eventName {string}
-	 * @param func {function}
-	 * @param args {array}
-	 * @param capture {boolean} */
-	bindEvent(node, root, key, eventName, func, args, capture=false) {
-		let nodeEvents = Globals.nodeEvents.get(node);
-		if (!nodeEvents) {
-			nodeEvents = {[key]: new Array(3)};
-			Globals.nodeEvents.set(node, nodeEvents);
-		}
-		let nodeEvent = nodeEvents[key];
-		if (!nodeEvent)
-			nodeEvents[key] = nodeEvent = new Array(3);
-
-		if (typeof func !== 'function')
-			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
-
-		// If function has changed, remove and rebind the event.
-		if (nodeEvent[0] !== func) {
-
-			// TODO: We should be removing event listeners when calling getNodeGroup(),
-			// when we get the node from the list of nodeGroupsAttached/nodeGroupsDetached,
-			// instead of only when we rebind an event.
-			let [existing, existingBound, _] = nodeEvent;
-			if (existing)
-				node.removeEventListener(eventName, existingBound, capture);
-
-			let originalFunc = func;
-
-			// BoundFunc sets the "this" variable to be the current Solarite component.
-			let boundFunc = (event) => {
-				let args = nodeEvent[2];
-				return originalFunc.call(root, ...args, event, node);
-			}
-
-			// Save both the original and bound functions.
-			// Original so we can compare it against a newly assigned function.
-			// Bound so we can use it with removeEventListner().
-			nodeEvent[0] = originalFunc;
-			nodeEvent[1] = boundFunc;
-
-			node.addEventListener(eventName, boundFunc, capture);
-
-			// TODO: classic event attribs?
-			//el[attr.name] = e => // e.g. el.onclick = ... // put "event", "el", and "this" in scope for the event code.
-			//	(new Function('event', 'el', attr.value)).bind(this.manager.rootEl)(e, el)
-		}
-
-		//  Otherwise just update the args to the function.
-		nodeEvents[key][2] = args;
 	}
 
 	/**
@@ -742,6 +544,144 @@ export default class ExprPath {
 
 
 	/**
+	 * Used by watch() for inserting/removing/replacing individual loop items.
+	 * @param op {ArraySpliceOp} */
+	applyWatchArrayOp(op) {
+
+		// Replace NodeGroups
+		let replaceCount = Math.min(op.deleteCount, op.items.length);
+		let deleteCount = op.deleteCount - replaceCount;
+		for (let i=0; i<replaceCount; i++) {
+			let oldNg = this.nodeGroups[op.index + i]; // TODO: One expr can create multiple nodegroups.
+
+			// Try to find an exact match
+			let func = this.mapCallback || this.watchFunction;
+			let expr = func(op.items[i]);
+
+			// If the result of func isn't a template, conver it to one or more templates.
+			this.exprToTemplates(expr, template => { // TODO: An expr can create multiple NodeGroups.  I need a way to group them.
+
+				let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
+				if (ng && ng === oldNg) {
+					// It's an exact match, so replace nothing.
+					// TODO: What if the found NodeGroup as at a differnet place?
+				} else {
+
+					// Find a close match or create a new node group
+					if (!ng)
+						ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
+					this.nodeGroups[op.index + i] = ng; // TODO: Remove old one to nodeGroupsDetached?
+
+					// Splice in the new nodes.
+					let insertBefore = oldNg.startNode;
+					for (let node of ng.getNodes())
+						insertBefore.parentNode.insertBefore(node, insertBefore);
+
+					// Remove the old nodes.
+					if (ng !== oldNg)
+						oldNg.removeAndSaveOrphans();
+				}
+			});
+		}
+
+		// Delete extra at the end.
+		if (deleteCount > 0) {
+			for (let i=0; i<deleteCount; i++) {
+				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
+				oldNg.removeAndSaveOrphans();
+			}
+			this.nodeGroups.splice(op.index + replaceCount, deleteCount);
+		}
+
+		// Add extra at the end.
+		else {
+			let newItems = op.items.slice(replaceCount);
+
+			let insertBefore = this.nodeGroups[op.index + replaceCount]?.startNode || this.nodeMarker;
+			for (let i = 0; i < newItems.length; i++) { // We use nodeMarker if the subequent (or all) nodeGroups have been removed.
+
+
+				// Try to find exact match
+				let template = this.mapCallback(newItems[i]);
+				let ng = this.getNodeGroup(template, true);  // Removes from nodeGroupsAttached and adds to nodeGroupsRendered()
+				if (!ng) 	// Find a close match or create a new node group
+					ng = this.getNodeGroup(template, false); // adds back to nodeGroupsRendered()
+
+				this.nodeGroups.push(ng);
+
+				// Splice in the new nodes.
+				for (let node of ng.getNodes())
+					insertBefore.parentNode.insertBefore(node, insertBefore);
+			}
+		}
+
+		//#IFDEV
+		assert(this.nodeGroups.length === op.array.length);
+		//#ENDIF
+
+		// TODO: update or invalidate the nodes cache?
+		this.nodesCache = null;
+	}
+
+	/**
+	 * Call function when eventName is triggerd on node.
+	 * @param node {HTMLElement}
+	 * @param root {HTMLElement}
+	 * @param key {string}
+	 * @param eventName {string}
+	 * @param func {function}
+	 * @param args {array}
+	 * @param capture {boolean} */
+	bindEvent(node, root, key, eventName, func, args, capture=false) {
+		let nodeEvents = Globals.nodeEvents.get(node);
+		if (!nodeEvents) {
+			nodeEvents = {[key]: new Array(3)};
+			Globals.nodeEvents.set(node, nodeEvents);
+		}
+		let nodeEvent = nodeEvents[key];
+		if (!nodeEvent)
+			nodeEvents[key] = nodeEvent = new Array(3);
+
+		if (typeof func !== 'function')
+			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
+
+		// If function has changed, remove and rebind the event.
+		if (nodeEvent[0] !== func) {
+
+			// TODO: We should be removing event listeners when calling getNodeGroup(),
+			// when we get the node from the list of nodeGroupsAttached/nodeGroupsDetached,
+			// instead of only when we rebind an event.
+			let [existing, existingBound, _] = nodeEvent;
+			if (existing)
+				node.removeEventListener(eventName, existingBound, capture);
+
+			let originalFunc = func;
+
+			// BoundFunc sets the "this" variable to be the current Solarite component.
+			let boundFunc = (event) => {
+				let args = nodeEvent[2];
+				return originalFunc.call(root, ...args, event, node);
+			}
+
+			// Save both the original and bound functions.
+			// Original so we can compare it against a newly assigned function.
+			// Bound so we can use it with removeEventListner().
+			nodeEvent[0] = originalFunc;
+			nodeEvent[1] = boundFunc;
+
+			node.addEventListener(eventName, boundFunc, capture);
+
+			// TODO: classic event attribs?
+			//el[attr.name] = e => // e.g. el.onclick = ... // put "event", "el", and "this" in scope for the event code.
+			//	(new Function('event', 'el', attr.value)).bind(this.manager.rootEl)(e, el)
+		}
+
+		//  Otherwise just update the args to the function.
+		nodeEvents[key][2] = args;
+	}
+
+
+	/**
 	 *
 	 * @param newRoot {HTMLElement}
 	 * @param pathOffset {int}
@@ -818,6 +758,57 @@ export default class ExprPath {
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Recursively traverse expr.
+	 * If a value is a function, evaluate it.
+	 * If a value is an array, recurse on each item.
+	 * If it's a primitive, convert it to a Template.
+	 * Otherwise pass the item (which is now either a Template or a Node) to callback.
+	 * TODO: This could be static if not for the watch code, which doesn't work anyway.
+	 * @param expr
+	 * @param callback {function(Node|Template)}*/
+	exprToTemplates(expr, callback) {
+		if (Array.isArray(expr))
+			for (let subExpr of expr)
+				this.exprToTemplates(subExpr, callback);
+
+		else if (typeof expr === 'function') {
+			// TODO: One ExprPath can have multiple expr functions.
+			// But if using it as a watch, it should only have one at the top level.
+			// So maybe this is ok.
+			Globals.currentExprPath = this; // Used by watch()
+
+			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
+			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
+			Globals.currentExprPath = null;
+
+			this.exprToTemplates(expr, callback);
+		}
+
+		// String/Number/Date/Boolean
+		else if (!(expr instanceof Template) && !(expr?.nodeType)){
+			// Convert expression to a string.
+			if (expr === undefined || expr === false || expr === null) // Util.isFalsy() inlined
+				expr = '';
+			else if (typeof expr !== 'string')
+				expr += '';
+
+			// Get the same Template for the same string each time.
+			// let template = Globals.stringTemplates[expr];
+			// if (!template) {
+
+			let template = new Template([expr], []);
+			template.isText = true;
+			//	Globals.stringTemplates[expr] = template;
+			//}
+
+			// Recurse.
+			this.exprToTemplates(template, callback);
+		}
+		else
+			callback(expr);
 	}
 
 	/**
@@ -1065,20 +1056,6 @@ export default class ExprPath {
 		}
 	}
 	//#ENDIF
-}
-
-/**
- *
- * @param root
- * @param path {string[]}
- * @param node {HTMLElement}
- */
-function setValue(root, path, node) {
-	let val = node.value;
-	if (node.type === 'number')
-		val = parseFloat(val);
-
-	delve(root, path, val);
 }
 
 /** @enum {int} */
