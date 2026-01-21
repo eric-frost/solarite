@@ -583,287 +583,6 @@ function flattenAndIndent(inputArray, indent = "") {
 }
 //#ENDIF
 
-class MultiValueMap {
-
-	/** @type {Record<string, Set>} */
-	data = {};
-
-	// Set a new value for a key
-	add(key, value) {
-		let data = this.data;
-		let set = data[key];
-		if (!set) {
-			set = new Set();
-			data[key] = set;
-		}
-		set.add(value);
-	}
-
-	isEmpty() {
-		for (let key in this.data)
-			return true;
-		return false;
-	}
-
-	/**
-	 * Get all values for a key.
-	 * @param key {string}
-	 * @returns {Set|*[]} */
-	getAll(key) {
-		return this.data[key] || [];
-	}
-
-	/**
-	 * Remove one value from a key, and return it.
-	 * @param key {string}
-	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
-	 * @returns {*|undefined} The deleted item. */
-	delete(key, val=undefined) {
-		let data = this.data;
-		let result;
-		let set = data[key];
-		if (!set)
-			return undefined;
-
-		// Delete any value.
-		if (val === undefined) {
-			[result] = set; //  Get the first value from the set.
-			set.delete(result);
-		}
-
-		// Delete a specific value.
-		else {
-			set.delete(val);
-			result = val;
-		}
-
-		if (set.size === 0)
-			delete data[key];
-
-		return result;
-	}
-
-	/**
-	 * Remove any one value from a key, and return it.
-	 * @param key {string}
-	 * @returns {*|undefined} The deleted item. */
-	deleteAny(key) {
-		let data = this.data;
-		let result;
-		let set = data[key];
-		if (!set) // slower than pre-check.
-			return undefined;
-
-		[result] = set; // Get the first value from the set.
-		set.delete(result);
-
-		if (set.size === 0)
-			delete data[key];
-
-		return result;
-	}
-
-	deleteSpecific(key, val) {
-		let data = this.data;
-		let result;
-		let set = data[key];
-		if (!set)
-			return undefined;
-
-		set.delete(val);
-		result = val;
-
-		if (set.size === 0)
-			delete data[key];
-
-		return result;
-	}
-
-	hasValue(val) {
-		let data = this.data;
-		let names = [];
-		for (let name in data)
-			if (data[name].has(val)) // TODO: iterate twice to pre-size array?
-				names.push(name);
-		return names;
-	}
-}
-
-/**
- * ISC License
- *
- * Copyright (c) 2020, Andrea Giammarchi, @WebReflection
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
- * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
- * AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
- * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
- * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
- * OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
- * PERFORMANCE OF THIS SOFTWARE.
- */
-
-/**
- * @param {Node} parentNode The container where children live
- * @param {Node[]} a The list of current/live children
- * @param {Node[]} b The list of future children
- * @param {(entry: Node, action: number) => Node} get
- * The callback invoked per each entry related DOM operation.
- * @param {Node} [before] The optional node used as anchor to insert before.
- * @returns {Node[]} The same list of future children.
- */
-const udomdiff = (parentNode, a, b, before) => {
-	const bLength = b.length;
-	let aEnd = a.length;
-	let bEnd = bLength;
-	let aStart = 0;
-	let bStart = 0;
-	let map = null;
-	while (aStart < aEnd || bStart < bEnd) {
-		// append head, tail, or nodes in between: fast path
-		if (aEnd === aStart) {
-			// we could be in a situation where the rest of nodes that
-			// need to be added are not at the end, and in such case
-			// the node to `insertBefore`, if the index is more than 0
-			// must be retrieved, otherwise it's gonna be the first item.
-			const node = bEnd < bLength
-				? (bStart
-					? (b[bStart - 1].nextSibling)
-					: b[bEnd - bStart])
-				: before;
-			while (bStart < bEnd) {
-				let bNode = b[bStart++];
-				parentNode.insertBefore(bNode, node);
-			}
-		}
-		// remove head or tail: fast path
-		else if (bEnd === bStart) {
-			while (aStart < aEnd) {
-				// remove the node only if it's unknown or not live
-				let aNode = a[aStart];
-				if (!map || !map.has(aNode)) {
-					parentNode.removeChild(aNode);
-				}
-				aStart++;
-			}
-		}
-		// same node: fast path
-		else if (a[aStart] === b[bStart]) {
-			aStart++;
-			bStart++;
-		}
-		// same tail: fast path
-		else if (a[aEnd - 1] === b[bEnd - 1]) {
-			aEnd--;
-			bEnd--;
-		}
-			// The once here single last swap "fast path" has been removed in v1.1.0
-			// https://github.com/WebReflection/udomdiff/blob/single-final-swap/esm/index.js#L69-L85
-		// reverse swap: also fast path
-		else if (
-			a[aStart] === b[bEnd - 1] &&
-			b[bStart] === a[aEnd - 1]
-		) {
-			// this is a "shrink" operation that could happen in these cases:
-			// [1, 2, 3, 4, 5]
-			// [1, 4, 3, 2, 5]
-			// or asymmetric too
-			// [1, 2, 3, 4, 5]
-			// [1, 2, 3, 5, 6, 4]
-			const node = a[--aEnd].nextSibling;
-
-
-			let a2 = b[bStart++];
-			let b2 = a[aStart++];
-			parentNode.insertBefore(
-				a2,
-				b2.nextSibling
-			);
-
-			let bNode = b[--bEnd];
-			parentNode.insertBefore(bNode, node);
-
-			// mark the future index as identical (yeah, it's dirty, but cheap 👍)
-			// The main reason to do this, is that when a[aEnd] will be reached,
-			// the loop will likely be on the fast path, as identical to b[bEnd].
-			// In the best case scenario, the next loop will skip the tail,
-			// but in the worst one, this node will be considered as already
-			// processed, bailing out pretty quickly from the map index check
-			a[aEnd] = b[bEnd];
-		}
-		// map based fallback, "slow" path
-		else {
-			// the map requires an O(bEnd - bStart) operation once
-			// to store all future nodes indexes for later purposes.
-			// In the worst case scenario, this is a full O(N) cost,
-			// and such scenario happens at least when all nodes are different,
-			// but also if both first and last items of the lists are different
-			if (!map) {
-				map = new Map;
-				let i = bStart;
-				while (i < bEnd)
-					map.set(b[i], i++);
-			}
-			// if it's a future node, hence it needs some handling
-			if (map.has(a[aStart])) {
-				// grab the index of such node, 'cause it might have been processed
-				const index = map.get(a[aStart]);
-				// if it's not already processed, look on demand for the next LCS
-				if (bStart < index && index < bEnd) {
-					let i = aStart;
-					// counts the amount of nodes that are the same in the future
-					let sequence = 1;
-					while (++i < aEnd && i < bEnd && map.get(a[i]) === (index + sequence))
-						sequence++;
-					// effort decision here: if the sequence is longer than replaces
-					// needed to reach such sequence, which would brings again this loop
-					// to the fast path, prepend the difference before a sequence,
-					// and move only the future list index forward, so that aStart
-					// and bStart will be aligned again, hence on the fast path.
-					// An example considering aStart and bStart are both 0:
-					// a: [1, 2, 3, 4]
-					// b: [7, 1, 2, 3, 6]
-					// this would place 7 before 1 and, from that time on, 1, 2, and 3
-					// will be processed at zero cost
-					if (sequence > (index - bStart)) {
-						const node = a[aStart];
-						while (bStart < index) {
-							let bNode = b[bStart++];
-							parentNode.insertBefore(bNode, node);
-						}
-					}
-						// if the effort wasn't good enough, fallback to a replace,
-						// moving both source and target indexes forward, hoping that some
-					// similar node will be found later on, to go back to the fast path
-					else {
-						let aNode = a[aStart++];
-						let bNode = b[bStart++];
-						parentNode.replaceChild(
-							bNode,
-							aNode
-						);
-					}
-				}
-				// otherwise move the source forward, 'cause there's nothing to do
-				else
-					aStart++;
-			}
-				// this node has no meaning in the future list, so it's more than safe
-				// to remove it, and check the next live node out instead, meaning
-			// that only the live list index should be forwarded
-			else {
-				let aNode = a[aStart++];
-				parentNode.removeChild(aNode);
-			}
-		}
-	}
-	return b;
-};
-
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup. */
 class ExprPath {
@@ -874,16 +593,6 @@ class ExprPath {
 
 	// Used for attributes:
 
-	/** @type {?string} Used only if type=AttribType.Value. */
-	attrName;
-
-	/**
-	 * @type {?string[]} Used only if type=AttribType.Value. If null, use one expr to set the whole attribute value. */
-	attrValue;
-
-	/**
-	 * @type {Set<string>} Used for type=AttribType.Multiple to remember the attributes that were added. */
-	attrNames;
 
 	/**
 	 * @type {Node} Node that occurs before this ExprPath's first Node.
@@ -929,29 +638,15 @@ class ExprPath {
 	/** @type {?function} A function called by renderWatched() to update the value of this expression. */
 	watchFunction
 
-	/**
-	 * @type {?function} The most recent callback passed to a .map() function in this ExprPath.
-	 * TODO: What if one ExprPath has two .map() calls?  Maybe we just won't support that. */
-	mapCallback
-
-	isHtmlProperty;
 
 	/**
 	 * @param nodeBefore {Node}
 	 * @param nodeMarker {?Node}
-	 * @param type {ExprPathType}
-	 * @param attrName {?string}
-	 * @param attrValue {string[]} */
-	constructor(nodeBefore, nodeMarker, type=ExprPathType.Content, attrName=null, attrValue=null) {
-
-		// If path is a node.
+	 * @param type {ExprPathType} */
+	constructor(nodeBefore, nodeMarker, type=ExprPathType.Content) {
 		this.nodeBefore = nodeBefore;
 		this.nodeMarker = nodeMarker;
 		this.type = type;
-		this.attrName = attrName;
-		this.attrValue = attrValue;
-		if (type === ExprPathType.AttribMultiple)
-			this.attrNames = new Set();
 	}
 
 	/**
@@ -985,245 +680,6 @@ class ExprPath {
 				this.applyValueAttrib(this.nodeMarker, exprs);
 				break;
 		}
-	}
-
-	/**
-	 * Handle attributes for event binding, such as:
-	 * onclick=${(e, el) => this.doSomething(el, 'meow')}
-	 * oninput=${[this.doSomething, 'meow']}
-	 * onclick=${[this, 'doSomething', 'meow']}
-	 *
-	 * @param node
-	 * @param expr
-	 * @param root */
-	applyEventAttrib(node, expr, root) {
-		/*#IFDEV*/
-		assert(this.type === ExprPathType.Event);
-		assert(root?.nodeType === 1);
-		/*#ENDIF*/
-
-		let eventName = this.attrName.slice(2); // remove "on-" prefix.
-		let func;
-		let args = [];
-
-		// Convert array to function.
-		// oninput=${[this.doSomething, 'meow']}
-		if (Array.isArray(expr) && typeof expr[0] === 'function') {
-			func = expr[0];
-			args = expr.slice(1);
-		}
-		else if (typeof expr === 'function')
-			func = expr;
-		else
-			throw new Error(`Invalid event binding: <${node.tagName.toLowerCase()} ${this.attrName}=\${${JSON.stringify(expr)}}>`);
-
-		this.bindEvent(node, root, eventName, eventName, func, args);
-	}
-
-	/**
-	 * Set the value of an attribute.  This can be for any attribute, not just attributes named "value".
-	 * @param node
-	 * @param exprs */
-	// TODO: node is always this.nodeMarker?
-	applyValueAttrib(node, exprs) {
-		let expr = exprs[0];
-
-		// Two-way binding between attributes
-		// Passing a path to the value attribute.
-		// Copies the attribute to the property when the input event fires.
-		// value=${[this, 'value]'}
-		// checked=${[this, 'isAgree']}
-		// This same logic is in NodeGroup.instantiateComponent() for components.
-		if (Util.isPath(expr)) {
-			let [obj, path] = [expr[0], expr.slice(1)];
-
-			if (!obj)
-				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
-
-			let value = delve(obj, path);
-
-			// Special case to allow setting select-multiple value from an array
-			if (this.attrName === 'value' && node.type === 'select-multiple' && Array.isArray(value)) {
-				// Set the .selected property on the options having a value within value.
-				let strValues = value.map(v => v + '');
-				for (let option of node.options)
-					option.selected = strValues.includes(option.value);
-			}
-			else {
-				// TODO: should we remove isFalsy, since these are always props?
-				const strValue = Util.isFalsy(value) ? '' : value;
-
-				// Special case for contenteditable
-				if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
-					const existingValue = node.innerHTML;
-					if (strValue !== existingValue)
-						node.innerHTML = strValue;
-				}
-				else {
-
-					// If we don't have this condition, when we call render(), the browser will scroll to the currently
-					// selected item in a <select> and mess up manually scrolling to a different value.
-					if (strValue !== node[this.attrName])
-						node[this.attrName] = strValue;
-				}
-			}
-
-			// TODO: We need to remove any old listeners, like in bindEventAttribute.
-			// Does bindEvent() now handle that?
-			let func = () => {
-				let value = (this.attrName === 'value')
-					? Util.getInputValue(node)
-					: node[this.attrName];
-				delve(obj, path, value);
-			};
-
-			// We use capture so we update the values before other events added by the user.
-			// TODO: Bind to scroll events also?
-			// What about resize events and width/height?
-			this.bindEvent(node, path[0], this.attrName, 'input', func, [], true);
-		}
-
-		// Regular attribute
-		else {
-			// Cache this on ExprPath.isHtmlProperty when Shell creates the props.
-			// Have ExprPath.clone() copy .isHtmlProperty?
-			let isProp = this.isHtmlProperty;
-			if (isProp === undefined)
-				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
-
-			// Values to toggle an attribute
-			let multiple = this.attrValue;
-			if (!multiple) {
-				Globals$1.currentExprPath = this; // Used by watch()
-				if (typeof expr === 'function') {
-					if (this.isComponent) { // Don't evaluate functions before passing them to components
-						return
-					}
-					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
-					expr = expr();
-				}
-				else
-					expr = Util.makePrimitive(expr);
-				Globals$1.currentExprPath = null;
-			}
-			if (!multiple && (expr === undefined || expr === false || expr === null)) { // Util.isFalsy() inlined.
-				if (isProp)
-					node[this.attrName] = false;
-				node.removeAttribute(this.attrName);
-			}
-			else if (!multiple && expr === true) {
-				if (isProp)
-					node[this.attrName] = true;
-				node.setAttribute(this.attrName, '');
-			}
-
-			// A non-toggled attribute
-			else {
-
-				// If it's a series of expressions among strings, join them together.
-				let joinedValue;
-				if (multiple) {
-					let value = [];
-					for (let i = 0; i < this.attrValue.length; i++) {
-						value.push(this.attrValue[i]);
-						if (i < this.attrValue.length - 1) {
-							Globals$1.currentExprPath = this; // Used by watch()
-							let val = Util.makePrimitive(exprs[i]);
-							Globals$1.currentExprPath = null;
-							if (!Util.isFalsy(val))
-								value.push(val);
-						}
-					}
-					joinedValue = value.join('');
-				}
-
-				// If the attribute is one expression with no strings:
-				else
-					joinedValue = expr;
-
-				// Only update attributes if the value has changed.
-				// This is needed for setting input.value, .checked, option.selected, etc.
-
-				let oldVal = isProp
-					? node[this.attrName]
-					: node.getAttribute(this.attrName);
-				if (oldVal !== joinedValue) {
-
-					// <textarea value=${expr}></textarea>
-					// Without this branch we have no way to set the value of a textarea,
-					// since we also prohibit expressions that are a child of textarea.
-					if (isProp)
-						node[this.attrName] = joinedValue;
-
-						// Allow one-way binding to contenteditable value attribute.
-						// Contenteditables normally don't have a value attribute and have their content set via innerHTML.
-					// Solarite doesn't allow contenteditables to have expressions as their children.
-					else if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
-						node.innerHTML = joinedValue;
-					}
-
-					// TODO: Putting an 'else' here would be more performant
-					node.setAttribute(this.attrName, joinedValue);
-				}
-			}
-		}
-	}
-
-	/**
-	 * Call function when eventName is triggerd on node.
-	 * @param node {HTMLElement}
-	 * @param root {HTMLElement}
-	 * @param key {string}
-	 * @param eventName {string}
-	 * @param func {function}
-	 * @param args {array}
-	 * @param capture {boolean} */
-	bindEvent(node, root, key, eventName, func, args, capture=false) {
-		let nodeEvents = Globals$1.nodeEvents.get(node);
-		if (!nodeEvents) {
-			nodeEvents = {[key]: new Array(3)};
-			Globals$1.nodeEvents.set(node, nodeEvents);
-		}
-		let nodeEvent = nodeEvents[key];
-		if (!nodeEvent)
-			nodeEvents[key] = nodeEvent = new Array(3);
-
-		if (typeof func !== 'function')
-			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
-
-		// If function has changed, remove and rebind the event.
-		if (nodeEvent[0] !== func) {
-
-			// TODO: We should be removing event listeners when calling getNodeGroup(),
-			// when we get the node from the list of nodeGroupsAttached/nodeGroupsDetached,
-			// instead of only when we rebind an event.
-			let [existing, existingBound, _] = nodeEvent;
-			if (existing)
-				node.removeEventListener(eventName, existingBound, capture);
-
-			let originalFunc = func;
-
-			// BoundFunc sets the "this" variable to be the current Solarite component.
-			let boundFunc = (event) => {
-				let args = nodeEvent[2];
-				return originalFunc.call(root, ...args, event, node);
-			};
-
-			// Save both the original and bound functions.
-			// Original so we can compare it against a newly assigned function.
-			// Bound so we can use it with removeEventListner().
-			nodeEvent[0] = originalFunc;
-			nodeEvent[1] = boundFunc;
-
-			node.addEventListener(eventName, boundFunc, capture);
-
-			// TODO: classic event attribs?
-			//el[attr.name] = e => // e.g. el.onclick = ... // put "event", "el", and "this" in scope for the event code.
-			//	(new Function('event', 'el', attr.value)).bind(this.manager.rootEl)(e, el)
-		}
-
-		//  Otherwise just update the args to the function.
-		nodeEvents[key][2] = args;
 	}
 
 
@@ -1450,30 +906,285 @@ HtmlParser.Attribute = 'Attribute';
 HtmlParser.Text = 'Text';
 HtmlParser.Tag = 'Tag';
 
+class ExprPathAttribValue extends ExprPath {
+
+
+	/** @type {?string} Used only if type=AttribType.Value. */
+	attrName;
+
+	/**
+	 * @type {?string[]} Used only if type=AttribType.Value. If null, use one expr to set the whole attribute value. */
+	attrValue;
+
+	isHtmlProperty;
+
+	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
+		super(nodeBefore, nodeMarker, ExprPathType.AttribValue);
+		this.attrName = attrName;
+		this.attrValue = attrValue;
+	}
+
+	/**
+	 * Set the value of an attribute.  This can be for any attribute, not just attributes named "value".
+	 * @param node
+	 * @param exprs */
+	// TODO: node is always this.nodeMarker?
+	applyValueAttrib(node, exprs) {
+		let expr = exprs[0];
+
+		// Two-way binding between attributes
+		// Passing a path to the value attribute.
+		// Copies the attribute to the property when the input event fires.
+		// value=${[this, 'value]'}
+		// checked=${[this, 'isAgree']}
+		// This same logic is in NodeGroup.instantiateComponent() for components.
+		if (Util.isPath(expr)) {
+			let [obj, path] = [expr[0], expr.slice(1)];
+
+			if (!obj)
+				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
+
+			let value = delve(obj, path);
+
+			// Special case to allow setting select-multiple value from an array
+			if (this.attrName === 'value' && node.type === 'select-multiple' && Array.isArray(value)) {
+				// Set the .selected property on the options having a value within value.
+				let strValues = value.map(v => v + '');
+				for (let option of node.options)
+					option.selected = strValues.includes(option.value);
+			}
+			else {
+				// TODO: should we remove isFalsy, since these are always props?
+				const strValue = Util.isFalsy(value) ? '' : value;
+
+				// Special case for contenteditable
+				if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
+					const existingValue = node.innerHTML;
+					if (strValue !== existingValue)
+						node.innerHTML = strValue;
+				}
+				else {
+
+					// If we don't have this condition, when we call render(), the browser will scroll to the currently
+					// selected item in a <select> and mess up manually scrolling to a different value.
+					if (strValue !== node[this.attrName])
+						node[this.attrName] = strValue;
+				}
+			}
+
+			// TODO: We need to remove any old listeners, like in bindEventAttribute.
+			// Does bindEvent() now handle that?
+			let func = () => {
+				let value = (this.attrName === 'value')
+					? Util.getInputValue(node)
+					: node[this.attrName];
+				delve(obj, path, value);
+			};
+
+			// We use capture so we update the values before other events added by the user.
+			// TODO: Bind to scroll events also?
+			// What about resize events and width/height?
+			this.bindEvent(node, path[0], this.attrName, 'input', func, [], true);
+		}
+
+		// Regular attribute
+		else {
+			// Cache this on ExprPath.isHtmlProperty when Shell creates the props.
+			// Have ExprPath.clone() copy .isHtmlProperty?
+			let isProp = this.isHtmlProperty;
+			if (isProp === undefined)
+				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
+
+			// Values to toggle an attribute
+			let multiple = this.attrValue;
+			if (!multiple) {
+				Globals$1.currentExprPath = this; // Used by watch()
+				if (typeof expr === 'function') {
+					if (this.isComponent) { // Don't evaluate functions before passing them to components
+						return
+					}
+					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
+					expr = expr();
+				}
+				else
+					expr = Util.makePrimitive(expr);
+				Globals$1.currentExprPath = null;
+			}
+			if (!multiple && (expr === undefined || expr === false || expr === null)) { // Util.isFalsy() inlined.
+				if (isProp)
+					node[this.attrName] = false;
+				node.removeAttribute(this.attrName);
+			}
+			else if (!multiple && expr === true) {
+				if (isProp)
+					node[this.attrName] = true;
+				node.setAttribute(this.attrName, '');
+			}
+
+			// A non-toggled attribute
+			else {
+
+				// If it's a series of expressions among strings, join them together.
+				let joinedValue;
+				if (multiple) {
+					let value = [];
+					for (let i = 0; i < this.attrValue.length; i++) {
+						value.push(this.attrValue[i]);
+						if (i < this.attrValue.length - 1) {
+							Globals$1.currentExprPath = this; // Used by watch()
+							let val = Util.makePrimitive(exprs[i]);
+							Globals$1.currentExprPath = null;
+							if (!Util.isFalsy(val))
+								value.push(val);
+						}
+					}
+					joinedValue = value.join('');
+				}
+
+				// If the attribute is one expression with no strings:
+				else
+					joinedValue = expr;
+
+				// Only update attributes if the value has changed.
+				// This is needed for setting input.value, .checked, option.selected, etc.
+
+				let oldVal = isProp
+					? node[this.attrName]
+					: node.getAttribute(this.attrName);
+				if (oldVal !== joinedValue) {
+
+					// <textarea value=${expr}></textarea>
+					// Without this branch we have no way to set the value of a textarea,
+					// since we also prohibit expressions that are a child of textarea.
+					if (isProp)
+						node[this.attrName] = joinedValue;
+
+						// Allow one-way binding to contenteditable value attribute.
+						// Contenteditables normally don't have a value attribute and have their content set via innerHTML.
+					// Solarite doesn't allow contenteditables to have expressions as their children.
+					else if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
+						node.innerHTML = joinedValue;
+					}
+
+					// TODO: Putting an 'else' here would be more performant
+					node.setAttribute(this.attrName, joinedValue);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Call function when eventName is triggerd on node.
+	 * @param node {HTMLElement}
+	 * @param root {HTMLElement}
+	 * @param key {string}
+	 * @param eventName {string}
+	 * @param func {function}
+	 * @param args {array}
+	 * @param capture {boolean} */
+	bindEvent(node, root, key, eventName, func, args, capture=false) {
+		let nodeEvents = Globals$1.nodeEvents.get(node);
+		if (!nodeEvents) {
+			nodeEvents = {[key]: new Array(3)};
+			Globals$1.nodeEvents.set(node, nodeEvents);
+		}
+		let nodeEvent = nodeEvents[key];
+		if (!nodeEvent)
+			nodeEvents[key] = nodeEvent = new Array(3);
+
+		if (typeof func !== 'function')
+			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
+
+		// If function has changed, remove and rebind the event.
+		if (nodeEvent[0] !== func) {
+
+			// TODO: We should be removing event listeners when calling getNodeGroup(),
+			// when we get the node from the list of nodeGroupsAttached/nodeGroupsDetached,
+			// instead of only when we rebind an event.
+			let [existing, existingBound, _] = nodeEvent;
+			if (existing)
+				node.removeEventListener(eventName, existingBound, capture);
+
+			let originalFunc = func;
+
+			// BoundFunc sets the "this" variable to be the current Solarite component.
+			let boundFunc = (event) => {
+				let args = nodeEvent[2];
+				return originalFunc.call(root, ...args, event, node);
+			};
+
+			// Save both the original and bound functions.
+			// Original so we can compare it against a newly assigned function.
+			// Bound so we can use it with removeEventListner().
+			nodeEvent[0] = originalFunc;
+			nodeEvent[1] = boundFunc;
+
+			node.addEventListener(eventName, boundFunc, capture);
+
+			// TODO: classic event attribs?
+			//el[attr.name] = e => // e.g. el.onclick = ... // put "event", "el", and "this" in scope for the event code.
+			//	(new Function('event', 'el', attr.value)).bind(this.manager.rootEl)(e, el)
+		}
+
+		//  Otherwise just update the args to the function.
+		nodeEvents[key][2] = args;
+	}
+}
+
 // TODO: Merge this into ExprPathAttribValue?
-class ExprPathEvent extends ExprPath {
+class ExprPathEvent extends ExprPathAttribValue {
 
 	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
 		super(nodeBefore, nodeMarker, ExprPathType.Event, attrName, attrValue);
+		this.type = ExprPathType.Event; // don't let super constructor override it.
 	}
 
 
-}
+	/**
+	 * Handle attributes for event binding, such as:
+	 * onclick=${(e, el) => this.doSomething(el, 'meow')}
+	 * oninput=${[this.doSomething, 'meow']}
+	 * onclick=${[this, 'doSomething', 'meow']}
+	 *
+	 * @param node
+	 * @param expr
+	 * @param root */
+	applyEventAttrib(node, expr, root) {
+		/*#IFDEV*/
+		assert(this.type === ExprPathType.Event);
+		assert(root?.nodeType === 1);
+		/*#ENDIF*/
 
-class ExprPathAttribValue extends ExprPath {
+		let eventName = this.attrName.slice(2); // remove "on-" prefix.
+		let func;
+		let args = [];
 
-	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
-		super(nodeBefore, nodeMarker, ExprPathType.AttribValue, attrName, attrValue);
+		// Convert array to function.
+		// oninput=${[this.doSomething, 'meow']}
+		if (Array.isArray(expr) && typeof expr[0] === 'function') {
+			func = expr[0];
+			args = expr.slice(1);
+		}
+		else if (typeof expr === 'function')
+			func = expr;
+		else
+			throw new Error(`Invalid event binding: <${node.tagName.toLowerCase()} ${this.attrName}=\${${JSON.stringify(expr)}}>`);
+
+		this.bindEvent(node, root, eventName, eventName, func, args);
 	}
+
 }
 
 class ExprPathAttribs extends ExprPath {
 
-	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
-		super(nodeBefore, nodeMarker, ExprPathType.AttribMultiple, attrName, attrValue);
+	/**
+	 * @type {Set<string>} Used for type=AttribType.Multiple to remember the attributes that were added. */
+	attrNames;
+
+	constructor(nodeBefore, nodeMarker) {
+		super(nodeBefore, nodeMarker, ExprPathType.AttribMultiple);
+		this.attrNames = new Set();
 	}
-
-
 
 	applyMultipleAttribs(node, expr) {
 		/*#IFDEV*/assert(this.type === ExprPathType.AttribMultiple);/*#ENDIF*/
@@ -1526,10 +1237,297 @@ class ExprPathAttribs extends ExprPath {
 	}
 }
 
+/**
+ * ISC License
+ *
+ * Copyright (c) 2020, Andrea Giammarchi, @WebReflection
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+ * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+ * AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+ * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+ * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
+ * OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+/**
+ * @param {Node} parentNode The container where children live
+ * @param {Node[]} a The list of current/live children
+ * @param {Node[]} b The list of future children
+ * @param {(entry: Node, action: number) => Node} get
+ * The callback invoked per each entry related DOM operation.
+ * @param {Node} [before] The optional node used as anchor to insert before.
+ * @returns {Node[]} The same list of future children.
+ */
+const udomdiff = (parentNode, a, b, before) => {
+	const bLength = b.length;
+	let aEnd = a.length;
+	let bEnd = bLength;
+	let aStart = 0;
+	let bStart = 0;
+	let map = null;
+	while (aStart < aEnd || bStart < bEnd) {
+		// append head, tail, or nodes in between: fast path
+		if (aEnd === aStart) {
+			// we could be in a situation where the rest of nodes that
+			// need to be added are not at the end, and in such case
+			// the node to `insertBefore`, if the index is more than 0
+			// must be retrieved, otherwise it's gonna be the first item.
+			const node = bEnd < bLength
+				? (bStart
+					? (b[bStart - 1].nextSibling)
+					: b[bEnd - bStart])
+				: before;
+			while (bStart < bEnd) {
+				let bNode = b[bStart++];
+				parentNode.insertBefore(bNode, node);
+			}
+		}
+		// remove head or tail: fast path
+		else if (bEnd === bStart) {
+			while (aStart < aEnd) {
+				// remove the node only if it's unknown or not live
+				let aNode = a[aStart];
+				if (!map || !map.has(aNode)) {
+					parentNode.removeChild(aNode);
+				}
+				aStart++;
+			}
+		}
+		// same node: fast path
+		else if (a[aStart] === b[bStart]) {
+			aStart++;
+			bStart++;
+		}
+		// same tail: fast path
+		else if (a[aEnd - 1] === b[bEnd - 1]) {
+			aEnd--;
+			bEnd--;
+		}
+			// The once here single last swap "fast path" has been removed in v1.1.0
+			// https://github.com/WebReflection/udomdiff/blob/single-final-swap/esm/index.js#L69-L85
+		// reverse swap: also fast path
+		else if (
+			a[aStart] === b[bEnd - 1] &&
+			b[bStart] === a[aEnd - 1]
+		) {
+			// this is a "shrink" operation that could happen in these cases:
+			// [1, 2, 3, 4, 5]
+			// [1, 4, 3, 2, 5]
+			// or asymmetric too
+			// [1, 2, 3, 4, 5]
+			// [1, 2, 3, 5, 6, 4]
+			const node = a[--aEnd].nextSibling;
+
+
+			let a2 = b[bStart++];
+			let b2 = a[aStart++];
+			parentNode.insertBefore(
+				a2,
+				b2.nextSibling
+			);
+
+			let bNode = b[--bEnd];
+			parentNode.insertBefore(bNode, node);
+
+			// mark the future index as identical (yeah, it's dirty, but cheap 👍)
+			// The main reason to do this, is that when a[aEnd] will be reached,
+			// the loop will likely be on the fast path, as identical to b[bEnd].
+			// In the best case scenario, the next loop will skip the tail,
+			// but in the worst one, this node will be considered as already
+			// processed, bailing out pretty quickly from the map index check
+			a[aEnd] = b[bEnd];
+		}
+		// map based fallback, "slow" path
+		else {
+			// the map requires an O(bEnd - bStart) operation once
+			// to store all future nodes indexes for later purposes.
+			// In the worst case scenario, this is a full O(N) cost,
+			// and such scenario happens at least when all nodes are different,
+			// but also if both first and last items of the lists are different
+			if (!map) {
+				map = new Map;
+				let i = bStart;
+				while (i < bEnd)
+					map.set(b[i], i++);
+			}
+			// if it's a future node, hence it needs some handling
+			if (map.has(a[aStart])) {
+				// grab the index of such node, 'cause it might have been processed
+				const index = map.get(a[aStart]);
+				// if it's not already processed, look on demand for the next LCS
+				if (bStart < index && index < bEnd) {
+					let i = aStart;
+					// counts the amount of nodes that are the same in the future
+					let sequence = 1;
+					while (++i < aEnd && i < bEnd && map.get(a[i]) === (index + sequence))
+						sequence++;
+					// effort decision here: if the sequence is longer than replaces
+					// needed to reach such sequence, which would brings again this loop
+					// to the fast path, prepend the difference before a sequence,
+					// and move only the future list index forward, so that aStart
+					// and bStart will be aligned again, hence on the fast path.
+					// An example considering aStart and bStart are both 0:
+					// a: [1, 2, 3, 4]
+					// b: [7, 1, 2, 3, 6]
+					// this would place 7 before 1 and, from that time on, 1, 2, and 3
+					// will be processed at zero cost
+					if (sequence > (index - bStart)) {
+						const node = a[aStart];
+						while (bStart < index) {
+							let bNode = b[bStart++];
+							parentNode.insertBefore(bNode, node);
+						}
+					}
+						// if the effort wasn't good enough, fallback to a replace,
+						// moving both source and target indexes forward, hoping that some
+					// similar node will be found later on, to go back to the fast path
+					else {
+						let aNode = a[aStart++];
+						let bNode = b[bStart++];
+						parentNode.replaceChild(
+							bNode,
+							aNode
+						);
+					}
+				}
+				// otherwise move the source forward, 'cause there's nothing to do
+				else
+					aStart++;
+			}
+				// this node has no meaning in the future list, so it's more than safe
+				// to remove it, and check the next live node out instead, meaning
+			// that only the live list index should be forwarded
+			else {
+				let aNode = a[aStart++];
+				parentNode.removeChild(aNode);
+			}
+		}
+	}
+	return b;
+};
+
+class MultiValueMap {
+
+	/** @type {Record<string, Set>} */
+	data = {};
+
+	// Set a new value for a key
+	add(key, value) {
+		let data = this.data;
+		let set = data[key];
+		if (!set) {
+			set = new Set();
+			data[key] = set;
+		}
+		set.add(value);
+	}
+
+	isEmpty() {
+		for (let key in this.data)
+			return true;
+		return false;
+	}
+
+	/**
+	 * Get all values for a key.
+	 * @param key {string}
+	 * @returns {Set|*[]} */
+	getAll(key) {
+		return this.data[key] || [];
+	}
+
+	/**
+	 * Remove one value from a key, and return it.
+	 * @param key {string}
+	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
+	 * @returns {*|undefined} The deleted item. */
+	delete(key, val=undefined) {
+		let data = this.data;
+		let result;
+		let set = data[key];
+		if (!set)
+			return undefined;
+
+		// Delete any value.
+		if (val === undefined) {
+			[result] = set; //  Get the first value from the set.
+			set.delete(result);
+		}
+
+		// Delete a specific value.
+		else {
+			set.delete(val);
+			result = val;
+		}
+
+		if (set.size === 0)
+			delete data[key];
+
+		return result;
+	}
+
+	/**
+	 * Remove any one value from a key, and return it.
+	 * @param key {string}
+	 * @returns {*|undefined} The deleted item. */
+	deleteAny(key) {
+		let data = this.data;
+		let result;
+		let set = data[key];
+		if (!set) // slower than pre-check.
+			return undefined;
+
+		[result] = set; // Get the first value from the set.
+		set.delete(result);
+
+		if (set.size === 0)
+			delete data[key];
+
+		return result;
+	}
+
+	deleteSpecific(key, val) {
+		let data = this.data;
+		let result;
+		let set = data[key];
+		if (!set)
+			return undefined;
+
+		set.delete(val);
+		result = val;
+
+		if (set.size === 0)
+			delete data[key];
+
+		return result;
+	}
+
+	hasValue(val) {
+		let data = this.data;
+		let names = [];
+		for (let name in data)
+			if (data[name].has(val)) // TODO: iterate twice to pre-size array?
+				names.push(name);
+		return names;
+	}
+}
+
 class ExprPathNodes extends ExprPath {
 
-	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
-		super(nodeBefore, nodeMarker, ExprPathType.Content, attrName, attrValue);
+
+	/**
+	 * @type {?function} The most recent callback passed to a .map() function in this ExprPath.  This is only used for watch.js
+	 * TODO: What if one ExprPath has two .map() calls?  Maybe we just won't support that. */
+	mapCallback
+
+	constructor(nodeBefore, nodeMarker) {
+		super(nodeBefore, nodeMarker, ExprPathType.Content);
 	}
 
 	/**

@@ -4,11 +4,14 @@ import {assert} from "./assert.js";
 
 export default class ExprPathAttribs extends ExprPath {
 
-	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
-		super(nodeBefore, nodeMarker, ExprPathType.AttribMultiple, attrName, attrValue);
+	/**
+	 * @type {Set<string>} Used for type=AttribType.Multiple to remember the attributes that were added. */
+	attrNames;
+
+	constructor(nodeBefore, nodeMarker) {
+		super(nodeBefore, nodeMarker, ExprPathType.AttribMultiple);
+		this.attrNames = new Set();
 	}
-
-
 
 	applyMultipleAttribs(node, expr) {
 		/*#IFDEV*/assert(this.type === ExprPathType.AttribMultiple);/*#ENDIF*/

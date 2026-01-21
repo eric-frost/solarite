@@ -3,7 +3,7 @@ import Util, {flattenAndIndent, nodeToArrayTree, setIndent} from "./Util.js";
 import delve from "./delve.js";
 import Shell from "./Shell.js";
 import RootNodeGroup from './RootNodeGroup.js';
-import ExprPath, {ExprPathType, resolveNodePath} from "./ExprPath.js";
+import ExprPath, {ExprPathType} from "./ExprPath.js";
 import Globals from './Globals.js';
 import ComponentInfo from "./ComponentInfo.js";
 import NodePath from "./NodePath.js";

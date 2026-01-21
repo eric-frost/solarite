@@ -9,8 +9,14 @@ import MultiValueMap from "./MultiValueMap.js";
 
 export default class ExprPathNodes extends ExprPath {
 
-	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
-		super(nodeBefore, nodeMarker, ExprPathType.Content, attrName, attrValue);
+
+	/**
+	 * @type {?function} The most recent callback passed to a .map() function in this ExprPath.  This is only used for watch.js
+	 * TODO: What if one ExprPath has two .map() calls?  Maybe we just won't support that. */
+	mapCallback
+
+	constructor(nodeBefore, nodeMarker) {
+		super(nodeBefore, nodeMarker, ExprPathType.Content);
 	}
 
 	/**
