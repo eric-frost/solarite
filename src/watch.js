@@ -98,7 +98,7 @@ export function renderWatched(root, trackModified=false) {
 			//exprPath.freeNodeGroups();
 
 			if (trackModified)
-				modified.add(...exprPath.getNodes());
+				modified.add(exprPath.nodeMarker);
 		}
 
 			// Update a single value in a map callback

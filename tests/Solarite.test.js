@@ -2936,7 +2936,6 @@ Testimony.test('Solarite.component.dynamicAttribsTwoComponents', 'Attribs specif
 	//assert.eq(a.outerHTML, `<a-515><div><b-515 name="User" userid="1"><!--ExprPath:0-->User | 1<!--ExprPathEnd:1--></b-515><b-515 name="User2" userid="2"><!--ExprPath:0-->User2 | 2<!--ExprPathEnd:1--></b-515></div></a-515>`);
 });
 
-
 Testimony.test('Solarite.component.dynamicAttribsAndChildren', () => {
 
 	class B516 extends Solarite {
@@ -2966,37 +2965,44 @@ Testimony.test('Solarite.component.dynamicAttribsAndChildren', () => {
 	a.render();
 	assert.eq(getHtml(a), `<a-516><div><b-516 user="">Fred | 3<span>Moderator</span><span>Administrator</span></b-516></div></a-516>`);
 });
-Testimony.test('Solarite.component.dynamicAttribsAndDynamicChildren', () => {
 
-	const roles = ['Moderator', 'Administrator'];
+Testimony.test('Solarite.component.dynamicChildren', () => {
+
+	const roles = ['A', 'B'];
+	let construct = 0;
+	let render = 0;
 
 	class B517 extends Solarite {
-		constructor(attribs={}) {
+		constructor(attribs={}, children) {
 			super();
-			this.user = attribs.user;
+			construct++;
 		}
 
 		render(attribs={}, children=[]) {
-			//console.log(attribs, children)
-			h(this)`<b-517>${this.user.name} | ${this.user.id}${children}</b-517>`
+			h(this)`<b-517><main>${children}</main></b-517>`
+			render++;
 		}
 	}
 	B517.define();
 
 	class A517 extends Solarite {
 		render() {
-			h(this)`<div><b-517 user=${{name: 'Fred', id: 3}}>${roles.map(role => h`<span>${role}</span>`)}</b-517></div>`;
+			h(this)`<a-517><b-517>${roles.map(role => h`<span>${role}</span>`)}</b-517></a-517>`;
 		}
 	}
 	A517.define();
 
 	let a = new A517();
 	a.render();
-	assert.eq(getHtml(a), `<a-517><div><b-517 user="">Fred | 3<span>Moderator</span><span>Administrator</span></b-517></div></a-517>`);
+	assert.eq(getHtml(a), `<a-517><b-517><main><span>A</span><span>B</span></main></b-517></a-517>`);
+	assert.eq(construct, 1);
+	assert.eq(render, 1);
 
-	//roles.push('Archivist');
+	roles.push('C');
 	a.render();
-	assert.eq(getHtml(a), `<a-517><div><b-517 user="">Fred | 3<span>Moderator</span><span>Administrator</span></b-517></div></a-517>`);
+	assert.eq(getHtml(a), `<a-517><b-517><main><span>A</span><span>B</span><span>C</span></main></b-517></a-517>`);
+	assert.eq(construct, 1);
+	assert.eq(render, 2);
 });
 
 Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Solarite component.', () => {
@@ -3402,7 +3408,6 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 	table.remove();
 });
 
-// Written by Junie:
 Testimony.test('Solarite.component.staticChildConstructorChildrenBefore', () => {
 	let ctorChildrenCount = -1;
 	let ctorChildText = null;
@@ -3437,7 +3442,6 @@ Testimony.test('Solarite.component.staticChildConstructorChildrenBefore', () => 
 	assert.eq('<s-600><s-600-child>A</s-600-child></s-600>', getHtml(a));
 });
 
-// Written by Junie:
 Testimony.test('Solarite.component.staticNoExprRendersOncePerParentRender', () => {
 	let renderCount = 0;
 	class S601Child extends Solarite {
@@ -3577,7 +3581,6 @@ Testimony.test('Solarite.events.classic', () => {
 
 	a.remove();
 });
-
 
 Testimony.test('Solarite.events.rebind', 'Ensure function is unbound/rebound on render', () => {
 

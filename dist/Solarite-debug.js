@@ -716,43 +716,9 @@ class ExprPath {
 		return result;
 	}
 
-
-	/**
-	 * If not for watch.js, this could be moved to ExprPathNodes.js
-	 * @return {(Node|HTMLElement)[]} */
+	// Only used for watch.js
 	getNodes() {
-
-		// Why doesn't this work?
-		// let result2 = [];
-		// for (let ng of this.nodeGroups)
-		// 	result2.push(...ng.getNodes())
-		// return result2;
-
-		if (this.type === ExprPathType.AttribValue || this.type === ExprPathType.AttribMultiple) {
-			return [this.nodeMarker];
-		}
-
-		let result;
-
-		// This shaves about 5ms off the partialUpdate benchmark.
-		result = this.nodesCache;
-		if (result) {
-			//#IFDEV
-			//this.checkNodesCache();
-			//#ENDIF
-			return result
-		}
-
-		result = [];
-		let current = this.nodeBefore.nextSibling;
-		let nodeMarker = this.nodeMarker;
-		while (current && current !== nodeMarker) {
-			result.push(current);
-			current = current.nextSibling;
-		}
-
-		this.nodesCache = result;
-		return result;
+		return [this.nodeMarker];
 	}
 
 	//#IFDEV
@@ -2012,6 +1978,46 @@ class ExprPathNodes extends ExprPath {
 		this.nodeGroupsRendered = [];
 	}
 
+
+
+	/**
+	 * If not for watch.js, this could be moved to ExprPathNodes.js
+	 * @return {(Node|HTMLElement)[]} */
+	getNodes() {
+
+		// Why doesn't this work?
+		// let result2 = [];
+		// for (let ng of this.nodeGroups)
+		// 	result2.push(...ng.getNodes())
+		// return result2;
+
+		// if (this.type === ExprPathType.AttribValue || this.type === ExprPathType.AttribMultiple) {
+		// 	return [this.nodeMarker];
+		// }
+
+		let result;
+
+		// This shaves about 5ms off the partialUpdate benchmark.
+		result = this.nodesCache;
+		if (result) {
+			//#IFDEV
+			//this.checkNodesCache();
+			//#ENDIF
+			return result
+		}
+
+		result = [];
+		let current = this.nodeBefore.nextSibling;
+		let nodeMarker = this.nodeMarker;
+		while (current && current !== nodeMarker) {
+			result.push(current);
+			current = current.nextSibling;
+		}
+
+		this.nodesCache = result;
+		return result;
+	}
+
 	//#IFDEV
 
 	get debug() {
@@ -2423,7 +2429,13 @@ class ComponentInfo {
 	constructor(component, attribs, children) {
 		this.component = component;
 		this.attribs = attribs;
-		this.children = children;
+
+		//this.children = children;
+
+		// This way we can keep track of when the children change when we re-render
+		this.childrenParent;
+		this.beforeFirstChild;
+		this.afterLastChild;
 	}
 }
 
