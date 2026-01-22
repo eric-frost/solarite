@@ -2972,7 +2972,7 @@ Testimony.test('Solarite.component.dynamicChildren', () => {
 	let construct = 0;
 	let render = 0;
 
-	class B517 extends Solarite {
+	class B517 extends HTMLElement {
 		constructor(attribs={}, children) {
 			super();
 			construct++;
@@ -2983,16 +2983,17 @@ Testimony.test('Solarite.component.dynamicChildren', () => {
 			render++;
 		}
 	}
-	B517.define();
+	customElements.define('b-517', B517);
 
-	class A517 extends Solarite {
+	class A517 extends HTMLElement {
 		render() {
 			h(this)`<a-517><b-517>${roles.map(role => h`<span>${role}</span>`)}</b-517></a-517>`;
 		}
 	}
-	A517.define();
+	customElements.define('a-517', A517);
 
 	let a = new A517();
+	document.body.append(a);
 	a.render();
 	assert.eq(getHtml(a), `<a-517><b-517><main><span>A</span><span>B</span></main></b-517></a-517>`);
 	assert.eq(construct, 1);

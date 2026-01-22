@@ -8,6 +8,7 @@ import ExprPathAttribValue from "./ExprPathAttribValue.js";
 import ExprPathAttribs from "./ExprPathAttribs.js";
 import ExprPathNodes from "./ExprPathNodes.js";
 import NodePath from "./NodePath.js";
+import ExprPathComponent from "./ExprPathComponent.js";
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -38,11 +39,13 @@ export default class Shell {
 	styles = [];
 
 	/**
-	 * @deprecated for componentPaths
+	 * @deprecated for ExprPathComponent
 	 * @type {int[][]} Array of paths.  Used by activateEmbeds() to quickly find components. */
 	staticComponentPaths = [];
 
-	/** @type {int[][]} Array of paths to all components.  Used by activateEmbeds() to quickly find components. */
+	/**
+	 * @deprecated - a short experiment that was never used.
+	 * @type {int[][]} Array of paths to all components.  Used by activateEmbeds() to quickly find components. */
 	componentPaths = [];
 
 	/** @type {{path:int[], attribs:Record<string, string>}[]} */
@@ -92,14 +95,22 @@ export default class Shell {
 			
 			// Replace attributes
 			if (node.nodeType === 1) {
-				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes as we go.
+				const hasIs = node.hasAttribute('is');
+				const isComponent = (hasIs || node.tagName.includes('-')) && node !== this.fragment.firstElementChild;
+				const componentAttribPaths = [];
+
+				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes with placeholders as we go.
 
 					// Whole attribute
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/)
 					if (matches) {
-						this.paths.push(new ExprPathAttribs(null, node, ExprPathType.AttribMultiple));
+						let path = new ExprPathAttribs(null, node, ExprPathType.AttribMultiple);
+						this.paths.push(path);
+						if (isComponent)
+							componentAttribPaths.push(path);
+
 						placeholdersUsed ++;
-						node.removeAttribute(matches[0]);
+						node.removeAttribute(matches[0]); // TODO: Is this necessary?
 					}
 
 					// Just the attribute value.
@@ -108,17 +119,32 @@ export default class Shell {
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
 
-							this.paths.push(
-								Util.isEvent(attr.name)
-									? new ExprPathEvent(null, node, null, attr.name, nonEmptyParts)
-									: new ExprPathAttribValue(null, node, null, attr.name, nonEmptyParts)
-							);
+							let path = Util.isEvent(attr.name)
+								? new ExprPathEvent(null, node, null, attr.name, nonEmptyParts)
+								: new ExprPathAttribValue(null, node, null, attr.name, nonEmptyParts);
+							this.paths.push(path);
+							if (isComponent)
+								componentAttribPaths.push(path);
+
 							placeholdersUsed += parts.length - 1;
 							node.setAttribute(attr.name, parts.join(''));
 						}
 					}
 				}
+
+				// Web components
+				if (isComponent) {
+					let path = new ExprPathComponent(null, node, ExprPathType.Component);
+					path.attribPaths = componentAttribPaths;
+					this.paths.push(path);
+
+					if (hasIs) {
+						node.setAttribute('_is', node.getAttribute('is'));
+						node.removeAttribute('is');
+					}
+				}
 			}
+
 			// Replace comment placeholders
 			else if (node.nodeType === 8 && node.nodeValue === '!✨!') {
 
@@ -206,21 +232,25 @@ export default class Shell {
 
 		// Handle solarite-placeholder's.
 
+		/*
+		// Deprecated path:
 		// 3. Rename "is" attributes so the Web Components don't instantiate until we have the values of their PathExpr arguments.
 		// that happens in NodeGroup.applyComponentExprs()
+		// TODO: Move this into step 2 where we handle components.
 		for (let el of this.fragment.querySelectorAll('[is]'))
 			el.setAttribute('_is', el.getAttribute('is'));
 
+		*/
 		for (let path of this.paths) {
 			if (path.nodeBefore)
 				path.nodeBeforeIndex = Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore)
-			path.nodeMarkerPath = NodePath.get(path.nodeMarker)
+			//path.nodeMarkerPath = NodePath.get(path.nodeMarker)
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
-			if ((path.type === ExprPathType.AttribValue || path.type === ExprPathType.Event) && path.nodeMarker.nodeType === 1 &&
-				(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
-				path.isComponent = true;
-			}
+			// if ((path.type === ExprPathType.AttribValue || path.type === ExprPathType.Event) && path.nodeMarker.nodeType === 1 &&
+			// 	(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
+			// 	path.isComponent = true;
+			// }
 		}
 
 		this.findEmbeds();
@@ -300,6 +330,7 @@ export default class Shell {
 
 		this.ids = Array.prototype.map.call(idEls, el => NodePath.get(el))
 
+		/*
 		for (let el of this.fragment.querySelectorAll('*')) {
 			if (el.tagName.includes('-') || el.hasAttribute('_is')) {
 
@@ -314,6 +345,7 @@ export default class Shell {
 					this.staticComponentPaths.push(path);
 			}
 		}
+		*/
 	}
 
 	/**

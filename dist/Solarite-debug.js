@@ -583,6 +583,33 @@ function flattenAndIndent(inputArray, indent = "") {
 }
 //#ENDIF
 
+var NodePath = {
+
+	/** @return {int[]} Returns indices in reverse order, because doing it that way is faster. */
+	get(node) {
+		let result = [];
+		while(true) {
+			let parent = node.parentNode;
+			if (!parent)
+				break;
+			result.push(Array.prototype.indexOf.call(node.parentNode.childNodes, node));
+			node = parent;
+		}
+		return result;
+	},
+
+	/**
+	 * Note that the path is backward, with the outermost element at the end.
+	 * @param root {HTMLElement|Document|DocumentFragment|ParentNode}
+	 * @param path {int[]}
+	 * @returns {Node|HTMLElement|HTMLStyleElement} */
+	resolve(root, path) {
+		for (let i=path.length-1; i>=0; i--)
+			root = root.childNodes[path[i]];
+		return root;
+	}
+};
+
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup. */
 class ExprPath {
@@ -647,6 +674,8 @@ class ExprPath {
 		this.nodeBefore = nodeBefore;
 		this.nodeMarker = nodeMarker;
 		this.type = type;
+
+		this.nodeMarkerPath = NodePath.get(nodeMarker);
 	}
 
 	/**
@@ -675,9 +704,13 @@ class ExprPath {
 			case 5: // PathType.Event:
 				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
 				break;
+			case 6: // PathType.Component:
+				this.applyComponent(exprs);
+				break;
+
 			default: // 3 PathType.Attribute
 				// One attribute value may have multiple expressions.  Here we apply them all at once.
-				this.applyValueAttrib(this.nodeMarker, exprs);
+				this.applyValueAttrib(exprs);
 				break;
 		}
 	}
@@ -779,6 +812,8 @@ const ExprPathType = {
 
 	/** Value of an attribute. */
 	Event: 5,
+
+	Component: 6
 };
 
 class HtmlParser {
@@ -892,10 +927,10 @@ class ExprPathAttribValue extends ExprPath {
 
 	/**
 	 * Set the value of an attribute.  This can be for any attribute, not just attributes named "value".
-	 * @param node
 	 * @param exprs */
 	// TODO: node is always this.nodeMarker?
-	applyValueAttrib(node, exprs) {
+	applyValueAttrib(exprs) {
+		let node = this.nodeMarker;
 		let expr = exprs[0];
 
 		// Two-way binding between attributes
@@ -2058,32 +2093,126 @@ function walkDOM(el, callback) {
 	}
 }
 
-var NodePath = {
+class ExprPathComponent extends ExprPath {
 
-	/** @return {int[]} Returns indices in reverse order, because doing it that way is faster. */
-	get(node) {
-		let result = [];
-		while(true) {
-			let parent = node.parentNode;
-			if (!parent)
-				break;
-			result.push(Array.prototype.indexOf.call(node.parentNode.childNodes, node));
-			node = parent;
-		}
+	/** @type {ExprPath[]} Paths to dynamics attributes that will be set on the component.*/
+	attribPaths;
+
+	constructor(nodeBefore, nodeMarker) {
+		super(null, nodeMarker, ExprPathType.Component);
+	}
+
+	clone(newRoot, pathOffset=0) {
+		let result = super.clone(newRoot, pathOffset);
+
+		// Untested:
+		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
 		return result;
-	},
+	}
+
 
 	/**
-	 * Note that the path is backward, with the outermost element at the end.
-	 * @param root {HTMLElement|Document|DocumentFragment|ParentNode}
-	 * @param path {int[]}
-	 * @returns {Node|HTMLElement|HTMLStyleElement} */
-	resolve(root, path) {
-		for (let i=path.length-1; i>=0; i--)
-			root = root.childNodes[path[i]];
-		return root;
+	 * Call render() on the component pointed to by this ExprPath.
+	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet. */
+	applyComponent() {
+		let el = this.nodeMarker;
+
+
+		// 1. Attributes
+		let dynamicAttribs = {}; // TODO
+
+		// TODO: Stop using the solarite-placeholder attribute.
+		let attribs = Util.attribsToObject(el, 'solarite-placeholder');
+		for (let name in dynamicAttribs || {}) // dynamic overwrites static:
+			attribs[Util.dashesToCamel(name)] = attribs[name];
+
+
+
+		// 2. Instantiate component on first time.
+		let children = null; // TODO: Is this how to get these?
+		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER')) {
+
+
+			// 2a. Instantiate component
+			let isAttrib = el.getAttribute('_is');
+			let tagName = isAttrib || el.tagName.slice(0, -21); // Remove -SOLARITE-PLACEHOLDER
+			let Constructor = customElements.get(tagName);
+			if (!Constructor)
+				throw new Error(`Must call customElements.define('${tagName}', Class) before using it.`);
+
+			children = el.childNodes;
+			let newEl = new Constructor(attribs, children);
+
+			// 2b. Copy attributes over.
+			if (isAttrib)
+				newEl.setAttribute('is', isAttrib);
+			for (let attrib of el.attributes)
+				if (attrib.name !== '_is' && attrib.name !== 'solarite-placeholder')
+					newEl.setAttribute(attrib.name, attrib.value);
+
+			// Set dynamic attributes if they are primitive types.
+			for (let name in attribs) {
+				let val = attribs[name];
+				let valType = typeof val;
+				if (valType === 'boolean') {
+					if (val !== false && val !== undefined && val !== null) // Util.isFalsy inlined
+						newEl.setAttribute(name, '');
+				}
+
+				// If type is a non-boolean primitive, set the attribute value.
+				else if (valType==='string' || valType === 'number' || valType==='bigint')
+					newEl.setAttribute(name, val);
+			}
+
+
+			// 2c. If an id pointed at the placeholder, update it to point to the new element.
+			let id = newEl.getAttribute('data-id') || newEl.getAttribute('id');
+			if (id)
+				delve(this.getRootNode(), id.split(/\./g), newEl);
+
+			// 2d. Update paths to use replaced element.
+			let ng = this.parentNg;
+			this.nodeMarker = newEl;
+			for (let path of ng.paths) {
+				if (path.nodeMarker === el)
+					path.nodeMarker = newEl;
+				if (path.nodeBefore === el)
+					path.nodeBefore = newEl;
+			}
+			if (ng.startNode === el)
+				ng.startNode = newEl;
+			if (ng.endNode === el)
+				ng.endNode = newEl;
+
+
+			// 2e. Swap it to the DOM.
+			el.replaceWith(newEl);
+			el = newEl;
+		}
+		else
+			children = []; // Where to get these?
+
+
+		// 3. Render
+		if (typeof el.render === 'function')
+			el.render(attribs, children);
+
+
+
 	}
-};
+
+	//#IFDEV
+	verify() {
+		super.verify();
+		assert(this.nodeMarker.nodeType === Node.ELEMENT_NODE);
+		assert(this.nodeMarker.tagName.includes('-'));
+		if (this.attribPaths)
+			for (let path of this.attribPaths)
+				path.verify();
+	}
+
+	//#ENDIF
+}
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -2114,11 +2243,13 @@ class Shell {
 	styles = [];
 
 	/**
-	 * @deprecated for componentPaths
+	 * @deprecated for ExprPathComponent
 	 * @type {int[][]} Array of paths.  Used by activateEmbeds() to quickly find components. */
 	staticComponentPaths = [];
 
-	/** @type {int[][]} Array of paths to all components.  Used by activateEmbeds() to quickly find components. */
+	/**
+	 * @deprecated - a short experiment that was never used.
+	 * @type {int[][]} Array of paths to all components.  Used by activateEmbeds() to quickly find components. */
 	componentPaths = [];
 
 	/** @type {{path:int[], attribs:Record<string, string>}[]} */
@@ -2168,14 +2299,22 @@ class Shell {
 			
 			// Replace attributes
 			if (node.nodeType === 1) {
-				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes as we go.
+				const hasIs = node.hasAttribute('is');
+				const isComponent = (hasIs || node.tagName.includes('-')) && node !== this.fragment.firstElementChild;
+				const componentAttribPaths = [];
+
+				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes with placeholders as we go.
 
 					// Whole attribute
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/);
 					if (matches) {
-						this.paths.push(new ExprPathAttribs(null, node, ExprPathType.AttribMultiple));
+						let path = new ExprPathAttribs(null, node, ExprPathType.AttribMultiple);
+						this.paths.push(path);
+						if (isComponent)
+							componentAttribPaths.push(path);
+
 						placeholdersUsed ++;
-						node.removeAttribute(matches[0]);
+						node.removeAttribute(matches[0]); // TODO: Is this necessary?
 					}
 
 					// Just the attribute value.
@@ -2184,17 +2323,32 @@ class Shell {
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
 
-							this.paths.push(
-								Util.isEvent(attr.name)
-									? new ExprPathEvent(null, node, null, attr.name, nonEmptyParts)
-									: new ExprPathAttribValue(null, node, null, attr.name, nonEmptyParts)
-							);
+							let path = Util.isEvent(attr.name)
+								? new ExprPathEvent(null, node, null, attr.name, nonEmptyParts)
+								: new ExprPathAttribValue(null, node, null, attr.name, nonEmptyParts);
+							this.paths.push(path);
+							if (isComponent)
+								componentAttribPaths.push(path);
+
 							placeholdersUsed += parts.length - 1;
 							node.setAttribute(attr.name, parts.join(''));
 						}
 					}
 				}
+
+				// Web components
+				if (isComponent) {
+					let path = new ExprPathComponent(null, node, ExprPathType.Component);
+					path.attribPaths = componentAttribPaths;
+					this.paths.push(path);
+
+					if (hasIs) {
+						node.setAttribute('_is', node.getAttribute('is'));
+						node.removeAttribute('is');
+					}
+				}
 			}
+
 			// Replace comment placeholders
 			else if (node.nodeType === 8 && node.nodeValue === '!✨!') {
 
@@ -2282,21 +2436,25 @@ class Shell {
 
 		// Handle solarite-placeholder's.
 
+		/*
+		// Deprecated path:
 		// 3. Rename "is" attributes so the Web Components don't instantiate until we have the values of their PathExpr arguments.
 		// that happens in NodeGroup.applyComponentExprs()
+		// TODO: Move this into step 2 where we handle components.
 		for (let el of this.fragment.querySelectorAll('[is]'))
 			el.setAttribute('_is', el.getAttribute('is'));
 
+		*/
 		for (let path of this.paths) {
 			if (path.nodeBefore)
 				path.nodeBeforeIndex = Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore);
-			path.nodeMarkerPath = NodePath.get(path.nodeMarker);
+			//path.nodeMarkerPath = NodePath.get(path.nodeMarker)
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
-			if ((path.type === ExprPathType.AttribValue || path.type === ExprPathType.Event) && path.nodeMarker.nodeType === 1 &&
-				(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
-				path.isComponent = true;
-			}
+			// if ((path.type === ExprPathType.AttribValue || path.type === ExprPathType.Event) && path.nodeMarker.nodeType === 1 &&
+			// 	(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
+			// 	path.isComponent = true;
+			// }
 		}
 
 		this.findEmbeds();
@@ -2376,6 +2534,7 @@ class Shell {
 
 		this.ids = Array.prototype.map.call(idEls, el => NodePath.get(el));
 
+		/*
 		for (let el of this.fragment.querySelectorAll('*')) {
 			if (el.tagName.includes('-') || el.hasAttribute('_is')) {
 
@@ -2390,6 +2549,7 @@ class Shell {
 					this.staticComponentPaths.push(path);
 			}
 		}
+		*/
 	}
 
 	/**
@@ -2424,20 +2584,6 @@ const commentPlaceholder = `<!--!✨!-->`;
 
 // We increment the placeholder char as we go because nodes can't have the same attribute more than once.
 const attribPlaceholder = 0xe000; // https://en.wikipedia.org/wiki/Private_Use_Areas  6400.
-
-class ComponentInfo {
-	constructor(component, attribs, children) {
-		this.component = component;
-		this.attribs = attribs;
-
-		//this.children = children;
-
-		// This way we can keep track of when the children change when we re-render
-		this.childrenParent;
-		this.beforeFirstChild;
-		this.afterLastChild;
-	}
-}
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
@@ -2556,9 +2702,9 @@ class NodeGroup {
 				else {
 					if (el) {
 						this.root = el;
-						let slotChildren;
 
 						// Save slot children (deprecated)
+						let slotChildren;
 						if (Globals$1.currentSlotChildren || el.childNodes.length) {
 							slotChildren = Globals$1.doc.createDocumentFragment();
 							slotChildren.append(...(Globals$1.currentSlotChildren || el.childNodes));
@@ -2612,9 +2758,9 @@ class NodeGroup {
 					}
 
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
-					this.components = this.resolvePaths(this.root, shell.componentPaths, startingPathDepth).map(c => new ComponentInfo(c));
-					this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
-					this.activateEmbeds(this.root, shell, startingPathDepth);
+					//this.components = this.resolvePaths(this.root, shell.componentPaths, startingPathDepth).map(c => new ComponentInfo(c));
+					//this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
+					//this.activateEmbeds(this.root, shell, startingPathDepth);
 				}
 				this.startNode = this.endNode = this.root;
 
@@ -2624,10 +2770,10 @@ class NodeGroup {
 			else if (shell) {
 				if (template.exprs.length) {
 					this.setPathsFromFragment(shellFragment, shell.paths);
-					this.staticComponents = this.findStaticComponents(shellFragment, shell);
+				//	this.staticComponents = this.findStaticComponents(shellFragment, shell);
 				}
 
-				this.components = this.resolvePaths(shellFragment, shell.componentPaths, 0).map(c => new ComponentInfo(c));
+				//this.components = this.resolvePaths(shellFragment, shell.componentPaths, 0).map(c => new ComponentInfo(c));
 
 				this.activateEmbeds(shellFragment, shell);
 			}
@@ -2647,62 +2793,71 @@ class NodeGroup {
 		this.verify();/*#ENDIF*/
 
 		// Things to consider:
-		// 1. One path may use multipe expressions.  E.g. <div class="${1} ${2}">
-		// 2. One component may need to use multiple attribute paths to be instantiated.
+		// 1. Paths consume a varying number of expressions.
+		//    An ExprPathAttribs may use multipe expressions.  E.g. <div class="${1} ${2}">
+		//    While an ExprPathComponent uses zero.
+		// 2. An ExprPathComponent references other ExprPaths that set its attribute values.
 		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
 		//    before its instantiated and its value attribute is set via an expression.
 
 		let exprIndex = exprs.length - 1; // Update exprs at paths.
-		let lastComponentPathIndex;
 		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
 		for (let i = paths.length - 1, path; path = paths[i]; i--) {
-			let prevPath = paths[i - 1];
-			let nextPath = paths[i + 1];
+			paths[i - 1];
+			paths[i + 1];
 
-			// Get the expressions associated with this path.
-			if (path.attrValue?.length > 2) {
-				let startIndex = (exprIndex - (path.attrValue.length - 1)) + 1;
-				pathExprs[i] = exprs.slice(startIndex, exprIndex + 1); // probably doesn't allocate if the JS vm implements copy on write.
-				exprIndex -= pathExprs[i].length;
-			} else {
-				pathExprs[i] = [exprs[exprIndex]];
-				exprIndex--;
+
+			// Component expressions don't have a correspdinging user-provided expression.
+			if (path instanceof ExprPathComponent) {
+				path.applyComponent();
 			}
+			else {
 
-
-			// TODO: Need to end and restart this block when going from one component to the next?
-			// Think of having two adjacent components.
-			// But the dynamicAttribsAdjacet test already passes.
-
-			// If expr is an attribute in a component:
-			// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
-			// 2. Otherwise send them to its render function.
-			// Components with no expressions as attributes are instead activated in activateEmbeds().
-			if (path.nodeMarker !== this.rootNg.root && path.isComponent) {
-
-				if (!nextPath || !nextPath.isComponent || nextPath.nodeMarker !== path.nodeMarker)
-					lastComponentPathIndex = i;
-				let isFirstComponentPath = !prevPath || !prevPath.isComponent || prevPath.nodeMarker !== path.nodeMarker;
-
-				if (isFirstComponentPath) {
-
-					let componentProps = {};
-					for (let j=i; j<=lastComponentPathIndex; j++) {
-						let attrName = paths[j].attrName; // Util.dashesToCamel(paths[j].attrName);
-						componentProps[attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
-					}
-
-					this.handleComponent(path.nodeMarker, componentProps, true);
-
-					// Set attributes on component.
-					for (let j=i; j<=lastComponentPathIndex; j++)
-						paths[j].apply(pathExprs[j]);
+				// Get the expressions associated with this path.
+				if (path.attrValue?.length > 2) {
+					let startIndex = (exprIndex - (path.attrValue.length - 1)) + 1;
+					pathExprs[i] = exprs.slice(startIndex, exprIndex + 1); // probably doesn't allocate if the JS vm implements copy on write.
+					exprIndex -= pathExprs[i].length;
+				} else {
+					pathExprs[i] = [exprs[exprIndex]];
+					exprIndex--;
 				}
-			}
 
-			// Else apply it normally
-			else
+
+				// TODO: Need to end and restart this block when going from one component to the next?
+				// Think of having two adjacent components.
+				// But the dynamicAttribsAdjacet test already passes.
+
+				// If expr is an attribute in a component:
+				// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
+				// 2. Otherwise send them to its render function.
+				// Components with no expressions as attributes are instead activated in activateEmbeds().
+				// if (path.nodeMarker !== this.rootNg.root && path.isComponent) {
+				//
+				// 	if (!nextPath || !nextPath.isComponent || nextPath.nodeMarker !== path.nodeMarker)
+				// 		lastComponentPathIndex = i;
+				// 	let isFirstComponentPath = !prevPath || !prevPath.isComponent || prevPath.nodeMarker !== path.nodeMarker;
+				//
+				// 	if (isFirstComponentPath) {
+				//
+				// 		let componentProps = {}
+				// 		for (let j=i; j<=lastComponentPathIndex; j++) {
+				// 			let attrName = paths[j].attrName; // Util.dashesToCamel(paths[j].attrName);
+				// 			componentProps[attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
+				// 		}
+				//
+				// 		this.handleComponent(path.nodeMarker, componentProps, true);
+				//
+				// 		// Set attributes on component.
+				// 		for (let j=i; j<=lastComponentPathIndex; j++)
+				// 			paths[j].apply(pathExprs[j]);
+				// 	}
+				// }
+				//
+				// // Else apply it normally
+				// else
 				path.apply(pathExprs[i]);
+			}
 
 
 		} // end for(path of this.paths)
@@ -2739,6 +2894,7 @@ class NodeGroup {
 	 * @param doRender {boolean}
 	 * @return {HTMLElement} The (possibly replaced) element. */
 	handleComponent(el, props=null, doRender=true) {
+		debugger;
 		let isPreHtmlElement = el.hasAttribute('solarite-placeholder');
 		let isPreIsElement = el.hasAttribute('_is');
 		let attribs, children;
@@ -2768,6 +2924,7 @@ class NodeGroup {
 	 * @param props {Object} Attributes with dynamic values.
 	 * @return {[HTMLElement, attribs:Object, children:Node[]]}} */
 	instantiateComponent(el, isPreHtmlElement=undefined, props=undefined) {
+		debugger;
 		if (isPreHtmlElement === undefined)
 			isPreHtmlElement = !el.hasAttribute('_is');
 
@@ -2834,18 +2991,7 @@ class NodeGroup {
 			if (attrib.name !== '_is' && attrib.name !== 'solarite-placeholder')
 				newEl.setAttribute(attrib.name, attrib.value);
 
-		// Set dynamic attributes if they are primitive types.
-		for (let name in props) {
-			let val = props[name];
-			if (typeof val === 'boolean') {
-				if (val !== false && val !== undefined && val !== null)
-					newEl.setAttribute(name, '');
-			}
 
-			// If type is a non-boolean primitive, set the attribute value.
-			else if (['number', 'bigint', 'string'].includes(typeof val))
-				newEl.setAttribute(name, val);
-		}
 
 		return [newEl, attribs, children];
 	}
@@ -3206,10 +3352,10 @@ class Template {
 		// Make sure the expresion count matches match the exprPath "hole" count.
 		// This can happen if we try manually rendering one template to a NodeGroup that was created expecting a different template.
 		// These don't always have the same length, for example if one attribute has multiple expressions.
-		if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
-			throw new Error(
-				`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length} \${value} ` +
-				`placeholders can't accomodate a Template with ${this.exprs.length} values.`);
+		// if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
+		// 	throw new Error(
+		// 		`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length} \${value} ` +
+		// 		`placeholders can't accomodate a Template with ${this.exprs.length} values.`);
 
 		// Creating the root nodegroup also renders it.
 		// If we didn't just create it, we need to render it.

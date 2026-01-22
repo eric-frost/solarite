@@ -7,6 +7,7 @@ import ExprPath, {ExprPathType} from "./ExprPath.js";
 import Globals from './Globals.js';
 import ComponentInfo from "./ComponentInfo.js";
 import NodePath from "./NodePath.js";
+import ExprPathComponent from "./ExprPathComponent.js";
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
@@ -125,9 +126,9 @@ export default class NodeGroup {
 				else {
 					if (el) {
 						this.root = el;
-						let slotChildren;
 
 						// Save slot children (deprecated)
+						let slotChildren;
 						if (Globals.currentSlotChildren || el.childNodes.length) {
 							slotChildren = Globals.doc.createDocumentFragment();
 							slotChildren.append(...(Globals.currentSlotChildren || el.childNodes));
@@ -181,9 +182,9 @@ export default class NodeGroup {
 					}
 
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
-					this.components = this.resolvePaths(this.root, shell.componentPaths, startingPathDepth).map(c => new ComponentInfo(c));
-					this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
-					this.activateEmbeds(this.root, shell, startingPathDepth);
+					//this.components = this.resolvePaths(this.root, shell.componentPaths, startingPathDepth).map(c => new ComponentInfo(c));
+					//this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
+					//this.activateEmbeds(this.root, shell, startingPathDepth);
 				}
 				this.startNode = this.endNode = this.root;
 
@@ -193,10 +194,10 @@ export default class NodeGroup {
 			else if (shell) {
 				if (template.exprs.length) {
 					this.setPathsFromFragment(shellFragment, shell.paths);
-					this.staticComponents = this.findStaticComponents(shellFragment, shell);
+				//	this.staticComponents = this.findStaticComponents(shellFragment, shell);
 				}
 
-				this.components = this.resolvePaths(shellFragment, shell.componentPaths, 0).map(c => new ComponentInfo(c));
+				//this.components = this.resolvePaths(shellFragment, shell.componentPaths, 0).map(c => new ComponentInfo(c));
 
 				this.activateEmbeds(shellFragment, shell);
 			}
@@ -216,8 +217,10 @@ export default class NodeGroup {
 		this.verify();/*#ENDIF*/
 
 		// Things to consider:
-		// 1. One path may use multipe expressions.  E.g. <div class="${1} ${2}">
-		// 2. One component may need to use multiple attribute paths to be instantiated.
+		// 1. Paths consume a varying number of expressions.
+		//    An ExprPathAttribs may use multipe expressions.  E.g. <div class="${1} ${2}">
+		//    While an ExprPathComponent uses zero.
+		// 2. An ExprPathComponent references other ExprPaths that set its attribute values.
 		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
 		//    before its instantiated and its value attribute is set via an expression.
 
@@ -228,50 +231,58 @@ export default class NodeGroup {
 			let prevPath = paths[i - 1];
 			let nextPath = paths[i + 1];
 
-			// Get the expressions associated with this path.
-			if (path.attrValue?.length > 2) {
-				let startIndex = (exprIndex - (path.attrValue.length - 1)) + 1;
-				pathExprs[i] = exprs.slice(startIndex, exprIndex + 1); // probably doesn't allocate if the JS vm implements copy on write.
-				exprIndex -= pathExprs[i].length;
-			} else {
-				pathExprs[i] = [exprs[exprIndex]];
-				exprIndex--;
+
+			// Component expressions don't have a correspdinging user-provided expression.
+			if (path instanceof ExprPathComponent) {
+				path.applyComponent();
 			}
+			else {
 
-
-			// TODO: Need to end and restart this block when going from one component to the next?
-			// Think of having two adjacent components.
-			// But the dynamicAttribsAdjacet test already passes.
-
-			// If expr is an attribute in a component:
-			// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
-			// 2. Otherwise send them to its render function.
-			// Components with no expressions as attributes are instead activated in activateEmbeds().
-			if (path.nodeMarker !== this.rootNg.root && path.isComponent) {
-
-				if (!nextPath || !nextPath.isComponent || nextPath.nodeMarker !== path.nodeMarker)
-					lastComponentPathIndex = i;
-				let isFirstComponentPath = !prevPath || !prevPath.isComponent || prevPath.nodeMarker !== path.nodeMarker;
-
-				if (isFirstComponentPath) {
-
-					let componentProps = {}
-					for (let j=i; j<=lastComponentPathIndex; j++) {
-						let attrName = paths[j].attrName; // Util.dashesToCamel(paths[j].attrName);
-						componentProps[attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
-					}
-
-					this.handleComponent(path.nodeMarker, componentProps, true);
-
-					// Set attributes on component.
-					for (let j=i; j<=lastComponentPathIndex; j++)
-						paths[j].apply(pathExprs[j]);
+				// Get the expressions associated with this path.
+				if (path.attrValue?.length > 2) {
+					let startIndex = (exprIndex - (path.attrValue.length - 1)) + 1;
+					pathExprs[i] = exprs.slice(startIndex, exprIndex + 1); // probably doesn't allocate if the JS vm implements copy on write.
+					exprIndex -= pathExprs[i].length;
+				} else {
+					pathExprs[i] = [exprs[exprIndex]];
+					exprIndex--;
 				}
-			}
 
-			// Else apply it normally
-			else
+
+				// TODO: Need to end and restart this block when going from one component to the next?
+				// Think of having two adjacent components.
+				// But the dynamicAttribsAdjacet test already passes.
+
+				// If expr is an attribute in a component:
+				// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
+				// 2. Otherwise send them to its render function.
+				// Components with no expressions as attributes are instead activated in activateEmbeds().
+				// if (path.nodeMarker !== this.rootNg.root && path.isComponent) {
+				//
+				// 	if (!nextPath || !nextPath.isComponent || nextPath.nodeMarker !== path.nodeMarker)
+				// 		lastComponentPathIndex = i;
+				// 	let isFirstComponentPath = !prevPath || !prevPath.isComponent || prevPath.nodeMarker !== path.nodeMarker;
+				//
+				// 	if (isFirstComponentPath) {
+				//
+				// 		let componentProps = {}
+				// 		for (let j=i; j<=lastComponentPathIndex; j++) {
+				// 			let attrName = paths[j].attrName; // Util.dashesToCamel(paths[j].attrName);
+				// 			componentProps[attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
+				// 		}
+				//
+				// 		this.handleComponent(path.nodeMarker, componentProps, true);
+				//
+				// 		// Set attributes on component.
+				// 		for (let j=i; j<=lastComponentPathIndex; j++)
+				// 			paths[j].apply(pathExprs[j]);
+				// 	}
+				// }
+				//
+				// // Else apply it normally
+				// else
 				path.apply(pathExprs[i]);
+			}
 
 
 		} // end for(path of this.paths)
@@ -308,6 +319,7 @@ export default class NodeGroup {
 	 * @param doRender {boolean}
 	 * @return {HTMLElement} The (possibly replaced) element. */
 	handleComponent(el, props=null, doRender=true) {
+		debugger;
 		let isPreHtmlElement = el.hasAttribute('solarite-placeholder');
 		let isPreIsElement = el.hasAttribute('_is');
 		let attribs, children;
@@ -337,6 +349,7 @@ export default class NodeGroup {
 	 * @param props {Object} Attributes with dynamic values.
 	 * @return {[HTMLElement, attribs:Object, children:Node[]]}} */
 	instantiateComponent(el, isPreHtmlElement=undefined, props=undefined) {
+		debugger;
 		if (isPreHtmlElement === undefined)
 			isPreHtmlElement = !el.hasAttribute('_is');
 
@@ -403,18 +416,7 @@ export default class NodeGroup {
 			if (attrib.name !== '_is' && attrib.name !== 'solarite-placeholder')
 				newEl.setAttribute(attrib.name, attrib.value);
 
-		// Set dynamic attributes if they are primitive types.
-		for (let name in props) {
-			let val = props[name];
-			if (typeof val === 'boolean') {
-				if (val !== false && val !== undefined && val !== null)
-					newEl.setAttribute(name, '');
-			}
 
-			// If type is a non-boolean primitive, set the attribute value.
-			else if (['number', 'bigint', 'string'].includes(typeof val))
-				newEl.setAttribute(name, val);
-		}
 
 		return [newEl, attribs, children];
 	}

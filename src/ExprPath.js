@@ -1,4 +1,5 @@
 import {assert} from "./assert.js";
+import NodePath from "./NodePath.js";
 
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup. */
@@ -64,6 +65,8 @@ export default class ExprPath {
 		this.nodeBefore = nodeBefore;
 		this.nodeMarker = nodeMarker;
 		this.type = type;
+
+		this.nodeMarkerPath = NodePath.get(nodeMarker);
 	}
 
 	/**
@@ -92,9 +95,13 @@ export default class ExprPath {
 			case 5: // PathType.Event:
 				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
 				break;
+			case 6: // PathType.Component:
+				this.applyComponent(exprs);
+				break;
+
 			default: // 3 PathType.Attribute
 				// One attribute value may have multiple expressions.  Here we apply them all at once.
-				this.applyValueAttrib(this.nodeMarker, exprs);
+				this.applyValueAttrib(exprs);
 				break;
 		}
 	}
@@ -196,4 +203,6 @@ export const ExprPathType = {
 
 	/** Value of an attribute. */
 	Event: 5,
+
+	Component: 6
 }

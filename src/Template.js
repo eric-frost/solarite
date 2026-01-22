@@ -76,10 +76,10 @@ export default class Template {
 		// Make sure the expresion count matches match the exprPath "hole" count.
 		// This can happen if we try manually rendering one template to a NodeGroup that was created expecting a different template.
 		// These don't always have the same length, for example if one attribute has multiple expressions.
-		if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
-			throw new Error(
-				`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length} \${value} ` +
-				`placeholders can't accomodate a Template with ${this.exprs.length} values.`);
+		// if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
+		// 	throw new Error(
+		// 		`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length} \${value} ` +
+		// 		`placeholders can't accomodate a Template with ${this.exprs.length} values.`);
 
 		// Creating the root nodegroup also renders it.
 		// If we didn't just create it, we need to render it.
