@@ -2979,7 +2979,7 @@ Testimony.test('Solarite.component.dynamicChildren', () => {
 		}
 
 		render(attribs={}, children=[]) {
-			h(this)`<b-517><main>${children}</main></b-517>`
+			h(this)`<b-517><main>${[...children]}</main></b-517>` // TODO: Allow sending it as a NodeList instead of array.
 			render++;
 		}
 	}
@@ -2987,7 +2987,7 @@ Testimony.test('Solarite.component.dynamicChildren', () => {
 
 	class A517 extends HTMLElement {
 		render() {
-			h(this)`<a-517><b-517>${roles.map(role => h`<span>${role}</span>`)}</b-517></a-517>`;
+			h(this)`<a-517><b-517>${roles}</b-517></a-517>`;
 		}
 	}
 	customElements.define('a-517', A517);
@@ -2995,15 +2995,22 @@ Testimony.test('Solarite.component.dynamicChildren', () => {
 	let a = new A517();
 	document.body.append(a);
 	a.render();
-	assert.eq(getHtml(a), `<a-517><b-517><main><span>A</span><span>B</span></main></b-517></a-517>`);
+	assert.eq(getHtml(a), `<a-517><b-517><main>AB</main></b-517></a-517>`);
 	assert.eq(construct, 1);
 	assert.eq(render, 1);
 
-	roles.push('C');
 	a.render();
-	assert.eq(getHtml(a), `<a-517><b-517><main><span>A</span><span>B</span><span>C</span></main></b-517></a-517>`);
+	assert.eq(getHtml(a), `<a-517><b-517><main>AB</main></b-517></a-517>`);
 	assert.eq(construct, 1);
 	assert.eq(render, 2);
+
+
+	roles.push('C');
+	//window.debug = 1;
+	a.render();
+	assert.eq(getHtml(a), `<a-517><b-517><main>ABC</main></b-517></a-517>`);
+	assert.eq(construct, 1);
+	assert.eq(render, 3);
 });
 
 Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Solarite component.', () => {

@@ -255,6 +255,7 @@ export default class Shell {
 
 		this.findEmbeds();
 
+
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 	}
 

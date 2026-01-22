@@ -1492,9 +1492,14 @@ class ExprPathNodes extends ExprPath {
 
 			// Fast clear method
 			let isNowEmpty = oldNodes.length && !newNodes.length;
-			if (!isNowEmpty || !path.fastClear())
+			if (!isNowEmpty || !path.fastClear()) {
+
+				if (window.debug)
+					debugger;
+
 				// Rearrange nodes.
 				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker);
+			}
 
 			// TODO: Put this in a remove() function of NodeGroup.
 			// Then only run it on the old nodeGroups that were actually removed.
@@ -1736,7 +1741,7 @@ class ExprPathNodes extends ExprPath {
 	 * @param expr
 	 * @param callback {function(Node|Template)}*/
 	exprToTemplates(expr, callback) {
-		if (Array.isArray(expr))
+		if (Array.isArray(expr)) // TODO: use typeof obj[Symbol.iterator] === 'function'  so we can also iterate over objects and NodeList?
 			for (let subExpr of expr)
 				this.exprToTemplates(subExpr, callback);
 
@@ -1957,6 +1962,10 @@ class ExprPathComponent extends ExprPath {
 	/** @type {ExprPath[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
 
+
+	childStart
+	childEnd;
+
 	constructor(nodeBefore, nodeMarker) {
 		super(null, nodeMarker, ExprPathType.Component);
 	}
@@ -1994,12 +2003,18 @@ class ExprPathComponent extends ExprPath {
 
 			// 2a. Instantiate component
 			let isAttrib = el.getAttribute('_is');
-			let tagName = isAttrib || el.tagName.slice(0, -21); // Remove -SOLARITE-PLACEHOLDER
+			let tagName = (isAttrib || el.tagName.slice(0, -21)).toLowerCase(); // Remove -SOLARITE-PLACEHOLDER
 			let Constructor = customElements.get(tagName);
 			if (!Constructor)
 				throw new Error(`Must call customElements.define('${tagName}', Class) before using it.`);
 
+			this.childStart = el.firstChild;
+			this.childEnd = el.lastChild;
+
 			children = el.childNodes;
+			// children = Array.prototype.filter.call(el.childNodes, node => // Remove node markers.
+			// 	node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath')
+			// );
 			let newEl = new Constructor(attribs, children);
 
 			// 2b. Copy attributes over.
@@ -2047,21 +2062,41 @@ class ExprPathComponent extends ExprPath {
 			// 2e. Swap it to the DOM.
 			el.replaceWith(newEl);
 			el = newEl;
+
+			if (typeof el.render === 'function')
+				el.render(attribs, children);
 		}
-		else
-			children = []; // Where to get these?
+		else {
 
 
-		// 3. Render
-		if (typeof el.render === 'function')
-			el.render(attribs, children);
+			// 3. Render
+			if (typeof el.render === 'function') {
 
+				// A previous call to the user's render() may have taken the children and added them to some arbitrary place.
+				// When it's called again, we grab whatever nodes have been rendered in that range.
+				children = window.getNodes(this.childStart, this.childEnd);
 
-
+				el.render(attribs, children);
+			}
+		}
 	}
 
 	
 }
+
+
+
+window.getNodes = function(startNode, endNode) {
+	let result = [];
+	let current = startNode;
+	let afterLast = endNode?.nextSibling;
+	while (current && current !== afterLast) {
+		result.push(current);
+		current = current.nextSibling;
+	}
+
+	return result;
+};
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -2306,6 +2341,7 @@ class Shell {
 
 		this.findEmbeds();
 
+
 		
 	}
 
@@ -2472,16 +2508,8 @@ class NodeGroup {
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
 
-	//dynamicComponents = new Set();
-
 	/** @deprecated for components. */
 	staticComponents = [];
-
-	/** @type {HTMLElement[]} All components that are not created by Expr's. */
-	//components = [];
-
-	/** @type {ComponentInfo[]} Save the arguments that we'll pass to a component constructor. */
-	components = [];
 
 	/** @type {Template} */
 	template;

@@ -90,9 +90,14 @@ export default class ExprPathNodes extends ExprPath {
 
 			// Fast clear method
 			let isNowEmpty = oldNodes.length && !newNodes.length;
-			if (!isNowEmpty || !path.fastClear())
+			if (!isNowEmpty || !path.fastClear()) {
+
+				if (window.debug)
+					debugger;
+
 				// Rearrange nodes.
 				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker)
+			}
 
 			// TODO: Put this in a remove() function of NodeGroup.
 			// Then only run it on the old nodeGroups that were actually removed.
@@ -339,7 +344,7 @@ export default class ExprPathNodes extends ExprPath {
 	 * @param expr
 	 * @param callback {function(Node|Template)}*/
 	exprToTemplates(expr, callback) {
-		if (Array.isArray(expr))
+		if (Array.isArray(expr)) // TODO: use typeof obj[Symbol.iterator] === 'function'  so we can also iterate over objects and NodeList?
 			for (let subExpr of expr)
 				this.exprToTemplates(subExpr, callback);
 

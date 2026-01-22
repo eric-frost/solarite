@@ -8,6 +8,10 @@ export default class ExprPathComponent extends ExprPath {
 	/** @type {ExprPath[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
 
+
+	childStart
+	childEnd;
+
 	constructor(nodeBefore, nodeMarker) {
 		super(null, nodeMarker, ExprPathType.Component);
 	}
@@ -45,12 +49,18 @@ export default class ExprPathComponent extends ExprPath {
 
 			// 2a. Instantiate component
 			let isAttrib = el.getAttribute('_is');
-			let tagName = isAttrib || el.tagName.slice(0, -21); // Remove -SOLARITE-PLACEHOLDER
+			let tagName = (isAttrib || el.tagName.slice(0, -21)).toLowerCase(); // Remove -SOLARITE-PLACEHOLDER
 			let Constructor = customElements.get(tagName);
 			if (!Constructor)
 				throw new Error(`Must call customElements.define('${tagName}', Class) before using it.`);
 
+			this.childStart = el.firstChild;
+			this.childEnd = el.lastChild;
+
 			children = el.childNodes;
+			// children = Array.prototype.filter.call(el.childNodes, node => // Remove node markers.
+			// 	node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath')
+			// );
 			let newEl = new Constructor(attribs, children);
 
 			// 2b. Copy attributes over.
@@ -98,17 +108,23 @@ export default class ExprPathComponent extends ExprPath {
 			// 2e. Swap it to the DOM.
 			el.replaceWith(newEl);
 			el = newEl;
+
+			if (typeof el.render === 'function')
+				el.render(attribs, children);
 		}
-		else
-			children = []; // Where to get these?
+		else {
 
 
-		// 3. Render
-		if (typeof el.render === 'function')
-			el.render(attribs, children);
+			// 3. Render
+			if (typeof el.render === 'function') {
 
+				// A previous call to the user's render() may have taken the children and added them to some arbitrary place.
+				// When it's called again, we grab whatever nodes have been rendered in that range.
+				children = window.getNodes(this.childStart, this.childEnd);
 
-
+				el.render(attribs, children);
+			}
+		}
 	}
 
 	//#IFDEV
@@ -122,4 +138,18 @@ export default class ExprPathComponent extends ExprPath {
 	}
 
 	//#ENDIF
+}
+
+
+
+window.getNodes = function(startNode, endNode) {
+	let result = [];
+	let current = startNode
+	let afterLast = endNode?.nextSibling
+	while (current && current !== afterLast) {
+		result.push(current)
+		current = current.nextSibling
+	}
+
+	return result;
 }

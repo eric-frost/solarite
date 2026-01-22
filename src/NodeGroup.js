@@ -5,7 +5,6 @@ import Shell from "./Shell.js";
 import RootNodeGroup from './RootNodeGroup.js';
 import ExprPath, {ExprPathType} from "./ExprPath.js";
 import Globals from './Globals.js';
-import ComponentInfo from "./ComponentInfo.js";
 import NodePath from "./NodePath.js";
 import ExprPathComponent from "./ExprPathComponent.js";
 
@@ -57,16 +56,8 @@ export default class NodeGroup {
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
 
-	//dynamicComponents = new Set();
-
 	/** @deprecated for components. */
 	staticComponents = [];
-
-	/** @type {HTMLElement[]} All components that are not created by Expr's. */
-	//components = [];
-
-	/** @type {ComponentInfo[]} Save the arguments that we'll pass to a component constructor. */
-	components = [];
 
 	/** @type {Template} */
 	template;

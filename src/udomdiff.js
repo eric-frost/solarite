@@ -16,8 +16,6 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 
-import NodeGroup from "./NodeGroup.js";
-
 /**
  * @param {Node} parentNode The container where children live
  * @param {Node[]} a The list of current/live children
