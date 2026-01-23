@@ -493,6 +493,11 @@ let Util = {
 			result.push(value);
 	},
 
+	saveOrphans(nodes) {
+		let fragment = Globals$1.doc.createDocumentFragment();
+		fragment.append(...nodes);
+	},
+
 	/**
 	 * Remove nodes from the beginning and end that are not:
 	 * 1.  Elements.
@@ -523,6 +528,15 @@ let Util = {
 
 // For debugging only
 //#IFDEV
+function verifyContiguous(nodes) {
+	let lastNode = null;
+	for (let node of nodes) {
+		if (lastNode && node.previousSibling !== lastNode)
+			throw new Error(`Nodes are not contiguous: ${node.parentNode} and ${lastNode.parentNode}`);
+		lastNode = node;
+	}
+}
+
 function setIndent$1(items, level=1) {
 	if (typeof items === 'string')
 		items = items.split(/\r?\n/g);
@@ -692,23 +706,23 @@ class ExprPath {
 	 * @param freeNodeGroups {boolean} */
 	apply(exprs, freeNodeGroups=true) {
 		switch (this.type) {
-			case 1: // PathType.Content:
+			case 1: // ExprPathType.Content:
 				this.applyNodes(exprs[0], freeNodeGroups);
 				break;
-			case 2: // PathType.Multiple:
+			case 2: // ExprPathType.Multiple:
 				this.applyMultipleAttribs(this.nodeMarker, exprs[0]);
 				break;
-			case 4: // PathType.Comment:
+			case 4: // ExprPathType.Comment:
 				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
 				break;
-			case 5: // PathType.Event:
+			case 5: // ExprPathType.Event:
 				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
 				break;
-			case 6: // PathType.Component:
+			case 6: // ExprPathType.Component:
 				this.applyComponent(exprs);
 				break;
 
-			default: // 3 PathType.Attribute
+			default: // 3 ExprPathType.Attribute
 				// One attribute value may have multiple expressions.  Here we apply them all at once.
 				this.applyValueAttrib(exprs);
 				break;
@@ -1617,7 +1631,7 @@ class ExprPathNodes extends ExprPath {
 
 			for (let ng of oldNodeGroups)
 				if (!ng.startNode.parentNode)
-					ng.removeAndSaveOrphans();
+					Util.saveOrphans(ng.getNodes());
 
 			// Instantiate components created within ${...} expressions.
 			// Also see this.applyExactNodes() which handles calling render() on web components even if they are unchanged.
@@ -1696,6 +1710,9 @@ class ExprPathNodes extends ExprPath {
 				this.nodeGroups.push(null); // placeholder
 			}
 		}
+		else if (expr instanceof NodeList) {
+			newNodes.push(...expr);
+		}
 
 		// Node(s) created by an expression.
 		else if (expr?.nodeType) {
@@ -1707,8 +1724,8 @@ class ExprPathNodes extends ExprPath {
 				newNodes.push(expr);
 		}
 
-			// Arrays and functions.
-			// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
+		// Arrays and functions.
+		// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
 		// but that consistently made the js-framework-benchmarks a few percentage points slower.
 		else
 			this.exprToTemplates(expr, template => {
@@ -1752,7 +1769,7 @@ class ExprPathNodes extends ExprPath {
 
 					// Remove the old nodes.
 					if (ng !== oldNg)
-						oldNg.removeAndSaveOrphans();
+						Util.saveOrphans(oldNg.getNodes());
 				}
 			});
 		}
@@ -1761,7 +1778,7 @@ class ExprPathNodes extends ExprPath {
 		if (deleteCount > 0) {
 			for (let i=0; i<deleteCount; i++) {
 				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
-				oldNg.removeAndSaveOrphans();
+				Util.saveOrphans(oldNg.getNodes());
 			}
 			this.nodeGroups.splice(op.index + replaceCount, deleteCount);
 		}
@@ -2098,6 +2115,14 @@ function walkDOM(el, callback) {
 	}
 }
 
+// This ExprPath renders nothing.
+class ExprPathComment extends ExprPath {
+
+	constructor(nodeBefore, nodeMarker) {
+		super(nodeBefore, nodeMarker, ExprPathType.Comment);
+	}
+}
+
 class ExprPathComponent extends ExprPath {
 
 	/** @type {ExprPath[]} Paths to dynamics attributes that will be set on the component.*/
@@ -2152,11 +2177,13 @@ class ExprPathComponent extends ExprPath {
 			this.childStart = el.firstChild;
 			this.childEnd = el.lastChild;
 
-			children = el.childNodes;
 			// children = Array.prototype.filter.call(el.childNodes, node => // Remove node markers.
 			// 	node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath')
 			// );
-			let newEl = new Constructor(attribs, children);
+			let newEl = new Constructor(attribs);
+
+
+			children = el.childNodes;
 
 			// 2b. Copy attributes over.
 			if (isAttrib)
@@ -2204,22 +2231,59 @@ class ExprPathComponent extends ExprPath {
 			el.replaceWith(newEl);
 			el = newEl;
 
-			if (typeof el.render === 'function')
-				el.render(attribs, children);
+			//#IFDEV
+
+			// Override render()
+			// Is this a good idea?  This override will never be triggered for components not inside other components!
+			// I could move this to the NodeGroup constructor for RootNodeGroups?
+			this.originalRender = el.render;
+			let firstRender = true;
+			el.render = () => {
+				let attribs = Util.attribsToObject(el, 'solarite-placeholder'); // TODO: get dynamic attribs
+				let children = getNodes(this.childStart, this.childEnd);
+
+
+
+				let result = this.originalRender.call(el, attribs, children);
+
+
+				// Disable the ExprPath that renders the children, after the first render.
+				// Because the parent node already renders them, and things will break if we try to render them again,
+				// e.g. if they're removed and udomdiff tries to remove them twice.
+				if (firstRender) {
+					let rootNg = Globals$1.rootNodeGroups.get(el);
+
+					let slotPathIndex = rootNg.paths.findIndex(path => path.nodeBefore === this.childStart.previousSibling);
+					let path = rootNg.paths[slotPathIndex];
+					rootNg.paths[slotPathIndex] = new ExprPathComment(null, path.nodeMarker); // Turn it into a comment expr path to disable it.
+					//console.log(slotPath)
+					firstRender = false;
+				}
+
+				return result;
+			};
 		}
 		else {
-
-
-			// 3. Render
-			if (typeof el.render === 'function') {
-
-				// A previous call to the user's render() may have taken the children and added them to some arbitrary place.
-				// When it's called again, we grab whatever nodes have been rendered in that range.
-				children = window.getNodes(this.childStart, this.childEnd);
-
-				el.render(attribs, children);
-			}
+			// A previous call to the user's render() may have taken the children and added them to some arbitrary place.
+			// When it's called again, we grab whatever nodes have been rendered in that range.
+			children = getNodes(this.childStart, this.childEnd);
 		}
+
+		if (typeof el.render === 'function') {
+			el.render(attribs);
+
+			// If render() didn't add the nodes, give them a DocumentFragment parent.
+			// Because expr paths can't later update them if they have no parent.
+			if (children[0] && !children[0].parentNode)
+				Util.saveOrphans(children);
+
+			//#IFDEV
+			// TODO: We also ahve to make sure that the user doesn't add the children more than once!
+			else
+				verifyContiguous(children);
+			//#ENDIF
+		}
+
 	}
 
 	//#IFDEV
@@ -2236,8 +2300,9 @@ class ExprPathComponent extends ExprPath {
 }
 
 
-
-window.getNodes = function(startNode, endNode) {
+// TODO: Conver this to an iterator, to make it faster?
+// Especially since it's only used on the first render?
+function getNodes(startNode, endNode) {
 	let result = [];
 	let current = startNode;
 	let afterLast = endNode?.nextSibling;
@@ -2247,7 +2312,7 @@ window.getNodes = function(startNode, endNode) {
 	}
 
 	return result;
-};
+}
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -2839,7 +2904,7 @@ class NodeGroup {
 			if (path instanceof ExprPathComponent) {
 				path.applyComponent();
 			}
-			else {
+			else if (path){
 
 				// Get the expressions associated with this path.
 				if (path.attrValue?.length > 2) {
@@ -2885,6 +2950,10 @@ class NodeGroup {
 				// // Else apply it normally
 				// else
 				path.apply(pathExprs[i]);
+			}
+			else {
+				console.log(1);
+				exprIndex--;
 			}
 
 
@@ -3061,15 +3130,6 @@ class NodeGroup {
 	}
 
 	/**
-	 * Requires the nodeCache to be present. */
-	removeAndSaveOrphans() {
-		/*#IFDEV*/assert(this.nodesCache);/*#ENDIF*/
-		let fragment = Globals$1.doc.createDocumentFragment();
-		fragment.append(...this.getNodes());
-	}
-
-
-	/**
 	 * Copy paths in fragment to this.paths.
 	 * @param fragment {DocumentFragment|HTMLElement}
 	 * @param paths
@@ -3097,13 +3157,6 @@ class NodeGroup {
 	getParentNode() {
 		return this.startNode?.parentNode
 	}
-
-
-	/**
-	 * @deprecated
-	 * An interleaved array of sets of nodes and top-level ExprPaths
-	 * @type {(Node|HTMLElement|ExprPath)[]} */
-	get nodes() { throw new Error('')};
 
 	get debug() {
 		return [
@@ -3972,6 +4025,7 @@ let HTMLElementAutoDefine = new Proxy(HTMLElement, {
 		if (!Array.isArray(args[1]))
 			throw new Error('Second argument to custom element constructor must be an array.');
 		if (!args[1].length) {
+			// TODO: <slot> won't exist until after render() is called, so what good is this?
 			let slotChildren = (result.querySelector('slot') || result).childNodes; // TODO: What about named slots?
 			for (let child of slotChildren)
 				args[1].push(child);

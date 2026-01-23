@@ -227,7 +227,7 @@ export default class NodeGroup {
 			if (path instanceof ExprPathComponent) {
 				path.applyComponent();
 			}
-			else {
+			else if (path){
 
 				// Get the expressions associated with this path.
 				if (path.attrValue?.length > 2) {
@@ -273,6 +273,10 @@ export default class NodeGroup {
 				// // Else apply it normally
 				// else
 				path.apply(pathExprs[i]);
+			}
+			else {
+				console.log(1)
+				exprIndex--;
 			}
 
 
@@ -449,15 +453,6 @@ export default class NodeGroup {
 	}
 
 	/**
-	 * Requires the nodeCache to be present. */
-	removeAndSaveOrphans() {
-		/*#IFDEV*/assert(this.nodesCache);/*#ENDIF*/
-		let fragment = Globals.doc.createDocumentFragment();
-		fragment.append(...this.getNodes());
-	}
-
-
-	/**
 	 * Copy paths in fragment to this.paths.
 	 * @param fragment {DocumentFragment|HTMLElement}
 	 * @param paths
@@ -485,13 +480,6 @@ export default class NodeGroup {
 	getParentNode() {
 		return this.startNode?.parentNode
 	}
-
-
-	/**
-	 * @deprecated
-	 * An interleaved array of sets of nodes and top-level ExprPaths
-	 * @type {(Node|HTMLElement|ExprPath)[]} */
-	get nodes() { throw new Error('')};
 
 	get debug() {
 		return [

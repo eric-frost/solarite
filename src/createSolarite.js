@@ -62,6 +62,7 @@ let HTMLElementAutoDefine = new Proxy(HTMLElement, {
 		if (!Array.isArray(args[1]))
 			throw new Error('Second argument to custom element constructor must be an array.');
 		if (!args[1].length) {
+			// TODO: <slot> won't exist until after render() is called, so what good is this?
 			let slotChildren = (result.querySelector('slot') || result).childNodes; // TODO: What about named slots?
 			for (let child of slotChildren)
 				args[1].push(child);

@@ -83,23 +83,23 @@ export default class ExprPath {
 	 * @param freeNodeGroups {boolean} */
 	apply(exprs, freeNodeGroups=true) {
 		switch (this.type) {
-			case 1: // PathType.Content:
+			case 1: // ExprPathType.Content:
 				this.applyNodes(exprs[0], freeNodeGroups);
 				break;
-			case 2: // PathType.Multiple:
+			case 2: // ExprPathType.Multiple:
 				this.applyMultipleAttribs(this.nodeMarker, exprs[0]);
 				break;
-			case 4: // PathType.Comment:
+			case 4: // ExprPathType.Comment:
 				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
 				break;
-			case 5: // PathType.Event:
+			case 5: // ExprPathType.Event:
 				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
 				break;
-			case 6: // PathType.Component:
+			case 6: // ExprPathType.Component:
 				this.applyComponent(exprs);
 				break;
 
-			default: // 3 PathType.Attribute
+			default: // 3 ExprPathType.Attribute
 				// One attribute value may have multiple expressions.  Here we apply them all at once.
 				this.applyValueAttrib(exprs);
 				break;

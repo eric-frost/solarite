@@ -105,7 +105,7 @@ export default class ExprPathNodes extends ExprPath {
 
 			for (let ng of oldNodeGroups)
 				if (!ng.startNode.parentNode)
-					ng.removeAndSaveOrphans();
+					Util.saveOrphans(ng.getNodes());
 
 			// Instantiate components created within ${...} expressions.
 			// Also see this.applyExactNodes() which handles calling render() on web components even if they are unchanged.
@@ -184,6 +184,9 @@ export default class ExprPathNodes extends ExprPath {
 				this.nodeGroups.push(null); // placeholder
 			}
 		}
+		else if (expr instanceof NodeList) {
+			newNodes.push(...expr);
+		}
 
 		// Node(s) created by an expression.
 		else if (expr?.nodeType) {
@@ -195,8 +198,8 @@ export default class ExprPathNodes extends ExprPath {
 				newNodes.push(expr);
 		}
 
-			// Arrays and functions.
-			// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
+		// Arrays and functions.
+		// I tried iterating over the result of a generator function to avoid this recursion and simplify the code,
 		// but that consistently made the js-framework-benchmarks a few percentage points slower.
 		else
 			this.exprToTemplates(expr, template => {
@@ -243,7 +246,7 @@ export default class ExprPathNodes extends ExprPath {
 
 					// Remove the old nodes.
 					if (ng !== oldNg)
-						oldNg.removeAndSaveOrphans();
+						Util.saveOrphans(oldNg.getNodes());
 				}
 			});
 		}
@@ -252,7 +255,7 @@ export default class ExprPathNodes extends ExprPath {
 		if (deleteCount > 0) {
 			for (let i=0; i<deleteCount; i++) {
 				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
-				oldNg.removeAndSaveOrphans();
+				Util.saveOrphans(oldNg.getNodes());
 			}
 			this.nodeGroups.splice(op.index + replaceCount, deleteCount);
 		}

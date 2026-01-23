@@ -2973,13 +2973,13 @@ Testimony.test('Solarite.component.dynamicChildren', () => {
 	let render = 0;
 
 	class B517 extends HTMLElement {
-		constructor(attribs={}, children) {
+		constructor(attribs={}) {
 			super();
 			construct++;
 		}
 
-		render(attribs={}, children=[]) {
-			h(this)`<b-517><main>${[...children]}</main></b-517>` // TODO: Allow sending it as a NodeList instead of array.
+		render(attribs={}, children) {
+			h(this)`<b-517><main>${children}</main></b-517>` // TODO: Allow sending it as a NodeList instead of array.
 			render++;
 		}
 	}
@@ -3006,11 +3006,17 @@ Testimony.test('Solarite.component.dynamicChildren', () => {
 
 
 	roles.push('C');
-	//window.debug = 1;
 	a.render();
 	assert.eq(getHtml(a), `<a-517><b-517><main>ABC</main></b-517></a-517>`);
 	assert.eq(construct, 1);
 	assert.eq(render, 3);
+
+	//debugger;
+	roles.splice(0, 3);
+	a.render();
+	assert.eq(getHtml(a), `<a-517><b-517><main></main></b-517></a-517>`);
+	assert.eq(construct, 1);
+	assert.eq(render, 4);
 });
 
 Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Solarite component.', () => {
