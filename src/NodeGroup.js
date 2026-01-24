@@ -118,12 +118,14 @@ export default class NodeGroup {
 					if (el) {
 						this.root = el;
 
-						/*// Save slot children (deprecated)
+						// Save slot
+						// 1. Globals.currentSlotChildren is set if this is called via ExprPathComponent.applyComponent() calls render()
+						// 2. el.childNodes is set if render() is called manually for the first time.
 						let slotChildren;
 						if (Globals.currentSlotChildren || el.childNodes.length) {
 							slotChildren = Globals.doc.createDocumentFragment();
 							slotChildren.append(...(Globals.currentSlotChildren || el.childNodes));
-						}*/
+						}
 
 						// If el should replace the root node of the fragment.
 						if (isReplaceEl(shellFragment, this.root.tagName)) {
@@ -145,7 +147,7 @@ export default class NodeGroup {
 						}
 
 
-						/*// Setup slot children (deprecated)
+						// Setup slot children (deprecated)
 						if (slotChildren) {
 							// Named slots
 							for (let slot of el.querySelectorAll('slot[name]')) {
@@ -162,7 +164,7 @@ export default class NodeGroup {
 							// No slots
 							else
 								el.append(slotChildren);
-						}*/
+						}
 					}
 
 					// Instantiate as a standalone element.
@@ -174,9 +176,7 @@ export default class NodeGroup {
 					}
 
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
-					//this.components = this.resolvePaths(this.root, shell.componentPaths, startingPathDepth).map(c => new ComponentInfo(c));
-					//this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
-					//this.activateEmbeds(this.root, shell, startingPathDepth);
+					this.activateEmbeds(this.root, shell, startingPathDepth);
 				}
 				this.startNode = this.endNode = this.root;
 
@@ -186,14 +186,15 @@ export default class NodeGroup {
 			else if (shell) {
 				if (template.exprs.length) {
 					this.setPathsFromFragment(shellFragment, shell.paths);
-				//	this.staticComponents = this.findStaticComponents(shellFragment, shell);
 				}
-
-				//this.components = this.resolvePaths(shellFragment, shell.componentPaths, 0).map(c => new ComponentInfo(c));
 
 				this.activateEmbeds(shellFragment, shell);
 			}
 		}
+
+		//#IFDEV
+		this.verify();
+		//#ENDIF
 	}
 
 

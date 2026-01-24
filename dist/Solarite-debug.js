@@ -524,19 +524,6 @@ let Util = {
 	}
 };
 
-
-
-// For debugging only
-//#IFDEV
-function verifyContiguous(nodes) {
-	let lastNode = null;
-	for (let node of nodes) {
-		if (lastNode && node.previousSibling !== lastNode)
-			throw new Error(`Nodes are not contiguous: ${node.parentNode} and ${lastNode.parentNode}`);
-		lastNode = node;
-	}
-}
-
 function setIndent$1(items, level=1) {
 	if (typeof items === 'string')
 		items = items.split(/\r?\n/g);
@@ -688,6 +675,8 @@ class ExprPath {
 		this.nodeBefore = nodeBefore;
 		this.nodeMarker = nodeMarker;
 		this.type = type;
+
+		/*#IFDEV*/this.verify();/*#ENDIF*/
 	}
 
 	/**
@@ -741,15 +730,24 @@ class ExprPath {
 		let root = newRoot;
 		let path = this.nodeMarkerPath;
 		let pathLength = path.length - pathOffset;
-		for (let i=pathLength-1; i>0; i--) // Resolve the path.
+		for (let i=pathLength-1; i>0; i--) { // Resolve the path.
+			//#IFDEV
+			assert(root.childNodes[path[i]]);
+			//#ENDIF
 			root = root.childNodes[path[i]];
+		}
 		let childNodes = root.childNodes;
 
 		nodeMarker = pathLength
 			? childNodes[path[0]]
 			: newRoot;
-		if (this.nodeBefore)
+		if (this.nodeBefore) {
+			//#IFDEV
+			assert(childNodes[this.nodeBeforeIndex]);
+			//#ENDIF
 			nodeBefore = childNodes[this.nodeBeforeIndex];
+
+		}
 
 		let result = new this.constructor(nodeBefore, nodeMarker, this.type, this.attrName, this.attrValue);
 		result.isComponent = this.isComponent;
@@ -801,7 +799,7 @@ class ExprPath {
 			ng.verify();
 
 		// Make sure the nodesCache matches the nodes.
-		this.checkNodesCache();
+		//this.checkNodesCache();
 	}
 	//#ENDIF
 }
@@ -2113,22 +2111,10 @@ function walkDOM(el, callback) {
 	}
 }
 
-// This ExprPath renders nothing.
-class ExprPathComment extends ExprPath {
-
-	constructor(nodeBefore, nodeMarker) {
-		super(nodeBefore, nodeMarker, ExprPathType.Comment);
-	}
-}
-
 class ExprPathComponent extends ExprPath {
 
 	/** @type {ExprPath[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
-
-
-	childStart
-	childEnd;
 
 	rendered = false;
 
@@ -2161,9 +2147,7 @@ class ExprPathComponent extends ExprPath {
 			attribs[Util.dashesToCamel(name)] = attribs[name];
 
 
-
 		// 2. Instantiate component on first time.
-		let children = null; // TODO: Is this how to get these?
 		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER')) {
 
 
@@ -2174,16 +2158,8 @@ class ExprPathComponent extends ExprPath {
 			if (!Constructor)
 				throw new Error(`Must call customElements.define('${tagName}', Class) before using it.`);
 
-			this.childStart = el.firstChild;
-			this.childEnd = el.lastChild;
-
-			// children = Array.prototype.filter.call(el.childNodes, node => // Remove node markers.
-			// 	node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath')
-			// );
+			Globals$1.currentSlotChildren = [...el.childNodes]; // TODO: Does this need to be a stack?
 			let newEl = new Constructor(attribs);
-
-
-			children = el.childNodes;
 
 			// 2b. Copy attributes over.
 			if (isAttrib)
@@ -2231,52 +2207,14 @@ class ExprPathComponent extends ExprPath {
 			el.replaceWith(newEl);
 			el = newEl;
 
-			//#IFDEV
-
-			// Override render()
-			// Is this a good idea?  This override will never be triggered for components not inside other components!
-			// I could move this to the NodeGroup constructor for RootNodeGroups?
-			this.originalRender = el.render;
-			el.render = () => {
-				let attribs = Util.attribsToObject(el, 'solarite-placeholder'); // TODO: get dynamic attribs
-				let children = getNodes(this.childStart, this.childEnd);
-				return this.originalRender.call(el, attribs, children);
-			};
-		}
-		else {
-			// A previous call to the user's render() may have taken the children and added them to some arbitrary place.
-			// When it's called again, we grab whatever nodes have been rendered in that range.
-			children = getNodes(this.childStart, this.childEnd);
 		}
 
-		if (typeof el.render === 'function') {
+		if (typeof el.render === 'function')
 			el.render(attribs);
 
-			// If render() didn't add the nodes, give them a DocumentFragment parent.
-			// Because expr paths can't later update them if they have no parent.
-			if (children[0] && !children[0].parentNode)
-				Util.saveOrphans(children);
-
-			//#IFDEV
-			// TODO: We also ahve to make sure that the user doesn't add the children more than once!
-			else
-				verifyContiguous(children);
-			//#ENDIF
 
 
-			// Disable the ExprPath that renders the children, after the first render.
-			// Because the parent node already renders them, and things will break if we try to render them again,
-			// e.g. if they're removed and udomdiff tries to remove them twice.
-			if (!this.rendered) {
-				let rootNg = Globals$1.rootNodeGroups.get(el);
-
-				let slotPathIndex = rootNg.paths.findIndex(path => path.nodeBefore === this.childStart.previousSibling);
-				let path = rootNg.paths[slotPathIndex];
-				rootNg.paths[slotPathIndex] = new ExprPathComment(null, path.nodeMarker); // Turn it into a comment expr path to disable it.
-				//console.log(slotPath)
-				this.rendered = true;
-			}
-		}
+		Globals$1.currentSlotChildren = null;
 
 
 
@@ -2293,21 +2231,6 @@ class ExprPathComponent extends ExprPath {
 	}
 
 	//#ENDIF
-}
-
-
-// TODO: Conver this to an iterator, to make it faster?
-// Especially since it's only used on the first render?
-function getNodes(startNode, endNode) {
-	let result = [];
-	let current = startNode;
-	let afterLast = endNode?.nextSibling;
-	while (current && current !== afterLast) {
-		result.push(current);
-		current = current.nextSibling;
-	}
-
-	return result;
 }
 
 /**
@@ -2794,12 +2717,14 @@ class NodeGroup {
 					if (el) {
 						this.root = el;
 
-						/*// Save slot children (deprecated)
+						// Save slot
+						// 1. Globals.currentSlotChildren is set if this is called via ExprPathComponent.applyComponent() calls render()
+						// 2. el.childNodes is set if render() is called manually for the first time.
 						let slotChildren;
-						if (Globals.currentSlotChildren || el.childNodes.length) {
-							slotChildren = Globals.doc.createDocumentFragment();
-							slotChildren.append(...(Globals.currentSlotChildren || el.childNodes));
-						}*/
+						if (Globals$1.currentSlotChildren || el.childNodes.length) {
+							slotChildren = Globals$1.doc.createDocumentFragment();
+							slotChildren.append(...(Globals$1.currentSlotChildren || el.childNodes));
+						}
 
 						// If el should replace the root node of the fragment.
 						if (isReplaceEl(shellFragment, this.root.tagName)) {
@@ -2821,24 +2746,24 @@ class NodeGroup {
 						}
 
 
-						/*// Setup slot children (deprecated)
+						// Setup slot children (deprecated)
 						if (slotChildren) {
 							// Named slots
 							for (let slot of el.querySelectorAll('slot[name]')) {
-								let name = slot.getAttribute('name')
+								let name = slot.getAttribute('name');
 								if (name) {
 									let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
 									slot.append(...slotChildren2);
 								}
 							}
 							// Unnamed slots
-							let unamedSlot = el.querySelector('slot:not([name])')
+							let unamedSlot = el.querySelector('slot:not([name])');
 							if (unamedSlot)
 								unamedSlot.append(slotChildren);
 							// No slots
 							else
 								el.append(slotChildren);
-						}*/
+						}
 					}
 
 					// Instantiate as a standalone element.
@@ -2850,9 +2775,7 @@ class NodeGroup {
 					}
 
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
-					//this.components = this.resolvePaths(this.root, shell.componentPaths, startingPathDepth).map(c => new ComponentInfo(c));
-					//this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
-					//this.activateEmbeds(this.root, shell, startingPathDepth);
+					this.activateEmbeds(this.root, shell, startingPathDepth);
 				}
 				this.startNode = this.endNode = this.root;
 
@@ -2862,14 +2785,15 @@ class NodeGroup {
 			else if (shell) {
 				if (template.exprs.length) {
 					this.setPathsFromFragment(shellFragment, shell.paths);
-				//	this.staticComponents = this.findStaticComponents(shellFragment, shell);
 				}
-
-				//this.components = this.resolvePaths(shellFragment, shell.componentPaths, 0).map(c => new ComponentInfo(c));
 
 				this.activateEmbeds(shellFragment, shell);
 			}
 		}
+
+		//#IFDEV
+		this.verify();
+		//#ENDIF
 	}
 
 

@@ -65,6 +65,8 @@ export default class ExprPath {
 		this.nodeBefore = nodeBefore;
 		this.nodeMarker = nodeMarker;
 		this.type = type;
+
+		/*#IFDEV*/this.verify();/*#ENDIF*/
 	}
 
 	/**
@@ -118,15 +120,24 @@ export default class ExprPath {
 		let root = newRoot;
 		let path = this.nodeMarkerPath;
 		let pathLength = path.length - pathOffset;
-		for (let i=pathLength-1; i>0; i--) // Resolve the path.
+		for (let i=pathLength-1; i>0; i--) { // Resolve the path.
+			//#IFDEV
+			assert(root.childNodes[path[i]]);
+			//#ENDIF
 			root = root.childNodes[path[i]];
+		}
 		let childNodes = root.childNodes;
 
 		nodeMarker = pathLength
 			? childNodes[path[0]]
 			: newRoot;
-		if (this.nodeBefore)
+		if (this.nodeBefore) {
+			//#IFDEV
+			assert(childNodes[this.nodeBeforeIndex]);
+			//#ENDIF
 			nodeBefore = childNodes[this.nodeBeforeIndex];
+
+		}
 
 		let result = new this.constructor(nodeBefore, nodeMarker, this.type, this.attrName, this.attrValue);
 		result.isComponent = this.isComponent;
@@ -178,7 +189,7 @@ export default class ExprPath {
 			ng.verify();
 
 		// Make sure the nodesCache matches the nodes.
-		this.checkNodesCache();
+		//this.checkNodesCache();
 	}
 	//#ENDIF
 }

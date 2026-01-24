@@ -10,10 +10,6 @@ export default class ExprPathComponent extends ExprPath {
 	/** @type {ExprPath[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
 
-
-	childStart
-	childEnd;
-
 	rendered = false;
 
 	constructor(nodeBefore, nodeMarker) {
@@ -45,9 +41,7 @@ export default class ExprPathComponent extends ExprPath {
 			attribs[Util.dashesToCamel(name)] = attribs[name];
 
 
-
 		// 2. Instantiate component on first time.
-		let children = null; // TODO: Is this how to get these?
 		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER')) {
 
 
@@ -58,16 +52,8 @@ export default class ExprPathComponent extends ExprPath {
 			if (!Constructor)
 				throw new Error(`Must call customElements.define('${tagName}', Class) before using it.`);
 
-			this.childStart = el.firstChild;
-			this.childEnd = el.lastChild;
-
-			// children = Array.prototype.filter.call(el.childNodes, node => // Remove node markers.
-			// 	node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath')
-			// );
+			Globals.currentSlotChildren = [...el.childNodes]; // TODO: Does this need to be a stack?
 			let newEl = new Constructor(attribs);
-
-
-			children = el.childNodes;
 
 			// 2b. Copy attributes over.
 			if (isAttrib)
@@ -115,52 +101,14 @@ export default class ExprPathComponent extends ExprPath {
 			el.replaceWith(newEl);
 			el = newEl;
 
-			//#IFDEV
-
-			// Override render()
-			// Is this a good idea?  This override will never be triggered for components not inside other components!
-			// I could move this to the NodeGroup constructor for RootNodeGroups?
-			this.originalRender = el.render;
-			el.render = () => {
-				let attribs = Util.attribsToObject(el, 'solarite-placeholder'); // TODO: get dynamic attribs
-				let children = getNodes(this.childStart, this.childEnd);
-				return this.originalRender.call(el, attribs, children);
-			}
-		}
-		else {
-			// A previous call to the user's render() may have taken the children and added them to some arbitrary place.
-			// When it's called again, we grab whatever nodes have been rendered in that range.
-			children = getNodes(this.childStart, this.childEnd);
 		}
 
-		if (typeof el.render === 'function') {
+		if (typeof el.render === 'function')
 			el.render(attribs);
 
-			// If render() didn't add the nodes, give them a DocumentFragment parent.
-			// Because expr paths can't later update them if they have no parent.
-			if (children[0] && !children[0].parentNode)
-				Util.saveOrphans(children);
-
-			//#IFDEV
-			// TODO: We also ahve to make sure that the user doesn't add the children more than once!
-			else
-				verifyContiguous(children);
-			//#ENDIF
 
 
-			// Disable the ExprPath that renders the children, after the first render.
-			// Because the parent node already renders them, and things will break if we try to render them again,
-			// e.g. if they're removed and udomdiff tries to remove them twice.
-			if (!this.rendered) {
-				let rootNg = Globals.rootNodeGroups.get(el);
-
-				let slotPathIndex = rootNg.paths.findIndex(path => path.nodeBefore === this.childStart.previousSibling);
-				let path = rootNg.paths[slotPathIndex];
-				rootNg.paths[slotPathIndex] = new ExprPathComment(null, path.nodeMarker); // Turn it into a comment expr path to disable it.
-				//console.log(slotPath)
-				this.rendered = true;
-			}
-		}
+		Globals.currentSlotChildren = null;
 
 
 

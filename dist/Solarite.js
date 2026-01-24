@@ -515,10 +515,65 @@ let Util = {
 	}
 };
 
+function setIndent$1(items, level=1) {
+	if (typeof items === 'string')
+		items = items.split(/\r?\n/g);
+
+	return items.map(str => {
+		if (level > 0)
+			return '  '.repeat(level) + str;
+		else if (level < 0)
+			return str.replace(new RegExp(`^  {0,${Math.abs(level)}}`), '');
+		return str;
+	})
+}
+
+function nodeToArrayTree(node, callback=null) {
+	if (!node) return [];
+
+	let result = [];
+
+	if (callback)
+		result.push(...callback(node));
+
+	if (node.nodeType === 1) {
+		let attrs = Array.from(node.attributes).map(attr => `${attr.name}="${attr.value}"`).join(' ');
+		let openingTag = `<${node.nodeName.toLowerCase()}${attrs ? ' ' + attrs : ''}>`;
+
+		let childrenArray = [];
+		for (let child of node.childNodes) {
+			let childResult = nodeToArrayTree(child, callback);
+			if (childResult.length > 0) {
+				childrenArray.push(childResult);
+			}
+		}
+
+		//let closingTag = `</${node.nodeName.toLowerCase()}>`;
+
+		result.push(openingTag, ...childrenArray);
+	} else if (node.nodeType === 3) {
+		result.push("'"+node.nodeValue+"'");
+	}
+
+	return result;
+}
 
 
-// For debugging only
+function flattenAndIndent(inputArray, indent = "") {
+	let result = [];
 
+	for (let item of inputArray) {
+		if (Array.isArray(item)) {
+			// Recursively handle nested arrays with increased indentation
+			result = result.concat(flattenAndIndent(item, indent + "  "));
+		} else {
+			result.push(indent + item);
+		}
+	}
+
+	return result;
+}
+//#ENDIF
 
 var NodePath = {
 
@@ -611,6 +666,8 @@ class ExprPath {
 		this.nodeBefore = nodeBefore;
 		this.nodeMarker = nodeMarker;
 		this.type = type;
+
+		
 	}
 
 	/**
@@ -664,15 +721,20 @@ class ExprPath {
 		let root = newRoot;
 		let path = this.nodeMarkerPath;
 		let pathLength = path.length - pathOffset;
-		for (let i=pathLength-1; i>0; i--) // Resolve the path.
+		for (let i=pathLength-1; i>0; i--) { // Resolve the path.
+			
 			root = root.childNodes[path[i]];
+		}
 		let childNodes = root.childNodes;
 
 		nodeMarker = pathLength
 			? childNodes[path[0]]
 			: newRoot;
-		if (this.nodeBefore)
+		if (this.nodeBefore) {
+			
 			nodeBefore = childNodes[this.nodeBeforeIndex];
+
+		}
 
 		let result = new this.constructor(nodeBefore, nodeMarker, this.type, this.attrName, this.attrValue);
 		result.isComponent = this.isComponent;
@@ -1963,22 +2025,10 @@ function walkDOM(el, callback) {
 	}
 }
 
-// This ExprPath renders nothing.
-class ExprPathComment extends ExprPath {
-
-	constructor(nodeBefore, nodeMarker) {
-		super(nodeBefore, nodeMarker, ExprPathType.Comment);
-	}
-}
-
 class ExprPathComponent extends ExprPath {
 
 	/** @type {ExprPath[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
-
-
-	childStart
-	childEnd;
 
 	rendered = false;
 
@@ -2011,9 +2061,7 @@ class ExprPathComponent extends ExprPath {
 			attribs[Util.dashesToCamel(name)] = attribs[name];
 
 
-
 		// 2. Instantiate component on first time.
-		let children = null; // TODO: Is this how to get these?
 		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER')) {
 
 
@@ -2024,16 +2072,8 @@ class ExprPathComponent extends ExprPath {
 			if (!Constructor)
 				throw new Error(`Must call customElements.define('${tagName}', Class) before using it.`);
 
-			this.childStart = el.firstChild;
-			this.childEnd = el.lastChild;
-
-			// children = Array.prototype.filter.call(el.childNodes, node => // Remove node markers.
-			// 	node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath')
-			// );
+			Globals$1.currentSlotChildren = [...el.childNodes]; // TODO: Does this need to be a stack?
 			let newEl = new Constructor(attribs);
-
-
-			children = el.childNodes;
 
 			// 2b. Copy attributes over.
 			if (isAttrib)
@@ -2081,43 +2121,20 @@ class ExprPathComponent extends ExprPath {
 			el.replaceWith(newEl);
 			el = newEl;
 
-			
-
-
-			// Disable the ExprPath that renders the children, after the first render.
-			// Because the parent node already renders them, and things will break if we try to render them again,
-			// e.g. if they're removed and udomdiff tries to remove them twice.
-			if (!this.rendered) {
-				let rootNg = Globals$1.rootNodeGroups.get(el);
-
-				let slotPathIndex = rootNg.paths.findIndex(path => path.nodeBefore === this.childStart.previousSibling);
-				let path = rootNg.paths[slotPathIndex];
-				rootNg.paths[slotPathIndex] = new ExprPathComment(null, path.nodeMarker); // Turn it into a comment expr path to disable it.
-				//console.log(slotPath)
-				this.rendered = true;
-			}
 		}
+
+		if (typeof el.render === 'function')
+			el.render(attribs);
+
+
+
+		Globals$1.currentSlotChildren = null;
 
 
 
 	}
 
 	
-}
-
-
-// TODO: Conver this to an iterator, to make it faster?
-// Especially since it's only used on the first render?
-function getNodes(startNode, endNode) {
-	let result = [];
-	let current = startNode;
-	let afterLast = endNode?.nextSibling;
-	while (current && current !== afterLast) {
-		result.push(current);
-		current = current.nextSibling;
-	}
-
-	return result;
 }
 
 /**
@@ -2594,12 +2611,14 @@ class NodeGroup {
 					if (el) {
 						this.root = el;
 
-						/*// Save slot children (deprecated)
+						// Save slot
+						// 1. Globals.currentSlotChildren is set if this is called via ExprPathComponent.applyComponent() calls render()
+						// 2. el.childNodes is set if render() is called manually for the first time.
 						let slotChildren;
-						if (Globals.currentSlotChildren || el.childNodes.length) {
-							slotChildren = Globals.doc.createDocumentFragment();
-							slotChildren.append(...(Globals.currentSlotChildren || el.childNodes));
-						}*/
+						if (Globals$1.currentSlotChildren || el.childNodes.length) {
+							slotChildren = Globals$1.doc.createDocumentFragment();
+							slotChildren.append(...(Globals$1.currentSlotChildren || el.childNodes));
+						}
 
 						// If el should replace the root node of the fragment.
 						if (isReplaceEl(shellFragment, this.root.tagName)) {
@@ -2621,24 +2640,24 @@ class NodeGroup {
 						}
 
 
-						/*// Setup slot children (deprecated)
+						// Setup slot children (deprecated)
 						if (slotChildren) {
 							// Named slots
 							for (let slot of el.querySelectorAll('slot[name]')) {
-								let name = slot.getAttribute('name')
+								let name = slot.getAttribute('name');
 								if (name) {
 									let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
 									slot.append(...slotChildren2);
 								}
 							}
 							// Unnamed slots
-							let unamedSlot = el.querySelector('slot:not([name])')
+							let unamedSlot = el.querySelector('slot:not([name])');
 							if (unamedSlot)
 								unamedSlot.append(slotChildren);
 							// No slots
 							else
 								el.append(slotChildren);
-						}*/
+						}
 					}
 
 					// Instantiate as a standalone element.
@@ -2650,9 +2669,7 @@ class NodeGroup {
 					}
 
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
-					//this.components = this.resolvePaths(this.root, shell.componentPaths, startingPathDepth).map(c => new ComponentInfo(c));
-					//this.staticComponents = this.findStaticComponents(this.root, shell, startingPathDepth);
-					//this.activateEmbeds(this.root, shell, startingPathDepth);
+					this.activateEmbeds(this.root, shell, startingPathDepth);
 				}
 				this.startNode = this.endNode = this.root;
 
@@ -2662,14 +2679,13 @@ class NodeGroup {
 			else if (shell) {
 				if (template.exprs.length) {
 					this.setPathsFromFragment(shellFragment, shell.paths);
-				//	this.staticComponents = this.findStaticComponents(shellFragment, shell);
 				}
-
-				//this.components = this.resolvePaths(shellFragment, shell.componentPaths, 0).map(c => new ComponentInfo(c));
 
 				this.activateEmbeds(shellFragment, shell);
 			}
 		}
+
+		
 	}
 
 
