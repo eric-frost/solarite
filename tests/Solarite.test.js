@@ -4008,7 +4008,7 @@ Testimony.test('Solarite.binding.selectDynamic', () => {
 	assert.eq(b.input.selectedIndex, 0);
 
 	b.count = 2
-	b.render()
+	b.render();
 	assert.eq(b.input.value, '2');
 	assert.eq(b.input.selectedIndex, 1);
 

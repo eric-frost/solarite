@@ -65,8 +65,6 @@ export default class ExprPath {
 		this.nodeBefore = nodeBefore;
 		this.nodeMarker = nodeMarker;
 		this.type = type;
-
-		this.nodeMarkerPath = NodePath.get(nodeMarker);
 	}
 
 	/**

@@ -611,8 +611,6 @@ class ExprPath {
 		this.nodeBefore = nodeBefore;
 		this.nodeMarker = nodeMarker;
 		this.type = type;
-
-		this.nodeMarkerPath = NodePath.get(nodeMarker);
 	}
 
 	/**
@@ -2298,7 +2296,7 @@ class Shell {
 			// Here we look for expressions in comments.
 			// We don't actually update them dynamically, but we still add paths for them.
 			// That way the expression count still matches.
-			else if (node.nodeType === Node.COMMENT_NODE) {
+			else if (node.nodeType === 8) { // Node.COMMENT_NODE
 				let parts = node.textContent.split(/[\ue000-\uf8ff]/g);
 				for (let i=0; i<parts.length-1; i++) {
 					let path = new ExprPath(node.previousSibling, node, ExprPathType.Comment);
@@ -2308,7 +2306,7 @@ class Shell {
 			}
 
 			// Replace comment placeholders inside script and style tags, which have become text nodes.
-			else if (node.nodeType === Node.TEXT_NODE && ['SCRIPT', 'STYLE'].includes(node.parentNode?.nodeName)) {
+			else if (node.nodeType === 3 && ['SCRIPT', 'STYLE'].includes(node.parentNode?.nodeName)) { // Node.TEXT_NODE
 				let parts = node.textContent.split(commentPlaceholder);
 				if (parts.length > 1) {
 
@@ -2354,7 +2352,9 @@ class Shell {
 		for (let path of this.paths) {
 			if (path.nodeBefore)
 				path.nodeBeforeIndex = Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore);
-			//path.nodeMarkerPath = NodePath.get(path.nodeMarker)
+
+			// Must be calculated after we remove the toRemove nodes:
+			path.nodeMarkerPath = NodePath.get(path.nodeMarker);
 
 			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
 			// if ((path.type === ExprPathType.AttribValue || path.type === ExprPathType.Event) && path.nodeMarker.nodeType === 1 &&
