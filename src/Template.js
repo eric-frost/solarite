@@ -89,8 +89,8 @@ export default class Template {
 			ng.applyExprs(this.exprs);
 			ng.exactKey = this.getExactKey();
 
-			if (firstTime)
-				ng.instantiateStaticComponents(ng.staticComponents);
+			//if (firstTime)
+			//	ng.instantiateStaticComponents(ng.staticComponents);
 		}
 
 		ng.exprsToRender = new Map();

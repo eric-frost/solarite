@@ -86,12 +86,12 @@ export default function h(htmlStrings=undefined, ...exprs) {
 				parent.innerHTML = '';
 
 			// Return a tagged template function that applies the tagged template to parent.
-			let taggedTemplate = (htmlStrings, ...exprs) => {
+			let renderTemplate = (htmlStrings, ...exprs) => {
 				Globals.rendered.add(parent)
 				let template = new Template(htmlStrings, exprs);
 				return template.render(parent, options);
 			}
-			return taggedTemplate;
+			return renderTemplate;
 		}
 	}
 

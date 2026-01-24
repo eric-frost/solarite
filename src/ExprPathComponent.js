@@ -14,6 +14,8 @@ export default class ExprPathComponent extends ExprPath {
 	childStart
 	childEnd;
 
+	rendered = false;
+
 	constructor(nodeBefore, nodeMarker) {
 		super(null, nodeMarker, ExprPathType.Component);
 	}
@@ -119,30 +121,10 @@ export default class ExprPathComponent extends ExprPath {
 			// Is this a good idea?  This override will never be triggered for components not inside other components!
 			// I could move this to the NodeGroup constructor for RootNodeGroups?
 			this.originalRender = el.render;
-			let firstRender = true;
 			el.render = () => {
 				let attribs = Util.attribsToObject(el, 'solarite-placeholder'); // TODO: get dynamic attribs
 				let children = getNodes(this.childStart, this.childEnd);
-
-
-
-				let result = this.originalRender.call(el, attribs, children);
-
-
-				// Disable the ExprPath that renders the children, after the first render.
-				// Because the parent node already renders them, and things will break if we try to render them again,
-				// e.g. if they're removed and udomdiff tries to remove them twice.
-				if (firstRender) {
-					let rootNg = Globals.rootNodeGroups.get(el);
-
-					let slotPathIndex = rootNg.paths.findIndex(path => path.nodeBefore === this.childStart.previousSibling);
-					let path = rootNg.paths[slotPathIndex];
-					rootNg.paths[slotPathIndex] = new ExprPathComment(null, path.nodeMarker); // Turn it into a comment expr path to disable it.
-					//console.log(slotPath)
-					firstRender = false;
-				}
-
-				return result;
+				return this.originalRender.call(el, attribs, children);
 			}
 		}
 		else {
@@ -164,7 +146,23 @@ export default class ExprPathComponent extends ExprPath {
 			else
 				verifyContiguous(children);
 			//#ENDIF
+
+
+			// Disable the ExprPath that renders the children, after the first render.
+			// Because the parent node already renders them, and things will break if we try to render them again,
+			// e.g. if they're removed and udomdiff tries to remove them twice.
+			if (!this.rendered) {
+				let rootNg = Globals.rootNodeGroups.get(el);
+
+				let slotPathIndex = rootNg.paths.findIndex(path => path.nodeBefore === this.childStart.previousSibling);
+				let path = rootNg.paths[slotPathIndex];
+				rootNg.paths[slotPathIndex] = new ExprPathComment(null, path.nodeMarker); // Turn it into a comment expr path to disable it.
+				//console.log(slotPath)
+				this.rendered = true;
+			}
 		}
+
+
 
 	}
 

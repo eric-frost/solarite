@@ -1982,6 +1982,8 @@ class ExprPathComponent extends ExprPath {
 	childStart
 	childEnd;
 
+	rendered = false;
+
 	constructor(nodeBefore, nodeMarker) {
 		super(null, nodeMarker, ExprPathType.Component);
 	}
@@ -2082,7 +2084,23 @@ class ExprPathComponent extends ExprPath {
 			el = newEl;
 
 			
+
+
+			// Disable the ExprPath that renders the children, after the first render.
+			// Because the parent node already renders them, and things will break if we try to render them again,
+			// e.g. if they're removed and udomdiff tries to remove them twice.
+			if (!this.rendered) {
+				let rootNg = Globals$1.rootNodeGroups.get(el);
+
+				let slotPathIndex = rootNg.paths.findIndex(path => path.nodeBefore === this.childStart.previousSibling);
+				let path = rootNg.paths[slotPathIndex];
+				rootNg.paths[slotPathIndex] = new ExprPathComment(null, path.nodeMarker); // Turn it into a comment expr path to disable it.
+				//console.log(slotPath)
+				this.rendered = true;
+			}
 		}
+
+
 
 	}
 
@@ -2576,12 +2594,12 @@ class NodeGroup {
 					if (el) {
 						this.root = el;
 
-						// Save slot children (deprecated)
+						/*// Save slot children (deprecated)
 						let slotChildren;
-						if (Globals$1.currentSlotChildren || el.childNodes.length) {
-							slotChildren = Globals$1.doc.createDocumentFragment();
-							slotChildren.append(...(Globals$1.currentSlotChildren || el.childNodes));
-						}
+						if (Globals.currentSlotChildren || el.childNodes.length) {
+							slotChildren = Globals.doc.createDocumentFragment();
+							slotChildren.append(...(Globals.currentSlotChildren || el.childNodes));
+						}*/
 
 						// If el should replace the root node of the fragment.
 						if (isReplaceEl(shellFragment, this.root.tagName)) {
@@ -2602,24 +2620,25 @@ class NodeGroup {
 								this.root.append(...shellFragment.childNodes);
 						}
 
-						// Setup slot children (deprecated)
+
+						/*// Setup slot children (deprecated)
 						if (slotChildren) {
 							// Named slots
 							for (let slot of el.querySelectorAll('slot[name]')) {
-								let name = slot.getAttribute('name');
+								let name = slot.getAttribute('name')
 								if (name) {
 									let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
 									slot.append(...slotChildren2);
 								}
 							}
 							// Unnamed slots
-							let unamedSlot = el.querySelector('slot:not([name])');
+							let unamedSlot = el.querySelector('slot:not([name])')
 							if (unamedSlot)
 								unamedSlot.append(slotChildren);
 							// No slots
 							else
 								el.append(slotChildren);
-						}
+						}*/
 					}
 
 					// Instantiate as a standalone element.
@@ -2675,8 +2694,6 @@ class NodeGroup {
 		let exprIndex = exprs.length - 1; // Update exprs at paths.
 		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
 		for (let i = paths.length - 1, path; path = paths[i]; i--) {
-			paths[i - 1];
-			paths[i + 1];
 
 
 			// Component expressions don't have a correspdinging user-provided expression.
@@ -2695,39 +2712,6 @@ class NodeGroup {
 					exprIndex--;
 				}
 
-
-				// TODO: Need to end and restart this block when going from one component to the next?
-				// Think of having two adjacent components.
-				// But the dynamicAttribsAdjacet test already passes.
-
-				// If expr is an attribute in a component:
-				// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
-				// 2. Otherwise send them to its render function.
-				// Components with no expressions as attributes are instead activated in activateEmbeds().
-				// if (path.nodeMarker !== this.rootNg.root && path.isComponent) {
-				//
-				// 	if (!nextPath || !nextPath.isComponent || nextPath.nodeMarker !== path.nodeMarker)
-				// 		lastComponentPathIndex = i;
-				// 	let isFirstComponentPath = !prevPath || !prevPath.isComponent || prevPath.nodeMarker !== path.nodeMarker;
-				//
-				// 	if (isFirstComponentPath) {
-				//
-				// 		let componentProps = {}
-				// 		for (let j=i; j<=lastComponentPathIndex; j++) {
-				// 			let attrName = paths[j].attrName; // Util.dashesToCamel(paths[j].attrName);
-				// 			componentProps[attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
-				// 		}
-				//
-				// 		this.handleComponent(path.nodeMarker, componentProps, true);
-				//
-				// 		// Set attributes on component.
-				// 		for (let j=i; j<=lastComponentPathIndex; j++)
-				// 			paths[j].apply(pathExprs[j]);
-				// 	}
-				// }
-				//
-				// // Else apply it normally
-				// else
 				path.apply(pathExprs[i]);
 			}
 			else {
@@ -3121,7 +3105,6 @@ class Template {
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
 	render(el=null, options={}) {
-		let firstTime = false;
 
 
 		let ng = el && Globals$1.rootNodeGroups.get(el);
@@ -3130,7 +3113,6 @@ class Template {
 			if (!el) // null if it's a standalone elment.
 				el = ng.getRootNode();
 			Globals$1.rootNodeGroups.set(el, ng); // All tests still pass if this is commented out!
-			firstTime = true;
 		}
 
 		// Make sure the expresion count matches match the exprPath "hole" count.
@@ -3149,8 +3131,8 @@ class Template {
 			ng.applyExprs(this.exprs);
 			ng.exactKey = this.getExactKey();
 
-			if (firstTime)
-				ng.instantiateStaticComponents(ng.staticComponents);
+			//if (firstTime)
+			//	ng.instantiateStaticComponents(ng.staticComponents);
 		}
 
 		ng.exprsToRender = new Map();
@@ -3492,12 +3474,12 @@ function h(htmlStrings=undefined, ...exprs) {
 				parent.innerHTML = '';
 
 			// Return a tagged template function that applies the tagged template to parent.
-			let taggedTemplate = (htmlStrings, ...exprs) => {
+			let renderTemplate = (htmlStrings, ...exprs) => {
 				Globals$1.rendered.add(parent);
 				let template = new Template(htmlStrings, exprs);
 				return template.render(parent, options);
 			};
-			return taggedTemplate;
+			return renderTemplate;
 		}
 	}
 

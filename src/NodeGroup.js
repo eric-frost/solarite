@@ -118,12 +118,12 @@ export default class NodeGroup {
 					if (el) {
 						this.root = el;
 
-						// Save slot children (deprecated)
+						/*// Save slot children (deprecated)
 						let slotChildren;
 						if (Globals.currentSlotChildren || el.childNodes.length) {
 							slotChildren = Globals.doc.createDocumentFragment();
 							slotChildren.append(...(Globals.currentSlotChildren || el.childNodes));
-						}
+						}*/
 
 						// If el should replace the root node of the fragment.
 						if (isReplaceEl(shellFragment, this.root.tagName)) {
@@ -144,7 +144,8 @@ export default class NodeGroup {
 								this.root.append(...shellFragment.childNodes);
 						}
 
-						// Setup slot children (deprecated)
+
+						/*// Setup slot children (deprecated)
 						if (slotChildren) {
 							// Named slots
 							for (let slot of el.querySelectorAll('slot[name]')) {
@@ -161,7 +162,7 @@ export default class NodeGroup {
 							// No slots
 							else
 								el.append(slotChildren);
-						}
+						}*/
 					}
 
 					// Instantiate as a standalone element.
@@ -216,11 +217,8 @@ export default class NodeGroup {
 		//    before its instantiated and its value attribute is set via an expression.
 
 		let exprIndex = exprs.length - 1; // Update exprs at paths.
-		let lastComponentPathIndex;
 		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
 		for (let i = paths.length - 1, path; path = paths[i]; i--) {
-			let prevPath = paths[i - 1];
-			let nextPath = paths[i + 1];
 
 
 			// Component expressions don't have a correspdinging user-provided expression.
@@ -239,39 +237,6 @@ export default class NodeGroup {
 					exprIndex--;
 				}
 
-
-				// TODO: Need to end and restart this block when going from one component to the next?
-				// Think of having two adjacent components.
-				// But the dynamicAttribsAdjacet test already passes.
-
-				// If expr is an attribute in a component:
-				// 1. Instantiate it if it hasn't already been, sending all expr's to its constructor.
-				// 2. Otherwise send them to its render function.
-				// Components with no expressions as attributes are instead activated in activateEmbeds().
-				// if (path.nodeMarker !== this.rootNg.root && path.isComponent) {
-				//
-				// 	if (!nextPath || !nextPath.isComponent || nextPath.nodeMarker !== path.nodeMarker)
-				// 		lastComponentPathIndex = i;
-				// 	let isFirstComponentPath = !prevPath || !prevPath.isComponent || prevPath.nodeMarker !== path.nodeMarker;
-				//
-				// 	if (isFirstComponentPath) {
-				//
-				// 		let componentProps = {}
-				// 		for (let j=i; j<=lastComponentPathIndex; j++) {
-				// 			let attrName = paths[j].attrName; // Util.dashesToCamel(paths[j].attrName);
-				// 			componentProps[attrName] = pathExprs[j].length > 1 ? pathExprs[j].join('') : pathExprs[j][0];
-				// 		}
-				//
-				// 		this.handleComponent(path.nodeMarker, componentProps, true);
-				//
-				// 		// Set attributes on component.
-				// 		for (let j=i; j<=lastComponentPathIndex; j++)
-				// 			paths[j].apply(pathExprs[j]);
-				// 	}
-				// }
-				//
-				// // Else apply it normally
-				// else
 				path.apply(pathExprs[i]);
 			}
 			else {

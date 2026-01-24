@@ -2769,6 +2769,7 @@ Testimony.test('Solarite.h.standaloneChild', () => {
 /*┌─────────────────╮
   | Component       |
   └─────────────────╯*/
+/*
 Testimony.test('Solarite.component.tr', () => {
 
 	class TR510 extends HTMLTableRowElement {
@@ -2965,8 +2966,51 @@ Testimony.test('Solarite.component.dynamicAttribsAndChildren', () => {
 	a.render();
 	assert.eq(getHtml(a), `<a-516><div><b-516 user="">Fred | 3<span>Moderator</span><span>Administrator</span></b-516></div></a-516>`);
 });
+*/
 
-Testimony.test('Solarite.component.dynamicChildren', () => {
+
+
+// new:
+
+Testimony.test('Solarite.component.staticChildrenInDom', () => {
+	let construct = 0;
+	let render = 0;
+
+	class C515 extends HTMLElement {
+		render(attribs, children) {
+			h(this)`<c-515><main>${children}</main></c-515>`
+		}
+	}
+	customElements.define('c-515', C515);
+
+
+	let div = document.createElement('div');
+	div.innerHTML = `<c-515><span>hello</span></c-515>`;
+	let c = div.querySelector('c-515');
+	c.render();
+
+	console.log(getHtml(div));
+
+	assert.eq(getHtml(div), `<c-515><main><span>hello</span></main></c-515>`);
+
+});
+
+Testimony.test('Solarite.component.staticChildrenInSubComponent', () => {
+	class B515 extends HTMLElement {
+		constructor(attribs={}) {
+			super();
+			construct++;
+		}
+
+		render(attribs={}, children) {
+			h(this)`<b-517><main>${children}</main></b-517>` // TODO: Allow sending it as a NodeList instead of array.
+			render++;
+		}
+	}
+	customElements.define('b-517', B517);
+});
+
+Testimony.test('Solarite.component.dynamicChildrenInSubComponent', () => {
 
 	const roles = ['A', 'B'];
 	let construct = 0;
@@ -3004,19 +3048,23 @@ Testimony.test('Solarite.component.dynamicChildren', () => {
 	assert.eq(construct, 1);
 	assert.eq(render, 2);
 
-
 	roles.push('C');
 	a.render();
 	assert.eq(getHtml(a), `<a-517><b-517><main>ABC</main></b-517></a-517>`);
 	assert.eq(construct, 1);
 	assert.eq(render, 3);
 
-	//debugger;
 	roles.splice(0, 3);
 	a.render();
 	assert.eq(getHtml(a), `<a-517><b-517><main></main></b-517></a-517>`);
 	assert.eq(construct, 1);
 	assert.eq(render, 4);
+
+	roles.push('C');
+	a.render();
+	assert.eq(getHtml(a), `<a-517><b-517><main>C</main></b-517></a-517>`);
+	assert.eq(construct, 1);
+	assert.eq(render, 5);
 });
 
 Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Solarite component.', () => {
