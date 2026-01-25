@@ -3026,16 +3026,16 @@ Testimony.test('Solarite.component.attribsFromParentComponent', () => {
 	}
 	B504.define();
 
-	class A504 extends HTMLElement {
+	class A504 extends Solarite {
 		render() {
 			h(this)`<a-504><b-504 name="a" rows=${[1, 2, 3, 4]}></b-504></a-504>`;
 		}
 	}
-	customElements.define('a-504', A504);
+	//customElements.define('a-504', A504);
 
 	let a = new A504();
 	document.body.append(a);
-	a.render();
+	//a.render();
 
 	assert.eq(getHtml(a), `<a-504><b-504 name="a" rows="">a:1|2|3|4</b-504></a-504>`);
 	assert.eq(construct, 1)

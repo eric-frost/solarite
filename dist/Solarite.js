@@ -2068,15 +2068,16 @@ class ExprPathComponent extends ExprPath {
 			if (ng.endNode === el)
 				ng.endNode = newEl;
 
+			// 2f. Call render() if it wasn't called by the constructor.
+			// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
+			// Because that path renders it without the attribute expressions.
+			if (typeof newEl.render === 'function' && !Globals$1.rendered.has(newEl)) {
+				newEl.render(attribs);
+			}
 
 			// 2e. Swap it to the DOM.
 			el.replaceWith(newEl);
 			el = newEl;
-
-			// 2f. Call render() if it wasn't called by the constructor.
-			if (typeof el.render === 'function' && !Globals$1.rendered.has(el)) {
-				el.render(attribs);
-			}
 		}
 
 		// 2f.
