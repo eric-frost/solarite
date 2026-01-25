@@ -2978,14 +2978,11 @@ Testimony.test('Solarite.component.attribsFromDOM', async () => {
 	class C500 extends Solarite {
 		constructor(attribs={}) {
 			super(attribs);
-			console.log(JSON.stringify(attribs));
-
 			construct++;
 			this.render(attribs);
 		}
 
 		render(attribs={}) {
-			console.log('render', attribs);
 			h(this)`<c-500>${attribs.name}:${attribs.rows.join('|')}</c-500>`;
 			render++;
 		}
@@ -3002,6 +2999,13 @@ Testimony.test('Solarite.component.attribsFromDOM', async () => {
 
 	//await new Promise(resolve => setTimeout(resolve, 1));
 	assert.eq(getHtml(c), '<c-500 name="a" rows="${[1, 2, 3, 4]}">a:1|2|3|4</c-500>');
+	assert.eq(construct, 1);
+	assert.eq(render, 1);
+
+	// c.render();
+	// assert.eq(construct, 1);
+	// assert.eq(render, 2);
+
 });
 
 Testimony.test('Solarite.component.attribsFromParentComponent', () => {
@@ -3011,10 +3015,7 @@ Testimony.test('Solarite.component.attribsFromParentComponent', () => {
 	class B504 extends Solarite {
 		constructor(attribs={}) {
 			super(attribs);
-			console.log(JSON.stringify(attribs));
-
 			construct++;
-			this.render(attribs);
 		}
 
 		render(attribs={}) {

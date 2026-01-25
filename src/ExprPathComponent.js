@@ -30,24 +30,13 @@ export default class ExprPathComponent extends ExprPath {
 	applyComponent(attribExprs) {
 		let el = this.nodeMarker;
 
-		console.log(attribExprs)
-
 		// 1. Attributes
-		//let dynamicAttribs = {}; // TODO
-
-
 		// TODO: Stop using the solarite-placeholder attribute.
 		let attribs = Util.attribsToObject(el, 'solarite-placeholder');
-
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 			let name = Util.dashesToCamel(attribPath.attrName);
 			attribs[name] = attribPath.getValue(attribExprs[i]);
 		}
-
-
-		//for (let name in dynamicAttribs || {}) // dynamic overwrites static:
-		//	attribs[Util.dashesToCamel(name)] = attribs[name];
-
 
 		// 2. Instantiate component on first time.
 		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER')) {
@@ -109,20 +98,17 @@ export default class ExprPathComponent extends ExprPath {
 			el.replaceWith(newEl);
 			el = newEl;
 
+			// 2f. Call render() if it wasn't called by the constructor.
+			if (typeof el.render === 'function' && !Globals.rendered.has(el)) {
+				el.render(attribs);
+			}
 		}
 
-		// If render wasn't called by the constructor:
-		if (typeof el.render === 'function' && !Globals.rendered.has(el)) {
+		// 2f.
+		else if (typeof el.render === 'function')
 			el.render(attribs);
-			Globals.rendered.add(el);
-		}
-
-
 
 		Globals.currentSlotChildren = null;
-
-
-
 	}
 
 	//#IFDEV
