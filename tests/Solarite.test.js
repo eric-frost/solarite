@@ -3681,6 +3681,7 @@ Testimony.test('Solarite.component.staticNoExprRendersOncePerParentRender', () =
 /*┌─────────────────╮
   | Slots           |
   └─────────────────╯*/
+// This is the same as the component children tests?
 Testimony.test('Solarite.slots.basic', () => {
 	class S10 extends Solarite {
 		constructor(attribs={}) {

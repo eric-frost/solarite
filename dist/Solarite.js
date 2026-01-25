@@ -1862,10 +1862,6 @@ class ExprPathNodes extends ExprPath {
 			result = new NodeGroup(template, this);
 			result.applyExprs(template.exprs);
 			result.exactKey = template.getExactKey();
-
-			// TODO: All tests still pass if this is commetned out:
-			// Perhaps I need a test with a child NodeGroup instantiating a static component?
-			result.instantiateStaticComponents(result.staticComponents);
 		}
 
 
@@ -2492,9 +2488,6 @@ class NodeGroup {
 	 * @type {?Map<HTMLStyleElement, string>} */
 	styles;
 
-	/** @deprecated for components. */
-	staticComponents = [];
-
 	/** @type {Template} */
 	template;
 
@@ -2653,8 +2646,8 @@ class NodeGroup {
 		let exprIndex = exprs.length - 1; // Update exprs at paths.
 		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
 
-		for (let i = paths.length - 1, path; path = paths[i]; i--) {
 
+		for (let i = paths.length - 1, path; path = paths[i]; i--) {
 
 			// Component expressions don't have a corresponding user-provided expression.
 			// They use expressions from the paths that provide their attributes.
@@ -2685,11 +2678,6 @@ class NodeGroup {
 		// TODO: Only do this if we have ExprPaths within styles?
 		this.updateStyles();
 
-		// Call render() on static web components. This makes the component.staticAttribs() test work.
-		for (let el of this.staticComponents)
-			if (el.render)
-				el.render(Util.attribsToObject(el)); // It has no expressions.
-
 		// Invalidate the nodes cache because we just changed it.
 		this.nodesCache = null;
 
@@ -2699,116 +2687,6 @@ class NodeGroup {
 
 
 		
-	}
-
-	/**
-	 * @deprecated for applyComponent()
-	 * Ensure:
-	 * 1. a child component is instantiated (if it's a placeholder)
-	 * 2. It's rendered if doRender=true
-	 * @param el {HTMLElement}
-	 * @param props {?Object}
-	 * @param doRender {boolean}
-	 * @return {HTMLElement} The (possibly replaced) element. */
-	handleComponent(el, props=null, doRender=true) {
-		debugger;
-		let isPreHtmlElement = el.hasAttribute('solarite-placeholder');
-		let isPreIsElement = el.hasAttribute('_is');
-		let attribs, children;
-		if (isPreHtmlElement || isPreIsElement)
-			[el, attribs, children] = this.instantiateComponent(el, isPreHtmlElement, props); // calls render()
-		if (doRender && el.render /*&& !el.renderFirstTime*/) { // If render not already called.  But enabling this breaks tests.
-			if (!attribs) { // if not set by instantiateComponent
-				attribs = Util.attribsToObject(el, 'solarite-placeholder');
-				for (let name in props || {})
-					attribs[Util.dashesToCamel(name)] = props[name];
-				children = RootNodeGroup.getSlotChildren(el);
-			}
-			el.render(attribs, children);
-		}
-		return el;
-	}
-	
-	/**
-	 * @deprecated for constructComponent()
-	 * We swap the placeholder element for the real element so we can pass its dynamic attributes
-	 * to its constructor.
-	 * This is only called by handleComponent()
-	 * This does not call render()
-	 *
-	 * @param el {HTMLElement}
-	 * @param isPreHtmlElement {?boolean} True if the element's tag name ends with -solarite-placeholder
-	 * @param props {Object} Attributes with dynamic values.
-	 * @return {[HTMLElement, attribs:Object, children:Node[]]}} */
-	instantiateComponent(el, isPreHtmlElement=undefined, props=undefined) {
-		debugger;
-		if (isPreHtmlElement === undefined)
-			isPreHtmlElement = !el.hasAttribute('_is');
-
-		let tagName = (isPreHtmlElement
-			? el.tagName.slice(0, -21) // Remove -SOLARITE-PLACEHOLDER
-			: el.getAttribute('is')).toLowerCase();
-
-
-		// Throw if custom element isn't defined.
-		let Constructor = customElements.get(tagName);
-		if (!Constructor)
-			throw new Error(`The custom tag name ${tagName} is not registered.`)
-
-		// Pass other attribs to constructor, since otherwise they're not yet set on the element,
-		// and the constructor would otherwise have no way to see them.
-		let attribs = Util.attribsToObject(el, 'solarite-placeholder');
-		for (let name in props || {})
-			attribs[Util.dashesToCamel(name)] = props[name];
-
-
-		// Create the web component.
-		// Get the children that aren't Solarite's comment placeholders.
-		let children = RootNodeGroup.getSlotChildren(el);
-		let newEl = new Constructor(attribs, children);
-
-		if (!isPreHtmlElement)
-			newEl.setAttribute('is', el.getAttribute('is').toLowerCase());
-
-		// Replace the placeholder tag with the instantiated web component.
-		
-
-		Globals$1.currentSlotChildren = children; // Used by RootNodeGroup slot code.
-		el.replaceWith(newEl); // Calls render() when it's a Solarite component and it's added to the DOM
-		Globals$1.currentSlotChildren = null;
-
-		// If an id pointed at the placeholder, update it to point to the new element.
-		let id = el.getAttribute('data-id') || el.getAttribute('id');
-		if (id)
-			delve(this.getRootNode(), id.split(/\./g), newEl);
-
-
-		// Update paths to use replaced element.
-		for (let path of this.paths) {
-			if (path.nodeMarker === el)
-				path.nodeMarker = newEl;
-			if (path.nodeBefore === el)
-				path.nodeBefore = newEl;
-		}
-		if (this.startNode === el)
-			this.startNode = newEl;
-		if (this.endNode === el)
-			this.endNode = newEl;
-
-		// This is used only if inheriting from the Solarite class.
-		// applyComponentExprs() is called because we're rendering.
-		// So we want to render the sub-component also.
-		if (newEl.renderFirstTime)
-			newEl.renderFirstTime();
-
-		// Copy attributes over.
-		for (let attrib of el.attributes)
-			if (attrib.name !== '_is' && attrib.name !== 'solarite-placeholder')
-				newEl.setAttribute(attrib.name, attrib.value);
-
-
-
-		return [newEl, attribs, children];
 	}
 
 	/**
@@ -2871,57 +2749,6 @@ class NodeGroup {
 			}
 	}
 
-	
-
-
-	/**
-	 * This can be static.
-	 * @param root {HTMLElement|DocumentFragment}
-	 * @param paths {int[][]}
-	 * @param startingPathDepth
-	 * @returns {HTMLElement[]} */
-	resolvePaths(root, paths, startingPathDepth=0) {
-		let result = [];
-		for (let path of paths) {
-			if (startingPathDepth)
-				path = path.slice(0, -startingPathDepth);
-			if (!path.length) {// Don't find ourself
-			//	debugger; // This shouldn't happen?
-				continue;
-			}
-			let el = NodePath.resolve(root, path);
-			result.push(el);
-		}
-		return result;
-	}
-
-	/** @deprecated */
-	findStaticComponents(root, shell, startingPathDepth=0) {
-		let result = [];
-
-		// static components.  These are WebComponents that do not have any constructor arguments that are expressions.
-		// Those are instead created by applyExpr() which calls applyComponentExprs() which calls instantiateComponent().
-		// Maybe someday these two paths will be merged?
-		// Must happen before ids because instantiateComponent will replace the element.
-		for (let path of shell.staticComponentPaths) {
-
-			if (startingPathDepth)
-				path = path.slice(0, -startingPathDepth);
-			if (!path.length) // Don't find ourself
-				continue;
-			let el = NodePath.resolve(root, path);
-			result.push(el);
-		}
-		return result;
-	}
-
-	/** @deprecated */
-	instantiateStaticComponents(staticComponents) {
-		// TODO: Why do we not call render() on the static component here?  The tests pass either way.
-		for (let i in staticComponents)
-			staticComponents[i] = this.handleComponent(staticComponents[i], null, false);
-	}
-
 	/**
 	 * @param root {HTMLElement|DocumentFragment}
 	 * @param shell {Shell}
@@ -2970,6 +2797,8 @@ class NodeGroup {
 			}
 		}
 	}
+
+	
 }
 
 

@@ -446,10 +446,6 @@ export default class ExprPathNodes extends ExprPath {
 			result = new NodeGroup(template, this);
 			result.applyExprs(template.exprs);
 			result.exactKey = template.getExactKey();
-
-			// TODO: All tests still pass if this is commetned out:
-			// Perhaps I need a test with a child NodeGroup instantiating a static component?
-			result.instantiateStaticComponents(result.staticComponents);
 		}
 
 
