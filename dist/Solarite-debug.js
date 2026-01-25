@@ -3724,6 +3724,7 @@ function h(htmlStrings=undefined, ...exprs) {
 }
 
 /**
+ * @deprecated Inherit from Solarite and pass arribs to super() instead.
  * There are three ways to create an instance of a Solarite Component:
  * 1.  new ComponentName(3);                                               // direct class instantiation
  * 2.  h(this)`<div><component-name user-id=${3}></component-name></div>;  // as a child of another Component.
@@ -3806,6 +3807,7 @@ function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String) 
 
 
 /**
+ * @deprecated
  * Experimental.  Set multiple arguments/attributes all at once.
  * @param el {HTMLElement}
  * @param args {Record<string, any>}

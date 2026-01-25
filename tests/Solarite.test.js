@@ -3682,16 +3682,12 @@ Testimony.test('Solarite.component.staticNoExprRendersOncePerParentRender', () =
   | Slots           |
   └─────────────────╯*/
 Testimony.test('Solarite.slots.basic', () => {
-
-	let slotChildren = [];
-
 	class S10 extends Solarite {
-		constructor(attribs={}, children=[]) {
-			super(attribs, children);
+		constructor(attribs={}) {
+			super(attribs);
 		}
 
-		render(attribs, children) {
-			slotChildren = children; // Make sure children argument is correct.
+		render(attribs) {
 			h(this)`<s-10 title="test">slot content:<slot></slot></s-10>`
 		}
 	}
@@ -3702,7 +3698,6 @@ Testimony.test('Solarite.slots.basic', () => {
 	document.body.append(div); // will auto call render
 
 	assert.eq(div.outerHTML, `<div><s-10 title="test">slot content:<slot>test</slot></s-10></div>`)
-	assert.eq(slotChildren[0].textContent, 'test');
 
 	div.remove();
 
@@ -3719,7 +3714,6 @@ Testimony.test('Solarite.slots.basic', () => {
 	document.body.append(div); // will auto call render
 
 	assert.eq(div.outerHTML, `<div><p-10><s-10 title="test">slot content:<slot>test2</slot></s-10></p-10></div>`)
-	assert.eq(slotChildren[0].textContent, 'test2');
 	div.remove();
 
 });
