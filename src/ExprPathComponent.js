@@ -77,7 +77,7 @@ export default class ExprPathComponent extends ExprPath {
 			// 2c. If an id pointed at the placeholder, update it to point to the new element.
 			let id = newEl.getAttribute('data-id') || newEl.getAttribute('id');
 			if (id)
-				delve(this.getRootNode(), id.split(/\./g), newEl);
+				delve(this.parentNg.getRootNode(), id.split(/\./g), newEl);
 
 			// 2d. Update paths to use replaced element.
 			let ng = this.parentNg;

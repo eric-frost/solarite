@@ -3002,9 +3002,14 @@ Testimony.test('Solarite.component.attribsFromDOM', () => {
 	assert.eq(construct, 1);
 	assert.eq(render, 1);
 
-	// c.render();
-	// assert.eq(construct, 1);
-	// assert.eq(render, 2);
+	c.render(); // Call without passing in attribs.  Solarite provides them.
+	assert.eq(construct, 1);
+	assert.eq(render, 2);
+
+	c.render({name:'b', rows:[5]});
+	assert.eq(getHtml(c), '<c-500 name="a" rows="${[1, 2, 3, 4]}">b:5</c-500>');
+	assert.eq(construct, 1);
+	assert.eq(render, 3);
 
 });
 
@@ -3031,11 +3036,10 @@ Testimony.test('Solarite.component.attribsFromParentComponent', () => {
 			h(this)`<a-504><b-504 name="a" rows=${[1, 2, 3, 4]}></b-504></a-504>`;
 		}
 	}
-	//customElements.define('a-504', A504);
+	customElements.define('a-504', A504);
 
 	let a = new A504();
-	document.body.append(a);
-	//a.render();
+	document.body.append(a); // calls render()
 
 	assert.eq(getHtml(a), `<a-504><b-504 name="a" rows="">a:1|2|3|4</b-504></a-504>`);
 	assert.eq(construct, 1)
@@ -3057,8 +3061,14 @@ Testimony.test('Solarite.component.staticChildrenInDom', () => {
 	let render = 0;
 
 	class C515 extends HTMLElement {
+		constructor() {
+			super();
+			construct++;
+		}
+
 		render() {
-			h(this)`<c-515><slot></slot></c-515>`
+			h(this)`<c-515><slot></slot></c-515>`;
+			render++;
 		}
 	}
 	customElements.define('c-515', C515);
@@ -3070,6 +3080,14 @@ Testimony.test('Solarite.component.staticChildrenInDom', () => {
 	c.render();
 
 	assert.eq(getHtml(div.firstChild), `<c-515><slot><span>hello</span></slot></c-515>`);
+	assert.eq(construct, 1);
+	assert.eq(render, 1);
+
+	c.render();
+
+	assert.eq(getHtml(div.firstChild), `<c-515><slot><span>hello</span></slot></c-515>`);
+	assert.eq(construct, 1);
+	assert.eq(render, 2);
 
 });
 
@@ -3100,6 +3118,7 @@ Testimony.test('Solarite.component.staticChildrenInSubComponent', () => {
 	let a = new A516();
 	document.body.append(a);
 	a.render();
+	let b = a.querySelector('b-516');
 
 	assert.eq(a.outerHTML, `<a-516><b-516><slot>A<hr></slot></b-516></a-516>`);
 	assert.eq(construct, 1)
@@ -3107,8 +3126,14 @@ Testimony.test('Solarite.component.staticChildrenInSubComponent', () => {
 
 
 	a.render();
+	assert.eq(a.outerHTML, `<a-516><b-516><slot>A<hr></slot></b-516></a-516>`);
 	assert.eq(construct, 1)
 	assert.eq(render, 2);
+
+	b.render();
+	assert.eq(a.outerHTML, `<a-516><b-516><slot>A<hr></slot></b-516></a-516>`);
+	assert.eq(construct, 1)
+	assert.eq(render, 3);
 
 	a.remove();
 });
@@ -3142,6 +3167,8 @@ Testimony.test('Solarite.component.dynamicChildrenInSubComponent', () => {
 	let a = new A517();
 	document.body.append(a);
 	a.render();
+	let b = a.querySelector('b-517');
+
 	assert.eq(getHtml(a), `<a-517><b-517><slot>AB</slot></b-517></a-517>`);
 	assert.eq(construct, 1);
 	assert.eq(render, 1);
@@ -3168,6 +3195,11 @@ Testimony.test('Solarite.component.dynamicChildrenInSubComponent', () => {
 	assert.eq(getHtml(a), `<a-517><b-517><slot>C</slot></b-517></a-517>`);
 	assert.eq(construct, 1);
 	assert.eq(render, 5);
+
+	b.render();
+	assert.eq(getHtml(a), `<a-517><b-517><slot>C</slot></b-517></a-517>`);
+	assert.eq(construct, 1);
+	assert.eq(render, 6);
 
 	a.remove();
 });

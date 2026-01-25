@@ -149,7 +149,7 @@ export default class ExprPathNodes extends ExprPath {
 				// For those that don't, we call applyComponentExprs() directly here.
 				// Also see similar code at the end of this.applyNodes() which handles web components being instantiated the first time.
 				// TODO: This adds significant time to the Benchmark.solarite._partialUpdate test.
-				let apply = false;
+				/*let apply = false;
 				for (let el of newestNodes) {
 					if (el?.nodeType === 1) { // HTMLElement
 
@@ -170,7 +170,7 @@ export default class ExprPathNodes extends ExprPath {
 				if (apply) {
 					ng.applyExprs(expr.exprs);
 					ng.exactKey = expr.getExactKey();
-				}
+				}*/
 
 				this.nodeGroups.push(ng);
 

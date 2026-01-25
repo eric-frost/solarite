@@ -21,8 +21,7 @@ function defineClass(Class, tagName) {
  * 1.  customElements.define() is called automatically when you create the first instance.
  * 2.  Calls render() when added to the DOM, if it hasn't been called already.
  * 3.  Populates the attribs argument to the constructor, parsing JSON from DOM attribute values surrouned with '${...}'
- * 4.  We have the onConnect, onFirstConnect, and onDisconnect methods.
- *     Can't figure out how to have these work standalone though, and still be synchronous.
+ * 4.  Populates the attribs argument to the render() function
  * 5.  Shows an error if render() isn't defined.
  *
  * Advantages to inheriting from HTMLElement
@@ -48,16 +47,10 @@ let HTMLElementAutoDefine = new Proxy(HTMLElement, {
 });
 
 /**
- * @extends HTMLElement */
+ * @extends {HTMLElement} */
 export default class Solarite extends HTMLElementAutoDefine {
 
-	// Deprecated?
-	// onConnect;
-	// onFirstConnect;
-	// onDisconnect;
-
-	constructor(attribs/*, children*/) {
-
+	constructor(attribs=null/*, children*/) {
 		super();
 
 		// 1. Populate attribs if it's an empty object.
@@ -73,6 +66,14 @@ export default class Solarite extends HTMLElementAutoDefine {
 			}
 		}
 
+		// 2. Wrap render function so it always provides the attribs.
+		let originalRender = this.render;
+		this.render = (attribs) => {
+			if (!attribs)
+				attribs = getAttribs(this);
+			originalRender.call(this, attribs);
+		}
+
 		// 2. Populate children if it's an empty array.
 		/*if (children) {
 			if (!Array.isArray(children))
@@ -84,9 +85,6 @@ export default class Solarite extends HTMLElementAutoDefine {
 					children.push(child);
 			}
 		}*/
-
-		//if (this.parentNode)
-		//	setTimeout(() => this.connectedCallback(), 0);
 	}
 
 	render() {
@@ -98,30 +96,15 @@ export default class Solarite extends HTMLElementAutoDefine {
 	renderFirstTime() {
 		if (!Globals.rendered.has(this)) {
 			let attribs = getAttribs(this, 'solarite-placeholder');
-			//let children = RootNodeGroup.getSlotChildren(this);
 			this.render(attribs); // calls Globals.rendered.add(this); inside the call to h()'...'.
-
 		}
 	}
 
 	/**
 	 * Called automatically by the browser. */
 	connectedCallback() {
-
 		this.renderFirstTime();
-		// if (!Globals.connected.has(this)) {
-		// 	if (this.onFirstConnect)
-		// 		this.onFirstConnect();
-		// }
-		// if (this.onConnect)
-		// 	this.onConnect();
 	}
-
-	disconnectedCallback() {
-		// if (this.onDisconnect)
-		// 	this.onDisconnect();
-	}
-
 
 	static define(tagName=null) {
 		defineClass(this, tagName)

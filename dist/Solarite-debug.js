@@ -1684,7 +1684,7 @@ class ExprPathNodes extends ExprPath {
 				// For those that don't, we call applyComponentExprs() directly here.
 				// Also see similar code at the end of this.applyNodes() which handles web components being instantiated the first time.
 				// TODO: This adds significant time to the Benchmark.solarite._partialUpdate test.
-				let apply = false;
+				/*let apply = false;
 				for (let el of newestNodes) {
 					if (el?.nodeType === 1) { // HTMLElement
 
@@ -1705,7 +1705,7 @@ class ExprPathNodes extends ExprPath {
 				if (apply) {
 					ng.applyExprs(expr.exprs);
 					ng.exactKey = expr.getExactKey();
-				}
+				}*/
 
 				this.nodeGroups.push(ng);
 
@@ -2114,16 +2114,6 @@ class ExprPathNodes extends ExprPath {
 	//#ENDIF
 }
 
-
-function walkDOM(el, callback) {
-	callback(el);
-	let child = el.firstElementChild;
-	while (child) {
-		walkDOM(child, callback);
-		child = child.nextElementSibling;
-	}
-}
-
 class ExprPathComponent extends ExprPath {
 
 	/** @type {ExprPathAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
@@ -2197,7 +2187,7 @@ class ExprPathComponent extends ExprPath {
 			// 2c. If an id pointed at the placeholder, update it to point to the new element.
 			let id = newEl.getAttribute('data-id') || newEl.getAttribute('id');
 			if (id)
-				delve(this.getRootNode(), id.split(/\./g), newEl);
+				delve(this.parentNg.getRootNode(), id.split(/\./g), newEl);
 
 			// 2d. Update paths to use replaced element.
 			let ng = this.parentNg;
@@ -3884,8 +3874,7 @@ function defineClass(Class, tagName) {
  * 1.  customElements.define() is called automatically when you create the first instance.
  * 2.  Calls render() when added to the DOM, if it hasn't been called already.
  * 3.  Populates the attribs argument to the constructor, parsing JSON from DOM attribute values surrouned with '${...}'
- * 4.  We have the onConnect, onFirstConnect, and onDisconnect methods.
- *     Can't figure out how to have these work standalone though, and still be synchronous.
+ * 4.  Populates the attribs argument to the render() function
  * 5.  Shows an error if render() isn't defined.
  *
  * Advantages to inheriting from HTMLElement
@@ -3911,16 +3900,10 @@ let HTMLElementAutoDefine = new Proxy(HTMLElement, {
 });
 
 /**
- * @extends HTMLElement */
+ * @extends {HTMLElement} */
 class Solarite extends HTMLElementAutoDefine {
 
-	// Deprecated?
-	// onConnect;
-	// onFirstConnect;
-	// onDisconnect;
-
-	constructor(attribs/*, children*/) {
-
+	constructor(attribs=null/*, children*/) {
 		super();
 
 		// 1. Populate attribs if it's an empty object.
@@ -3936,6 +3919,14 @@ class Solarite extends HTMLElementAutoDefine {
 			}
 		}
 
+		// 2. Wrap render function so it always provides the attribs.
+		let originalRender = this.render;
+		this.render = (attribs) => {
+			if (!attribs)
+				attribs = getAttribs(this);
+			originalRender.call(this, attribs);
+		};
+
 		// 2. Populate children if it's an empty array.
 		/*if (children) {
 			if (!Array.isArray(children))
@@ -3947,9 +3938,6 @@ class Solarite extends HTMLElementAutoDefine {
 					children.push(child);
 			}
 		}*/
-
-		//if (this.parentNode)
-		//	setTimeout(() => this.connectedCallback(), 0);
 	}
 
 	render() {
@@ -3961,30 +3949,15 @@ class Solarite extends HTMLElementAutoDefine {
 	renderFirstTime() {
 		if (!Globals$1.rendered.has(this)) {
 			let attribs = getAttribs(this);
-			//let children = RootNodeGroup.getSlotChildren(this);
 			this.render(attribs); // calls Globals.rendered.add(this); inside the call to h()'...'.
-
 		}
 	}
 
 	/**
 	 * Called automatically by the browser. */
 	connectedCallback() {
-
 		this.renderFirstTime();
-		// if (!Globals.connected.has(this)) {
-		// 	if (this.onFirstConnect)
-		// 		this.onFirstConnect();
-		// }
-		// if (this.onConnect)
-		// 	this.onConnect();
 	}
-
-	disconnectedCallback() {
-		// if (this.onDisconnect)
-		// 	this.onDisconnect();
-	}
-
 
 	static define(tagName=null) {
 		defineClass(this, tagName);
