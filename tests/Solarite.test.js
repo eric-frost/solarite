@@ -2971,7 +2971,7 @@ Testimony.test('Solarite.component.dynamicAttribsAndChildren', () => {
 
 
 // new:
-Testimony.test('Solarite.component.attribsFromDOM', async () => {
+Testimony.test('Solarite.component.attribsFromDOM', () => {
 	let construct = 0;
 	let render = 0;
 

@@ -596,7 +596,7 @@ class Test {
 
 		// A test to run.
 		if (this.fn && this.enabled)
-			await this.runTest();
+			await this.runTestAndHandleResult();
 
 		// A node containing other tests.
 		if (!this.fn)
@@ -605,25 +605,24 @@ class Test {
 		return this.status;
 	}
 
-	async runTest() {
-		let doIt = async (setupResponse) => {
-			let el, iframe;
+	async runTest(setupResponse) {
+		let el, iframe;
 
-			// update func to create and destroy html before and after test.
+		// update func to create and destroy html before and after test.
 
-			// As an iframe.
-			if (this.isIframe) {
-				iframe = document.createElement('iframe');
-				iframe.setAttribute('style', 'width: 100%; height: 600px; border: none;');
-				//el.style.display = 'none';
-				document.body.append(iframe);
-				const doc = iframe.contentDocument;
+		// As an iframe.
+		if (this.isIframe) {
+			iframe = document.createElement('iframe');
+			iframe.setAttribute('style', 'width: 100%; height: 600px; border: none;');
+			//el.style.display = 'none';
+			document.body.append(iframe);
+			const doc = iframe.contentDocument;
 
-				const trimmedHtml = (this.html || '').trim();
-				const isFullDoc = trimmedHtml.startsWith('<html') || trimmedHtml.startsWith('<!');
-				const html = isFullDoc
-					? this.html
-					: `<!DOCTYPE html>
+			const trimmedHtml = (this.html || '').trim();
+			const isFullDoc = trimmedHtml.startsWith('<html') || trimmedHtml.startsWith('<!');
+			const html = isFullDoc
+				? this.html
+				: `<!DOCTYPE html>
 						<html lang="en">
 							<head>
 								<meta charset="UTF-8">
@@ -632,66 +631,83 @@ class Test {
 							</head>
 							<body>${this.html || ''}</body>
 						</html>`;
-				doc.open();
-				doc.write(html);
-				doc.close();
-			}
+			doc.open();
+			doc.write(html);
+			doc.close();
+		}
 
-			// As part of the regular document
-			else if (this.html) {
-				el = createEl(this.html);
-				document.body.append(el);
-			}
+		// As part of the regular document
+		else if (this.html) {
+			el = createEl(this.html);
+			document.body.append(el);
+		}
 
-			let context = new TestimonyContext(this, iframe, {
-				assert,
-				testName: this.name,
-				setupResult: setupResponse,
+		let context = new TestimonyContext(this, iframe, {
+			assert,
+			testName: this.name,
+			setupResult: setupResponse,
 
-				// Let a frame screenshot itself by calling await context.screenshot();
-				screenshot2: async () => {
-					if (this.isIframe) {
+			// Let a frame screenshot itself by calling await context.screenshot();
+			// TODO: Is this unused?
+			screenshot2: async () => {
+				if (this.isIframe) {
 
-						if (!globalThis.__testimonyScreenshot)
-							return null;
+					if (!globalThis.__testimonyScreenshot)
+						return null;
 
-						// Mark the iframe so Puppeteer can find it on the outer page.
-						iframe.setAttribute('id', 'screenshot-iframe');
-						// When running under Puppeteer, a bridge function is exposed.
-						let result = await globalThis.__testimonyScreenshot(this.name);
-						iframe.removeAttribute('id');
-						return result;
-					}
+					// Mark the iframe so Puppeteer can find it on the outer page.
+					iframe.setAttribute('id', 'screenshot-iframe');
+					// When running under Puppeteer, a bridge function is exposed.
+					let result = await globalThis.__testimonyScreenshot(this.name);
+					iframe.removeAttribute('id');
+					return result;
 				}
-			});
-
-			// Run
-			let status;
-			if (this.isIframe) {
-				let args = [
-					...this.iframeTestArgs,
-					context
-				]
-				status = await runWithinIframe(iframe, this.fn, args);
-				iframe.remove();
 			}
-			else if (el)
-				status = await this.fn(el, setupResponse);
-			else
-				status = await this.fn(setupResponse);
+		});
 
-			// Remove html
-			if (el)
-				el.parentNode.removeChild(el);
+		const catchError = error => {
+		//	pass = false;
+			this.status = error.error;
+		}
 
-			if (Object.keys(TestStatus).includes(status))
-				this.status = status;
-			else if (status !== false)
-				this.status = TestStatus.Pass;
+		// Catch errors from connectedCallback and other uncatchable errors:
+		window.addEventListener("error", catchError);
+		window.addEventListener("unhandledrejection", catchError);
 
-			return status;
-		};
+		// Run
+		let status;
+		if (this.isIframe) {
+			let args = [
+				...this.iframeTestArgs,
+				context
+			]
+			status = await runWithinIframe(iframe, this.fn, args);
+			iframe.remove();
+		}
+		else if (el)
+			// Async functions can sometimes mess up the catchError handler
+			// And make it register for the wrong function.
+			// So we only run the function as async if it's actually async.
+			status =  isAsyncFunction(this.fn)
+				? await this.fn(el, setupResponse)
+				: this.fn(el, setupResponse);
+		else
+			status =  isAsyncFunction(this.fn)
+				? await this.fn(setupResponse)
+				: this.fn(setupResponse);
 
+		window.removeEventListener("error", catchError);
+		window.removeEventListener("unhandledrejection", catchError);
+
+		// Remove html
+		if (el)
+			el.parentNode.removeChild(el);
+		return status;
+	}
+
+
+
+	async runTestAndHandleResult() {
 		let setupResponse;
 		if (this.setup)
 			setupResponse = await this.setup();
@@ -706,29 +722,33 @@ class Test {
 		if (this.element)
 			this.element.renderStatus();
 
-		let pass = false;
 		try {
+			// Run
 			if (Testimony.throwOnError) {
-				this.result = await doIt(setupResponse);
-				pass = true;
-			} else {
+				this.result = await this.runTest(setupResponse);
+			}
+			else {
 				try {
-					this.result = await doIt(setupResponse);
-					pass = true;
-					Testimony.passedTests.push(this.name);
+					this.result = await this.runTest(setupResponse);
 				} catch (e) {
 					this.status = e;
-					console.error(e && (e.stack || e.message) ? (e.stack || e.message) : e)
-					Testimony.failedTests.push([this.name, Testimony.shortenError(e, '\n')]);
 				}
 			}
 		}
 		finally {
+
+			if (this.status instanceof Error) {
+				let e = this.status;
+				//console.error(e && (e.stack || e.message) ? (e.stack || e.message) : e)
+				Testimony.failedTests.push([this.name, Testimony.shortenError(e, '\n')]);
+			}
+			else {
+				this.status = TestStatus.Pass;
+				Testimony.passedTests.push(this.name);
+			}
+
 			if (this.teardown) // Always call teardown() even on error.
 				await this.teardown(setupResponse);
-
-			if (!pass && !(this.status instanceof Error))
-				this.status = TestStatus.Fail;
 
 			if (this.element) {
 				this.element.renderStatus();
@@ -1407,4 +1427,9 @@ if (import.meta.main) {
 		for (let page of pages)
 			runPage(page, webserver, webroot, tests, headless);
 	}
+}
+
+
+function isAsyncFunction(func) {
+	return func.constructor.name === 'AsyncFunction';
 }
