@@ -136,7 +136,7 @@ export default class Shell {
 				if (isComponent) {
 					let path = new ExprPathComponent(null, node, ExprPathType.Component);
 					path.attribPaths = componentAttribPaths;
-					this.paths.push(path);
+					this.paths.splice(this.paths.length - componentAttribPaths.length, 0, path); // Insert before its componentAttribPaths
 
 					if (hasIs) {
 						node.setAttribute('_is', node.getAttribute('is'));

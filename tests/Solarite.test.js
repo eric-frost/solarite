@@ -2971,6 +2971,85 @@ Testimony.test('Solarite.component.dynamicAttribsAndChildren', () => {
 
 
 // new:
+Testimony.test('Solarite.component.attribsFromDOM', async () => {
+	let construct = 0;
+	let render = 0;
+
+	class C500 extends Solarite {
+		constructor(attribs={}) {
+			super(attribs);
+			console.log(JSON.stringify(attribs));
+
+			construct++;
+			this.render(attribs);
+		}
+
+		render(attribs={}) {
+			console.log('render', attribs);
+			h(this)`<c-500>${attribs.name}:${attribs.rows.join('|')}</c-500>`;
+			render++;
+		}
+
+		//prop = (() => this.connectedCallback())();
+	}
+	C500.define();
+
+
+	let div = document.createElement('div');
+	div.innerHTML = '<c-500 name="a" rows="${[1, 2, 3, 4]}"></c-500>';
+	let c = div.querySelector('c-500');
+
+
+	//await new Promise(resolve => setTimeout(resolve, 1));
+	assert.eq(getHtml(c), '<c-500 name="a" rows="${[1, 2, 3, 4]}">a:1|2|3|4</c-500>');
+});
+
+Testimony.test('Solarite.component.attribsFromParentComponent', () => {
+	let construct = 0;
+	let render = 0;
+
+	class B504 extends Solarite {
+		constructor(attribs={}) {
+			super(attribs);
+			console.log(JSON.stringify(attribs));
+
+			construct++;
+			this.render(attribs);
+		}
+
+		render(attribs={}) {
+			//console.log('render', attribs);
+			h(this)`<b-504>${attribs.name}:${attribs.rows.join('|')}</b-504>`;
+			render++;
+		}
+	}
+	B504.define();
+
+	class A504 extends HTMLElement {
+		render() {
+			h(this)`<a-504><b-504 name="a" rows=${[1, 2, 3, 4]}></b-504></a-504>`;
+		}
+	}
+	customElements.define('a-504', A504);
+
+	let a = new A504();
+	document.body.append(a);
+	a.render();
+
+	assert.eq(getHtml(a), `<a-504><b-504 name="a" rows="">a:1|2|3|4</b-504></a-504>`);
+	assert.eq(construct, 1)
+	assert.eq(render, 1);
+
+
+	a.render();
+	assert.eq(construct, 1)
+	assert.eq(render, 2); // ensure b.render() was called.
+
+	a.remove();
+
+});
+
+
 
 Testimony.test('Solarite.component.staticChildrenInDom', () => {
 	let construct = 0;
@@ -3118,15 +3197,17 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 });
 
 Testimony.test('Solarite.component.componentFromExpr', 'Make sure child component is instantiated and not left as -solarite-placeholder', () => {
-	let renderCount = 0;
+	let construct = 0;
+	let render = 0;
 	class C520Child extends HTMLElement {
 		constructor() {
 			super();
+			construct++;
 		}
 
 		render() {
 			h(this)`<c-520-child>hi</c-520-child>`
-			renderCount++;
+			render++;
 		}
 	}
 	customElements.define('c-520-child', C520Child);
@@ -3144,14 +3225,14 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 
 	assert.eq(`<c-520><c-520-child>hi</c-520-child></c-520>`, getHtml(a));
 
-	renderCount = 0;
 	a.render();
 	//console.log(getHtml(a))
-	assert.eq(renderCount, 1);
+	assert.eq(construct, 1);
+	assert.eq(render, 1);
 
-	renderCount = 0;
 	a.render();
-	assert.eq(renderCount, 1);
+	assert.eq(construct, 1);
+	assert.eq(render, 2);
 });
 
 Testimony.test('Solarite.component.componentFromExpr2', () => {

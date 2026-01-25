@@ -1,13 +1,12 @@
 import ExprPath, {ExprPathType} from "./ExprPath.js";
-import Util, {verifyContiguous} from "./Util.js";
+import Util from "./Util.js";
 import delve from "./delve.js";
 import {assert} from "./assert.js";
 import Globals from "./Globals.js";
-import ExprPathComment from "./ExprPathComment.js";
 
 export default class ExprPathComponent extends ExprPath {
 
-	/** @type {ExprPath[]} Paths to dynamics attributes that will be set on the component.*/
+	/** @type {ExprPathAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
 
 	rendered = false;
@@ -28,17 +27,26 @@ export default class ExprPathComponent extends ExprPath {
 	/**
 	 * Call render() on the component pointed to by this ExprPath.
 	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet. */
-	applyComponent() {
+	applyComponent(attribExprs) {
 		let el = this.nodeMarker;
 
+		console.log(attribExprs)
 
 		// 1. Attributes
-		let dynamicAttribs = {}; // TODO
+		//let dynamicAttribs = {}; // TODO
+
 
 		// TODO: Stop using the solarite-placeholder attribute.
 		let attribs = Util.attribsToObject(el, 'solarite-placeholder');
-		for (let name in dynamicAttribs || {}) // dynamic overwrites static:
-			attribs[Util.dashesToCamel(name)] = attribs[name];
+
+		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
+			let name = Util.dashesToCamel(attribPath.attrName);
+			attribs[name] = attribPath.getValue(attribExprs[i]);
+		}
+
+
+		//for (let name in dynamicAttribs || {}) // dynamic overwrites static:
+		//	attribs[Util.dashesToCamel(name)] = attribs[name];
 
 
 		// 2. Instantiate component on first time.
@@ -67,7 +75,7 @@ export default class ExprPathComponent extends ExprPath {
 				let val = attribs[name];
 				let valType = typeof val;
 				if (valType === 'boolean') {
-					if (val !== false && val !== undefined && val !== null) // Util.isFalsy inlined
+					if (val !== false && val !== undefined && val !== null) // Util.isFalsy() inlined
 						newEl.setAttribute(name, '');
 				}
 
@@ -103,8 +111,11 @@ export default class ExprPathComponent extends ExprPath {
 
 		}
 
-		if (typeof el.render === 'function')
+		// If render wasn't called by the constructor:
+		if (typeof el.render === 'function' && !Globals.rendered.has(el)) {
 			el.render(attribs);
+			Globals.rendered.add(el);
+		}
 
 
 

@@ -207,7 +207,8 @@ export default class NodeGroup {
 		paths = paths || this.paths;
 
 		/*#IFDEV*/
-		this.verify();/*#ENDIF*/
+		this.verify();
+		/*#ENDIF*/
 
 		// Things to consider:
 		// 1. Paths consume a varying number of expressions.
@@ -219,32 +220,35 @@ export default class NodeGroup {
 
 		let exprIndex = exprs.length - 1; // Update exprs at paths.
 		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
+
+
+		let componentExprs = {}; // TODO
+
 		for (let i = paths.length - 1, path; path = paths[i]; i--) {
 
 
-			// Component expressions don't have a correspdinging user-provided expression.
+			// Component expressions don't have a corresponding user-provided expression.
+			// They use expressions from the paths that provide their attributes.
 			if (path instanceof ExprPathComponent) {
-				path.applyComponent();
+				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
+				path.applyComponent(attribExprs);
 			}
-			else if (path){
+			else {
 
 				// Get the expressions associated with this path.
 				if (path.attrValue?.length > 2) {
 					let startIndex = (exprIndex - (path.attrValue.length - 1)) + 1;
 					pathExprs[i] = exprs.slice(startIndex, exprIndex + 1); // probably doesn't allocate if the JS vm implements copy on write.
 					exprIndex -= pathExprs[i].length;
-				} else {
+				}
+
+				else {
 					pathExprs[i] = [exprs[exprIndex]];
 					exprIndex--;
 				}
 
 				path.apply(pathExprs[i]);
 			}
-			else {
-				console.log(1)
-				exprIndex--;
-			}
-
 
 		} // end for(path of this.paths)
 

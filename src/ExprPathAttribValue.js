@@ -29,13 +29,15 @@ export default class ExprPathAttribValue extends ExprPath {
 		let node = this.nodeMarker;
 		let expr = exprs[0];
 
+		let multiple = this.attrValue;
+
 		// Two-way binding between attributes
 		// Passing a path to the value attribute.
 		// Copies the attribute to the property when the input event fires.
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.instantiateComponent() for components.
-		if (Util.isPath(expr)) {
+		if (!multiple && Util.isPath(expr)) {
 			let [obj, path] = [expr[0], expr.slice(1)];
 
 			if (!obj)
@@ -93,7 +95,6 @@ export default class ExprPathAttribValue extends ExprPath {
 				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
-			let multiple = this.attrValue;
 			if (!multiple) {
 				Globals.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
@@ -107,6 +108,8 @@ export default class ExprPathAttribValue extends ExprPath {
 					expr = Util.makePrimitive(expr);
 				Globals.currentExprPath = null;
 			}
+
+
 			if (!multiple && (expr === undefined || expr === false || expr === null)) { // Util.isFalsy() inlined.
 				if (isProp)
 					node[this.attrName] = false;
@@ -122,25 +125,9 @@ export default class ExprPathAttribValue extends ExprPath {
 			else {
 
 				// If it's a series of expressions among strings, join them together.
-				let joinedValue;
-				if (multiple) {
-					let value = [];
-					for (let i = 0; i < this.attrValue.length; i++) {
-						value.push(this.attrValue[i]);
-						if (i < this.attrValue.length - 1) {
-							Globals.currentExprPath = this; // Used by watch()
-							let val = Util.makePrimitive(exprs[i]);
-							Globals.currentExprPath = null;
-							if (!Util.isFalsy(val))
-								value.push(val);
-						}
-					}
-					joinedValue = value.join('')
-				}
-
-				// If the attribute is one expression with no strings:
-				else
-					joinedValue = expr;
+				let joinedValue = multiple // avoid function call if there are no strings
+					? this.getValue(exprs)
+					: expr 	// If the attribute is one expression with no strings
 
 				// Only update attributes if the value has changed.
 				// This is needed for setting input.value, .checked, option.selected, etc.
@@ -168,6 +155,28 @@ export default class ExprPathAttribValue extends ExprPath {
 				}
 			}
 		}
+	}
+
+	/**
+	 * @param exprs {any[]}
+	 * @return {string} The joined values of the expressions, or the first expression if there are no strings. */
+	getValue(exprs) {
+		if (!this.attrValue)
+			return exprs[0];
+
+		let result = [];
+		let values = this.attrValue;
+		for (let i = 0; i < values.length; i++) {
+			result.push(values[i]);
+			if (i < values.length - 1) {
+				Globals.currentExprPath = this; // Used by watch()
+				let val = Util.makePrimitive(exprs[i]);
+				Globals.currentExprPath = null;
+				if (!Util.isFalsy(val))
+					result.push(val);
+			}
+		}
+		return result.join('')
 	}
 
 	/**

@@ -524,6 +524,10 @@ let Util = {
 	}
 };
 
+
+
+// For debugging only
+//#IFDEV
 function setIndent$1(items, level=1) {
 	if (typeof items === 'string')
 		items = items.split(/\r?\n/g);
@@ -943,13 +947,15 @@ class ExprPathAttribValue extends ExprPath {
 		let node = this.nodeMarker;
 		let expr = exprs[0];
 
+		let multiple = this.attrValue;
+
 		// Two-way binding between attributes
 		// Passing a path to the value attribute.
 		// Copies the attribute to the property when the input event fires.
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.instantiateComponent() for components.
-		if (Util.isPath(expr)) {
+		if (!multiple && Util.isPath(expr)) {
 			let [obj, path] = [expr[0], expr.slice(1)];
 
 			if (!obj)
@@ -1007,7 +1013,6 @@ class ExprPathAttribValue extends ExprPath {
 				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
-			let multiple = this.attrValue;
 			if (!multiple) {
 				Globals$1.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
@@ -1021,6 +1026,8 @@ class ExprPathAttribValue extends ExprPath {
 					expr = Util.makePrimitive(expr);
 				Globals$1.currentExprPath = null;
 			}
+
+
 			if (!multiple && (expr === undefined || expr === false || expr === null)) { // Util.isFalsy() inlined.
 				if (isProp)
 					node[this.attrName] = false;
@@ -1036,25 +1043,9 @@ class ExprPathAttribValue extends ExprPath {
 			else {
 
 				// If it's a series of expressions among strings, join them together.
-				let joinedValue;
-				if (multiple) {
-					let value = [];
-					for (let i = 0; i < this.attrValue.length; i++) {
-						value.push(this.attrValue[i]);
-						if (i < this.attrValue.length - 1) {
-							Globals$1.currentExprPath = this; // Used by watch()
-							let val = Util.makePrimitive(exprs[i]);
-							Globals$1.currentExprPath = null;
-							if (!Util.isFalsy(val))
-								value.push(val);
-						}
-					}
-					joinedValue = value.join('');
-				}
-
-				// If the attribute is one expression with no strings:
-				else
-					joinedValue = expr;
+				let joinedValue = multiple // avoid function call if there are no strings
+					? this.getValue(exprs)
+					: expr; 	// If the attribute is one expression with no strings
 
 				// Only update attributes if the value has changed.
 				// This is needed for setting input.value, .checked, option.selected, etc.
@@ -1082,6 +1073,28 @@ class ExprPathAttribValue extends ExprPath {
 				}
 			}
 		}
+	}
+
+	/**
+	 * @param exprs {any[]}
+	 * @return {string} The joined values of the expressions, or the first expression if there are no strings. */
+	getValue(exprs) {
+		if (!this.attrValue)
+			return exprs[0];
+
+		let result = [];
+		let values = this.attrValue;
+		for (let i = 0; i < values.length; i++) {
+			result.push(values[i]);
+			if (i < values.length - 1) {
+				Globals$1.currentExprPath = this; // Used by watch()
+				let val = Util.makePrimitive(exprs[i]);
+				Globals$1.currentExprPath = null;
+				if (!Util.isFalsy(val))
+					result.push(val);
+			}
+		}
+		return result.join('')
 	}
 
 	/**
@@ -1631,14 +1644,14 @@ class ExprPathNodes extends ExprPath {
 
 			// Instantiate components created within ${...} expressions.
 			// Also see this.applyExactNodes() which handles calling render() on web components even if they are unchanged.
-			for (let el of newNodes) {
-				if (el?.nodeType === 1) { // HTMLElement
-					if (el.hasAttribute('solarite-placeholder'))
-						this.parentNg.handleComponent(el, null, true);
-					for (let child of el.querySelectorAll('[solarite-placeholder]'))
-						this.parentNg.handleComponent(child, null, true);
-				}
-			}
+			// for (let el of newNodes) {
+			// 	if (el?.nodeType === 1) { // HTMLElement
+			// 		if (el.hasAttribute('solarite-placeholder'))
+			// 			this.parentNg.handleComponent(el, null, true);
+			// 		for (let child of el.querySelectorAll('[solarite-placeholder]'))
+			// 			this.parentNg.handleComponent(child, null, true);
+			// 	}
+			// }
 		}
 
 		/*#IFDEV*/path.verify();/*#ENDIF*/
@@ -2113,7 +2126,7 @@ function walkDOM(el, callback) {
 
 class ExprPathComponent extends ExprPath {
 
-	/** @type {ExprPath[]} Paths to dynamics attributes that will be set on the component.*/
+	/** @type {ExprPathAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
 
 	rendered = false;
@@ -2134,17 +2147,26 @@ class ExprPathComponent extends ExprPath {
 	/**
 	 * Call render() on the component pointed to by this ExprPath.
 	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet. */
-	applyComponent() {
+	applyComponent(attribExprs) {
 		let el = this.nodeMarker;
 
+		console.log(attribExprs);
 
 		// 1. Attributes
-		let dynamicAttribs = {}; // TODO
+		//let dynamicAttribs = {}; // TODO
+
 
 		// TODO: Stop using the solarite-placeholder attribute.
 		let attribs = Util.attribsToObject(el, 'solarite-placeholder');
-		for (let name in dynamicAttribs || {}) // dynamic overwrites static:
-			attribs[Util.dashesToCamel(name)] = attribs[name];
+
+		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
+			let name = Util.dashesToCamel(attribPath.attrName);
+			attribs[name] = attribPath.getValue(attribExprs[i]);
+		}
+
+
+		//for (let name in dynamicAttribs || {}) // dynamic overwrites static:
+		//	attribs[Util.dashesToCamel(name)] = attribs[name];
 
 
 		// 2. Instantiate component on first time.
@@ -2173,7 +2195,7 @@ class ExprPathComponent extends ExprPath {
 				let val = attribs[name];
 				let valType = typeof val;
 				if (valType === 'boolean') {
-					if (val !== false && val !== undefined && val !== null) // Util.isFalsy inlined
+					if (val !== false && val !== undefined && val !== null) // Util.isFalsy() inlined
 						newEl.setAttribute(name, '');
 				}
 
@@ -2209,8 +2231,11 @@ class ExprPathComponent extends ExprPath {
 
 		}
 
-		if (typeof el.render === 'function')
+		// If render wasn't called by the constructor:
+		if (typeof el.render === 'function' && !Globals$1.rendered.has(el)) {
 			el.render(attribs);
+			Globals$1.rendered.add(el);
+		}
 
 
 
@@ -2359,7 +2384,7 @@ class Shell {
 				if (isComponent) {
 					let path = new ExprPathComponent(null, node, ExprPathType.Component);
 					path.attribPaths = componentAttribPaths;
-					this.paths.push(path);
+					this.paths.splice(this.paths.length - componentAttribPaths.length, 0, path); // Insert before its componentAttribPaths
 
 					if (hasIs) {
 						node.setAttribute('_is', node.getAttribute('is'));
@@ -2806,7 +2831,8 @@ class NodeGroup {
 		paths = paths || this.paths;
 
 		/*#IFDEV*/
-		this.verify();/*#ENDIF*/
+		this.verify();
+		/*#ENDIF*/
 
 		// Things to consider:
 		// 1. Paths consume a varying number of expressions.
@@ -2818,32 +2844,32 @@ class NodeGroup {
 
 		let exprIndex = exprs.length - 1; // Update exprs at paths.
 		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
+
 		for (let i = paths.length - 1, path; path = paths[i]; i--) {
 
 
-			// Component expressions don't have a correspdinging user-provided expression.
+			// Component expressions don't have a corresponding user-provided expression.
+			// They use expressions from the paths that provide their attributes.
 			if (path instanceof ExprPathComponent) {
-				path.applyComponent();
+				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
+				path.applyComponent(attribExprs);
 			}
-			else if (path){
+			else {
 
 				// Get the expressions associated with this path.
 				if (path.attrValue?.length > 2) {
 					let startIndex = (exprIndex - (path.attrValue.length - 1)) + 1;
 					pathExprs[i] = exprs.slice(startIndex, exprIndex + 1); // probably doesn't allocate if the JS vm implements copy on write.
 					exprIndex -= pathExprs[i].length;
-				} else {
+				}
+
+				else {
 					pathExprs[i] = [exprs[exprIndex]];
 					exprIndex--;
 				}
 
 				path.apply(pathExprs[i]);
 			}
-			else {
-				console.log(1);
-				exprIndex--;
-			}
-
 
 		} // end for(path of this.paths)
 
@@ -3870,17 +3896,15 @@ function defineClass(Class, tagName) {
  * Reasons to inherit from this instead of HTMLElement.
  * 1.  customElements.define() is called automatically when you create the first instance.
  * 2.  Calls render() when added to the DOM, if it hasn't been called already.
- * 3.  Populates the attribs and children arguments to the constructor.
+ * 3.  Populates the attribs argument to the constructor, parsing JSON from DOM attribute values surrouned with '${...}'
  * 4.  We have the onConnect, onFirstConnect, and onDisconnect methods.
  *     Can't figure out how to have these work standalone though, and still be synchronous.
  * 5.  Shows an error if render() isn't defined.
  *
  * Advantages to inheriting from HTMLElement
- * 1.  Minimization won't break when it renames the Class and we call customElements.define() on the wrong name.
- *     Is this still an issue?
- * 2.  We can inherit from things like HTMLTableRowElement directly.
- * 3.  There's less magic, since everyone is familiar with defining custom elements.
- * 4.  No confusion about how the class name becomes a tag name.
+ * 1.  We can inherit from things like HTMLTableRowElement directly.
+ * 2.  There's less magic, since everyone is familiar with defining custom elements.
+ * 3.  No confusion about how the class name becomes a tag name.
  */
 
 /**
@@ -3895,28 +3919,7 @@ let HTMLElementAutoDefine = new Proxy(HTMLElement, {
 		defineClass(Class, null);
 
 		// 2. This line is equivalent the to super() call to HTMLElement:
-		let result = Reflect.construct(Parent, args, Class);
-
-		// 3. Populate attribs if it's an empty object.
-		if (!args[0] || typeof args[0] !== 'object')
-			throw new Error('First argument to custom element constructor must be an object.');
-
-		if (!Object.keys(args[0]).length) {
-			let attribs = Util.attribsToObject(result);
-			for (let name in attribs)
-				args[0][name] = attribs[name];
-		}
-
-		// 4. Populate children if it's an empty array.
-		if (!Array.isArray(args[1]))
-			throw new Error('Second argument to custom element constructor must be an array.');
-		if (!args[1].length) {
-			// TODO: <slot> won't exist until after render() is called, so what good is this?
-			let slotChildren = (result.querySelector('slot') || result).childNodes; // TODO: What about named slots?
-			for (let child of slotChildren)
-				args[1].push(child);
-		}
-		return result;
+		return Reflect.construct(Parent, args, Class);
 	}
 });
 
@@ -3925,12 +3928,41 @@ let HTMLElementAutoDefine = new Proxy(HTMLElement, {
 class Solarite extends HTMLElementAutoDefine {
 
 	// Deprecated?
-	onConnect;
-	onFirstConnect;
-	onDisconnect;
+	// onConnect;
+	// onFirstConnect;
+	// onDisconnect;
 
-	constructor(attribs={}, children=[]) {
-		super(attribs, children);
+	constructor(attribs/*, children*/) {
+
+		super();
+
+		// 1. Populate attribs if it's an empty object.
+		if (attribs) {
+			if (typeof attribs !== 'object')
+				throw new Error('First argument to custom element constructor must be an object.');
+
+			if (attribs && !Object.keys(attribs).length) {
+				let attribs2 = getAttribs(this);
+				for (let name in attribs2) {
+					attribs[name] = attribs2[name];
+				}
+			}
+		}
+
+		// 2. Populate children if it's an empty array.
+		/*if (children) {
+			if (!Array.isArray(children))
+				throw new Error('Second argument to custom element constructor must be an array.');
+			if (!children.length) {
+				// TODO: <slot> won't exist until after render() is called, so what good is this?
+				let slotChildren = (this.querySelector('slot') || this).childNodes; // TODO: What about named slots?
+				for (let child of slotChildren)
+					children.push(child);
+			}
+		}*/
+
+		//if (this.parentNode)
+		//	setTimeout(() => this.connectedCallback(), 0);
 	}
 
 	render() {
@@ -3940,35 +3972,46 @@ class Solarite extends HTMLElementAutoDefine {
 	/**
 	 * Call render() only if it hasn't already been called.	 */
 	renderFirstTime() {
-		if (!Globals$1.rendered.has(this) && this.render) {
-			let attribs = Util.attribsToObject(this, 'solarite-placeholder');
-			let children = RootNodeGroup.getSlotChildren(this);
-			this.render(attribs, children);
+		if (!Globals$1.rendered.has(this)) {
+			let attribs = getAttribs(this);
+			//let children = RootNodeGroup.getSlotChildren(this);
+			this.render(attribs); // calls Globals.rendered.add(this); inside the call to h()'...'.
+
 		}
 	}
 
 	/**
 	 * Called automatically by the browser. */
 	connectedCallback() {
+
 		this.renderFirstTime();
-		if (!Globals$1.connected.has(this)) {
-			Globals$1.connected.add(this);
-			if (this.onFirstConnect)
-				this.onFirstConnect();
-		}
-		if (this.onConnect)
-			this.onConnect();
+		// if (!Globals.connected.has(this)) {
+		// 	if (this.onFirstConnect)
+		// 		this.onFirstConnect();
+		// }
+		// if (this.onConnect)
+		// 	this.onConnect();
 	}
 
 	disconnectedCallback() {
-		if (this.onDisconnect)
-			this.onDisconnect();
+		// if (this.onDisconnect)
+		// 	this.onDisconnect();
 	}
 
 
 	static define(tagName=null) {
 		defineClass(this, tagName);
 	}
+}
+
+function getAttribs(el) {
+	let result = Util.attribsToObject(el, 'solarite-placeholder');
+	for (let name in result) {
+		let val = result[name];
+		if (val.startsWith('${') && val.endsWith('}'))
+			result[name] = JSON.parse(val.slice(2, -1));
+	}
+	return result;
 }
 
 /*

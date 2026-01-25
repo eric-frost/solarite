@@ -313,15 +313,6 @@ export default Util;
 
 // For debugging only
 //#IFDEV
-export function verifyContiguous(nodes) {
-	let lastNode = null;
-	for (let node of nodes) {
-		if (lastNode && node.previousSibling !== lastNode)
-			throw new Error(`Nodes are not contiguous: ${node.parentNode} and ${lastNode.parentNode}`);
-		lastNode = node;
-	}
-}
-
 export function setIndent(items, level=1) {
 	if (typeof items === 'string')
 		items = items.split(/\r?\n/g)

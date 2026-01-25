@@ -109,14 +109,14 @@ export default class ExprPathNodes extends ExprPath {
 
 			// Instantiate components created within ${...} expressions.
 			// Also see this.applyExactNodes() which handles calling render() on web components even if they are unchanged.
-			for (let el of newNodes) {
-				if (el?.nodeType === 1) { // HTMLElement
-					if (el.hasAttribute('solarite-placeholder'))
-						this.parentNg.handleComponent(el, null, true);
-					for (let child of el.querySelectorAll('[solarite-placeholder]'))
-						this.parentNg.handleComponent(child, null, true);
-				}
-			}
+			// for (let el of newNodes) {
+			// 	if (el?.nodeType === 1) { // HTMLElement
+			// 		if (el.hasAttribute('solarite-placeholder'))
+			// 			this.parentNg.handleComponent(el, null, true);
+			// 		for (let child of el.querySelectorAll('[solarite-placeholder]'))
+			// 			this.parentNg.handleComponent(child, null, true);
+			// 	}
+			// }
 		}
 
 		/*#IFDEV*/path.verify();/*#ENDIF*/
