@@ -3255,17 +3255,21 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 
 	let a = new C520();
 	a.render();
-
 	assert.eq(`<c-520><c-520-child>hi</c-520-child></c-520>`, getHtml(a));
-
-	a.render();
-	//console.log(getHtml(a))
 	assert.eq(construct, 1);
 	assert.eq(render, 1);
 
+
+	window.debug = true;
 	a.render();
+	assert.eq(`<c-520><c-520-child>hi</c-520-child></c-520>`, getHtml(a));
+	//console.log(getHtml(a))
 	assert.eq(construct, 1);
 	assert.eq(render, 2);
+
+	a.render();
+	assert.eq(construct, 1);
+	assert.eq(render, 3);
 });
 
 Testimony.test('Solarite.component.componentFromExpr2', () => {

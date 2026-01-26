@@ -666,7 +666,6 @@ class Test {
 		});
 
 		const catchError = error => {
-		//	pass = false;
 			this.status = error.error;
 		}
 
@@ -688,11 +687,11 @@ class Test {
 			// Async functions can sometimes mess up the catchError handler
 			// And make it register for the wrong function.
 			// So we only run the function as async if it's actually async.
-			status =  isAsyncFunction(this.fn)
+			status = isAsyncFunction(this.fn)
 				? await this.fn(el, setupResponse)
 				: this.fn(el, setupResponse);
 		else
-			status =  isAsyncFunction(this.fn)
+			status = isAsyncFunction(this.fn)
 				? await this.fn(setupResponse)
 				: this.fn(setupResponse);
 
@@ -726,10 +725,14 @@ class Test {
 			// Run
 			if (Testimony.throwOnError) {
 				this.result = await this.runTest(setupResponse);
+				if (!(this.status instanceof Error)) // If catchError() hasn't changed the status.
+					this.status = TestStatus.Pass;
 			}
 			else {
 				try {
 					this.result = await this.runTest(setupResponse);
+					if (!(this.status instanceof Error)) // If catchError() hasn't changed the status.
+						this.status = TestStatus.Pass;
 				} catch (e) {
 					this.status = e;
 				}
@@ -737,14 +740,16 @@ class Test {
 		}
 		finally {
 
-			if (this.status instanceof Error) {
-				let e = this.status;
-				//console.error(e && (e.stack || e.message) ? (e.stack || e.message) : e)
-				Testimony.failedTests.push([this.name, Testimony.shortenError(e, '\n')]);
+			if (this.status === TestStatus.Pass) {
+				Testimony.passedTests.push(this.name);
 			}
 			else {
-				this.status = TestStatus.Pass;
-				Testimony.passedTests.push(this.name);
+				let errorMessage = '';
+				if (this.status === TestStatus.Running) // If an error happened when in Testimony.throwOnError mode.
+					this.status = TestStatus.Fail;
+				else if (this.status instanceof Error)
+					errorMessage = Testimony.shortenError(this.status, '\n')
+				Testimony.failedTests.push([this.name, errorMessage]);
 			}
 
 			if (this.teardown) // Always call teardown() even on error.
