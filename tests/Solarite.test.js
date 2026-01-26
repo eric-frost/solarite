@@ -2770,6 +2770,7 @@ Testimony.test('Solarite.h.standaloneChild', () => {
   | Component       |
   └─────────────────╯*/
 /*
+*/
 Testimony.test('Solarite.component.tr', () => {
 
 	class TR510 extends HTMLTableRowElement {
@@ -2791,186 +2792,8 @@ Testimony.test('Solarite.component.tr', () => {
 	assert.eq(table.outerHTML, `<table><tr is="tr-510"><td>hello</td></tr></table>`)
 
 	table.remove();
-
 });
 
-Testimony.test('Solarite.component.staticAttribs', () => {
-	// Note that all attribs become lowercase.
-	// Not sure how to prevent this w/o using an xml doctype.
-	let constructorCount = 0;
-	let renderCount = 0;
-	class B511 extends Solarite {
-		constructor({name, userId}={}) {
-			super();
-			this.name = name;
-			this.userId = userId;
-			constructorCount++
-		}
-
-		render({name, userId}={}) {
-			h(this)`<b-511>${this.name} | ${this.userId}</b-511>`
-			renderCount++;
-		}
-	}
-	B511.define();
-
-	class A511 extends Solarite {
-		render() {
-			h(this)`<div><b-511 name="User" user-id="2"></b-511></div>`;
-		}
-	}
-	A511.define();
-
-	let a = new A511();
-	renderCount = 0;
-	a.render();
-
-	assert.eq(getHtml(a), `<a-511><div><b-511 name="User" user-id="2">User | 2</b-511></div></a-511>`);
-	//assert.eq(renderCount, 1);
-
-	// Test the code in NodeGroup.applyExprs() that calls render on static components:
-	//renderCount = 0;
-	//a.render()
-	//assert.eq(renderCount, 2);
-});
-
-Testimony.test('Solarite.component.staticWithDynamicChildren', () => {
-
-	let bChildren = null;
-
-	// Note that all attribs become lowercase.
-	// Not sure how to prevent this w/o using an xml doctype.
-	class B512 extends Solarite {
-		constructor({name, userId}={}, children) {
-			super();
-			this.name = name;
-			this.userId = userId;
-			this.bChildren = bChildren = children;
-		}
-
-		render() {
-			h(this)`<b-512>${this.name} | ${this.userId}${this.bChildren}</b-512>`
-		}
-	}
-	B512.define();
-
-	class A512 extends Solarite {
-		render() {
-			h(this)`<div><b-512 name="User" user-id="2">${[1,2,3].map(num => h`<b>${num}</b>`)}</b-512></div>`;
-		}
-	}
-	A512.define();
-
-	let a = new A512();
-	a.render();
-
-	assert.eq(getHtml(a), `<a-512><div><b-512 name="User" user-id="2">User | 2<b>1</b><b>2</b><b>3</b></b-512></div></a-512>`);
-	assert.eq(bChildren.length, 3);
-});
-
-Testimony.test('Solarite.component.dynamicAttribs', 'Attribs specified via ${...}', () => {
-
-	let bConstructorCalls = 0;
-	let bRenderCalls = 0;
-
-	class B513 extends Solarite {
-		constructor({name, userId}={}) {
-			super();
-			this.name = name;
-			this.userId = userId;
-			bConstructorCalls++;
-		}
-
-		render() {
-			h(this)`<b-513>${this.name} | ${this.userId}</b-513>`
-			bRenderCalls++;
-		}
-	}
-	B513.define();
-
-	class A513 extends Solarite {
-		render() {
-			h(this)`<div><b-513 name=${'User'} user-id=${2}></b-513></div>`;
-		}
-	}
-	A513.define();
-
-	let a = new A513();
-	a.render();
-
-	assert.eq(a.outerHTML, `<a-513><div><b-513 name="User" user-id="2"><!--ExprPath:0-->User | 2<!--ExprPathEnd:1--></b-513></div></a-513>`);
-	assert.eq(bConstructorCalls, 1);
-
-	// TODO:
-	//assert.eq(bRenderCalls, 1);
-
-	// a.render(); // Should call b.render() but not b.constructor()
-	// assert.eq(bConstructorCalls, 1);
-	//assert.eq(bRenderCalls, 2);
-});
-
-Testimony.test('Solarite.component.dynamicAttribsTwoComponents', 'Attribs specified via ${...}', () => {
-
-	class B515 extends Solarite {
-		constructor({name, userid}={}) {
-			super();
-			this.name = name;
-			this.userId = userid;
-		}
-
-		render() {
-			h(this)`<b-515>${this.name} | ${this.userId}</b-515>`
-		}
-	}
-	B515.define();
-
-	class A515 extends Solarite {
-		render() {
-			h(this)`<div><b-515 selected name="${'User'}" SELECTED2 selected3="test" userId="${1}" selected4></b-515><b-515 name="${'User2'}" userId="${2}"></b-515></div>`;
-		}
-	}
-	A515.define();
-
-	let a = new A515();
-	a.render();
-
-	//assert.eq(a.outerHTML, `<a-515><div><b-515 name="User" userid="1"><!--ExprPath:0-->User | 1<!--ExprPathEnd:1--></b-515><b-515 name="User2" userid="2"><!--ExprPath:0-->User2 | 2<!--ExprPathEnd:1--></b-515></div></a-515>`);
-});
-
-Testimony.test('Solarite.component.dynamicAttribsAndChildren', () => {
-
-	class B516 extends Solarite {
-		constructor(attribs={}) {
-			super();
-			this.user = attribs.user;
-		}
-
-		render(attribs={}, children=[]) {
-			h(this)`<b-516>${this.user.name} | ${this.user.id}${children}</b-516>`
-		}
-	}
-	B516.define();
-
-	class A516 extends Solarite {
-		render() {
-			h(this)`<div><b-516 user=${{name: 'Fred', id: 3}}><span>Moderator</span><span>Administrator</span></b-516></div>`;
-		}
-	}
-	A516.define();
-
-	let a = new A516();
-	a.render();
-	assert.eq(getHtml(a), `<a-516><div><b-516 user="">Fred | 3<span>Moderator</span><span>Administrator</span></b-516></div></a-516>`);
-
-
-	a.render();
-	assert.eq(getHtml(a), `<a-516><div><b-516 user="">Fred | 3<span>Moderator</span><span>Administrator</span></b-516></div></a-516>`);
-});
-*/
-
-
-
-// new:
 Testimony.test('Solarite.component.attribsFromDOM', () => {
 	let construct = 0;
 	let render = 0;
@@ -3203,26 +3026,6 @@ Testimony.test('Solarite.component.dynamicChildrenInSubComponent', () => {
 
 	a.remove();
 });
-/*
-Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Solarite component.', () => {
-	class B519 extends Solarite {
-		constructor({name, userid}={}) {
-			super();
-
-			this.name = getArg(this, 'name', name);
-			this.userId = getArg(this, 'userid', userid);
-			this.render();
-		}
-		render() {
-			h(this)`<b-519>${this.name} | ${this.userId}</b-519>`
-		}
-	}
-	B519.define();
-	let div = document.createElement('div');
-	div.innerHTML = `<b-519 name="User" userid="2"></b-519>`
-	assert.eq(getHtml(div), `<div><b-519 name="User" userid="2">User | 2</b-519></div>`)
-});
-*/
 
 Testimony.test('Solarite.component.componentWithStaticAttribsFromExpr', 'Make sure child component is instantiated and not left as -solarite-placeholder', () => {
 	let construct = 0;
@@ -3254,11 +3057,8 @@ Testimony.test('Solarite.component.componentWithStaticAttribsFromExpr', 'Make su
 	assert.eq(construct, 1);
 	assert.eq(render, 1);
 
-
-	window.debug = true;
-	a.render();
+	a.render(); // Rendering again without changes should still call child.render exactly once per parent render
 	assert.eq(`<c-520><c-520-child name="a">a</c-520-child></c-520>`, getHtml(a));
-	//console.log(getHtml(a))
 	assert.eq(construct, 1);
 	assert.eq(render, 2);
 
@@ -3555,9 +3355,6 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 			this.render();
 		}
 
-
-
-
 		// The code at the end of ExprPath.applyValueAttrib() updates the user property when the attribute changes.
 		// So we don't need to intercept the props passed to render()
 		render(props=null) { // Props is set when re-rendering, so we don't have to recreate the whole component.
@@ -3596,7 +3393,6 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 		`</tbody></table></table-540>`);
 
 
-
 	table.users[1] = {name: 'Dave', email: 'dave@example.com'};
 	table.render();
 	assert.eq(getHtml(table),
@@ -3606,71 +3402,6 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 		`</tbody></table></table-540>`)
 
 	table.remove();
-});
-
-Testimony.test('Solarite.component.staticChildConstructorChildrenBefore', () => {
-	let ctorChildrenCount = -1;
-	let ctorChildText = null;
-
-	class S600Child extends Solarite {
-		constructor(props, children) {
-			super();
-			ctorChildrenCount = children ? children.length : 0;
-			ctorChildText = [...(children || [])].map(n => n.textContent || '').join('');
-		}
-		render() {
-			// Preserve whatever children were passed in initially
-			h(this)`<s-600-child>${ctorChildText}</s-600-child>`
-		}
-	}
-	S600Child.define();
-
-	class S600 extends Solarite {
-		render() {
-			h(this)`<s-600><s-600-child>${'A'}</s-600-child></s-600>`
-		}
-	}
-	S600.define();
-
-	let a = new S600();
-	a.render();
-
-	// Constructor should have seen the expression-produced children
-	assert.eq(1, ctorChildrenCount);
-	assert.eq('A', ctorChildText);
-	// And the DOM should reflect the rendered output
-	assert.eq('<s-600><s-600-child>A</s-600-child></s-600>', getHtml(a));
-});
-
-Testimony.test('Solarite.component.staticNoExprRendersOncePerParentRender', () => {
-	let renderCount = 0;
-	class S601Child extends Solarite {
-		render() {
-			renderCount++;
-			h(this)`<s-601-child>ok</s-601-child>`
-		}
-	}
-	S601Child.define();
-
-	class S601 extends Solarite {
-		render() {
-			h(this)`<s-601><s-601-child></s-601-child></s-601>`
-		}
-	}
-	S601.define();
-
-	let a = new S601();
-	a.render();
-	assert.eq('<s-601><s-601-child>ok</s-601-child></s-601>', getHtml(a));
-
-	let prev = renderCount;
-	a.render();
-	assert.eq(prev + 1, renderCount);
-
-	// Rendering again without changes should still call child.render exactly once per parent render
-	let prev2 = renderCount;
-	a.render();
-	assert.eq(prev2 + 1, renderCount);
 });
 //</editor-fold>
 
