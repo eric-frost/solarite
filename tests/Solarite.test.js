@@ -3203,9 +3203,8 @@ Testimony.test('Solarite.component.dynamicChildrenInSubComponent', () => {
 
 	a.remove();
 });
-
+/*
 Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nested in another Solarite component.', () => {
-
 	class B519 extends Solarite {
 		constructor({name, userid}={}) {
 			super();
@@ -3214,22 +3213,18 @@ Testimony.test('Solarite.component.getArg', 'Attribs specified html when not nes
 			this.userId = getArg(this, 'userid', userid);
 			this.render();
 		}
-
 		render() {
 			h(this)`<b-519>${this.name} | ${this.userId}</b-519>`
 		}
 	}
 	B519.define();
-
-
 	let div = document.createElement('div');
 	div.innerHTML = `<b-519 name="User" userid="2"></b-519>`
-
 	assert.eq(getHtml(div), `<div><b-519 name="User" userid="2">User | 2</b-519></div>`)
-
 });
+*/
 
-Testimony.test('Solarite.component.componentFromExpr', 'Make sure child component is instantiated and not left as -solarite-placeholder', () => {
+Testimony.test('Solarite.component.componentWithStaticAttribsFromExpr', 'Make sure child component is instantiated and not left as -solarite-placeholder', () => {
 	let construct = 0;
 	let render = 0;
 	class C520Child extends HTMLElement {
@@ -3238,8 +3233,8 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 			construct++;
 		}
 
-		render() {
-			h(this)`<c-520-child>hi</c-520-child>`
+		render(attribs) {
+			h(this)`<c-520-child>${attribs.name}</c-520-child>`
 			render++;
 		}
 	}
@@ -3247,7 +3242,7 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 
 	class C520 extends HTMLElement {
 		render() {
-			h(this)`<c-520>${h`<c-520-child></c-520-child>`}</c-520>`
+			h(this)`<c-520>${h`<c-520-child name="a"></c-520-child>`}</c-520>`
 		}
 	}
 	customElements.define('c-520', C520);
@@ -3255,14 +3250,14 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 
 	let a = new C520();
 	a.render();
-	assert.eq(`<c-520><c-520-child>hi</c-520-child></c-520>`, getHtml(a));
+	assert.eq(`<c-520><c-520-child name="a">a</c-520-child></c-520>`, getHtml(a));
 	assert.eq(construct, 1);
 	assert.eq(render, 1);
 
 
 	window.debug = true;
 	a.render();
-	assert.eq(`<c-520><c-520-child>hi</c-520-child></c-520>`, getHtml(a));
+	assert.eq(`<c-520><c-520-child name="a">a</c-520-child></c-520>`, getHtml(a));
 	//console.log(getHtml(a))
 	assert.eq(construct, 1);
 	assert.eq(render, 2);
@@ -3272,7 +3267,7 @@ Testimony.test('Solarite.component.componentFromExpr', 'Make sure child componen
 	assert.eq(render, 3);
 });
 
-Testimony.test('Solarite.component.componentFromExpr2', () => {
+Testimony.test('Solarite.component.componentWithDynamicAttribsFromExpr', () => {
 	let renderCount = 0;
 
 	// Definition

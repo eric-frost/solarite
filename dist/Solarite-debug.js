@@ -1807,7 +1807,7 @@ class ExprPathNodes extends ExprPath {
 				// perhaps something in a sub-component has.
 				for (let path of ng.paths)
 					if (path instanceof ExprPathComponent)
-						path.applyComponent(expr.exprs);
+						path.applyComponent([expr.exprs]);
 
 				this.nodeGroups.push(ng);
 				return ng;
