@@ -6,6 +6,7 @@ import udomdiff from "./udomdiff.js";
 import Template from "./Template.js";
 import Globals from "./Globals.js";
 import MultiValueMap from "./MultiValueMap.js";
+import ExprPathComponent from "./ExprPathComponent.js";
 
 export default class ExprPathNodes extends ExprPath {
 
@@ -92,9 +93,6 @@ export default class ExprPathNodes extends ExprPath {
 			let isNowEmpty = oldNodes.length && !newNodes.length;
 			if (!isNowEmpty || !path.fastClear()) {
 
-				if (window.debug)
-					debugger;
-
 				// Rearrange nodes.
 				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker)
 			}
@@ -144,36 +142,14 @@ export default class ExprPathNodes extends ExprPath {
 				newNodes.push(...newestNodes);
 
 				// New!
-				// Re-apply all expressions if there's a web component, so we can pass them to its constructor.
-				// NodeGroup.applyExprs() is used to call applyComponentExprs() on web components that have expression attributes.
-				// For those that don't, we call applyComponentExprs() directly here.
-				// Also see similar code at the end of this.applyNodes() which handles web components being instantiated the first time.
-				// TODO: This adds significant time to the Benchmark.solarite._partialUpdate test.
-				/*let apply = false;
-				for (let el of newestNodes) {
-					if (el?.nodeType === 1) { // HTMLElement
-
-						// Benchmarking shows that walkDOM is significantly faster than querySelectorAll('*') and document.createTreeWalker.
-						walkDOM(el, (child) => {
-							//console.log(child)
-							if (child.tagName.includes('-')) {
-								if (!expr.exprs.find(expr => expr?.nodeMarker === child))
-									this.parentNg.handleComponent(child, null, true);
-								else
-									apply = true;
-							}
-						});
-					}
-				}
-
-				// This calls render() on web components that have expressions as attributes.
-				if (apply) {
-					ng.applyExprs(expr.exprs);
-					ng.exactKey = expr.getExactKey();
-				}*/
+				// Call render() on web components even though none of their arguments have changed:
+				// Do we want it to work this way?  Yes, because even if this component hasn't changed,
+				// perhaps something in a sub-component has.
+				for (let path of ng.paths)
+					if (path instanceof ExprPathComponent)
+						path.applyComponent([expr.exprs]);
 
 				this.nodeGroups.push(ng);
-
 				return ng;
 			}
 
@@ -421,9 +397,9 @@ export default class ExprPathNodes extends ExprPath {
 				return null;
 		}
 
-			// Find a close match.
-			// This is a match that has matching html, but different expressions applied.
-			// We can then apply the expressions to make it an exact match.
+		// Find a close match.
+		// This is a match that has matching html, but different expressions applied.
+		// We can then apply the expressions to make it an exact match.
 		// If the template has no expressions, the key is the html, and we've already searched for an exact match.  There won't be an inexact match.
 		else if (template.exprs.length) {
 			result = collection.deleteAny(template.getCloseKey());

@@ -1344,7 +1344,7 @@ Testimony.test('Solarite.loop.nested5', () => {
 	]
 	a.render();
 
-	assert.eq(a.outerHTML, `<a-227><!--ExprPath:0--><!--ExprPath:0--><div title="F2"><!--ExprPath:1-->A<!--ExprPathEnd:1--></div><div title="F2"><!--ExprPath:1-->B<!--ExprPathEnd:1--></div><!--ExprPathEnd:0--><!--ExprPath:0--><div title="F2"><!--ExprPath:1-->A<!--ExprPathEnd:1--></div><!--ExprPathEnd:0--><!--ExprPathEnd:0--></a-227>`);
+	assert.eq(a.outerHTML, `<a-227><!--ExprPath:1--><!--ExprPath:0--><div title="F2"><!--ExprPath:1-->A<!--ExprPathEnd:1--></div><div title="F2"><!--ExprPath:1-->B<!--ExprPathEnd:1--></div><!--ExprPathEnd:0--><!--ExprPath:0--><div title="F2"><!--ExprPath:1-->A<!--ExprPathEnd:1--></div><!--ExprPathEnd:0--><!--ExprPathEnd:1--></a-227>`);
 
 	window.verify = false;
 	a.remove();
@@ -3336,37 +3336,24 @@ Testimony.test('Solarite.component.nestedTrLoop', () => {
 Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
 	class TR540 extends HTMLTableRowElement {
-		constructor({user}={}) {
+		constructor(attribs={}) {
 			super();
-			this.user = user;
-
-			Object.defineProperty(this, 'user', {
-				get user() {
-					return this._user;
-				},
-
-				set user(value) {
-					console.log('User is being set:', value);
-					//	debugger;
-					this._user = value;
-				}
-			})
-
+			this.user = attribs.user;
 			this.render();
 		}
 
 		// The code at the end of ExprPath.applyValueAttrib() updates the user property when the attribute changes.
 		// So we don't need to intercept the props passed to render()
-		render(props=null) { // Props is set when re-rendering, so we don't have to recreate the whole component.
-			if (props?.user)
-				this.user = props.user;
+		render(attribs=null) { // Props is set when re-rendering, so we don't have to recreate the whole component.
+			console.log('render')
+			if (attribs?.user)
+				this.user = attribs.user;
 			h(this)`<td>${this.user.name}</td><td>${this.user.email}</td>`
 		}
 	}
 	customElements.define('tr-540', TR540, {extends: 'tr'});
 
 	class Table540 extends Solarite {
-
 		users = [
 			{name: 'John', email: 'john@example.com'},
 			{name: 'Fred', email: 'fred@example.com'}
