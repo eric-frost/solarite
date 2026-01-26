@@ -31,7 +31,6 @@ export default class ExprPathComponent extends ExprPath {
 		let el = this.nodeMarker;
 
 		// 1. Attributes
-		// TODO: Stop using the solarite-placeholder attribute.
 		let attribs = Util.attribsToObject(el, '_is');
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 			let name = Util.dashesToCamel(attribPath.attrName);
@@ -58,7 +57,7 @@ export default class ExprPathComponent extends ExprPath {
 			//	el.removeAttribute('_is');
 			}
 			for (let attrib of el.attributes)
-				if (attrib.name !== '_is' && attrib.name !== 'solarite-placeholder')
+				if (attrib.name !== '_is')
 					newEl.setAttribute(attrib.name, attrib.value);
 
 			// Set dynamic attributes if they are primitive types.
@@ -98,13 +97,11 @@ export default class ExprPathComponent extends ExprPath {
 			// 2f. Call render() if it wasn't called by the constructor.
 			// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
 			// Because that path renders it without the attribute expressions.
-			if (typeof newEl.render === 'function' && !Globals.rendered.has(newEl)) {
+			if (typeof newEl.render === 'function' && !Globals.rendered.has(newEl))
 				newEl.render(attribs);
-			}
 
 			// 2e. Swap it to the DOM.
 			el.replaceWith(newEl);
-			el = newEl;
 		}
 
 		// 2f.

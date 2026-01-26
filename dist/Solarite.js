@@ -1458,7 +1458,6 @@ class ExprPathComponent extends ExprPath {
 		let el = this.nodeMarker;
 
 		// 1. Attributes
-		// TODO: Stop using the solarite-placeholder attribute.
 		let attribs = Util.attribsToObject(el, '_is');
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 			let name = Util.dashesToCamel(attribPath.attrName);
@@ -1485,7 +1484,7 @@ class ExprPathComponent extends ExprPath {
 			//	el.removeAttribute('_is');
 			}
 			for (let attrib of el.attributes)
-				if (attrib.name !== '_is' && attrib.name !== 'solarite-placeholder')
+				if (attrib.name !== '_is')
 					newEl.setAttribute(attrib.name, attrib.value);
 
 			// Set dynamic attributes if they are primitive types.
@@ -1525,13 +1524,11 @@ class ExprPathComponent extends ExprPath {
 			// 2f. Call render() if it wasn't called by the constructor.
 			// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
 			// Because that path renders it without the attribute expressions.
-			if (typeof newEl.render === 'function' && !Globals$1.rendered.has(newEl)) {
+			if (typeof newEl.render === 'function' && !Globals$1.rendered.has(newEl))
 				newEl.render(attribs);
-			}
 
 			// 2e. Swap it to the DOM.
 			el.replaceWith(newEl);
-			el = newEl;
 		}
 
 		// 2f.
@@ -1640,17 +1637,6 @@ class ExprPathNodes extends ExprPath {
 			for (let ng of oldNodeGroups)
 				if (!ng.startNode.parentNode)
 					Util.saveOrphans(ng.getNodes());
-
-			// Instantiate components created within ${...} expressions.
-			// Also see this.applyExactNodes() which handles calling render() on web components even if they are unchanged.
-			// for (let el of newNodes) {
-			// 	if (el?.nodeType === 1) { // HTMLElement
-			// 		if (el.hasAttribute('solarite-placeholder'))
-			// 			this.parentNg.handleComponent(el, null, true);
-			// 		for (let child of el.querySelectorAll('[solarite-placeholder]'))
-			// 			this.parentNg.handleComponent(child, null, true);
-			// 	}
-			// }
 		}
 
 		
@@ -2529,7 +2515,7 @@ class NodeGroup {
 
 							// Copy attributes
 							for (let attrib of shellFragment.children[0].attributes)
-								if (!this.root.hasAttribute(attrib.name) && attrib.name !== 'solarite-placeholder')
+								if (!this.root.hasAttribute(attrib.name))
 									this.root.setAttribute(attrib.name, attrib.value);
 
 							// Go one level deeper into all of shell's paths.
@@ -2805,7 +2791,7 @@ function getSingleEl(fragment) {
  * @returns {boolean} */
 function isReplaceEl(fragment, tagName) {
 	return fragment.children.length===1
-		&& tagName.includes('-') // TODO: Check for solarite-placeholder attribute instead?
+		&& tagName.includes('-')
 		&& fragment.children[0].tagName.replace('-SOLARITE-PLACEHOLDER', '') === tagName;
 }
 

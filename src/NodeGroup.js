@@ -131,7 +131,7 @@ export default class NodeGroup {
 
 							// Copy attributes
 							for (let attrib of shellFragment.children[0].attributes)
-								if (!this.root.hasAttribute(attrib.name) && attrib.name !== 'solarite-placeholder')
+								if (!this.root.hasAttribute(attrib.name))
 									this.root.setAttribute(attrib.name, attrib.value);
 
 							// Go one level deeper into all of shell's paths.
@@ -476,6 +476,6 @@ function getSingleEl(fragment) {
  * @returns {boolean} */
 function isReplaceEl(fragment, tagName) {
 	return fragment.children.length===1
-		&& tagName.includes('-') // TODO: Check for solarite-placeholder attribute instead?
+		&& tagName.includes('-')
 		&& fragment.children[0].tagName.replace('-SOLARITE-PLACEHOLDER', '') === tagName;
 }

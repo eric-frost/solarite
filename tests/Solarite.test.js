@@ -3328,21 +3328,23 @@ Testimony.test('Solarite.component.nestedTrLoop', () => {
 });
 
 Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
+	let construct = 0;
+	let render = 0;
 
 	class TR540 extends Solarite('tr') {
 		constructor(attribs={}) {
 			super(attribs);
 			this.user = attribs.user;
-			this.render();
+			construct++;
 		}
 
 		// The code at the end of ExprPath.applyValueAttrib() updates the user property when the attribute changes.
 		// So we don't need to intercept the props passed to render()
 		render(attribs=null) { // Props is set when re-rendering, so we don't have to recreate the whole component.
-			console.log('render')
 			if (attribs?.user)
 				this.user = attribs.user;
 			h(this)`<td>${this.user.name}</td><td>${this.user.email}</td>`
+			render++;
 		}
 	}
 	customElements.define('tr-540', TR540, {extends: 'tr'});
@@ -3358,12 +3360,13 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 	}
 	let table = new Table540
 	document.body.append(table);
-	table.render(); // Why is this needed?
 	assert.eq(getHtml(table),
 		`<table-540><table><tbody>`+
 		`<tr is="tr-540" user=""><td>John</td><td>john@example.com</td></tr>` +
 		`<tr is="tr-540" user=""><td>Fred</td><td>fred@example.com</td></tr>` +
-		`</tbody></table></table-540>`)
+		`</tbody></table></table-540>`);
+	assert.eq(construct, 2); // because there are two tr's
+	assert.eq(render, 2);
 
 
 	table.users[1].name = 'Barry'
@@ -3373,6 +3376,8 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 		`<tr is="tr-540" user=""><td>John</td><td>john@example.com</td></tr>` +
 		`<tr is="tr-540" user=""><td>Barry</td><td>fred@example.com</td></tr>` +
 		`</tbody></table></table-540>`);
+	assert.eq(construct, 2);
+	assert.eq(render, 4);
 
 
 	table.users[1] = {name: 'Dave', email: 'dave@example.com'};
@@ -3382,6 +3387,8 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 		`<tr is="tr-540" user=""><td>John</td><td>john@example.com</td></tr>` +
 		`<tr is="tr-540" user=""><td>Dave</td><td>dave@example.com</td></tr>` +
 		`</tbody></table></table-540>`)
+	assert.eq(construct, 2);
+	assert.eq(render, 6);
 
 	table.remove();
 });
