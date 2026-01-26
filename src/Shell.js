@@ -39,6 +39,21 @@ export default class Shell {
 	styles = [];
 
 	/**
+	 * @deprecated for ExprPathComponent
+	 * @type {int[][]} Array of paths.  Used by activateEmbeds() to quickly find components. */
+	staticComponentPaths = [];
+
+	/**
+	 * @deprecated - a short experiment that was never used.
+	 * @type {int[][]} Array of paths to all components.  Used by activateEmbeds() to quickly find components. */
+	componentPaths = [];
+
+	/** @type {{path:int[], attribs:Record<string, string>}[]} */
+	//componentAttribs = [];
+
+
+
+	/**
 	 * Create the nodes but without filling in the expressions.
 	 * This is useful because the expression-less nodes created by a template can be cached.
 	 * @param html {string[]} Html strings, split on places where an expression exists.  */
@@ -81,7 +96,7 @@ export default class Shell {
 			// Replace attributes
 			if (node.nodeType === 1) {
 				const hasIs = node.hasAttribute('is');
-				const isComponent = (hasIs || node.tagName.includes('-'));
+				const isComponent = (hasIs || node.tagName.includes('-')) && node !== this.fragment.firstElementChild;
 				const componentAttribPaths = [];
 
 				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes with placeholders as we go.

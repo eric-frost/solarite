@@ -261,6 +261,9 @@ class ProxyHandler {
 		if (prop === '$removeProxy')
 			return obj;
 
+		// if (prop === 'items')
+		// 	debugger;
+
 		const result = (obj === receiver)
 			? this.value // top-level value.
 			: Reflect.get(obj, prop, receiver); // avoid infinite recursion.

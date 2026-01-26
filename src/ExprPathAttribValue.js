@@ -2,7 +2,6 @@ import ExprPath, {ExprPathType} from "./ExprPath.js";
 import Globals from "./Globals.js";
 import Util from "./Util.js";
 import delve from "./delve.js";
-import {assert} from "./assert.js";
 
 export default class ExprPathAttribValue extends ExprPath {
 
@@ -159,14 +158,9 @@ export default class ExprPathAttribValue extends ExprPath {
 	}
 
 	/**
-	 * @param exprs {any|any[]}
+	 * @param exprs {any[]}
 	 * @return {string} The joined values of the expressions, or the first expression if there are no strings. */
 	getValue(exprs) {
-
-		//#IFDEV
-		assert(Array.isArray(exprs));
-		//#ENDIF
-
 		if (!this.attrValue)
 			return exprs[0];
 

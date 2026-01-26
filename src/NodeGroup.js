@@ -1,5 +1,6 @@
 import {assert} from "./assert.js";
 import Util, {flattenAndIndent, nodeToArrayTree, setIndent} from "./Util.js";
+import delve from "./delve.js";
 import Shell from "./Shell.js";
 import RootNodeGroup from './RootNodeGroup.js';
 import ExprPath, {ExprPathType} from "./ExprPath.js";
@@ -99,8 +100,6 @@ export default class NodeGroup {
 
 			// Special setup for RootNodeGroup
 			if (this instanceof RootNodeGroup) {
-
-
 				let startingPathDepth = 0;
 				this.options = options;
 				if (shellFragment instanceof Text) {
@@ -173,11 +172,6 @@ export default class NodeGroup {
 							startingPathDepth = 1;
 					}
 
-					// Exclude the path to ourself.  Otherwise we get infinite recursion.
-					// let paths = [...shell.paths];
-					// if (paths[0] instanceof ExprPathComponent)
-					// 	paths.shift();
-
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
 					this.activateEmbeds(this.root, shell, startingPathDepth);
 				}
@@ -187,7 +181,7 @@ export default class NodeGroup {
 			} // end if RootNodeGroup
 
 			else if (shell) {
-				if (shell.paths.length) {
+				if (template.exprs.length) {
 					this.setPathsFromFragment(shellFragment, shell.paths);
 				}
 
@@ -205,9 +199,9 @@ export default class NodeGroup {
 	 * Use the paths to insert the given expressions.
 	 * Dispatches expression handling to other functions depending on the path type.
 	 * @param exprs {(*|*[]|function|Template)[]}
-	 * @param fromTemplate {boolean} Optional. */
-	applyExprs(exprs, fromTemplate=false) {
-		let paths = this.paths;
+	 * @param paths {?ExprPath[]} Optional.  Only used for testing.  Normally uses this.paths.  */
+	applyExprs(exprs, paths=null) {
+		paths = paths || this.paths;
 
 		/*#IFDEV*/
 		this.verify();
@@ -224,18 +218,8 @@ export default class NodeGroup {
 		let exprIndex = exprs.length - 1; // Update exprs at paths.
 		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
 
-		let root = this.getRootNode();
-
-		// if (window.debug) {
-		// 	debugger;
-		// 	if (paths.length)
-		// 		console.log(paths[0].nodeMarker, root, fromTemplate);
-		// }
 
 		for (let i = paths.length - 1, path; path = paths[i]; i--) {
-
-			if (path.nodeMarker === root)
-			  	continue;
 
 			// Component expressions don't have a corresponding user-provided expression.
 			// They use expressions from the paths that provide their attributes.

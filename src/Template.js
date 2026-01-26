@@ -26,7 +26,6 @@ export default class Template {
 	 * @param exprs {*[]} */
 	constructor(htmlStrings, exprs) {
 		this.html = htmlStrings;
-
 		this.exprs = exprs;
 
 		//this.trace = new Error().stack.split(/\n/g)
@@ -62,7 +61,7 @@ export default class Template {
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
 	render(el=null, options={}) {
-
+		let firstTime = false;
 
 
 		let ng = el && Globals.rootNodeGroups.get(el);
@@ -71,6 +70,7 @@ export default class Template {
 			if (!el) // null if it's a standalone elment.
 				el = ng.getRootNode();
 			Globals.rootNodeGroups.set(el, ng); // All tests still pass if this is commented out!
+			firstTime = true;
 		}
 
 		// Make sure the expresion count matches match the exprPath "hole" count.
@@ -86,7 +86,7 @@ export default class Template {
 		if (this.html?.length === 1 && !this.html[0]) // An empty string.
 			el.innerHTML = ''; // Fast path for empty component.
 		else {
-			ng.applyExprs(this.exprs, true);
+			ng.applyExprs(this.exprs);
 			ng.exactKey = this.getExactKey();
 
 			//if (firstTime)
