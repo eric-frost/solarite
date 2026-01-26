@@ -273,7 +273,7 @@ export default class Shell {
 						// Later, NodeGroup.instantiateComponent() will replace them with the real components.
 						// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 						const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i;
-						token = token.replace(isWebComponentTagName, match => match + '-solarite-placeholder solarite-placeholder');
+						token = token.replace(isWebComponentTagName, match => match + '-solarite-placeholder');
 					}
 
 					result.push(token);

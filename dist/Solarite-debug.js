@@ -1575,18 +1575,18 @@ class ExprPathComponent extends ExprPath {
 
 		// 1. Attributes
 		// TODO: Stop using the solarite-placeholder attribute.
-		let attribs = Util.attribsToObject(el, 'solarite-placeholder');
+		let attribs = Util.attribsToObject(el, '_is');
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 			let name = Util.dashesToCamel(attribPath.attrName);
 			attribs[name] = attribPath.getValue(attribExprs[i]);
 		}
 
 		// 2. Instantiate component on first time.
-		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER')) {
+		let isAttrib = el.getAttribute('_is');
+		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER') || isAttrib) {
 
 
 			// 2a. Instantiate component
-			let isAttrib = el.getAttribute('_is');
 			let tagName = (isAttrib || el.tagName.slice(0, -21)).toLowerCase(); // Remove -SOLARITE-PLACEHOLDER
 			let Constructor = customElements.get(tagName);
 			if (!Constructor)
@@ -1596,8 +1596,10 @@ class ExprPathComponent extends ExprPath {
 			let newEl = new Constructor(attribs);
 
 			// 2b. Copy attributes over.
-			if (isAttrib)
+			if (isAttrib) {
 				newEl.setAttribute('is', isAttrib);
+			//	el.removeAttribute('_is');
+			}
 			for (let attrib of el.attributes)
 				if (attrib.name !== '_is' && attrib.name !== 'solarite-placeholder')
 					newEl.setAttribute(attrib.name, attrib.value);
@@ -1659,7 +1661,7 @@ class ExprPathComponent extends ExprPath {
 	verify() {
 		super.verify();
 		assert(this.nodeMarker.nodeType === Node.ELEMENT_NODE);
-		assert(this.nodeMarker.tagName.includes('-'));
+		assert(this.nodeMarker.tagName.includes('-') || this.nodeMarker.hasAttribute('is') || this.nodeMarker.hasAttribute('_is'));
 		if (this.attribPaths)
 			for (let path of this.attribPaths)
 				path.verify();
@@ -2474,7 +2476,7 @@ class Shell {
 						// Later, NodeGroup.instantiateComponent() will replace them with the real components.
 						// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 						const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i;
-						token = token.replace(isWebComponentTagName, match => match + '-solarite-placeholder solarite-placeholder');
+						token = token.replace(isWebComponentTagName, match => match + '-solarite-placeholder');
 					}
 
 					result.push(token);
@@ -3700,80 +3702,98 @@ function defineClass(Class, tagName) {
  * Intercept the construct call to auto-define the class before the constructor is called.
  * And populate the attribs and children arguments when the element is created from the regular DOM
  * and not as a child of another web component.
- * @type {HTMLElement|Proxy} */
-let HTMLElementAutoDefine = new Proxy(HTMLElement, {
-	construct(Parent, args, Class) {
+ * @param extendsTag {?string}
+ * @return {Class} */
+function createSolarite(extendsTag=null) {
 
-		// 1. Call customElements.define() automatically.
-		defineClass(Class, null);
+	let BaseClass = HTMLElement;
+	if (extendsTag && !extendsTag.includes('-')) {
+		extendsTag = extendsTag.toLowerCase();
 
-		// 2. This line is equivalent the to super() call to HTMLElement:
-		return Reflect.construct(Parent, args, Class);
+		BaseClass = Globals$1.elementClasses[extendsTag];
+		if (!BaseClass) { // TODO: Use Cache
+			BaseClass = Globals$1.doc.createElement(extendsTag).constructor;
+			Globals$1.elementClasses[extendsTag] = BaseClass;
+		}
 	}
-});
 
-/**
- * @extends {HTMLElement} */
-class Solarite extends HTMLElementAutoDefine {
+	/**
+	 * Intercept the construct call to auto-define the class before the constructor is called.
+	 * @type {HTMLElement} */
+	let HTMLElementAutoDefine = new Proxy(BaseClass, {
+		construct(Parent, args, Class) {
 
-	constructor(attribs=null/*, children*/) {
-		super();
+			// 1. Call customElements.define() automatically.
+			defineClass(Class, null);
 
-		// 1. Populate attribs if it's an empty object.
-		if (attribs) {
-			if (typeof attribs !== 'object')
-				throw new Error('First argument to custom element constructor must be an object.');
+			// 2. This line is equivalent the to super() call to HTMLElement:
+			return Reflect.construct(Parent, args, Class);
+		}
+	});
 
-			if (attribs && !Object.keys(attribs).length) {
-				let attribs2 = getAttribs(this);
-				for (let name in attribs2) {
-					attribs[name] = attribs2[name];
+	/**
+	 * @extends {HTMLElement} */
+	return class Solarite extends HTMLElementAutoDefine {
+
+		constructor(attribs=null/*, children*/) {
+			super();
+
+			// 1. Populate attribs if it's an empty object.
+			if (attribs) {
+				if (typeof attribs !== 'object')
+					throw new Error('First argument to custom element constructor must be an object.');
+
+				if (attribs && !Object.keys(attribs).length) {
+					let attribs2 = getAttribs(this);
+					for (let name in attribs2) {
+						attribs[name] = attribs2[name];
+					}
 				}
 			}
+
+			// 2. Wrap render function so it always provides the attribs.
+			let originalRender = this.render;
+			this.render = (attribs) => {
+				if (!attribs)
+					attribs = getAttribs(this);
+				originalRender.call(this, attribs);
+			};
+
+			// 2. Populate children if it's an empty array.
+			/*if (children) {
+				if (!Array.isArray(children))
+					throw new Error('Second argument to custom element constructor must be an array.');
+				if (!children.length) {
+					// TODO: <slot> won't exist until after render() is called, so what good is this?
+					let slotChildren = (this.querySelector('slot') || this).childNodes; // TODO: What about named slots?
+					for (let child of slotChildren)
+						children.push(child);
+				}
+			}*/
 		}
 
-		// 2. Wrap render function so it always provides the attribs.
-		let originalRender = this.render;
-		this.render = (attribs) => {
-			if (!attribs)
-				attribs = getAttribs(this);
-			originalRender.call(this, attribs);
-		};
+		render() {
+			throw new Error('render() is not defined for ' + this.constructor.name);
+		}
 
-		// 2. Populate children if it's an empty array.
-		/*if (children) {
-			if (!Array.isArray(children))
-				throw new Error('Second argument to custom element constructor must be an array.');
-			if (!children.length) {
-				// TODO: <slot> won't exist until after render() is called, so what good is this?
-				let slotChildren = (this.querySelector('slot') || this).childNodes; // TODO: What about named slots?
-				for (let child of slotChildren)
-					children.push(child);
+		/**
+		 * Call render() only if it hasn't already been called.	 */
+		renderFirstTime() {
+			if (!Globals$1.rendered.has(this)) {
+				let attribs = getAttribs(this);
+				this.render(attribs); // calls Globals.rendered.add(this); inside the call to h()'...'.
 			}
-		}*/
-	}
-
-	render() {
-		throw new Error('render() is not defined for ' + this.constructor.name);
-	}
-
-	/**
-	 * Call render() only if it hasn't already been called.	 */
-	renderFirstTime() {
-		if (!Globals$1.rendered.has(this)) {
-			let attribs = getAttribs(this);
-			this.render(attribs); // calls Globals.rendered.add(this); inside the call to h()'...'.
 		}
-	}
 
-	/**
-	 * Called automatically by the browser. */
-	connectedCallback() {
-		this.renderFirstTime();
-	}
+		/**
+		 * Called automatically by the browser. */
+		connectedCallback() {
+			this.renderFirstTime();
+		}
 
-	static define(tagName=null) {
-		defineClass(this, tagName);
+		static define(tagName=null) {
+			defineClass(this, tagName);
+		}
 	}
 }
 
@@ -3795,6 +3815,15 @@ JavasCript UI library
 @license MIT
 @copyright Vorticode LLC
 https://vorticode.github.io/solarite/ */
+
+/**
+ * TODO: The Proxy and the multiple base classes mess up 'instanceof Solarite'
+ * @type {Node|Class<HTMLElement>|function(tagName:string):Node|Class<HTMLElement>} */
+const Solarite = new Proxy(createSolarite(), {
+	apply(self, _, args) {
+		return createSolarite(...args)
+	}
+});
 
 //export {default as watch, renderWatched} from './watch.js'; // unfinished
 

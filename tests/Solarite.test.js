@@ -1050,38 +1050,32 @@ Testimony.test('Solarite.loop.continuity2', `Identical items`, () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.loop.eventBindings', async () => {
-	await new Promise((resolve, reject) => { // TODO: This doesn't need to be async?
-		let callCount = 0;
+Testimony.test('Solarite.loop.eventBindings', () => {
+	let callCount = 0;
 
-		class R215 extends Solarite {
-			fruits = ['Apple', 'Banana'];
+	class R215 extends Solarite {
+		fruits = ['Apple', 'Banana'];
 
-			checkFruit(fruit, i) {
-				assert.eq(i, 0)
+		checkFruit(fruit, i) {
+			assert.eq(i, 0)
 
-				callCount++;
-				if (callCount===2)
-					resolve();
-			}
-
-			render() {
-				h(this)`${this.fruits.map((fruit, i) => h`<p onclick="${() => this.checkFruit(fruit, i)}">${fruit}</p>`)}`
-			}
+			callCount++;
 		}
 
-		let a = new R215();
-		document.body.append(a);
-		a.firstElementChild.dispatchEvent(new MouseEvent('click'))
+		render() {
+			h(this)`${this.fruits.map((fruit, i) => h`<p onclick="${() => this.checkFruit(fruit, i)}">${fruit}</p>`)}`
+		}
+	}
 
-		a.fruits.shift();
-		a.render();
-		a.firstElementChild.dispatchEvent(new MouseEvent('click'))
+	let a = new R215();
+	document.body.append(a);
+	a.firstElementChild.dispatchEvent(new MouseEvent('click'))
 
+	a.fruits.shift();
+	a.render();
+	a.firstElementChild.dispatchEvent(new MouseEvent('click'))
 
-		a.remove();
-	});
-
+	a.remove();
 });
 
 // TODO: Why is this called pathCache?  What does it test?
@@ -3335,9 +3329,9 @@ Testimony.test('Solarite.component.nestedTrLoop', () => {
 
 Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
-	class TR540 extends HTMLTableRowElement {
+	class TR540 extends Solarite('tr') {
 		constructor(attribs={}) {
-			super();
+			super(attribs);
 			this.user = attribs.user;
 			this.render();
 		}
@@ -3363,7 +3357,8 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 		}
 	}
 	let table = new Table540
-	document.body.append(table)
+	document.body.append(table);
+	table.render(); // Why is this needed?
 	assert.eq(getHtml(table),
 		`<table-540><table><tbody>`+
 		`<tr is="tr-540" user=""><td>John</td><td>john@example.com</td></tr>` +

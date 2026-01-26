@@ -665,8 +665,8 @@ class Test {
 			}
 		});
 
-		const catchError = error => {
-			this.status = error.error;
+		const catchError = errorEvent => {
+			this.status = errorEvent.error;
 		}
 
 		// Catch errors from connectedCallback and other uncatchable errors:
@@ -683,17 +683,20 @@ class Test {
 			status = await runWithinIframe(iframe, this.fn, args);
 			iframe.remove();
 		}
-		else if (el)
-			// Async functions can sometimes mess up the catchError handler
-			// And make it register for the wrong function.
-			// So we only run the function as async if it's actually async.
-			status = isAsyncFunction(this.fn)
-				? await this.fn(el, setupResponse)
-				: this.fn(el, setupResponse);
-		else
-			status = isAsyncFunction(this.fn)
-				? await this.fn(setupResponse)
-				: this.fn(setupResponse);
+		else {
+			const isAsync = isAsyncFunction(this.fn);
+			if (el)
+				// Async functions can sometimes mess up the catchError handler
+				// And make it register for the wrong function.
+				// So we only run the function as async if it's actually async.
+				status = isAsync
+					? await this.fn(el, setupResponse)
+					: this.fn(el, setupResponse);
+			else
+				status = isAsync
+					? await this.fn(setupResponse)
+					: this.fn(setupResponse);
+		}
 
 		window.removeEventListener("error", catchError);
 		window.removeEventListener("unhandledrejection", catchError);

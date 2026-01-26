@@ -34,80 +34,98 @@ function defineClass(Class, tagName) {
  * Intercept the construct call to auto-define the class before the constructor is called.
  * And populate the attribs and children arguments when the element is created from the regular DOM
  * and not as a child of another web component.
- * @type {HTMLElement|Proxy} */
-let HTMLElementAutoDefine = new Proxy(HTMLElement, {
-	construct(Parent, args, Class) {
+ * @param extendsTag {?string}
+ * @return {Class} */
+export default function createSolarite(extendsTag=null) {
 
-		// 1. Call customElements.define() automatically.
-		defineClass(Class, null);
+	let BaseClass = HTMLElement;
+	if (extendsTag && !extendsTag.includes('-')) {
+		extendsTag = extendsTag.toLowerCase();
 
-		// 2. This line is equivalent the to super() call to HTMLElement:
-		return Reflect.construct(Parent, args, Class);
+		BaseClass = Globals.elementClasses[extendsTag];
+		if (!BaseClass) { // TODO: Use Cache
+			BaseClass = Globals.doc.createElement(extendsTag).constructor;
+			Globals.elementClasses[extendsTag] = BaseClass
+		}
 	}
-});
 
-/**
- * @extends {HTMLElement} */
-export default class Solarite extends HTMLElementAutoDefine {
+	/**
+	 * Intercept the construct call to auto-define the class before the constructor is called.
+	 * @type {HTMLElement} */
+	let HTMLElementAutoDefine = new Proxy(BaseClass, {
+		construct(Parent, args, Class) {
 
-	constructor(attribs=null/*, children*/) {
-		super();
+			// 1. Call customElements.define() automatically.
+			defineClass(Class, null, extendsTag);
 
-		// 1. Populate attribs if it's an empty object.
-		if (attribs) {
-			if (typeof attribs !== 'object')
-				throw new Error('First argument to custom element constructor must be an object.');
+			// 2. This line is equivalent the to super() call to HTMLElement:
+			return Reflect.construct(Parent, args, Class);
+		}
+	});
 
-			if (attribs && !Object.keys(attribs).length) {
-				let attribs2 = getAttribs(this);
-				for (let name in attribs2) {
-					attribs[name] = attribs2[name];
+	/**
+	 * @extends {HTMLElement} */
+	return class Solarite extends HTMLElementAutoDefine {
+
+		constructor(attribs=null/*, children*/) {
+			super();
+
+			// 1. Populate attribs if it's an empty object.
+			if (attribs) {
+				if (typeof attribs !== 'object')
+					throw new Error('First argument to custom element constructor must be an object.');
+
+				if (attribs && !Object.keys(attribs).length) {
+					let attribs2 = getAttribs(this);
+					for (let name in attribs2) {
+						attribs[name] = attribs2[name];
+					}
 				}
 			}
-		}
 
-		// 2. Wrap render function so it always provides the attribs.
-		let originalRender = this.render;
-		this.render = (attribs) => {
-			if (!attribs)
-				attribs = getAttribs(this);
-			originalRender.call(this, attribs);
-		}
-
-		// 2. Populate children if it's an empty array.
-		/*if (children) {
-			if (!Array.isArray(children))
-				throw new Error('Second argument to custom element constructor must be an array.');
-			if (!children.length) {
-				// TODO: <slot> won't exist until after render() is called, so what good is this?
-				let slotChildren = (this.querySelector('slot') || this).childNodes; // TODO: What about named slots?
-				for (let child of slotChildren)
-					children.push(child);
+			// 2. Wrap render function so it always provides the attribs.
+			let originalRender = this.render;
+			this.render = (attribs) => {
+				if (!attribs)
+					attribs = getAttribs(this);
+				originalRender.call(this, attribs);
 			}
-		}*/
-	}
 
-	render() {
-		throw new Error('render() is not defined for ' + this.constructor.name);
-	}
-
-	/**
-	 * Call render() only if it hasn't already been called.	 */
-	renderFirstTime() {
-		if (!Globals.rendered.has(this)) {
-			let attribs = getAttribs(this, 'solarite-placeholder');
-			this.render(attribs); // calls Globals.rendered.add(this); inside the call to h()'...'.
+			// 2. Populate children if it's an empty array.
+			/*if (children) {
+				if (!Array.isArray(children))
+					throw new Error('Second argument to custom element constructor must be an array.');
+				if (!children.length) {
+					// TODO: <slot> won't exist until after render() is called, so what good is this?
+					let slotChildren = (this.querySelector('slot') || this).childNodes; // TODO: What about named slots?
+					for (let child of slotChildren)
+						children.push(child);
+				}
+			}*/
 		}
-	}
 
-	/**
-	 * Called automatically by the browser. */
-	connectedCallback() {
-		this.renderFirstTime();
-	}
+		render() {
+			throw new Error('render() is not defined for ' + this.constructor.name);
+		}
 
-	static define(tagName=null) {
-		defineClass(this, tagName)
+		/**
+		 * Call render() only if it hasn't already been called.	 */
+		renderFirstTime() {
+			if (!Globals.rendered.has(this)) {
+				let attribs = getAttribs(this, 'solarite-placeholder');
+				this.render(attribs); // calls Globals.rendered.add(this); inside the call to h()'...'.
+			}
+		}
+
+		/**
+		 * Called automatically by the browser. */
+		connectedCallback() {
+			this.renderFirstTime();
+		}
+
+		static define(tagName=null) {
+			defineClass(this, tagName)
+		}
 	}
 }
 
@@ -120,3 +138,4 @@ function getAttribs(el) {
 	}
 	return result;
 }
+

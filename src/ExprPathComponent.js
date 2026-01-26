@@ -32,18 +32,18 @@ export default class ExprPathComponent extends ExprPath {
 
 		// 1. Attributes
 		// TODO: Stop using the solarite-placeholder attribute.
-		let attribs = Util.attribsToObject(el, 'solarite-placeholder');
+		let attribs = Util.attribsToObject(el, '_is');
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 			let name = Util.dashesToCamel(attribPath.attrName);
 			attribs[name] = attribPath.getValue(attribExprs[i]);
 		}
 
 		// 2. Instantiate component on first time.
-		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER')) {
+		let isAttrib = el.getAttribute('_is');
+		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER') || isAttrib) {
 
 
 			// 2a. Instantiate component
-			let isAttrib = el.getAttribute('_is');
 			let tagName = (isAttrib || el.tagName.slice(0, -21)).toLowerCase(); // Remove -SOLARITE-PLACEHOLDER
 			let Constructor = customElements.get(tagName);
 			if (!Constructor)
@@ -53,8 +53,10 @@ export default class ExprPathComponent extends ExprPath {
 			let newEl = new Constructor(attribs);
 
 			// 2b. Copy attributes over.
-			if (isAttrib)
+			if (isAttrib) {
 				newEl.setAttribute('is', isAttrib);
+			//	el.removeAttribute('_is');
+			}
 			for (let attrib of el.attributes)
 				if (attrib.name !== '_is' && attrib.name !== 'solarite-placeholder')
 					newEl.setAttribute(attrib.name, attrib.value);
@@ -116,7 +118,7 @@ export default class ExprPathComponent extends ExprPath {
 	verify() {
 		super.verify();
 		assert(this.nodeMarker.nodeType === Node.ELEMENT_NODE);
-		assert(this.nodeMarker.tagName.includes('-'));
+		assert(this.nodeMarker.tagName.includes('-') || this.nodeMarker.hasAttribute('is') || this.nodeMarker.hasAttribute('_is'));
 		if (this.attribPaths)
 			for (let path of this.attribPaths)
 				path.verify();
