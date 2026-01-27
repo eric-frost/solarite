@@ -9,17 +9,13 @@ export default class ExprPathAttribs extends ExprPath {
 	attrNames;
 
 	constructor(nodeBefore, nodeMarker) {
-		super(nodeBefore, nodeMarker, ExprPathType.AttribMultiple);
+		super(nodeBefore, nodeMarker);
 		this.attrNames = new Set();
 	}
 
 	/**
 	 * @param exprs {Expr[]} Only the first is used. */
-	apply(exprs) {
-		/*#IFDEV*/
-		assert(this.type === ExprPathType.AttribMultiple);
-		/*#ENDIF*/
-
+	apply(exprs, freeNodeGroups) {
 		let expr = exprs[0];
 		let node = this.nodeMarker;
 

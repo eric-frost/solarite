@@ -89,7 +89,7 @@ export default class Shell {
 					// Whole attribute
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/)
 					if (matches) {
-						let path = new ExprPathAttribs(null, node, ExprPathType.AttribMultiple);
+						let path = new ExprPathAttribs(null, node);
 						this.paths.push(path);
 						if (isComponent)
 							componentAttribPaths.push(path);
@@ -119,7 +119,7 @@ export default class Shell {
 
 				// Web components
 				if (isComponent) {
-					let path = new ExprPathComponent(null, node, ExprPathType.Component);
+					let path = new ExprPathComponent(null, node);
 					path.attribPaths = componentAttribPaths;
 					this.paths.splice(this.paths.length - componentAttribPaths.length, 0, path); // Insert before its componentAttribPaths
 
@@ -159,7 +159,7 @@ export default class Shell {
 				}
 				/*#IFDEV*/assert(nodeMarker);/*#ENDIF*/
 
-				let path = new ExprPathNodes(nodeBefore, nodeMarker, ExprPathType.Content);
+				let path = new ExprPathNodes(nodeBefore, nodeMarker);
 				this.paths.push(path);
 				placeholdersUsed ++;
 			}
@@ -176,7 +176,7 @@ export default class Shell {
 			else if (node.nodeType === 8) { // Node.COMMENT_NODE
 				let parts = node.textContent.split(/[\ue000-\uf8ff]/g);
 				for (let i=0; i<parts.length-1; i++) {
-					let path = new ExprPath(node.previousSibling, node, ExprPathType.Comment)
+					let path = new ExprPath(node.previousSibling, node)
 					this.paths.push(path);
 					placeholdersUsed ++;
 				}
@@ -196,7 +196,7 @@ export default class Shell {
 					}
 
 					for (let i=0, node; node=placeholders[i]; i++) {
-						let path = new ExprPathNodes(node.previousSibling, node, ExprPathType.Content);
+						let path = new ExprPathNodes(node.previousSibling, node);
 						this.paths.push(path);
 						placeholdersUsed ++;
 

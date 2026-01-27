@@ -17,7 +17,7 @@ export default class ExprPathNodes extends ExprPath {
 	mapCallback
 
 	constructor(nodeBefore, nodeMarker) {
-		super(nodeBefore, nodeMarker, ExprPathType.Content);
+		super(nodeBefore, nodeMarker);
 	}
 
 	/**

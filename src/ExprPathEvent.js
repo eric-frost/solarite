@@ -5,9 +5,8 @@ import ExprPathAttribValue from "./ExprPathAttribValue.js";
 // TODO: Merge this into ExprPathAttribValue?
 export default class ExprPathEvent extends ExprPathAttribValue {
 
-	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
-		super(nodeBefore, nodeMarker, ExprPathType.Event, attrName, attrValue);
-		this.type = ExprPathType.Event; // don't let super constructor override it.
+	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
+		super(nodeBefore, nodeMarker, attrName, attrValue);
 	}
 
 
@@ -23,7 +22,6 @@ export default class ExprPathEvent extends ExprPathAttribValue {
 		let root = this.parentNg.rootNg.root
 
 		/*#IFDEV*/
-		assert(this.type === ExprPathType.Event);
 		assert(root?.nodeType === 1);
 		/*#ENDIF*/
 

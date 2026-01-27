@@ -17,7 +17,7 @@ export default class ExprPathAttribValue extends ExprPath {
 	isHtmlProperty;
 
 	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
-		super(nodeBefore, nodeMarker, ExprPathType.AttribValue);
+		super(nodeBefore, nodeMarker);
 		this.attrName = attrName;
 		this.attrValue = attrValue;
 	}

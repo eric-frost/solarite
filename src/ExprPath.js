@@ -58,13 +58,10 @@ export default class ExprPath {
 
 	/**
 	 * @param nodeBefore {Node}
-	 * @param nodeMarker {?Node}
-	 * @param type {ExprPathType} */
-	constructor(nodeBefore, nodeMarker, type=ExprPathType.Content) {
+	 * @param nodeMarker {?Node}*/
+	constructor(nodeBefore, nodeMarker) {
 		this.nodeBefore = nodeBefore;
 		this.nodeMarker = nodeMarker;
-		this.type = type;
-
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 	}
 
@@ -141,8 +138,8 @@ export default class ExprPath {
 		if (!window.verify)
 			return;
 
-		assert(this.type!==ExprPathType.Content || this.nodeBefore)
-		assert(this.type!==ExprPathType.Content || this.nodeBefore.parentNode)
+		//assert(this.type!==ExprPathType.Content || this.nodeBefore)
+		//assert(this.type!==ExprPathType.Content || this.nodeBefore.parentNode)
 
 		// Need either nodeMarker or parentNode
 		assert(this.nodeMarker)
@@ -151,10 +148,10 @@ export default class ExprPath {
 		assert(!this.nodeMarker || this.nodeMarker.parentNode)
 
 		// nodeBefore and nodeMarker must have same parent.
-		assert(this.type!==ExprPathType.Content || this.nodeBefore.parentNode === this.nodeMarker.parentNode)
+		//assert(this.type!==ExprPathType.Content || this.nodeBefore.parentNode === this.nodeMarker.parentNode)
 
 		assert(this.nodeBefore !== this.nodeMarker)
-		assert(this.type!==ExprPathType.Content|| !this.nodeBefore.parentNode || this.nodeBefore.compareDocumentPosition(this.nodeMarker) === Node.DOCUMENT_POSITION_FOLLOWING)
+		//assert(this.type!==ExprPathType.Content|| !this.nodeBefore.parentNode || this.nodeBefore.compareDocumentPosition(this.nodeMarker) === Node.DOCUMENT_POSITION_FOLLOWING)
 
 		// Detect cyclic parent and grandparent references.
 		assert(this.parentNg?.parentPath !== this)

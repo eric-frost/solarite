@@ -6,6 +6,7 @@ import ExprPath, {ExprPathType} from "./ExprPath.js";
 import Globals from './Globals.js';
 import NodePath from "./NodePath.js";
 import ExprPathComponent from "./ExprPathComponent.js";
+import ExprPathNodes from "./ExprPathNodes.js";
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
@@ -402,7 +403,7 @@ export default class NodeGroup {
 
 					let tree = nodeToArrayTree(item, nextNode => {
 
-						let path = this.paths.find(path=>path.type === ExprPathType.Content && path.getNodes().includes(nextNode));
+						let path = this.paths.find(path=>(path instanceof ExprPathNodes) && path.getNodes().includes(nextNode));
 						if (path)
 							return [`Path.nodes:`]
 

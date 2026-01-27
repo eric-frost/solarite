@@ -578,13 +578,10 @@ class ExprPath {
 
 	/**
 	 * @param nodeBefore {Node}
-	 * @param nodeMarker {?Node}
-	 * @param type {ExprPathType} */
-	constructor(nodeBefore, nodeMarker, type=ExprPathType.Content) {
+	 * @param nodeMarker {?Node}*/
+	constructor(nodeBefore, nodeMarker) {
 		this.nodeBefore = nodeBefore;
 		this.nodeMarker = nodeMarker;
-		this.type = type;
-
 		
 	}
 
@@ -773,7 +770,7 @@ class ExprPathAttribValue extends ExprPath {
 	isHtmlProperty;
 
 	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
-		super(nodeBefore, nodeMarker, ExprPathType.AttribValue);
+		super(nodeBefore, nodeMarker);
 		this.attrName = attrName;
 		this.attrValue = attrValue;
 	}
@@ -1000,9 +997,8 @@ class ExprPathAttribValue extends ExprPath {
 // TODO: Merge this into ExprPathAttribValue?
 class ExprPathEvent extends ExprPathAttribValue {
 
-	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
-		super(nodeBefore, nodeMarker, ExprPathType.Event, attrName, attrValue);
-		this.type = ExprPathType.Event; // don't let super constructor override it.
+	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
+		super(nodeBefore, nodeMarker, attrName, attrValue);
 	}
 
 
@@ -1048,15 +1044,13 @@ class ExprPathAttribs extends ExprPath {
 	attrNames;
 
 	constructor(nodeBefore, nodeMarker) {
-		super(nodeBefore, nodeMarker, ExprPathType.AttribMultiple);
+		super(nodeBefore, nodeMarker);
 		this.attrNames = new Set();
 	}
 
 	/**
 	 * @param exprs {Expr[]} Only the first is used. */
-	apply(exprs) {
-		
-
+	apply(exprs, freeNodeGroups) {
 		let expr = exprs[0];
 		let node = this.nodeMarker;
 
@@ -1505,7 +1499,7 @@ class ExprPathNodes extends ExprPath {
 	mapCallback
 
 	constructor(nodeBefore, nodeMarker) {
-		super(nodeBefore, nodeMarker, ExprPathType.Content);
+		super(nodeBefore, nodeMarker);
 	}
 
 	/**
@@ -2102,7 +2096,7 @@ class Shell {
 					// Whole attribute
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/);
 					if (matches) {
-						let path = new ExprPathAttribs(null, node, ExprPathType.AttribMultiple);
+						let path = new ExprPathAttribs(null, node);
 						this.paths.push(path);
 						if (isComponent)
 							componentAttribPaths.push(path);
@@ -2132,7 +2126,7 @@ class Shell {
 
 				// Web components
 				if (isComponent) {
-					let path = new ExprPathComponent(null, node, ExprPathType.Component);
+					let path = new ExprPathComponent(null, node);
 					path.attribPaths = componentAttribPaths;
 					this.paths.splice(this.paths.length - componentAttribPaths.length, 0, path); // Insert before its componentAttribPaths
 
@@ -2172,7 +2166,7 @@ class Shell {
 				}
 				
 
-				let path = new ExprPathNodes(nodeBefore, nodeMarker, ExprPathType.Content);
+				let path = new ExprPathNodes(nodeBefore, nodeMarker);
 				this.paths.push(path);
 				placeholdersUsed ++;
 			}
@@ -2189,7 +2183,7 @@ class Shell {
 			else if (node.nodeType === 8) { // Node.COMMENT_NODE
 				let parts = node.textContent.split(/[\ue000-\uf8ff]/g);
 				for (let i=0; i<parts.length-1; i++) {
-					let path = new ExprPath(node.previousSibling, node, ExprPathType.Comment);
+					let path = new ExprPath(node.previousSibling, node);
 					this.paths.push(path);
 					placeholdersUsed ++;
 				}
@@ -2209,7 +2203,7 @@ class Shell {
 					}
 
 					for (let i=0, node; node=placeholders[i]; i++) {
-						let path = new ExprPathNodes(node.previousSibling, node, ExprPathType.Content);
+						let path = new ExprPathNodes(node.previousSibling, node);
 						this.paths.push(path);
 						placeholdersUsed ++;
 
