@@ -15,7 +15,7 @@ export default class ExprPathAttribs extends ExprPath {
 
 	/**
 	 * @param exprs {Expr[]} Only the first is used. */
-	applyMultipleAttribs(exprs) {
+	apply(exprs) {
 		/*#IFDEV*/
 		assert(this.type === ExprPathType.AttribMultiple);
 		/*#ENDIF*/

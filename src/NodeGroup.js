@@ -241,7 +241,7 @@ export default class NodeGroup {
 			// They use expressions from the paths that provide their attributes.
 			if (path instanceof ExprPathComponent) {
 				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
-				path.applyComponent(attribExprs);
+				path.apply(attribExprs);
 			}
 			else {
 

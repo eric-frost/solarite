@@ -520,33 +520,6 @@ let Util = {
 // For debugging only
 
 
-var NodePath = {
-
-	/** @return {int[]} Returns indices in reverse order, because doing it that way is faster. */
-	get(node) {
-		let result = [];
-		while(true) {
-			let parent = node.parentNode;
-			if (!parent)
-				break;
-			result.push(Array.prototype.indexOf.call(node.parentNode.childNodes, node));
-			node = parent;
-		}
-		return result;
-	},
-
-	/**
-	 * Note that the path is backward, with the outermost element at the end.
-	 * @param root {HTMLElement|Document|DocumentFragment|ParentNode}
-	 * @param path {int[]}
-	 * @returns {Node|HTMLElement|HTMLStyleElement} */
-	resolve(root, path) {
-		for (let i=path.length-1; i>=0; i--)
-			root = root.childNodes[path[i]];
-		return root;
-	}
-};
-
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup. */
 class ExprPath {
@@ -627,30 +600,7 @@ class ExprPath {
 	 *
 	 * @param exprs {Expr[]}
 	 * @param freeNodeGroups {boolean} Used only by watch. */
-	apply(exprs, freeNodeGroups=true) {
-		switch (this.type) {
-			case 1: // ExprPathType.Content:
-				this.applyNodes(exprs, freeNodeGroups);
-				break;
-			case 2: // ExprPathType.Multiple:
-				this.applyMultipleAttribs(exprs);
-				break;
-			case 4: // ExprPathType.Comment:
-				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
-				break;
-			case 5: // ExprPathType.Event:
-				this.applyEventAttrib(exprs);
-				break;
-			case 6: // ExprPathType.Component:
-				this.applyComponent(exprs);
-				break;
-
-			default: // 3 ExprPathType.Attribute
-				// One attribute value may have multiple expressions.  Here we apply them all at once.
-				this.applyValueAttrib(exprs);
-				break;
-		}
-	}
+	apply(exprs, freeNodeGroups=true) {}
 
 
 	/**
@@ -1104,7 +1054,7 @@ class ExprPathAttribs extends ExprPath {
 
 	/**
 	 * @param exprs {Expr[]} Only the first is used. */
-	applyMultipleAttribs(exprs) {
+	apply(exprs) {
 		
 
 		let expr = exprs[0];
@@ -1451,7 +1401,7 @@ class ExprPathComponent extends ExprPath {
 	/**
 	 * Call render() on the component pointed to by this ExprPath.
 	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet. */
-	applyComponent(attribExprs) {
+	apply(attribExprs) {
 		let el = this.nodeMarker;
 
 		// 1. Attributes
@@ -1675,7 +1625,7 @@ class ExprPathNodes extends ExprPath {
 				// perhaps something in a sub-component has.
 				for (let path of ng.paths)
 					if (path instanceof ExprPathComponent)
-						path.applyComponent([expr.exprs]);
+						path.apply([expr.exprs]);
 
 				this.nodeGroups.push(ng);
 				return ng;
@@ -2047,6 +1997,33 @@ class ExprPathNodes extends ExprPath {
 
 	
 }
+
+var NodePath = {
+
+	/** @return {int[]} Returns indices in reverse order, because doing it that way is faster. */
+	get(node) {
+		let result = [];
+		while(true) {
+			let parent = node.parentNode;
+			if (!parent)
+				break;
+			result.push(Array.prototype.indexOf.call(node.parentNode.childNodes, node));
+			node = parent;
+		}
+		return result;
+	},
+
+	/**
+	 * Note that the path is backward, with the outermost element at the end.
+	 * @param root {HTMLElement|Document|DocumentFragment|ParentNode}
+	 * @param path {int[]}
+	 * @returns {Node|HTMLElement|HTMLStyleElement} */
+	resolve(root, path) {
+		for (let i=path.length-1; i>=0; i--)
+			root = root.childNodes[path[i]];
+		return root;
+	}
+};
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -2610,7 +2587,7 @@ class NodeGroup {
 			// They use expressions from the paths that provide their attributes.
 			if (path instanceof ExprPathComponent) {
 				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
-				path.applyComponent(attribExprs);
+				path.apply(attribExprs);
 			}
 			else {
 

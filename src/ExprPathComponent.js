@@ -16,7 +16,7 @@ export default class ExprPathComponent extends ExprPath {
 	/**
 	 * Call render() on the component pointed to by this ExprPath.
 	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet. */
-	applyComponent(attribExprs) {
+	apply(attribExprs) {
 		let el = this.nodeMarker;
 
 		// 1. Attributes

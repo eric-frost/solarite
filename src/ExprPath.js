@@ -1,5 +1,4 @@
 import {assert} from "./assert.js";
-import NodePath from "./NodePath.js";
 
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup. */
@@ -81,30 +80,7 @@ export default class ExprPath {
 	 *
 	 * @param exprs {Expr[]}
 	 * @param freeNodeGroups {boolean} Used only by watch. */
-	apply(exprs, freeNodeGroups=true) {
-		switch (this.type) {
-			case 1: // ExprPathType.Content:
-				this.applyNodes(exprs, freeNodeGroups);
-				break;
-			case 2: // ExprPathType.Multiple:
-				this.applyMultipleAttribs(exprs);
-				break;
-			case 4: // ExprPathType.Comment:
-				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
-				break;
-			case 5: // ExprPathType.Event:
-				this.applyEventAttrib(exprs);
-				break;
-			case 6: // ExprPathType.Component:
-				this.applyComponent(exprs);
-				break;
-
-			default: // 3 ExprPathType.Attribute
-				// One attribute value may have multiple expressions.  Here we apply them all at once.
-				this.applyValueAttrib(exprs);
-				break;
-		}
-	}
+	apply(exprs, freeNodeGroups=true) {}
 
 
 	/**
