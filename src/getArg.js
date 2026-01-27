@@ -36,16 +36,16 @@ export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.S
 	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util.camelToDashes(attributeName));
 	if (attrVal !== null) // If attribute doesn't exist.
 		val = attrVal;
-		
+
 	if (Array.isArray(type))
 		return type.includes(val) ? val : undefined;
-	
+
 	if (typeof type === 'function') {
 		return type.constructor
 			? new type(val) // arg type is custom Class
 			: type(val); // arg type is custom function
 	}
-	
+
 	// If bool, it's true as long as it exists and its value isn't falsey.
 	if (type===ArgType.Bool) {
 		let lAttrVal = typeof val === 'string' ? val.toLowerCase() : val;
@@ -55,7 +55,7 @@ export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.S
 			return true;
 		return undefined;
 	}
-	
+
 	// Attribute doesn't exist
 	switch (type) {
 		case ArgType.Int:
@@ -109,13 +109,13 @@ export function setArgs(el, args, types) {
 /**
  * @enum */
 var ArgType = {
-	
+
 	/**
 	 * false, 0, null, undefined, '0', and 'false' (case-insensitive) become false.
 	 * Anything else, including empty string becomes true.
 	 * Empty string is true because attributes with no value should be evaulated as true. */
 	Bool: 'Bool',
-	
+
 	Int: 'Int',
 	Float: 'Float',
 	String: 'String',

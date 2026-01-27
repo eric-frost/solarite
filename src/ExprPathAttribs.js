@@ -14,7 +14,8 @@ export default class ExprPathAttribs extends ExprPath {
 	}
 
 	/**
-	 * @param exprs {Expr[]} Only the first is used. */
+	 * @param exprs {Expr[]} Only the first is used.
+	 * @param freeNodeGroups {boolean} Used only for watch. */
 	apply(exprs, freeNodeGroups) {
 		let expr = exprs[0];
 		let node = this.nodeMarker;

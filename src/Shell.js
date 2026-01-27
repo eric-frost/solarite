@@ -108,8 +108,10 @@ export default class Shell {
 								? new ExprPathEvent(null, node, attr.name, nonEmptyParts)
 								: new ExprPathAttribValue(null, node, attr.name, nonEmptyParts);
 							this.paths.push(path);
-							if (isComponent)
+							if (isComponent) {
+								path.isComponentAttrib = true;
 								componentAttribPaths.push(path);
+							}
 
 							placeholdersUsed += parts.length - 1;
 							node.setAttribute(attr.name, parts.join(''));
@@ -221,6 +223,8 @@ export default class Shell {
 
 			// Must be calculated after we remove the toRemove nodes:
 			path.nodeMarkerPath = NodePath.get(path.nodeMarker)
+
+
 		}
 
 		this.findEmbeds();

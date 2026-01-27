@@ -8,7 +8,6 @@ export default class ExprPathEvent extends ExprPathAttribValue {
 		super(null, nodeMarker, attrName, attrValue);
 	}
 
-
 	/**
 	 * Handle attributes for event binding, such as:
 	 * onclick=${(e, el) => this.doSomething(el, 'meow')}
@@ -43,5 +42,7 @@ export default class ExprPathEvent extends ExprPathAttribValue {
 
 		this.bindEvent(node, root, eventName, eventName, func, args);
 	}
+
+
 
 }

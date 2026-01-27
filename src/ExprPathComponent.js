@@ -100,11 +100,20 @@ export default class ExprPathComponent extends ExprPath {
 		Globals.currentSlotChildren = null;
 	}
 
+	/**
+	 * @param newRoot {HTMLElement}
+	 * @param pathOffset {int}
+	 * @return {ExprPath} */
 	clone(newRoot, pathOffset=0) {
-		let result = super.clone(newRoot, pathOffset);
-
-		// Untested:
+		/*#IFDEV*/this.verify();/*#ENDIF*/
+		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
+		let result = new ExprPathComponent(null, nodeMarker);
 		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
+
+		//#IFDEV
+		result.verify();
+		//#ENDIF
+
 		return result;
 	}
 

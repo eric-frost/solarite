@@ -76,7 +76,26 @@ export default class ExprPath {
 
 
 	/**
-	 *
+	 * Resolve nodeMarkerPath to new root. */
+	getNewNodeMarker(newRoot, pathOffset) {
+		let root = newRoot;
+		let path = this.nodeMarkerPath;
+		let pathLength = path.length - pathOffset;
+		for (let i=pathLength-1; i>0; i--) { // Resolve the path.
+			//#IFDEV
+			assert(root.childNodes[path[i]]);
+			//#ENDIF
+			root = root.childNodes[path[i]];
+		}
+		let childNodes = root.childNodes;
+
+		return pathLength
+			? childNodes[path[0]]
+			: newRoot;
+	}
+
+
+	/**
 	 * @param newRoot {HTMLElement}
 	 * @param pathOffset {int}
 	 * @return {ExprPath} */
@@ -108,7 +127,8 @@ export default class ExprPath {
 		}
 
 		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
-		result.isComponent = this.isComponent;
+
+		result.isComponentAttrib = this.isComponentAttrib;
 
 		//#IFDEV
 		result.verify();

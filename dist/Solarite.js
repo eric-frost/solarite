@@ -470,7 +470,7 @@ let Util = {
 
 	/**
 	 * Use an array as the value of a map, appending to it when we add.
-	 * Used by watch.js.
+	 * Used only by watch.js.
 	 * @param map {Map|WeakMap|Object}
 	 * @param key
 	 * @param value */
@@ -596,7 +596,24 @@ class ExprPath {
 
 
 	/**
-	 *
+	 * Resolve nodeMarkerPath to new root. */
+	getNewNodeMarker(newRoot, pathOffset) {
+		let root = newRoot;
+		let path = this.nodeMarkerPath;
+		let pathLength = path.length - pathOffset;
+		for (let i=pathLength-1; i>0; i--) { // Resolve the path.
+			
+			root = root.childNodes[path[i]];
+		}
+		let childNodes = root.childNodes;
+
+		return pathLength
+			? childNodes[path[0]]
+			: newRoot;
+	}
+
+
+	/**
 	 * @param newRoot {HTMLElement}
 	 * @param pathOffset {int}
 	 * @return {ExprPath} */
@@ -624,7 +641,8 @@ class ExprPath {
 		}
 
 		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
-		result.isComponent = this.isComponent;
+
+		result.isComponentAttrib = this.isComponentAttrib;
 
 		
 
@@ -825,9 +843,9 @@ class ExprPathAttribValue extends ExprPath {
 			if (!multiple) {
 				Globals$1.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
-					if (this.isComponent) { // Don't evaluate functions before passing them to components
-						return
-					}
+					if (this.isComponentAttrib)
+						return;
+
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
 					expr = expr();
 				}
@@ -974,7 +992,6 @@ class ExprPathEvent extends ExprPathAttribValue {
 		super(null, nodeMarker, attrName, attrValue);
 	}
 
-
 	/**
 	 * Handle attributes for event binding, such as:
 	 * onclick=${(e, el) => this.doSomething(el, 'meow')}
@@ -1008,6 +1025,8 @@ class ExprPathEvent extends ExprPathAttribValue {
 		this.bindEvent(node, root, eventName, eventName, func, args);
 	}
 
+
+
 }
 
 class ExprPathAttribs extends ExprPath {
@@ -1023,7 +1042,8 @@ class ExprPathAttribs extends ExprPath {
 	}
 
 	/**
-	 * @param exprs {Expr[]} Only the first is used. */
+	 * @param exprs {Expr[]} Only the first is used.
+	 * @param freeNodeGroups {boolean} Used only for watch. */
 	apply(exprs, freeNodeGroups) {
 		let expr = exprs[0];
 		let node = this.nodeMarker;
@@ -1453,11 +1473,18 @@ class ExprPathComponent extends ExprPath {
 		Globals$1.currentSlotChildren = null;
 	}
 
+	/**
+	 * @param newRoot {HTMLElement}
+	 * @param pathOffset {int}
+	 * @return {ExprPath} */
 	clone(newRoot, pathOffset=0) {
-		let result = super.clone(newRoot, pathOffset);
-
-		// Untested:
+		
+		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
+		let result = new ExprPathComponent(null, nodeMarker);
 		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
+
+		
+
 		return result;
 	}
 
@@ -2083,8 +2110,10 @@ class Shell {
 								? new ExprPathEvent(null, node, attr.name, nonEmptyParts)
 								: new ExprPathAttribValue(null, node, attr.name, nonEmptyParts);
 							this.paths.push(path);
-							if (isComponent)
+							if (isComponent) {
+								path.isComponentAttrib = true;
 								componentAttribPaths.push(path);
+							}
 
 							placeholdersUsed += parts.length - 1;
 							node.setAttribute(attr.name, parts.join(''));
@@ -2196,6 +2225,8 @@ class Shell {
 
 			// Must be calculated after we remove the toRemove nodes:
 			path.nodeMarkerPath = NodePath.get(path.nodeMarker);
+
+
 		}
 
 		this.findEmbeds();
@@ -3225,16 +3256,16 @@ function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String) 
 	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util.camelToDashes(attributeName));
 	if (attrVal !== null) // If attribute doesn't exist.
 		val = attrVal;
-		
+
 	if (Array.isArray(type))
 		return type.includes(val) ? val : undefined;
-	
+
 	if (typeof type === 'function') {
 		return type.constructor
 			? new type(val) // arg type is custom Class
 			: type(val); // arg type is custom function
 	}
-	
+
 	// If bool, it's true as long as it exists and its value isn't falsey.
 	if (type===ArgType.Bool) {
 		let lAttrVal = typeof val === 'string' ? val.toLowerCase() : val;
@@ -3244,7 +3275,7 @@ function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String) 
 			return true;
 		return undefined;
 	}
-	
+
 	// Attribute doesn't exist
 	switch (type) {
 		case ArgType.Int:
@@ -3298,13 +3329,13 @@ function setArgs(el, args, types) {
 /**
  * @enum */
 var ArgType = {
-	
+
 	/**
 	 * false, 0, null, undefined, '0', and 'false' (case-insensitive) become false.
 	 * Anything else, including empty string becomes true.
 	 * Empty string is true because attributes with no value should be evaulated as true. */
 	Bool: 'Bool',
-	
+
 	Int: 'Int',
 	Float: 'Float',
 	String: 'String',

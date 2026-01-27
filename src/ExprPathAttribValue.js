@@ -99,9 +99,9 @@ export default class ExprPathAttribValue extends ExprPath {
 			if (!multiple) {
 				Globals.currentExprPath = this; // Used by watch()
 				if (typeof expr === 'function') {
-					if (this.isComponent) { // Don't evaluate functions before passing them to components
-						return
-					}
+					if (this.isComponentAttrib)
+						return;
+
 					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
 					expr = expr();
 				}

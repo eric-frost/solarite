@@ -1,7 +1,7 @@
 // noinspection DuplicatedCode
 
-import h, {toEl, getArg, Solarite, Template, Globals, SolariteUtil} from '../src/Solarite.js';
-//import h, {toEl, getArg, Solarite, Template, Globals, SolariteUtil} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
+import h, {toEl, Solarite, Template, Globals, SolariteUtil} from '../src/Solarite.js';
+//import h, {toEl, Solarite, Template, Globals, SolariteUtil} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 
 import {watch, renderWatched} from "../src/watch.js";
 import HtmlParser from "../src/HtmlParser.js";
@@ -2869,6 +2869,43 @@ Testimony.test('Solarite.component.attribsFromParentComponent', () => {
 
 	a.remove();
 
+});
+
+
+
+Testimony.test('Solarite.component.attribFunctions', 'Make sure we can pass functions to components via attributes', () => {
+	let construct = 0;
+	let render = 0;
+
+	class C506Child extends Solarite {
+		constructor(attribs={}) {
+			super(attribs);
+
+			this.content = attribs.getContent({val: 1});
+
+			construct++;
+			this.render(attribs);
+		}
+
+		render(attribs={}) {
+			h(this)`<c-506-child>${this.content}</c-506-child>`;
+			render++;
+		}
+	}
+	C506Child.define('c-506-child');
+
+	class C506 extends Solarite {
+		render() {
+			h(this)`<c-506><c-506-child get-content=${obj => 'a' + obj.val}></c-506-child></c-506>`;
+		}
+	}
+	customElements.define('c-506', C506);
+
+	let c = new C506();
+	document.body.append(c);
+	console.log(getHtml(c));
+
+	assert.eq(getHtml(c), `<c-506><c-506-child get-content="">a1</c-506-child></c-506>`);
 });
 
 
