@@ -8,7 +8,8 @@ export default class ExprPathAttribs extends ExprPath {
 	attrNames;
 
 	constructor(nodeBefore, nodeMarker) {
-		super(nodeBefore, nodeMarker);
+		super(null, null);
+		this.nodeMarker = nodeMarker;
 		this.attrNames = new Set();
 	}
 

@@ -594,7 +594,6 @@ class ExprPath {
 
 	// Used for attributes:
 
-
 	/**
 	 * @type {Node} Node that occurs before this ExprPath's first Node.
 	 * This is necessary because udomdiff() can steal nodes from another ExprPath.
@@ -855,7 +854,7 @@ class ExprPathAttribValue extends ExprPath {
 	isHtmlProperty;
 
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
-		super(nodeBefore, nodeMarker);
+		super(null, nodeMarker);
 		this.attrName = attrName;
 		this.attrValue = attrValue;
 	}
@@ -1085,7 +1084,7 @@ class ExprPathAttribValue extends ExprPath {
 class ExprPathEvent extends ExprPathAttribValue {
 
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
-		super(nodeBefore, nodeMarker, attrName, attrValue);
+		super(null, nodeMarker, attrName, attrValue);
 	}
 
 
@@ -1133,7 +1132,8 @@ class ExprPathAttribs extends ExprPath {
 	attrNames;
 
 	constructor(nodeBefore, nodeMarker) {
-		super(nodeBefore, nodeMarker);
+		super(null, null);
+		this.nodeMarker = nodeMarker;
 		this.attrNames = new Set();
 	}
 
@@ -1595,7 +1595,30 @@ class ExprPathNodes extends ExprPath {
 	/**
 	 * @type {?function} The most recent callback passed to a .map() function in this ExprPath.  This is only used for watch.js
 	 * TODO: What if one ExprPath has two .map() calls?  Maybe we just won't support that. */
-	mapCallback
+	mapCallback;
+
+
+
+	/**
+	 * TODO: Rename this to nodeGroupsInUse, nodeGroupsAvialableAttached and nodeGroupsAvailableDetached?
+	 * Nodes that have been used during the current render().
+	 * Used with getNodeGroup() and freeNodeGroups().
+	 * TODO: Use an array of WeakRef so the gc can collect them?
+	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
+	 * @type {NodeGroup[]} */
+	nodeGroupsRendered = [];
+
+	/**
+	 * Nodes that were added to the web component during the last render(), but are available to be used again.
+	 * Used with getNodeGroup() and freeNodeGroups().
+	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
+	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
+	nodeGroupsAttachedAvailable = new MultiValueMap();
+
+	/**
+	 * Nodes that were not added to the web component during the last render(), and available to be used again.
+	 * @type {MultiValueMap} */
+	nodeGroupsDetachedAvailable = new MultiValueMap();
 
 	constructor(nodeBefore, nodeMarker) {
 		super(nodeBefore, nodeMarker);
@@ -1754,9 +1777,6 @@ class ExprPathNodes extends ExprPath {
 			});
 	}
 
-
-
-
 	/**
 	 * Used by watch() for inserting/removing/replacing individual loop items.
 	 * @param op {ArraySpliceOp} */
@@ -1834,7 +1854,6 @@ class ExprPathNodes extends ExprPath {
 		this.nodesCache = null;
 	}
 
-
 	/**
 	 * Clear the nodeCache of this ExprPath, as well as all parent and child ExprPaths that
 	 * share the same DOM parent node. */
@@ -1851,7 +1870,6 @@ class ExprPathNodes extends ExprPath {
 			// Which cause one path to be the descendant of itself, creating a cycle.
 		}
 	}
-
 
 	/**
 	 * Attempt to remove all of this ExprPath's nodes from the DOM, if it can be done using a special fast method.
@@ -1998,30 +2016,6 @@ class ExprPathNodes extends ExprPath {
 		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
 		return result;
 	}
-
-
-
-
-	/**
-	 * TODO: Rename this to nodeGroupsInUse, nodeGroupsAvialableAttached and nodeGroupsAvailableDetached?
-	 * Nodes that have been used during the current render().
-	 * Used with getNodeGroup() and freeNodeGroups().
-	 * TODO: Use an array of WeakRef so the gc can collect them?
-	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
-	 * @type {NodeGroup[]} */
-	nodeGroupsRendered = [];
-
-	/**
-	 * Nodes that were added to the web component during the last render(), but are available to be used again.
-	 * Used with getNodeGroup() and freeNodeGroups().
-	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
-	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
-	nodeGroupsAttachedAvailable = new MultiValueMap();
-
-	/**
-	 * Nodes that were not added to the web component during the last render(), and available to be used again.
-	 * @type {MultiValueMap} */
-	nodeGroupsDetachedAvailable = new MultiValueMap();
 
 
 	/**

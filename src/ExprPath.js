@@ -6,7 +6,6 @@ export default class ExprPath {
 
 	// Used for attributes:
 
-
 	/**
 	 * @type {Node} Node that occurs before this ExprPath's first Node.
 	 * This is necessary because udomdiff() can steal nodes from another ExprPath.

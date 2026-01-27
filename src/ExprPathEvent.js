@@ -5,7 +5,7 @@ import ExprPathAttribValue from "./ExprPathAttribValue.js";
 export default class ExprPathEvent extends ExprPathAttribValue {
 
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
-		super(nodeBefore, nodeMarker, attrName, attrValue);
+		super(null, nodeMarker, attrName, attrValue);
 	}
 
 
