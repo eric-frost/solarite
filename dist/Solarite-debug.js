@@ -238,6 +238,7 @@ let Util = {
 	/**
 	 * Convert HTMLElement attributes to an object.
 	 * Converts dash (kebob-case) attribute names to camelCase.
+	 * See also Solarite.getAttribs()
 	 * @param el {HTMLElement}
 	 * @param ignore {?string} Optionally ignore this attribute.
 	 * @return {Object} */
@@ -353,43 +354,14 @@ let Util = {
 		return str.replace(/-([a-z])/g, g => g[1].toUpperCase());
 	},
 
-	/**
-	 * A generator function that recursively traverses and flattens a value.
-	 *
-	 * - If the input is an array, it recursively traverses and flattens the array.
-	 * - If the input is a function, it calls the function, replaces the function
-	 *   with its result, and flattens the result if necessary. It will recursively
-	 *   call functions that return other functions.
-	 * - Otherwise it yields the value as is.
-	 *
-	 * This function does not create a new array for the flattened values. Instead,
-	 * it lazily yields each item as it is encountered. This can be more memory-efficient
-	 * for large or deeply nested structures.
-	 *
-	 * @param {any} value - The value to flatten. Can be an array, object, function, or primitive.
-	 * @yields {any} - The next item in the flattened structure.
-	 *
-	 * @example
-	 * const complexArray = [
-	 *     1,
-	 *     [2, () => 3, [4, () => [5, 6]], { a: 'object' }],
-	 *     () => () => 7,
-	 *     () => [() => 8, 9],
-	 * ];	 *
-	 * for (const item of flatten(complexArray))
-	 *     console.log(item);  // Outputs: 1, 2, 3, 4, 5, 6, { a: 'object' }, 7, 8, 9
-	 */
-	// *flatten(value) {
-	// 	if (Array.isArray(value)) {
-	// 		for (const item of value) {
-	// 			yield* Util.flatten(item);  // Recursively flatten arrays
-	// 		}
-	// 	} else if (typeof value === 'function') {
-	// 		const result = value();
-	// 		yield* Util.flatten(result);  // Recursively flatten the result of a function
-	// 	} else
-	// 		yield value;  // Yield primitive values as is
-	// },
+	defineClass(Class, tagName) {
+		if (!customElements[getName](Class)) { // If not previously defined.
+			tagName = tagName || Util.camelToDashes(Class.name);
+			if (!tagName.includes('-')) // Browsers require that web components always have a dash in the name.
+				tagName += '-element';
+			customElements[define](tagName, Class);
+		}
+	},
 
 	/**
 	 * Get the value of an input as the most appropriate JavaScript type.
@@ -523,6 +495,12 @@ let Util = {
 		return result;
 	}
 };
+
+
+
+// Trick to prevent minifier from renaming these methods.
+let define = 'define';
+let getName = 'getName';
 
 
 
@@ -2419,11 +2397,10 @@ class Shell {
 
 					if (prevContext === HtmlParser.Tag) {
 						// Find Web Component tags and append -solarite-placeholder to their tag names
-						// and give them a solarite-placeholder attribute so we can easily find them later.
 						// This way we can gather their constructor arguments and their children before we call their constructor.
-						// Later, NodeGroup.instantiateComponent() will replace them with the real components.
+						// Later, ExprPathComponent.apply() will replace them with the real components.
 						// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-						const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i;
+						const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i; // a dash in the middle
 						token = token.replace(isWebComponentTagName, match => match + '-solarite-placeholder');
 					}
 
@@ -3553,7 +3530,7 @@ function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String) 
 
 
 /**
- * @deprecated
+ * @deprecated for Solarite.getAttribs()
  * Experimental.  Set multiple arguments/attributes all at once.
  * @param el {HTMLElement}
  * @param args {Record<string, any>}
@@ -3575,6 +3552,7 @@ function setArgs(el, args, types) {
 
 
 /**
+ * @deprecated
  * @enum */
 var ArgType = {
 
@@ -3602,144 +3580,6 @@ var ArgType = {
 	Eval: 'Eval'
 };
 
-// Trick to prevent minifier from renaming these methods.
-let define = 'define';
-let getName = 'getName';
-
-function defineClass(Class, tagName) {
-	if (!customElements[getName](Class)) { // If not previously defined.
-		tagName = tagName || Util.camelToDashes(Class.name);
-		if (!tagName.includes('-')) // Browsers require that web components always have a dash in the name.
-			tagName += '-element';
-		customElements[define](tagName, Class);
-	}
-}
-
-
-/**
- * Create a version of the Solarite class that extends from the given tag name.
- * Reasons to inherit from this instead of HTMLElement.
- * 1.  customElements.define() is called automatically when you create the first instance.
- * 2.  Calls render() when added to the DOM, if it hasn't been called already.
- * 3.  Populates the attribs argument to the constructor, parsing JSON from DOM attribute values surrouned with '${...}'
- * 4.  Populates the attribs argument to the render() function
- * 5.  Shows an error if render() isn't defined.
- *
- * Advantages to inheriting from HTMLElement
- * 1.  We can inherit from things like HTMLTableRowElement directly.
- * 2.  There's less magic, since everyone is familiar with defining custom elements.
- * 3.  No confusion about how the class name becomes a tag name.
- */
-
-/**
- * Intercept the construct call to auto-define the class before the constructor is called.
- * And populate the attribs and children arguments when the element is created from the regular DOM
- * and not as a child of another web component.
- * @param extendsTag {?string}
- * @return {Class} */
-function createSolarite(extendsTag=null) {
-
-	let BaseClass = HTMLElement;
-	if (extendsTag && !extendsTag.includes('-')) {
-		extendsTag = extendsTag.toLowerCase();
-
-		BaseClass = Globals$1.elementClasses[extendsTag];
-		if (!BaseClass) { // TODO: Use Cache
-			BaseClass = Globals$1.doc.createElement(extendsTag).constructor;
-			Globals$1.elementClasses[extendsTag] = BaseClass;
-		}
-	}
-
-	/**
-	 * Intercept the construct call to auto-define the class before the constructor is called.
-	 * @type {HTMLElement} */
-	let HTMLElementAutoDefine = new Proxy(BaseClass, {
-		construct(Parent, args, Class) {
-
-			// 1. Call customElements.define() automatically.
-			defineClass(Class, null);
-
-			// 2. This line is equivalent the to super() call to HTMLElement:
-			return Reflect.construct(Parent, args, Class);
-		}
-	});
-
-	/**
-	 * @extends {HTMLElement} */
-	return class Solarite extends HTMLElementAutoDefine {
-
-		constructor(attribs=null/*, children*/) {
-			super();
-
-			// 1. Populate attribs if it's an empty object.
-			if (attribs) {
-				if (typeof attribs !== 'object')
-					throw new Error('First argument to custom element constructor must be an object.');
-
-				if (attribs && !Object.keys(attribs).length) {
-					let attribs2 = getAttribs(this);
-					for (let name in attribs2) {
-						attribs[name] = attribs2[name];
-					}
-				}
-			}
-
-			// 2. Wrap render function so it always provides the attribs.
-			let originalRender = this.render;
-			this.render = (attribs) => {
-				if (!attribs)
-					attribs = getAttribs(this);
-				originalRender.call(this, attribs);
-			};
-
-			// 2. Populate children if it's an empty array.
-			/*if (children) {
-				if (!Array.isArray(children))
-					throw new Error('Second argument to custom element constructor must be an array.');
-				if (!children.length) {
-					// TODO: <slot> won't exist until after render() is called, so what good is this?
-					let slotChildren = (this.querySelector('slot') || this).childNodes; // TODO: What about named slots?
-					for (let child of slotChildren)
-						children.push(child);
-				}
-			}*/
-		}
-
-		render() {
-			throw new Error('render() is not defined for ' + this.constructor.name);
-		}
-
-		/**
-		 * Call render() only if it hasn't already been called.	 */
-		renderFirstTime() {
-			if (!Globals$1.rendered.has(this)) {
-				let attribs = getAttribs(this);
-				this.render(attribs); // calls Globals.rendered.add(this); inside the call to h()'...'.
-			}
-		}
-
-		/**
-		 * Called automatically by the browser. */
-		connectedCallback() {
-			this.renderFirstTime();
-		}
-
-		static define(tagName=null) {
-			defineClass(this, tagName);
-		}
-	}
-}
-
-function getAttribs(el) {
-	let result = Util.attribsToObject(el, 'solarite-placeholder');
-	for (let name in result) {
-		let val = result[name];
-		if (val.startsWith('${') && val.endsWith('}'))
-			result[name] = JSON.parse(val.slice(2, -1));
-	}
-	return result;
-}
-
 /*
 ┏┓  ┓    •
 ┗┓┏┓┃┏┓┏┓┓╋▗▖
@@ -3750,15 +3590,95 @@ JavasCript UI library
 https://vorticode.github.io/solarite/ */
 
 /**
- * TODO: The Proxy and the multiple base classes mess up 'instanceof Solarite'
- * @type {Node|Class<HTMLElement>|function(tagName:string):Node|Class<HTMLElement>} */
-const Solarite = new Proxy(createSolarite(), {
-	apply(self, _, args) {
-		return createSolarite(...args)
+ * Intercept the construct call to auto-define the class before the constructor is called. */
+let HTMLElementAutoDefine = new Proxy(HTMLElement, {
+	construct(Parent, args, Class) {
+
+		// 1. Call customElements.define() automatically.
+		Util.defineClass(Class);
+
+		// 2. This line is equivalent the to super() call to HTMLElement:
+		return Reflect.construct(Parent, args, Class);
 	}
 });
 
-//export {default as watch, renderWatched} from './watch.js'; // unfinished
+/**
+ * Solarite provides more features if your web component extends Solarite instead of HTMLElement.
+ *
+ * Reasons to inherit from Solarite instead of HTMLElement.
+ * 1.  customElements.define() is called automatically when you create the first instance.
+ * 2.  Calls render() when added to the DOM, if it hasn't been called already.
+ * 3.  Populates the attribs argument to the constructor, parsing JSON from DOM attribute values surrouned with '${...}'
+ * 4.  Populates the attribs argument to the render() function
+ * 5.  Shows an error if render() isn't defined.
+ *
+ * Advantages to inheriting from HTMLElement
+ * 1.  We can inherit from things like HTMLTableRowElement directly.
+ * 2.  There's less magic, since everyone is familiar with defining custom elements.
+ * 3.  No confusion about how the class name becomes a tag name.
+ * @extends {HTMLElement} */
+class Solarite extends HTMLElementAutoDefine {
+
+	/**
+	 * @param attribs {?Record<string, any>} */
+	constructor(attribs=null) {
+		super();
+
+		// 1. Populate attribs if it's an empty object.
+		if (attribs) {
+			if (typeof attribs !== 'object')
+				throw new Error('First argument to custom element constructor must be an object.');
+
+			if (attribs && !Object.keys(attribs).length) {
+				let attribs2 =  Solarite.getAttribs(this);
+				for (let name in attribs2) {
+					attribs[name] = attribs2[name];
+				}
+			}
+		}
+
+		// 2. Wrap render function so it always provides the attribs argument.
+		let originalRender = this.render;
+		this.render = (attribs) => {
+			if (!attribs)
+				attribs =  Solarite.getAttribs(this);
+			originalRender.call(this, attribs);
+		};
+	}
+
+	render() {
+		throw new Error('render() is not defined for ' + this.constructor.name);
+	}
+
+	/**
+	 * Call render() only if it hasn't already been called.	 */
+	renderFirstTime() {
+		if (!Globals$1.rendered.has(this)) {
+			let attribs = Solarite.getAttribs(this);
+			this.render(attribs); // calls Globals.rendered.add(this); inside the call to h()'...'.
+		}
+	}
+
+	/**
+	 * Called automatically by the browser. */
+	connectedCallback() {
+		this.renderFirstTime();
+	}
+
+	static define(tagName=null) {
+		Util.defineClass(this, tagName);
+	}
+
+	static getAttribs(el) {
+		let result = Util.attribsToObject(el);
+		for (let name in result) {
+			let val = result[name];
+			if (val.startsWith('${') && val.endsWith('}'))
+				result[name] = JSON.parse(val.slice(2, -1));
+		}
+		return result;
+	}
+}
 
 export default h;
 export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, toEl };

@@ -255,11 +255,10 @@ export default class Shell {
 
 					if (prevContext === HtmlParser.Tag) {
 						// Find Web Component tags and append -solarite-placeholder to their tag names
-						// and give them a solarite-placeholder attribute so we can easily find them later.
 						// This way we can gather their constructor arguments and their children before we call their constructor.
-						// Later, NodeGroup.instantiateComponent() will replace them with the real components.
+						// Later, ExprPathComponent.apply() will replace them with the real components.
 						// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-						const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i;
+						const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i; // a dash in the middle
 						token = token.replace(isWebComponentTagName, match => match + '-solarite-placeholder');
 					}
 

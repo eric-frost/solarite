@@ -21,6 +21,7 @@ let Util = {
 	/**
 	 * Convert HTMLElement attributes to an object.
 	 * Converts dash (kebob-case) attribute names to camelCase.
+	 * See also Solarite.getAttribs()
 	 * @param el {HTMLElement}
 	 * @param ignore {?string} Optionally ignore this attribute.
 	 * @return {Object} */
@@ -136,43 +137,14 @@ let Util = {
 		return str.replace(/-([a-z])/g, g => g[1].toUpperCase());
 	},
 
-	/**
-	 * A generator function that recursively traverses and flattens a value.
-	 *
-	 * - If the input is an array, it recursively traverses and flattens the array.
-	 * - If the input is a function, it calls the function, replaces the function
-	 *   with its result, and flattens the result if necessary. It will recursively
-	 *   call functions that return other functions.
-	 * - Otherwise it yields the value as is.
-	 *
-	 * This function does not create a new array for the flattened values. Instead,
-	 * it lazily yields each item as it is encountered. This can be more memory-efficient
-	 * for large or deeply nested structures.
-	 *
-	 * @param {any} value - The value to flatten. Can be an array, object, function, or primitive.
-	 * @yields {any} - The next item in the flattened structure.
-	 *
-	 * @example
-	 * const complexArray = [
-	 *     1,
-	 *     [2, () => 3, [4, () => [5, 6]], { a: 'object' }],
-	 *     () => () => 7,
-	 *     () => [() => 8, 9],
-	 * ];	 *
-	 * for (const item of flatten(complexArray))
-	 *     console.log(item);  // Outputs: 1, 2, 3, 4, 5, 6, { a: 'object' }, 7, 8, 9
-	 */
-	// *flatten(value) {
-	// 	if (Array.isArray(value)) {
-	// 		for (const item of value) {
-	// 			yield* Util.flatten(item);  // Recursively flatten arrays
-	// 		}
-	// 	} else if (typeof value === 'function') {
-	// 		const result = value();
-	// 		yield* Util.flatten(result);  // Recursively flatten the result of a function
-	// 	} else
-	// 		yield value;  // Yield primitive values as is
-	// },
+	defineClass(Class, tagName) {
+		if (!customElements[getName](Class)) { // If not previously defined.
+			tagName = tagName || Util.camelToDashes(Class.name)
+			if (!tagName.includes('-')) // Browsers require that web components always have a dash in the name.
+				tagName += '-element';
+			customElements[define](tagName, Class)
+		}
+	},
 
 	/**
 	 * Get the value of an input as the most appropriate JavaScript type.
@@ -306,6 +278,12 @@ let Util = {
 		return result;
 	}
 };
+
+
+
+// Trick to prevent minifier from renaming these methods.
+let define = 'define';
+let getName = 'getName';
 
 export default Util;
 

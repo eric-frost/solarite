@@ -85,7 +85,7 @@ export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.S
 
 
 /**
- * @deprecated
+ * @deprecated for Solarite.getAttribs()
  * Experimental.  Set multiple arguments/attributes all at once.
  * @param el {HTMLElement}
  * @param args {Record<string, any>}
@@ -107,6 +107,7 @@ export function setArgs(el, args, types) {
 
 
 /**
+ * @deprecated
  * @enum */
 var ArgType = {
 

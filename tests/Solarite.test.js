@@ -1,4 +1,4 @@
-// noinspection DuplicatedCode
+// noinspection DuplicatedCode,JSUnusedAssignment
 
 import h, {toEl, Solarite, Template, Globals, SolariteUtil} from '../src/Solarite.js';
 //import h, {toEl, Solarite, Template, Globals, SolariteUtil} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
@@ -2878,10 +2878,11 @@ Testimony.test('Solarite.component.attribFunctions', 'Make sure we can pass func
 	let render = 0;
 
 	class C506Child extends Solarite {
+		/** @param attribs {{getContent: function}} */
 		constructor(attribs={}) {
 			super(attribs);
 
-			this.content = attribs.getContent({val: 1});
+			this.content = attribs.getContent({val: 1}); // comes from get-content attribute
 
 			construct++;
 			this.render(attribs);
@@ -3368,9 +3369,10 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 	let construct = 0;
 	let render = 0;
 
-	class TR540 extends Solarite('tr') {
-		constructor(attribs={}) {
-			super(attribs);
+	class TR540 extends HTMLTableRowElement {
+		constructor() {
+			super();
+			let attribs = Solarite.getAttribs(this);
 			this.user = attribs.user;
 			construct++;
 		}
@@ -3395,7 +3397,7 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 			h(this)`<table><tbody>${this.users.map(user => h`<tr is="tr-540" user="${user}"></tr>`)}</tbody></table>`
 		}
 	}
-	let table = new Table540
+	let table = new Table540();
 	document.body.append(table);
 	assert.eq(getHtml(table),
 		`<table-540><table><tbody>`+
