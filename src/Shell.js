@@ -1,5 +1,5 @@
 import {assert} from "./assert.js";
-import ExprPath, {ExprPathType} from "./ExprPath.js";
+import ExprPath from "./ExprPath.js";
 import Util from "./Util.js";
 import Globals from "./Globals.js";
 import HtmlParser from "./HtmlParser.js";
@@ -105,8 +105,8 @@ export default class Shell {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
 
 							let path = Util.isEvent(attr.name)
-								? new ExprPathEvent(null, node, null, attr.name, nonEmptyParts)
-								: new ExprPathAttribValue(null, node, null, attr.name, nonEmptyParts);
+								? new ExprPathEvent(null, node, attr.name, nonEmptyParts)
+								: new ExprPathAttribValue(null, node, attr.name, nonEmptyParts);
 							this.paths.push(path);
 							if (isComponent)
 								componentAttribPaths.push(path);

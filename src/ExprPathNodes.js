@@ -1,4 +1,4 @@
-import ExprPath, {ExprPathType} from "./ExprPath.js";
+import ExprPath from "./ExprPath.js";
 import {assert} from "./assert.js";
 import NodeGroup from "./NodeGroup.js";
 import Util from "./Util.js";

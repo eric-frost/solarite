@@ -1,6 +1,5 @@
-import ExprPath, {ExprPathType} from "./ExprPath.js";
+import ExprPath from "./ExprPath.js";
 import Globals from "./Globals.js";
-import {assert} from "./assert.js";
 
 export default class ExprPathAttribs extends ExprPath {
 

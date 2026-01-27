@@ -4,10 +4,6 @@ import {assert} from "./assert.js";
  * Path to where an expression should be evaluated within a Shell or NodeGroup. */
 export default class ExprPath {
 
-	/**
-	 * @type {ExprPathType} */
-	type;
-
 	// Used for attributes:
 
 
@@ -112,7 +108,7 @@ export default class ExprPath {
 
 		}
 
-		let result = new this.constructor(nodeBefore, nodeMarker, this.type, this.attrName, this.attrValue);
+		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
 		result.isComponent = this.isComponent;
 
 		//#IFDEV
@@ -165,26 +161,4 @@ export default class ExprPath {
 		//this.checkNodesCache();
 	}
 	//#ENDIF
-}
-
-/**
- * @enum {int}
- * @deprecated for different class types. */
-export const ExprPathType = {
-	/** Child of a node */
-	Content: 1, // TODO: Rename to Nodes
-
-	/** One or more whole attributes */
-	AttribMultiple: 2,
-
-	/** Value of an attribute. */
-	AttribValue: 3,
-
-	/** Expressions inside Html comments. */
-	Comment: 4,
-
-	/** Value of an attribute. */
-	Event: 5,
-
-	Component: 6
 }

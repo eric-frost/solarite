@@ -1,4 +1,4 @@
-import ExprPath, {ExprPathType} from "./ExprPath.js";
+import ExprPath from "./ExprPath.js";
 import Util from "./Util.js";
 import delve from "./delve.js";
 import {assert} from "./assert.js";
@@ -10,7 +10,7 @@ export default class ExprPathComponent extends ExprPath {
 	attribPaths;
 
 	constructor(nodeBefore, nodeMarker) {
-		super(null, nodeMarker, ExprPathType.Component);
+		super(null, nodeMarker);
 	}
 
 	/**

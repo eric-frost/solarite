@@ -2,7 +2,7 @@ import {assert} from "./assert.js";
 import Util, {flattenAndIndent, nodeToArrayTree, setIndent} from "./Util.js";
 import Shell from "./Shell.js";
 import RootNodeGroup from './RootNodeGroup.js';
-import ExprPath, {ExprPathType} from "./ExprPath.js";
+import ExprPath from "./ExprPath.js";
 import Globals from './Globals.js';
 import NodePath from "./NodePath.js";
 import ExprPathComponent from "./ExprPathComponent.js";

@@ -592,10 +592,6 @@ function flattenAndIndent(inputArray, indent = "") {
  * Path to where an expression should be evaluated within a Shell or NodeGroup. */
 class ExprPath {
 
-	/**
-	 * @type {ExprPathType} */
-	type;
-
 	// Used for attributes:
 
 
@@ -700,7 +696,7 @@ class ExprPath {
 
 		}
 
-		let result = new this.constructor(nodeBefore, nodeMarker, this.type, this.attrName, this.attrValue);
+		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
 		result.isComponent = this.isComponent;
 
 		//#IFDEV
@@ -754,28 +750,6 @@ class ExprPath {
 	}
 	//#ENDIF
 }
-
-/**
- * @enum {int}
- * @deprecated for different class types. */
-const ExprPathType = {
-	/** Child of a node */
-	Content: 1, // TODO: Rename to Nodes
-
-	/** One or more whole attributes */
-	AttribMultiple: 2,
-
-	/** Value of an attribute. */
-	AttribValue: 3,
-
-	/** Expressions inside Html comments. */
-	Comment: 4,
-
-	/** Value of an attribute. */
-	Event: 5,
-
-	Component: 6
-};
 
 class HtmlParser {
 	constructor() {
@@ -880,7 +854,7 @@ class ExprPathAttribValue extends ExprPath {
 
 	isHtmlProperty;
 
-	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
+	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
 		super(nodeBefore, nodeMarker);
 		this.attrName = attrName;
 		this.attrValue = attrValue;
@@ -1504,7 +1478,7 @@ class ExprPathComponent extends ExprPath {
 	attribPaths;
 
 	constructor(nodeBefore, nodeMarker) {
-		super(null, nodeMarker, ExprPathType.Component);
+		super(null, nodeMarker);
 	}
 
 	/**
@@ -2270,8 +2244,8 @@ class Shell {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
 
 							let path = Util.isEvent(attr.name)
-								? new ExprPathEvent(null, node, null, attr.name, nonEmptyParts)
-								: new ExprPathAttribValue(null, node, null, attr.name, nonEmptyParts);
+								? new ExprPathEvent(null, node, attr.name, nonEmptyParts)
+								: new ExprPathAttribValue(null, node, attr.name, nonEmptyParts);
 							this.paths.push(path);
 							if (isComponent)
 								componentAttribPaths.push(path);

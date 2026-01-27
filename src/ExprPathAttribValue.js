@@ -1,4 +1,4 @@
-import ExprPath, {ExprPathType} from "./ExprPath.js";
+import ExprPath from "./ExprPath.js";
 import Globals from "./Globals.js";
 import Util from "./Util.js";
 import delve from "./delve.js";
@@ -16,7 +16,7 @@ export default class ExprPathAttribValue extends ExprPath {
 
 	isHtmlProperty;
 
-	constructor(nodeBefore, nodeMarker, type, attrName=null, attrValue=null) {
+	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
 		super(nodeBefore, nodeMarker);
 		this.attrName = attrName;
 		this.attrValue = attrValue;

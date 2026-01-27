@@ -1,4 +1,3 @@
-import ExprPath, {ExprPathType} from "./ExprPath.js";
 import {assert} from "./assert.js";
 import ExprPathAttribValue from "./ExprPathAttribValue.js";
 
