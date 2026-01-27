@@ -215,29 +215,12 @@ export default class Shell {
 		if (placeholdersUsed !== html.length-1)
 			throw new Error(`Could not parse expressions in template.  Check for duplicate attributes or malformed html: ${html.join('${...}')}`);
 
-		// Handle solarite-placeholder's.
-
-		/*
-		// Deprecated path:
-		// 3. Rename "is" attributes so the Web Components don't instantiate until we have the values of their PathExpr arguments.
-		// that happens in NodeGroup.applyComponentExprs()
-		// TODO: Move this into step 2 where we handle components.
-		for (let el of this.fragment.querySelectorAll('[is]'))
-			el.setAttribute('_is', el.getAttribute('is'));
-
-		*/
 		for (let path of this.paths) {
 			if (path.nodeBefore)
 				path.nodeBeforeIndex = Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore)
 
 			// Must be calculated after we remove the toRemove nodes:
 			path.nodeMarkerPath = NodePath.get(path.nodeMarker)
-
-			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
-			// if ((path.type === ExprPathType.AttribValue || path.type === ExprPathType.Event) && path.nodeMarker.nodeType === 1 &&
-			// 	(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
-			// 	path.isComponent = true;
-			// }
 		}
 
 		this.findEmbeds();

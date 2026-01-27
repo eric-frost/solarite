@@ -17,14 +17,17 @@ export default class ExprPathEvent extends ExprPathAttribValue {
 	 * oninput=${[this.doSomething, 'meow']}
 	 * onclick=${[this, 'doSomething', 'meow']}
 	 *
-	 * @param node
-	 * @param expr
-	 * @param root */
-	applyEventAttrib(node, expr, root) {
+	 * @param exprs {Expr[]} Only the first is used.*/
+	apply(exprs) {
+		let expr = exprs[0];
+		let root = this.parentNg.rootNg.root
+
 		/*#IFDEV*/
 		assert(this.type === ExprPathType.Event);
 		assert(root?.nodeType === 1);
 		/*#ENDIF*/
+
+		let node = this.nodeMarker;
 
 		let eventName = this.attrName.slice(2); // remove "on-" prefix.
 		let func;

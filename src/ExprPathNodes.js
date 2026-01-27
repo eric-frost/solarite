@@ -24,11 +24,12 @@ export default class ExprPathNodes extends ExprPath {
 	 * Insert/replace the nodes created by a single expression.
 	 * Called by applyExprs()
 	 * This function is recursive.  It calls functions that call applyNodes().
-	 * @param expr {Expr}
+	 * @param exprs {Expr[]} Only the first is used.
 	 * @param freeNodeGroups {boolean}
 	 * @return {Node[]} New Nodes created. */
-	applyNodes(expr, freeNodeGroups=true) {
+	apply(exprs, freeNodeGroups=true) {
 		let path = this;
+		let expr = exprs[0];
 
 		// This can be done at the beginning or the end of this function.
 		// If at the end, we may get rendering done faster.

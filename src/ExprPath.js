@@ -80,20 +80,20 @@ export default class ExprPath {
 	 * setAttribute() once all the pieces are in place.
 	 *
 	 * @param exprs {Expr[]}
-	 * @param freeNodeGroups {boolean} */
+	 * @param freeNodeGroups {boolean} Used only by watch. */
 	apply(exprs, freeNodeGroups=true) {
 		switch (this.type) {
 			case 1: // ExprPathType.Content:
-				this.applyNodes(exprs[0], freeNodeGroups);
+				this.applyNodes(exprs, freeNodeGroups);
 				break;
 			case 2: // ExprPathType.Multiple:
-				this.applyMultipleAttribs(this.nodeMarker, exprs[0]);
+				this.applyMultipleAttribs(exprs);
 				break;
 			case 4: // ExprPathType.Comment:
 				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
 				break;
 			case 5: // ExprPathType.Event:
-				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
+				this.applyEventAttrib(exprs);
 				break;
 			case 6: // ExprPathType.Component:
 				this.applyComponent(exprs);

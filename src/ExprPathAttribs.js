@@ -13,8 +13,15 @@ export default class ExprPathAttribs extends ExprPath {
 		this.attrNames = new Set();
 	}
 
-	applyMultipleAttribs(node, expr) {
-		/*#IFDEV*/assert(this.type === ExprPathType.AttribMultiple);/*#ENDIF*/
+	/**
+	 * @param exprs {Expr[]} Only the first is used. */
+	applyMultipleAttribs(exprs) {
+		/*#IFDEV*/
+		assert(this.type === ExprPathType.AttribMultiple);
+		/*#ENDIF*/
+
+		let expr = exprs[0];
+		let node = this.nodeMarker;
 
 		if (Array.isArray(expr))
 			expr = expr.flat().join(' ');  // flat and join so we can accept arrays of arrays of strings.

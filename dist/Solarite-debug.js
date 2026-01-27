@@ -694,20 +694,20 @@ class ExprPath {
 	 * setAttribute() once all the pieces are in place.
 	 *
 	 * @param exprs {Expr[]}
-	 * @param freeNodeGroups {boolean} */
+	 * @param freeNodeGroups {boolean} Used only by watch. */
 	apply(exprs, freeNodeGroups=true) {
 		switch (this.type) {
 			case 1: // ExprPathType.Content:
-				this.applyNodes(exprs[0], freeNodeGroups);
+				this.applyNodes(exprs, freeNodeGroups);
 				break;
 			case 2: // ExprPathType.Multiple:
-				this.applyMultipleAttribs(this.nodeMarker, exprs[0]);
+				this.applyMultipleAttribs(exprs);
 				break;
 			case 4: // ExprPathType.Comment:
 				// Expressions inside Html comments.  Deliberately empty because we won't waste time updating them.
 				break;
 			case 5: // ExprPathType.Event:
-				this.applyEventAttrib(this.nodeMarker, exprs[0], this.parentNg.rootNg.root);
+				this.applyEventAttrib(exprs);
 				break;
 			case 6: // ExprPathType.Component:
 				this.applyComponent(exprs);
@@ -943,7 +943,7 @@ class ExprPathAttribValue extends ExprPath {
 	 * Set the value of an attribute.  This can be for any attribute, not just attributes named "value".
 	 * @param exprs */
 	// TODO: node is always this.nodeMarker?
-	applyValueAttrib(exprs) {
+	apply(exprs) {
 		let node = this.nodeMarker;
 		let expr = exprs[0];
 
@@ -1175,14 +1175,17 @@ class ExprPathEvent extends ExprPathAttribValue {
 	 * oninput=${[this.doSomething, 'meow']}
 	 * onclick=${[this, 'doSomething', 'meow']}
 	 *
-	 * @param node
-	 * @param expr
-	 * @param root */
-	applyEventAttrib(node, expr, root) {
+	 * @param exprs {Expr[]} Only the first is used.*/
+	apply(exprs) {
+		let expr = exprs[0];
+		let root = this.parentNg.rootNg.root;
+
 		/*#IFDEV*/
 		assert(this.type === ExprPathType.Event);
 		assert(root?.nodeType === 1);
 		/*#ENDIF*/
+
+		let node = this.nodeMarker;
 
 		let eventName = this.attrName.slice(2); // remove "on-" prefix.
 		let func;
@@ -1215,8 +1218,15 @@ class ExprPathAttribs extends ExprPath {
 		this.attrNames = new Set();
 	}
 
-	applyMultipleAttribs(node, expr) {
-		/*#IFDEV*/assert(this.type === ExprPathType.AttribMultiple);/*#ENDIF*/
+	/**
+	 * @param exprs {Expr[]} Only the first is used. */
+	applyMultipleAttribs(exprs) {
+		/*#IFDEV*/
+		assert(this.type === ExprPathType.AttribMultiple);
+		/*#ENDIF*/
+
+		let expr = exprs[0];
+		let node = this.nodeMarker;
 
 		if (Array.isArray(expr))
 			expr = expr.flat().join(' ');  // flat and join so we can accept arrays of arrays of strings.
@@ -1552,20 +1562,9 @@ class ExprPathComponent extends ExprPath {
 	/** @type {ExprPathAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
 
-	rendered = false;
-
 	constructor(nodeBefore, nodeMarker) {
 		super(null, nodeMarker, ExprPathType.Component);
 	}
-
-	clone(newRoot, pathOffset=0) {
-		let result = super.clone(newRoot, pathOffset);
-
-		// Untested:
-		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
-		return result;
-	}
-
 
 	/**
 	 * Call render() on the component pointed to by this ExprPath.
@@ -1654,6 +1653,14 @@ class ExprPathComponent extends ExprPath {
 		Globals$1.currentSlotChildren = null;
 	}
 
+	clone(newRoot, pathOffset=0) {
+		let result = super.clone(newRoot, pathOffset);
+
+		// Untested:
+		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
+		return result;
+	}
+
 	//#IFDEV
 	verify() {
 		super.verify();
@@ -1683,11 +1690,12 @@ class ExprPathNodes extends ExprPath {
 	 * Insert/replace the nodes created by a single expression.
 	 * Called by applyExprs()
 	 * This function is recursive.  It calls functions that call applyNodes().
-	 * @param expr {Expr}
+	 * @param exprs {Expr[]} Only the first is used.
 	 * @param freeNodeGroups {boolean}
 	 * @return {Node[]} New Nodes created. */
-	applyNodes(expr, freeNodeGroups=true) {
+	apply(exprs, freeNodeGroups=true) {
 		let path = this;
+		let expr = exprs[0];
 
 		// This can be done at the beginning or the end of this function.
 		// If at the end, we may get rendering done faster.
@@ -2404,29 +2412,12 @@ class Shell {
 		if (placeholdersUsed !== html.length-1)
 			throw new Error(`Could not parse expressions in template.  Check for duplicate attributes or malformed html: ${html.join('${...}')}`);
 
-		// Handle solarite-placeholder's.
-
-		/*
-		// Deprecated path:
-		// 3. Rename "is" attributes so the Web Components don't instantiate until we have the values of their PathExpr arguments.
-		// that happens in NodeGroup.applyComponentExprs()
-		// TODO: Move this into step 2 where we handle components.
-		for (let el of this.fragment.querySelectorAll('[is]'))
-			el.setAttribute('_is', el.getAttribute('is'));
-
-		*/
 		for (let path of this.paths) {
 			if (path.nodeBefore)
 				path.nodeBeforeIndex = Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore);
 
 			// Must be calculated after we remove the toRemove nodes:
 			path.nodeMarkerPath = NodePath.get(path.nodeMarker);
-
-			// Cache so we don't have to calculate this later inside NodeGroup.applyExprs()
-			// if ((path.type === ExprPathType.AttribValue || path.type === ExprPathType.Event) && path.nodeMarker.nodeType === 1 &&
-			// 	(path.nodeMarker.tagName.includes('-') || path.nodeMarker.hasAttribute('is'))) {
-			// 	path.isComponent = true;
-			// }
 		}
 
 		this.findEmbeds();
@@ -3031,22 +3022,7 @@ function isReplaceEl(fragment, tagName) {
 		&& fragment.children[0].tagName.replace('-SOLARITE-PLACEHOLDER', '') === tagName;
 }
 
-class RootNodeGroup extends NodeGroup {
-
-	/**
-	 * @param el {HTMLElement}
-	 * @returns {NodeList[]} */
-	static getSlotChildren(el) {
-		if (Globals$1.currentSlotChildren)
-			return Globals$1.currentSlotChildren;
-
-		// TODO: Have Shell cache the path to slot for better performance:
-		let childNodes = (el.querySelector('slot') || el).childNodes;
-		return Array.prototype.filter.call(childNodes, node => // Remove node markers.
-			node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.startsWith('ExprPath')
-		);
-	}
-}
+class RootNodeGroup extends NodeGroup {}
 
 /**
  * The html strings and evaluated expressions from an html tagged template.

@@ -9,20 +9,9 @@ export default class ExprPathComponent extends ExprPath {
 	/** @type {ExprPathAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
 
-	rendered = false;
-
 	constructor(nodeBefore, nodeMarker) {
 		super(null, nodeMarker, ExprPathType.Component);
 	}
-
-	clone(newRoot, pathOffset=0) {
-		let result = super.clone(newRoot, pathOffset);
-
-		// Untested:
-		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
-		return result;
-	}
-
 
 	/**
 	 * Call render() on the component pointed to by this ExprPath.
@@ -109,6 +98,14 @@ export default class ExprPathComponent extends ExprPath {
 			el.render(attribs);
 
 		Globals.currentSlotChildren = null;
+	}
+
+	clone(newRoot, pathOffset=0) {
+		let result = super.clone(newRoot, pathOffset);
+
+		// Untested:
+		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
+		return result;
 	}
 
 	//#IFDEV

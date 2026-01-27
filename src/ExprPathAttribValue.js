@@ -26,7 +26,7 @@ export default class ExprPathAttribValue extends ExprPath {
 	 * Set the value of an attribute.  This can be for any attribute, not just attributes named "value".
 	 * @param exprs */
 	// TODO: node is always this.nodeMarker?
-	applyValueAttrib(exprs) {
+	apply(exprs) {
 		let node = this.nodeMarker;
 		let expr = exprs[0];
 
