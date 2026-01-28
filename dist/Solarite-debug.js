@@ -3588,6 +3588,9 @@ JavasCript UI library
 @license MIT
 @copyright Vorticode LLC
 https://vorticode.github.io/solarite/ */
+function t(html) {
+	return new Template([html], []);
+}
 
 /**
  * Intercept the construct call to auto-define the class before the constructor is called. */
@@ -3681,4 +3684,4 @@ class Solarite extends HTMLElementAutoDefine {
 }
 
 export default h;
-export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, toEl };
+export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, t, toEl };

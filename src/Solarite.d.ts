@@ -12,14 +12,28 @@ export interface RenderOptions {
 }
 
 /**
- * Tagged template literal or function for creating Templates and rendering to the DOM.
- */
-export default function h(htmlStrings: TemplateStringsArray, ...exprs: any[]): Template;
-export default function h(htmlStrings: string | string[], ...exprs: any[]): Template;
-export default function h(el: HTMLElement | DocumentFragment, options?: RenderOptions): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => HTMLElement | DocumentFragment;
-export default function h(el: HTMLElement | DocumentFragment, template: Template, options?: RenderOptions): void;
-export default function h(tag: string, props: object, ...children: any[]): Template; // JSX
-export default function h(obj: {render: Function}): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => void; // Rebound render
+ * Tagged template literal or function for creating Templates and rendering to the DOM. */
+declare function h(htmlStrings: TemplateStringsArray, ...exprs: any[]): Template;
+declare function h(htmlStrings: string | string[], ...exprs: any[]): Template;
+declare function h(el: HTMLElement | DocumentFragment, options?: RenderOptions): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => HTMLElement | DocumentFragment;
+declare function h(el: HTMLElement | DocumentFragment, template: Template, options?: RenderOptions): void;
+declare function h(tag: string, props: object, ...children: any[]): Template; // JSX
+declare function h(obj: {render: Function}): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => void; // Rebound render
+
+export default h;
+export {h};
+export {h as r};
+
+/**
+ * Solarite provides more features if your web component extends Solarite instead of HTMLElement. */
+export class Solarite extends HTMLElement {
+    constructor(attribs?: Record<string, any> | null);
+    render(attribs?: Record<string, any>): void;
+    renderFirstTime(): void;
+    connectedCallback(): void;
+    static define(tagName?: string | null): void;
+    static getAttribs(el: HTMLElement): Record<string, any>;
+}
 
 
 /**
@@ -29,7 +43,7 @@ export function toEl(arg: string | Template | {render: () => void}): Node | HTML
 /**
  * Retrieve and cast an attribute value from an HTMLElement. */
 export function getArg(el: HTMLElement, attributeName: string, defaultValue?: any,
-    type?: typeof ArgType[keyof typeof ArgType] | Function | any[], fallback?: any): any;
+    type?: typeof ArgType[keyof typeof ArgType] | Function | any[]): any;
 
 /**
  * Update attributes on an element from an object. */
@@ -51,32 +65,38 @@ export class Template {
     render(el?: HTMLElement | null, options?: RenderOptions): HTMLElement | DocumentFragment;
     getExactKey(): string;
     getCloseKey(): string;
+    static fromJsx(tag: string, props: Record<string, any> | null, children: any[]): Template;
 }
 
 export function delve(obj: object, path: string[], createVal?: any): any;
 
 /**
- * Internal utilities and state.
- */
+ * Internal utilities and state. */
 export const Globals: {
     connected: WeakSet<HTMLElement>;
     currentExprPath: any;
+    currentSlotChildren: any[] | null;
     div: HTMLDivElement;
+    doc: Document;
     elementClasses: {[key: string]: typeof Node};
     htmlProps: {[key: string]: boolean};
     nodeEvents: WeakMap<Node, {[eventName: string]: [Function, Function, any[]]}>;
-    nodeGroups: WeakMap<HTMLElement, any>;
+    rootNodeGroups: WeakMap<HTMLElement, any>;
     objToEl: WeakMap<any, any>;
     rendered: WeakSet<HTMLElement>;
-    rendering: WeakSet<HTMLElement>;
     shells: WeakMap<string[], any>;
     reset: Function;
-    count: number;
 };
 
 export const SolariteUtil: {
+    arraySame(a: any[], b: any[]): boolean;
+    attribsToObject(el: HTMLElement, ignore?: string | null): Record<string, any>;
+    bindId(root: any, el: HTMLElement): void;
+    bindStyles(style: HTMLStyleElement, root: HTMLElement): void;
     camelToDashes(str: string): string;
     dashesToCamel(str: string): string;
+    defineClass(Class: typeof HTMLElement, tagName?: string | null): void;
+    isIterable(obj: any): boolean;
     trimEmptyNodes(nodes: NodeList | Node[]): Node[];
     [key: string]: any;
 };

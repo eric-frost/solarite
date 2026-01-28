@@ -23,6 +23,10 @@ export {default as SolariteUtil} from './Util.js';
 export {getArg, ArgType} from './getArg.js';
 export {setArgs} from './getArg.js';
 export {default as r} from './h.js';
+import Template from './Template.js';
+export function t(html) {
+	return new Template([html], []);
+}
 
 //export {default as watch, renderWatched} from './watch.js'; // unfinished
 
