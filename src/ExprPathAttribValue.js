@@ -24,7 +24,7 @@ export default class ExprPathAttribValue extends ExprPath {
 
 	/**
 	 * Set the value of an attribute.  This can be for any attribute, not just attributes named "value".
-	 * @param exprs */
+	 * @param exprs {Expr[]} */
 	// TODO: node is always this.nodeMarker?
 	apply(exprs) {
 		let node = this.nodeMarker;
@@ -39,6 +39,12 @@ export default class ExprPathAttribValue extends ExprPath {
 		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.instantiateComponent() for components.
 		if (!multiple && Util.isPath(expr)) {
+
+			// Don't bind events to component placeholders.
+			// ExprPathComponent will do the binding later when it instantiates the component.
+			if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
+				return;
+
 			let [obj, path] = [expr[0], expr.slice(1)];
 
 			if (!obj)
@@ -84,7 +90,7 @@ export default class ExprPathAttribValue extends ExprPath {
 			// We use capture so we update the values before other events added by the user.
 			// TODO: Bind to scroll events also?
 			// What about resize events and width/height?
-			this.bindEvent(node, path[0], this.attrName, 'input', func, [], true);
+			this.bindEvent(node, this.parentNg.getRootNode(), this.attrName, 'input', func, [], true);
 		}
 
 		// Regular attribute

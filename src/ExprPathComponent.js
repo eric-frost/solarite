@@ -89,6 +89,13 @@ export default class ExprPathComponent extends ExprPath {
 			if (typeof newEl.render === 'function' && !Globals.rendered.has(newEl))
 				newEl.render(attribs);
 
+			// 2g. Update attribute paths to use the new element and re-apply them.
+			for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
+				attribPath.parentNg = this.parentNg;
+				attribPath.nodeMarker = newEl;
+				attribPath.apply(attribExprs[i]);
+			}
+
 			// 2e. Swap it to the DOM.
 			el.replaceWith(newEl);
 		}

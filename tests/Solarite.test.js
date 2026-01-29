@@ -3226,9 +3226,9 @@ Testimony.test('Solarite.component.nestedExprConstructorArg', "Pass an object to
 	a.remove();
 });
 
-Testimony.test('Solarite.component.nestedExprEvent', () => {
+Testimony.test('Solarite.component.nestedEventAttrib', () => {
 
-	let bRenderCount = 0;
+	let clicked = 0;
 	class B530 extends HTMLElement {
 
 		constructor() {
@@ -3241,7 +3241,6 @@ Testimony.test('Solarite.component.nestedExprEvent', () => {
 			<b-530>				
 				<div>Name:</div><div>Fred</div>
 			</b-530>`;
-			bRenderCount++;
 		}
 
 	}
@@ -3251,18 +3250,75 @@ Testimony.test('Solarite.component.nestedExprEvent', () => {
 		render() {
 			h(this)`
 			<a-530>
-				<b-530 onclick=${() => {console.log('click')}}></b-530>
+				<b-530 onclick=${() => clicked++}></b-530>
 			</a-530>`
 		}
 	}
 
 	let a = new A530();
+	a.render();
 	document.body.append(a);
 
-	assert(a.children[0].render);
+	let b = a.querySelector('b-530');
+	b.click();
+	assert.eq(clicked, 1);
 
 	a.remove();
+});
 
+
+Testimony.test('Solarite.component.nestedBinding', () => {
+
+	class B535 extends HTMLElement {
+
+		#value = null;
+
+		get value() { return this.#value; }
+		set value(v) {
+			this.#value = v; this.render()
+			this.dispatchEvent(new CustomEvent('input', {bubbles: true}));
+		}
+
+		constructor() {
+			super();
+			this.render();
+		}
+
+		render() {
+			h(this)`
+			<b-535>				
+				<div>Value: ${this.#value}</div>
+			</b-535>`;
+		}
+
+	}
+	customElements.define('b-535', B535);
+
+	class A535 extends Solarite {
+		value = 1;
+
+		render() {
+			h(this)`
+			<a-535>				
+				<b-535 value=${[this, 'value']}></b-535>
+			</a-535>`
+		}
+	}
+
+	let a = new A535();
+	a.render();
+	document.body.append(a);
+
+	let b = a.querySelector('b-535');
+
+	b.value = 2;
+	assert.eq(a.value, 2);
+
+	a.value = 3;
+	a.render();
+	assert.eq(b.value, 3);
+
+	a.remove();
 });
 
 // Pass an object to the child.

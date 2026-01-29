@@ -238,6 +238,18 @@ export default class NodeGroup {
 			if (i===0 && path instanceof ExprPathComponent && path.nodeMarker === root)
 			  	continue;
 
+			// Get the expressions associated with this path.
+			if (path.attrValue?.length > 2) {
+				let startIndex = (exprIndex - (path.attrValue.length - 1)) + 1;
+				pathExprs[i] = exprs.slice(startIndex, exprIndex + 1); // probably doesn't allocate if the JS vm implements copy on write.
+				exprIndex -= pathExprs[i].length;
+			}
+
+			else if (!(path instanceof ExprPathComponent)) {
+				pathExprs[i] = [exprs[exprIndex]];
+				exprIndex--;
+			}
+
 			// Component expressions don't have a corresponding user-provided expression.
 			// They use expressions from the paths that provide their attributes.
 			if (path instanceof ExprPathComponent) {
@@ -245,19 +257,6 @@ export default class NodeGroup {
 				path.apply(attribExprs);
 			}
 			else {
-
-				// Get the expressions associated with this path.
-				if (path.attrValue?.length > 2) {
-					let startIndex = (exprIndex - (path.attrValue.length - 1)) + 1;
-					pathExprs[i] = exprs.slice(startIndex, exprIndex + 1); // probably doesn't allocate if the JS vm implements copy on write.
-					exprIndex -= pathExprs[i].length;
-				}
-
-				else {
-					pathExprs[i] = [exprs[exprIndex]];
-					exprIndex--;
-				}
-
 				path.apply(pathExprs[i]);
 			}
 
