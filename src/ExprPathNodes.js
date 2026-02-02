@@ -163,7 +163,7 @@ export default class ExprPathNodes extends ExprPath {
 				// Call render() on web components even though none of their arguments have changed:
 				// Do we want it to work this way?  Yes, because even if this component hasn't changed,
 				// perhaps something in a sub-component has.
-				ng.applyExprs(expr.exprs, false);
+				ng.applyExprs(expr.exprs, false, false);
 
 				this.nodeGroups.push(ng);
 				return ng;

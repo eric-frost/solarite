@@ -1614,7 +1614,7 @@ class ExprPathComponent extends ExprPath {
 			// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
 			// Because that path renders it without the attribute expressions.
 			if (typeof newEl.render === 'function' && !Globals$1.rendered.has(newEl))
-				newEl.render(attribs);
+				newEl.render(attribs, changed);
 
 			// 2g. Update attribute paths to use the new element and re-apply them.
 			for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
@@ -1820,7 +1820,7 @@ class ExprPathNodes extends ExprPath {
 				// Call render() on web components even though none of their arguments have changed:
 				// Do we want it to work this way?  Yes, because even if this component hasn't changed,
 				// perhaps something in a sub-component has.
-				ng.applyExprs(expr.exprs, false);
+				ng.applyExprs(expr.exprs, false, false);
 
 				this.nodeGroups.push(ng);
 				return ng;
@@ -2767,7 +2767,7 @@ class NodeGroup {
 	 * @param exprs {(*|*[]|function|Template)[]}
 	 * @param changed {boolean} If true, the expr's have changed since the last time thsi function was called.
 	 * We still need to call ExprPathComponent.apply() even if changed=false so the user can handle the rendering. */
-	applyExprs(exprs, changed=true) {
+	applyExprs(exprs, changed=true, others=true) {
 
 		/*#IFDEV*/
 		this.verify();
@@ -2799,7 +2799,7 @@ class NodeGroup {
 				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
 				path.apply(attribExprs, true, changed);
 			}
-			else if (changed)
+			else if (others)
 				path.apply(pathExprs[i]);
 		}
 
@@ -2810,7 +2810,7 @@ class NodeGroup {
 		/*#ENDIF*/
 
 
-		if (changed) {
+		if (others) {
 
 			// TODO: Only do this if we have ExprPaths within styles?
 			this.updateStyles();
@@ -3116,8 +3116,11 @@ class Template {
 		if (this.html?.length === 1 && !this.html[0]) // An empty string.
 			el.innerHTML = ''; // Fast path for empty component.
 		else {
-			ng.applyExprs(this.exprs, true);
-			ng.exactKey = this.getExactKey();
+
+			let oldKey = ng.exactKey;
+			let newKey = this.getExactKey();
+			ng.applyExprs(this.exprs, oldKey !== newKey);
+			ng.exactKey = newKey;
 
 			//if (firstTime)
 			//	ng.instantiateStaticComponents(ng.staticComponents);
@@ -3704,8 +3707,11 @@ class Solarite extends HTMLElementAutoDefine {
 		// 2. Wrap render function so it always provides the attribs argument.
 		let originalRender = this.render;
 		this.render = (attribs, changed=true) => {
-			if (!attribs)
-				attribs = Solarite.getAttribs(this);
+			if (!attribs) {
+				let oldAttribs = Solarite.getAttribs(this);
+				attribs = oldAttribs;
+				// If we have to look up the attribs, we don't know if they changed or not.
+			}
 			originalRender.call(this, attribs, changed);
 		};
 	}

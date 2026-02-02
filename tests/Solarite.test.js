@@ -2791,6 +2791,7 @@ Testimony.test('Solarite.component.tr', () => {
 Testimony.test('Solarite.component.attribsFromDOM', () => {
 	let construct = 0;
 	let render = 0;
+	let isChanged = false;
 
 	class C500 extends Solarite {
 		constructor(attribs={}) {
@@ -2799,12 +2800,11 @@ Testimony.test('Solarite.component.attribsFromDOM', () => {
 			this.render(attribs);
 		}
 
-		render(attribs={}) {
+		render(attribs={}, changed=true) {
 			h(this)`<c-500>${attribs.name}:${attribs.rows.join('|')}</c-500>`;
 			render++;
+			isChanged = changed;
 		}
-
-		//prop = (() => this.connectedCallback())();
 	}
 	C500.define();
 
@@ -2818,15 +2818,18 @@ Testimony.test('Solarite.component.attribsFromDOM', () => {
 	assert.eq(getHtml(c), '<c-500 name="a" rows="${[1, 2, 3, 4]}">a:1|2|3|4</c-500>');
 	assert.eq(construct, 1);
 	assert.eq(render, 1);
+	assert.eq(isChanged, true);
 
 	c.render(); // Call without passing in attribs.  Solarite provides them.
 	assert.eq(construct, 1);
 	assert.eq(render, 2);
+	assert.eq(isChanged, true);
 
 	c.render({name:'b', rows:[5]});
 	assert.eq(getHtml(c), '<c-500 name="a" rows="${[1, 2, 3, 4]}">b:5</c-500>');
 	assert.eq(construct, 1);
 	assert.eq(render, 3);
+	assert.eq(isChanged, true);
 
 });
 
@@ -2840,10 +2843,11 @@ Testimony.test('Solarite.component.attribsFromParentComponent', () => {
 			construct++;
 		}
 
-		render(attribs={}) {
+		render(attribs={}, changed=true) {
 			//console.log('render', attribs);
 			h(this)`<b-504>${attribs.name}:${attribs.rows.join('|')}</b-504>`;
 			render++;
+			this.lastChanged = changed;
 		}
 	}
 	B504.define();
@@ -2858,17 +2862,58 @@ Testimony.test('Solarite.component.attribsFromParentComponent', () => {
 	let a = new A504();
 	document.body.append(a); // calls render()
 
+	let b = a.querySelector('b-504');
 	assert.eq(getHtml(a), `<a-504><b-504 name="a" rows="">a:1|2|3|4</b-504></a-504>`);
 	assert.eq(construct, 1)
 	assert.eq(render, 1);
+	assert.eq(b.lastChanged, true);
 
-
+window.debug = true;
 	a.render();
 	assert.eq(construct, 1)
 	assert.eq(render, 2); // ensure b.render() was called.
+	assert.eq(b.lastChanged, false);
 
 	a.remove();
 
+});
+
+
+Testimony.test('Solarite.component.renderChanged', () => {
+	let isChanged = false;
+
+	class B506 extends Solarite {
+		render(attribs={}, changed=true) {
+			h(this)`<b-506>${attribs.name}</b-506>`;
+			isChanged = changed;
+		}
+	}
+	B506.define();
+
+	class A506 extends Solarite {
+		name = 'a';
+		render() {
+			h(this)`<a-506><b-506 name=${this.name}></b-506></a-506>`;
+		}
+	}
+	A506.define();
+
+	let a = new A506();
+	document.body.append(a);
+	let b = a.querySelector('b-506');
+	assert.eq(getHtml(a), '<a-506><b-506 name="a">a</b-506></a-506>');
+	assert.eq(isChanged, true);
+
+	a.render();
+	assert.eq(getHtml(a), '<a-506><b-506 name="a">a</b-506></a-506>');
+	assert.eq(isChanged, false);
+
+	a.name = 'b';
+	a.render();
+	assert.eq(getHtml(a), '<a-506><b-506 name="b">b</b-506></a-506>');
+	assert.eq(isChanged, true);
+
+	a.remove();
 });
 
 
@@ -2877,7 +2922,7 @@ Testimony.test('Solarite.component.attribFunctions', 'Make sure we can pass func
 	let construct = 0;
 	let render = 0;
 
-	class C506Child extends Solarite {
+	class C510Child extends Solarite {
 		/** @param attribs {{getContent: function}} */
 		constructor(attribs={}) {
 			super(attribs);
@@ -2889,24 +2934,24 @@ Testimony.test('Solarite.component.attribFunctions', 'Make sure we can pass func
 		}
 
 		render(attribs={}) {
-			h(this)`<c-506-child>${this.content}</c-506-child>`;
+			h(this)`<c-510-child>${this.content}</c-510-child>`;
 			render++;
 		}
 	}
-	C506Child.define('c-506-child');
+	C510Child.define('c-510-child');
 
-	class C506 extends Solarite {
+	class C510 extends Solarite {
 		render() {
-			h(this)`<c-506><c-506-child get-content=${obj => 'a' + obj.val}></c-506-child></c-506>`;
+			h(this)`<c-510><c-510-child get-content=${obj => 'a' + obj.val}></c-510-child></c-510>`;
 		}
 	}
-	customElements.define('c-506', C506);
+	customElements.define('c-510', C510);
 
-	let c = new C506();
+	let c = new C510();
 	document.body.append(c);
 	console.log(getHtml(c));
 
-	assert.eq(getHtml(c), `<c-506><c-506-child get-content="">a1</c-506-child></c-506>`);
+	assert.eq(getHtml(c), `<c-510><c-510-child get-content="">a1</c-510-child></c-510>`);
 });
 
 
@@ -3133,7 +3178,6 @@ Testimony.test('Solarite.component.componentWithDynamicAttribsFromExpr', () => {
 
 	// Test 2
 	message = {text: 'world'}
-	//window.debug = true;
 	a.render();
 	assert.eq(`<c-521><c-521-child color="" message="" style="color: red">hiworld</c-521-child></c-521>`, getHtml(a));
 
@@ -3315,7 +3359,6 @@ Testimony.test('Solarite.component.nestedBinding', () => {
 	a.value = 3;
 	a.render();
 	assert.eq(b.value, 3);
-
 	a.remove();
 });
 
@@ -3366,12 +3409,12 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 
 	bRenderCount = 0
 	a.render();
-	assert.eq(bRenderCount, 1)
+	assert.eq(bRenderCount, 1) // It still re-renders because exactKey doesn't do deep comparison of objects.
 
 	a.title = 'Users2'
 	a.render();
 	assert.eq(getHtml(a), `<a-540>Users2<b-540 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-540></a-540>`)
-	assert.eq(bRenderCount, 2) // Make sure the child re-rendered.
+	assert.eq(bRenderCount, 2) // It still re-renders because exactKey doesn't do deep comparison of objects.
 
 	a.remove();
 });
@@ -3746,7 +3789,6 @@ Testimony.test('Solarite.binding.input', () => {
 	let b = new B10();
 	document.body.append(b);
 	assert.eq(b.input.value, '1')
-
 	b.count = 2
 	b.render()
 	assert.eq(b.input.value, '2')

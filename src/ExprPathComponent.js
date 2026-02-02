@@ -101,7 +101,7 @@ export default class ExprPathComponent extends ExprPath {
 			// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
 			// Because that path renders it without the attribute expressions.
 			if (typeof newEl.render === 'function' && !Globals.rendered.has(newEl))
-				newEl.render(attribs);
+				newEl.render(attribs, changed);
 
 			// 2g. Update attribute paths to use the new element and re-apply them.
 			for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {

@@ -86,8 +86,11 @@ export default class Template {
 		if (this.html?.length === 1 && !this.html[0]) // An empty string.
 			el.innerHTML = ''; // Fast path for empty component.
 		else {
-			ng.applyExprs(this.exprs, true);
-			ng.exactKey = this.getExactKey();
+
+			let oldKey = ng.exactKey;
+			let newKey = this.getExactKey();
+			ng.applyExprs(this.exprs, oldKey !== newKey);
+			ng.exactKey = newKey;
 
 			//if (firstTime)
 			//	ng.instantiateStaticComponents(ng.staticComponents);
