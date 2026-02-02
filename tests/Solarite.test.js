@@ -2836,6 +2836,7 @@ Testimony.test('Solarite.component.attribsFromDOM', () => {
 Testimony.test('Solarite.component.attribsFromParentComponent', () => {
 	let construct = 0;
 	let render = 0;
+	let isChanged = false;
 
 	class B504 extends Solarite {
 		constructor(attribs={}) {
@@ -2847,7 +2848,7 @@ Testimony.test('Solarite.component.attribsFromParentComponent', () => {
 			//console.log('render', attribs);
 			h(this)`<b-504>${attribs.name}:${attribs.rows.join('|')}</b-504>`;
 			render++;
-			this.lastChanged = changed;
+			isChanged = changed;
 		}
 	}
 	B504.define();
@@ -2866,13 +2867,12 @@ Testimony.test('Solarite.component.attribsFromParentComponent', () => {
 	assert.eq(getHtml(a), `<a-504><b-504 name="a" rows="">a:1|2|3|4</b-504></a-504>`);
 	assert.eq(construct, 1)
 	assert.eq(render, 1);
-	assert.eq(b.lastChanged, true);
+	assert.eq(isChanged, true);
 
-window.debug = true;
 	a.render();
 	assert.eq(construct, 1)
 	assert.eq(render, 2); // ensure b.render() was called.
-	assert.eq(b.lastChanged, false);
+	assert.eq(isChanged, false);
 
 	a.remove();
 
