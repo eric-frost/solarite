@@ -1532,8 +1532,9 @@ class ExprPathComponent extends ExprPath {
 	 * @param exprs {Expr[][]} Expressions to evaluate for each attribute to pass to the constructor.
 	 * This is different than other ExprPath.apply() functions which only receive Expr[] and not Expr[][].
 	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute.
-	 * @param freeNodeGroups {boolean} Used only by watch.js. */
-	apply(exprs, freeNodeGroups=true) {
+	 * @param freeNodeGroups {boolean} Used only by watch.js.
+	 * @param changed {boolean} True if the exprs have changed since the last time render() was called.*/
+	apply(exprs, freeNodeGroups=true, changed=true) {
 		//#IFDEV
 		assert(Array.isArray(exprs));
 		assert(!exprs.length || Array.isArray(exprs[0]));
@@ -1626,9 +1627,9 @@ class ExprPathComponent extends ExprPath {
 			el.replaceWith(newEl);
 		}
 
-		// 2f.
+		// 2f. Render
 		else if (typeof el.render === 'function')
-			el.render(attribs);
+			el.render(attribs, changed);
 
 		Globals$1.currentSlotChildren = null;
 	}
@@ -1819,25 +1820,7 @@ class ExprPathNodes extends ExprPath {
 				// Call render() on web components even though none of their arguments have changed:
 				// Do we want it to work this way?  Yes, because even if this component hasn't changed,
 				// perhaps something in a sub-component has.
-				let paths = ng.paths;
-				let exprs = expr.exprs;
-
-				let exprIndex = exprs.length; // Update exprs at paths.
-				let pathExprs = new Array(paths.length);
-				for (let i = paths.length - 1, path; path = paths[i]; i--) {
-
-					// Get the expressions associated with this path.
-					let exprCount = path.getExpressionCount();
-					pathExprs[i] = exprs.slice(exprIndex-exprCount, exprIndex); // slice() probably doesn't allocate if the JS vm implements copy on write.
-					exprIndex -= exprCount;
-
-					// Component expressions don't have a corresponding user-provided expression.
-					// They use expressions from the paths that provide their attributes.
-					if (path instanceof ExprPathComponent) {
-						let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
-						path.apply(attribExprs);
-					}
-				}
+				ng.applyExprs(expr.exprs, false);
 
 				this.nodeGroups.push(ng);
 				return ng;
@@ -2781,29 +2764,15 @@ class NodeGroup {
 	/**
 	 * Use the paths to insert the given expressions.
 	 * Dispatches expression handling to other functions depending on the path type.
-	 * @param exprs {(*|*[]|function|Template)[]} */
-	applyExprs(exprs) {
+	 * @param exprs {(*|*[]|function|Template)[]}
+	 * @param changed {boolean} If true, the expr's have changed since the last time thsi function was called.
+	 * We still need to call ExprPathComponent.apply() even if changed=false so the user can handle the rendering. */
+	applyExprs(exprs, changed=true) {
 
 		/*#IFDEV*/
 		this.verify();
 		/*#ENDIF*/
 
-		this.applyExprs2(exprs);
-
-
-		// TODO: Only do this if we have ExprPaths within styles?
-		this.updateStyles();
-
-		// Invalidate the nodes cache because we just changed it.
-		this.nodesCache = null;
-
-
-		/*#IFDEV*/
-		this.verify();/*#ENDIF*/
-	}
-
-	// TODO: Give it a better name.
-	applyExprs2(exprs) {
 		let paths = this.paths;
 
 		// Things to consider:
@@ -2828,9 +2797,9 @@ class NodeGroup {
 			// They use expressions from the paths that provide their attributes.
 			if (path instanceof ExprPathComponent) {
 				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
-				path.apply(attribExprs);
+				path.apply(attribExprs, true, changed);
 			}
-			else
+			else if (changed)
 				path.apply(pathExprs[i]);
 		}
 
@@ -2839,6 +2808,26 @@ class NodeGroup {
 		/*#IFDEV*/
 		assert(exprIndex === 0);
 		/*#ENDIF*/
+
+
+		if (changed) {
+
+			// TODO: Only do this if we have ExprPaths within styles?
+			this.updateStyles();
+
+			// Invalidate the nodes cache because we just changed it.
+			this.nodesCache = null;
+
+		}
+
+		/*#IFDEV*/
+		this.verify();
+		/*#ENDIF*/
+	}
+
+	// TODO: Give it a better name.
+	applyExprs2(exprs) {
+
 	}
 
 	/**
@@ -3714,10 +3703,10 @@ class Solarite extends HTMLElementAutoDefine {
 
 		// 2. Wrap render function so it always provides the attribs argument.
 		let originalRender = this.render;
-		this.render = (attribs) => {
+		this.render = (attribs, changed=true) => {
 			if (!attribs)
-				attribs =  Solarite.getAttribs(this);
-			originalRender.call(this, attribs);
+				attribs = Solarite.getAttribs(this);
+			originalRender.call(this, attribs, changed);
 		};
 	}
 

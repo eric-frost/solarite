@@ -205,29 +205,15 @@ export default class NodeGroup {
 	/**
 	 * Use the paths to insert the given expressions.
 	 * Dispatches expression handling to other functions depending on the path type.
-	 * @param exprs {(*|*[]|function|Template)[]} */
-	applyExprs(exprs) {
+	 * @param exprs {(*|*[]|function|Template)[]}
+	 * @param changed {boolean} If true, the expr's have changed since the last time thsi function was called.
+	 * We still need to call ExprPathComponent.apply() even if changed=false so the user can handle the rendering. */
+	applyExprs(exprs, changed=true) {
 
 		/*#IFDEV*/
 		this.verify();
 		/*#ENDIF*/
 
-		this.applyExprs2(exprs);
-
-
-		// TODO: Only do this if we have ExprPaths within styles?
-		this.updateStyles();
-
-		// Invalidate the nodes cache because we just changed it.
-		this.nodesCache = null;
-
-
-		/*#IFDEV*/
-		this.verify();/*#ENDIF*/
-	}
-
-	// TODO: Give it a better name.
-	applyExprs2(exprs) {
 		let paths = this.paths;
 
 		// Things to consider:
@@ -252,9 +238,9 @@ export default class NodeGroup {
 			// They use expressions from the paths that provide their attributes.
 			if (path instanceof ExprPathComponent) {
 				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
-				path.apply(attribExprs);
+				path.apply(attribExprs, true, changed);
 			}
-			else
+			else if (changed)
 				path.apply(pathExprs[i]);
 		}
 
@@ -263,6 +249,26 @@ export default class NodeGroup {
 		/*#IFDEV*/
 		assert(exprIndex === 0);
 		/*#ENDIF*/
+
+
+		if (changed) {
+
+			// TODO: Only do this if we have ExprPaths within styles?
+			this.updateStyles();
+
+			// Invalidate the nodes cache because we just changed it.
+			this.nodesCache = null;
+
+		}
+
+		/*#IFDEV*/
+		this.verify();
+		/*#ENDIF*/
+	}
+
+	// TODO: Give it a better name.
+	applyExprs2(exprs) {
+
 	}
 
 	/**

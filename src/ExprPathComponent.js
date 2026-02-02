@@ -19,8 +19,9 @@ export default class ExprPathComponent extends ExprPath {
 	 * @param exprs {Expr[][]} Expressions to evaluate for each attribute to pass to the constructor.
 	 * This is different than other ExprPath.apply() functions which only receive Expr[] and not Expr[][].
 	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute.
-	 * @param freeNodeGroups {boolean} Used only by watch.js. */
-	apply(exprs, freeNodeGroups=true) {
+	 * @param freeNodeGroups {boolean} Used only by watch.js.
+	 * @param changed {boolean} True if the exprs have changed since the last time render() was called.*/
+	apply(exprs, freeNodeGroups=true, changed=true) {
 		//#IFDEV
 		assert(Array.isArray(exprs));
 		assert(!exprs.length || Array.isArray(exprs[0]));
@@ -113,9 +114,9 @@ export default class ExprPathComponent extends ExprPath {
 			el.replaceWith(newEl);
 		}
 
-		// 2f.
+		// 2f. Render
 		else if (typeof el.render === 'function')
-			el.render(attribs);
+			el.render(attribs, changed);
 
 		Globals.currentSlotChildren = null;
 	}

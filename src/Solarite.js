@@ -90,10 +90,10 @@ export class Solarite extends HTMLElementAutoDefine {
 
 		// 2. Wrap render function so it always provides the attribs argument.
 		let originalRender = this.render;
-		this.render = (attribs) => {
+		this.render = (attribs, changed=true) => {
 			if (!attribs)
-				attribs =  Solarite.getAttribs(this);
-			originalRender.call(this, attribs);
+				attribs = Solarite.getAttribs(this);
+			originalRender.call(this, attribs, changed);
 		}
 	}
 

@@ -163,25 +163,7 @@ export default class ExprPathNodes extends ExprPath {
 				// Call render() on web components even though none of their arguments have changed:
 				// Do we want it to work this way?  Yes, because even if this component hasn't changed,
 				// perhaps something in a sub-component has.
-				let paths = ng.paths;
-				let exprs = expr.exprs;
-
-				let exprIndex = exprs.length; // Update exprs at paths.
-				let pathExprs = new Array(paths.length);
-				for (let i = paths.length - 1, path; path = paths[i]; i--) {
-
-					// Get the expressions associated with this path.
-					let exprCount = path.getExpressionCount();
-					pathExprs[i] = exprs.slice(exprIndex-exprCount, exprIndex); // slice() probably doesn't allocate if the JS vm implements copy on write.
-					exprIndex -= exprCount;
-
-					// Component expressions don't have a corresponding user-provided expression.
-					// They use expressions from the paths that provide their attributes.
-					if (path instanceof ExprPathComponent) {
-						let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
-						path.apply(attribExprs);
-					}
-				}
+				ng.applyExprs(expr.exprs, false);
 
 				this.nodeGroups.push(ng);
 				return ng;
