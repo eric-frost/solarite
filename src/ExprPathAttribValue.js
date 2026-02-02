@@ -2,7 +2,7 @@ import ExprPath from "./ExprPath.js";
 import Globals from "./Globals.js";
 import Util from "./Util.js";
 import delve from "./delve.js";
-import {assert} from "./assert.js";
+import assert from "./assert.js";
 
 export default class ExprPathAttribValue extends ExprPath {
 
@@ -27,6 +27,10 @@ export default class ExprPathAttribValue extends ExprPath {
 	 * @param exprs {Expr[]} */
 	// TODO: node is always this.nodeMarker?
 	apply(exprs) {
+		//#IFDEV
+		assert(Array.isArray(exprs));
+		//#ENDIF
+
 		let node = this.nodeMarker;
 		let expr = exprs[0];
 
@@ -164,17 +168,26 @@ export default class ExprPathAttribValue extends ExprPath {
 		}
 	}
 
+
+	getExpressionCount() { return this.attrValue ? this.attrValue.length-1 : 1 }
+
 	/**
-	 * @param exprs {any[]}
+	 * @param exprs {Expr|Expr[]} // TODO: Why is this sometimes not an array?
 	 * @return {string} The joined values of the expressions, or the first expression if there are no strings. */
 	getValue(exprs) {
 
 		//#IFDEV
 		assert(Array.isArray(exprs));
 		//#ENDIF
+		//if (!Array.isArray(exprs))
+		//	return exprs;
 
-		if (!this.attrValue)
+		if (!this.attrValue) {// If it's not multiple paths inside a single attribute, return first (and only) expression.
+			//#IFDEV
+			assert(exprs.length === 1);
+			//#ENDIF
 			return exprs[0];
+		}
 
 		let result = [];
 		let values = this.attrValue;

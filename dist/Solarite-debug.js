@@ -627,18 +627,28 @@ class ExprPath {
 	}
 
 	/**
-	 * Apply any type of expression.
-	 * This calls other apply functions.
-	 *
-	 * One very messy part of this function is that it may apply multiple expressions if they're all part
-	 * of the same attribute value.
-	 *
-	 * We should modify path.applyValueAttrib so it stores the procssed parts and then only calls
-	 * setAttribute() once all the pieces are in place.
+	 * Apply expressions to a path.
+	 * This is called by NodeGroup.applyExprs() when it's time to put the expression values into the DOM.
 	 *
 	 * @param exprs {Expr[]}
+	 * Suppose we have the following tagged template:
+	 * `<div title=${expr1} class="big ${expr2} muted ${expr3}">
+	 *    ${expr4}
+	 *    <my-component></my-component>
+	 *    <my-component user=${expr5} roles="${expr6},${expr7}"></my-component>
+	 * </div>`
+	 * The exprs arrays will look like this, with each being passed to a path.
+	 * [expr1]                   // title attribute value.
+	 * [expr2, expr3]            // class attribute values.
+	 * [expr4]                   // children of div.
+	 * []                        // arguments to first my-component constructor.
+	 * [[expr5], [expr6, expr7]] // arguments to second my-component constructor.
+	 * [expr5]                   // user attribute value.
+	 * [expr6, expr7]            // role attribute value.
 	 * @param freeNodeGroups {boolean} Used only by watch. */
 	apply(exprs, freeNodeGroups=true) {}
+
+	getExpressionCount() { return 1 }
 
 
 	/**
@@ -862,6 +872,10 @@ class ExprPathAttribValue extends ExprPath {
 	 * @param exprs {Expr[]} */
 	// TODO: node is always this.nodeMarker?
 	apply(exprs) {
+		//#IFDEV
+		assert(Array.isArray(exprs));
+		//#ENDIF
+
 		let node = this.nodeMarker;
 		let expr = exprs[0];
 
@@ -999,17 +1013,26 @@ class ExprPathAttribValue extends ExprPath {
 		}
 	}
 
+
+	getExpressionCount() { return this.attrValue ? this.attrValue.length-1 : 1 }
+
 	/**
-	 * @param exprs {any[]}
+	 * @param exprs {Expr|Expr[]} // TODO: Why is this sometimes not an array?
 	 * @return {string} The joined values of the expressions, or the first expression if there are no strings. */
 	getValue(exprs) {
 
 		//#IFDEV
 		assert(Array.isArray(exprs));
 		//#ENDIF
+		//if (!Array.isArray(exprs))
+		//	return exprs;
 
-		if (!this.attrValue)
+		if (!this.attrValue) {// If it's not multiple paths inside a single attribute, return first (and only) expression.
+			//#IFDEV
+			assert(exprs.length === 1);
+			//#ENDIF
 			return exprs[0];
+		}
 
 		let result = [];
 		let values = this.attrValue;
@@ -1099,6 +1122,10 @@ class ExprPathEvent extends ExprPathAttribValue {
 	 *
 	 * @param exprs {Expr[]} Only the first is used.*/
 	apply(exprs) {
+		//#IFDEV
+		assert(Array.isArray(exprs));
+		//#ENDIF
+
 		// Don't bind events to component placeholders.
 		// ExprPathComponent will do the binding later when it instantiates the component.
 		if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
@@ -1148,9 +1175,13 @@ class ExprPathAttribs extends ExprPath {
 	}
 
 	/**
-	 * @param exprs {Expr[]} Only the first is used.
+	 * @param exprs {Expr[][]} Only the first is used.
 	 * @param freeNodeGroups {boolean} Used only for watch. */
 	apply(exprs, freeNodeGroups) {
+		//#IFDEV
+		assert(Array.isArray(exprs));
+		//#ENDIF
+
 		let expr = exprs[0];
 		let node = this.nodeMarker;
 
@@ -1200,6 +1231,9 @@ class ExprPathAttribs extends ExprPath {
 			if (!this.attrNames.has(oldName))
 				node.removeAttribute(oldName);
 	}
+
+
+	getExpressionCount() { return 1 }
 }
 
 /**
@@ -1494,15 +1528,28 @@ class ExprPathComponent extends ExprPath {
 
 	/**
 	 * Call render() on the component pointed to by this ExprPath.
-	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet. */
-	apply(attribExprs) {
+	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet.
+	 * @param exprs {Expr[][]} Expressions to evaluate for each attribute to pass to the constructor.
+	 * This is different than other ExprPath.apply() functions which only receive Expr[] and not Expr[][].
+	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute.
+	 * @param freeNodeGroups {boolean} Used only by watch.js. */
+	apply(exprs, freeNodeGroups=true) {
+		//#IFDEV
+		assert(Array.isArray(exprs));
+		assert(!exprs.length || Array.isArray(exprs[0]));
+		//#ENDIF
+
+		//#IFDEV
+		assert(exprs.length === this.attribPaths.length);
+		//#ENDIF
+
 		let el = this.nodeMarker;
 
 		// 1. Attributes
 		let attribs = Util.attribsToObject(el, '_is');
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 			let name = Util.dashesToCamel(attribPath.attrName);
-			attribs[name] = attribPath.getValue(attribExprs[i]);
+			attribs[name] = attribPath.getValue(exprs[i]);
 		}
 
 		// 2. Instantiate component on first time.
@@ -1572,7 +1619,7 @@ class ExprPathComponent extends ExprPath {
 			for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 				attribPath.parentNg = this.parentNg;
 				attribPath.nodeMarker = newEl;
-				attribPath.apply(attribExprs[i]);
+				attribPath.apply(exprs[i]);
 			}
 
 			// 2e. Swap it to the DOM.
@@ -1602,6 +1649,8 @@ class ExprPathComponent extends ExprPath {
 
 		return result;
 	}
+
+	getExpressionCount() { return 0 }
 
 	//#IFDEV
 	verify() {
@@ -1659,6 +1708,10 @@ class ExprPathNodes extends ExprPath {
 	 * @param freeNodeGroups {boolean}
 	 * @return {Node[]} New Nodes created. */
 	apply(exprs, freeNodeGroups=true) {
+		//#IFDEV
+		assert(Array.isArray(exprs));
+		//#ENDIF
+
 		let path = this;
 		let expr = exprs[0];
 
@@ -1766,9 +1819,25 @@ class ExprPathNodes extends ExprPath {
 				// Call render() on web components even though none of their arguments have changed:
 				// Do we want it to work this way?  Yes, because even if this component hasn't changed,
 				// perhaps something in a sub-component has.
-				for (let path of ng.paths)
-					if (path instanceof ExprPathComponent)
-						path.apply([expr.exprs]);
+				let paths = ng.paths;
+				let exprs = expr.exprs;
+
+				let exprIndex = exprs.length; // Update exprs at paths.
+				let pathExprs = new Array(paths.length);
+				for (let i = paths.length - 1, path; path = paths[i]; i--) {
+
+					// Get the expressions associated with this path.
+					let exprCount = path.getExpressionCount();
+					pathExprs[i] = exprs.slice(exprIndex-exprCount, exprIndex); // slice() probably doesn't allocate if the JS vm implements copy on write.
+					exprIndex -= exprCount;
+
+					// Component expressions don't have a corresponding user-provided expression.
+					// They use expressions from the paths that provide their attributes.
+					if (path instanceof ExprPathComponent) {
+						let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
+						path.apply(attribExprs);
+					}
+				}
 
 				this.nodeGroups.push(ng);
 				return ng;
@@ -2712,62 +2781,14 @@ class NodeGroup {
 	/**
 	 * Use the paths to insert the given expressions.
 	 * Dispatches expression handling to other functions depending on the path type.
-	 * @param exprs {(*|*[]|function|Template)[]}
-	 * @param fromTemplate {boolean} Optional. */
-	applyExprs(exprs, fromTemplate=false) {
-		let paths = this.paths;
+	 * @param exprs {(*|*[]|function|Template)[]} */
+	applyExprs(exprs) {
 
 		/*#IFDEV*/
 		this.verify();
 		/*#ENDIF*/
 
-		// Things to consider:
-		// 1. Paths consume a varying number of expressions.
-		//    An ExprPathAttribs may use multipe expressions.  E.g. <div class="${1} ${2}">
-		//    While an ExprPathComponent uses zero.
-		// 2. An ExprPathComponent references other ExprPaths that set its attribute values.
-		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
-		//    before its instantiated and its value attribute is set via an expression.
-
-		let exprIndex = exprs.length - 1; // Update exprs at paths.
-		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
-
-		let root = this.getRootNode();
-
-		// if (window.debug) {
-		// 	debugger;
-		// 	if (paths.length)
-		// 		console.log(paths[0].nodeMarker, root, fromTemplate);
-		// }
-
-		for (let i = paths.length - 1, path; path = paths[i]; i--) {
-
-			if (i===0 && path instanceof ExprPathComponent && path.nodeMarker === root)
-			  	continue;
-
-			// Get the expressions associated with this path.
-			if (path.attrValue?.length > 2) {
-				let startIndex = (exprIndex - (path.attrValue.length - 1)) + 1;
-				pathExprs[i] = exprs.slice(startIndex, exprIndex + 1); // probably doesn't allocate if the JS vm implements copy on write.
-				exprIndex -= pathExprs[i].length;
-			}
-
-			else if (!(path instanceof ExprPathComponent)) {
-				pathExprs[i] = [exprs[exprIndex]];
-				exprIndex--;
-			}
-
-			// Component expressions don't have a corresponding user-provided expression.
-			// They use expressions from the paths that provide their attributes.
-			if (path instanceof ExprPathComponent) {
-				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
-				path.apply(attribExprs);
-			}
-			else {
-				path.apply(pathExprs[i]);
-			}
-
-		} // end for(path of this.paths)
+		this.applyExprs2(exprs);
 
 
 		// TODO: Only do this if we have ExprPaths within styles?
@@ -2776,14 +2797,48 @@ class NodeGroup {
 		// Invalidate the nodes cache because we just changed it.
 		this.nodesCache = null;
 
-		// If there's leftover expressions, there's probably an issue with the Shell that created this NodeGroup,
-		// and the number of paths not matching.
-		/*#IFDEV*/
-		assert(exprIndex === -1);/*#ENDIF*/
-
 
 		/*#IFDEV*/
 		this.verify();/*#ENDIF*/
+	}
+
+	// TODO: Give it a better name.
+	applyExprs2(exprs) {
+		let paths = this.paths;
+
+		// Things to consider:
+		// 1. Paths consume a varying number of expressions.
+		//    An ExprPathAttribs may use multipe expressions.  E.g. <div class="${1} ${2}">
+		//    While an ExprPathComponent uses zero.
+		// 2. An ExprPathComponent references other ExprPaths that set its attribute values.
+		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
+		//    before its instantiated and its value attribute is set via an expression.
+		let exprIndex = exprs.length; // Update exprs at paths.
+		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
+		for (let i = paths.length - 1, path; path = paths[i]; i--) {
+			if (i===0 && path instanceof ExprPathComponent && path.nodeMarker === this.getRootNode())
+				continue;
+
+			// Get the expressions associated with this path.
+			let exprCount = path.getExpressionCount();
+			pathExprs[i] = exprs.slice(exprIndex-exprCount, exprIndex); // slice() probably doesn't allocate if the JS vm implements copy on write.
+			exprIndex -= exprCount;
+
+			// Component expressions don't have a corresponding user-provided expression.
+			// They use expressions from the paths that provide their attributes.
+			if (path instanceof ExprPathComponent) {
+				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
+				path.apply(attribExprs);
+			}
+			else
+				path.apply(pathExprs[i]);
+		}
+
+		// If there's leftover expressions, there's probably an issue with the Shell that created this NodeGroup,
+		// and the number of paths not matching.
+		/*#IFDEV*/
+		assert(exprIndex === 0);
+		/*#ENDIF*/
 	}
 
 	/**
@@ -2995,7 +3050,7 @@ class RootNodeGroup extends NodeGroup {}
  * Although the reference to the html strings is shared among templates. */
 class Template {
 
-	/** @type {(Template|string|function)|(Template|string|function)[]} Evaulated expressions.  */
+	/** @type {Expr[]} Evaulated expressions.  */
 	exprs = []
 
 	/** @type {string[]} */

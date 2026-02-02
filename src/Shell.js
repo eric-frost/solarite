@@ -1,4 +1,4 @@
-import {assert} from "./assert.js";
+import assert from "./assert.js";
 import ExprPath from "./ExprPath.js";
 import Util from "./Util.js";
 import Globals from "./Globals.js";

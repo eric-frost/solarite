@@ -1,4 +1,4 @@
-import {assert} from "./assert.js";
+import assert from "./assert.js";
 import {getObjectHash, getObjectId} from "./hash.js";
 import Globals from "./Globals.js";
 import RootNodeGroup from "./RootNodeGroup.js";
@@ -9,7 +9,7 @@ import RootNodeGroup from "./RootNodeGroup.js";
  * Although the reference to the html strings is shared among templates. */
 export default class Template {
 
-	/** @type {(Template|string|function)|(Template|string|function)[]} Evaulated expressions.  */
+	/** @type {Expr[]} Evaulated expressions.  */
 	exprs = []
 
 	/** @type {string[]} */

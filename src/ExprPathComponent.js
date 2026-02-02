@@ -1,7 +1,7 @@
 import ExprPath from "./ExprPath.js";
 import Util from "./Util.js";
 import delve from "./delve.js";
-import {assert} from "./assert.js";
+import assert from "./assert.js";
 import Globals from "./Globals.js";
 
 export default class ExprPathComponent extends ExprPath {
@@ -15,15 +15,28 @@ export default class ExprPathComponent extends ExprPath {
 
 	/**
 	 * Call render() on the component pointed to by this ExprPath.
-	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet. */
-	apply(attribExprs) {
+	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet.
+	 * @param exprs {Expr[][]} Expressions to evaluate for each attribute to pass to the constructor.
+	 * This is different than other ExprPath.apply() functions which only receive Expr[] and not Expr[][].
+	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute.
+	 * @param freeNodeGroups {boolean} Used only by watch.js. */
+	apply(exprs, freeNodeGroups=true) {
+		//#IFDEV
+		assert(Array.isArray(exprs));
+		assert(!exprs.length || Array.isArray(exprs[0]));
+		//#ENDIF
+
+		//#IFDEV
+		assert(exprs.length === this.attribPaths.length);
+		//#ENDIF
+
 		let el = this.nodeMarker;
 
 		// 1. Attributes
 		let attribs = Util.attribsToObject(el, '_is');
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 			let name = Util.dashesToCamel(attribPath.attrName);
-			attribs[name] = attribPath.getValue(attribExprs[i]);
+			attribs[name] = attribPath.getValue(exprs[i]);
 		}
 
 		// 2. Instantiate component on first time.
@@ -93,7 +106,7 @@ export default class ExprPathComponent extends ExprPath {
 			for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 				attribPath.parentNg = this.parentNg;
 				attribPath.nodeMarker = newEl;
-				attribPath.apply(attribExprs[i]);
+				attribPath.apply(exprs[i]);
 			}
 
 			// 2e. Swap it to the DOM.
@@ -123,6 +136,8 @@ export default class ExprPathComponent extends ExprPath {
 
 		return result;
 	}
+
+	getExpressionCount() { return 0 }
 
 	//#IFDEV
 	verify() {

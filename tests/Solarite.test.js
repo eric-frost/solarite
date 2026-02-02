@@ -3104,24 +3104,23 @@ Testimony.test('Solarite.component.componentWithDynamicAttribsFromExpr', () => {
 
 	// Definition
 	class C521Child extends HTMLElement {
-		constructor({message}) {
+		constructor(attribs) {
 			super();
-			this.text = message.text;
 		}
 
-		render({message}) {
-			this.text = message.text;
-			h(this)`<c-521-child>hi${this.text}</c-521-child>`
+		render(attribs) {
+			h(this)`<c-521-child style="color: ${attribs.color.value}">hi${attribs.message.text}</c-521-child>`
 			renderCount++;
 		}
 	}
 	customElements.define('c-521-child', C521Child);
 
 	let message = {text: 'bye'};
+	let color = {value: 'red'};
 
 	class C521 extends HTMLElement {
 		render() {
-			h(this)`<c-521>${h`<c-521-child message=${message}></c-521-child>`}</c-521>`
+			h(this)`<c-521>${h`<c-521-child color=${color} message=${message}></c-521-child>`}</c-521>`
 		}
 	}
 	customElements.define('c-521', C521);
@@ -3130,52 +3129,51 @@ Testimony.test('Solarite.component.componentWithDynamicAttribsFromExpr', () => {
 	// Test 1
 	let a = new C521();
 	a.render();
-	assert.eq(`<c-521><c-521-child message="">hibye</c-521-child></c-521>`, getHtml(a));
+	assert.eq(`<c-521><c-521-child color="" message="" style="color: red">hibye</c-521-child></c-521>`, getHtml(a));
 
 	// Test 2
 	message = {text: 'world'}
 	//window.debug = true;
 	a.render();
-	assert.eq(`<c-521><c-521-child message="">hiworld</c-521-child></c-521>`, getHtml(a));
+	assert.eq(`<c-521><c-521-child color="" message="" style="color: red">hiworld</c-521-child></c-521>`, getHtml(a));
 
 	renderCount=0;
 	a.render();
 	// This only works because ExprPath.applyExactNodes() calls applyExprs() if the NodeGroup has a web component.
 	assert.eq(renderCount, 1);
-
 });
 
 Testimony.test('Solarite.component.nested', () => {
 
 	let bRenderCount = 0;
 
-	class B518 extends Solarite {
+	class B525 extends Solarite {
 		render() {
 			h(this)`<div>B</div>`;
 			bRenderCount++;
 		}
 	}
-	B518.define();
+	B525.define();
 
 
-	class A518 extends Solarite {
+	class A525 extends Solarite {
 		render() {
-			h(this)`<b-518></b-518>`
+			h(this)`<b-525></b-525>`
 		}
 	}
 
-	let a = new A518();
-	assert(!(a.firstChild instanceof B518))
+	let a = new A525();
+	assert(!(a.firstChild instanceof B525))
 
 	a.render();
-	assert(a.firstChild instanceof B518);
-	assert.eq(getHtml(a), `<a-518><b-518><div>B</div></b-518></a-518>`);
+	assert(a.firstChild instanceof B525);
+	assert.eq(getHtml(a), `<a-525><b-525><div>B</div></b-525></a-525>`);
 })
 
 Testimony.test('Solarite.component.nestedExprConstructorArg', "Pass an object to the nested component's constructor", () => {
 
 	let bRenderCount = 0;
-	class B520 extends Solarite {
+	class B527 extends Solarite {
 
 		constructor({user}={}) {
 			super();
@@ -3190,29 +3188,29 @@ Testimony.test('Solarite.component.nestedExprConstructorArg', "Pass an object to
 		}
 
 	}
-	B520.define();
+	B527.define();
 
-	class A520 extends Solarite {
+	class A527 extends Solarite {
 		title = 'Users'
 		user = {name: 'John', email: 'john@example.com'};
 		render() {
-			h(this)`${this.title}<b-520 user="${this.user}"></b-520>`
+			h(this)`${this.title}<b-527 user="${this.user}"></b-527>`
 		}
 	}
 
-	let a = new A520();
+	let a = new A527();
 	document.body.append(a);
-	assert.eq(getHtml(a), `<a-520>Users<b-520 user=""><div>Name:</div><div>John</div><div>Email:</div><div>john@example.com</div></b-520></a-520>`)
+	assert.eq(getHtml(a), `<a-527>Users<b-527 user=""><div>Name:</div><div>John</div><div>Email:</div><div>john@example.com</div></b-527></a-527>`)
 
 
 	a.user = {name: 'Fred', email: 'fred@example.com'};
 	a.render();
-	assert.eq(getHtml(a), `<a-520>Users<b-520 user=""><div>Name:</div><div>Fred</div><div>Email:</div><div>fred@example.com</div></b-520></a-520>`)
+	assert.eq(getHtml(a), `<a-527>Users<b-527 user=""><div>Name:</div><div>Fred</div><div>Email:</div><div>fred@example.com</div></b-527></a-527>`)
 
 
 	a.user.name = 'Barry'
 	a.render();
-	assert.eq(getHtml(a), `<a-520>Users<b-520 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-520></a-520>`)
+	assert.eq(getHtml(a), `<a-527>Users<b-527 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-527></a-527>`)
 
 	bRenderCount = 0
 	a.render();
@@ -3220,7 +3218,7 @@ Testimony.test('Solarite.component.nestedExprConstructorArg', "Pass an object to
 
 	a.title = 'Users2'
 	a.render();
-	assert.eq(getHtml(a), `<a-520>Users2<b-520 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-520></a-520>`)
+	assert.eq(getHtml(a), `<a-527>Users2<b-527 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-527></a-527>`)
 	assert.eq(bRenderCount, 2); // Make sure the child re-rendered.
 
 	a.remove();

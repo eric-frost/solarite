@@ -1,5 +1,6 @@
 import ExprPath from "./ExprPath.js";
 import Globals from "./Globals.js";
+import assert from "./assert.js";
 
 export default class ExprPathAttribs extends ExprPath {
 
@@ -14,9 +15,13 @@ export default class ExprPathAttribs extends ExprPath {
 	}
 
 	/**
-	 * @param exprs {Expr[]} Only the first is used.
+	 * @param exprs {Expr[][]} Only the first is used.
 	 * @param freeNodeGroups {boolean} Used only for watch. */
 	apply(exprs, freeNodeGroups) {
+		//#IFDEV
+		assert(Array.isArray(exprs));
+		//#ENDIF
+
 		let expr = exprs[0];
 		let node = this.nodeMarker;
 
@@ -66,4 +71,7 @@ export default class ExprPathAttribs extends ExprPath {
 			if (!this.attrNames.has(oldName))
 				node.removeAttribute(oldName);
 	}
+
+
+	getExpressionCount() { return 1 }
 }

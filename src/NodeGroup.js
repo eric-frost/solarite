@@ -1,4 +1,4 @@
-import {assert} from "./assert.js";
+import assert from "./assert.js";
 import Util, {flattenAndIndent, nodeToArrayTree, setIndent} from "./Util.js";
 import Shell from "./Shell.js";
 import RootNodeGroup from './RootNodeGroup.js';
@@ -205,62 +205,14 @@ export default class NodeGroup {
 	/**
 	 * Use the paths to insert the given expressions.
 	 * Dispatches expression handling to other functions depending on the path type.
-	 * @param exprs {(*|*[]|function|Template)[]}
-	 * @param fromTemplate {boolean} Optional. */
-	applyExprs(exprs, fromTemplate=false) {
-		let paths = this.paths;
+	 * @param exprs {(*|*[]|function|Template)[]} */
+	applyExprs(exprs) {
 
 		/*#IFDEV*/
 		this.verify();
 		/*#ENDIF*/
 
-		// Things to consider:
-		// 1. Paths consume a varying number of expressions.
-		//    An ExprPathAttribs may use multipe expressions.  E.g. <div class="${1} ${2}">
-		//    While an ExprPathComponent uses zero.
-		// 2. An ExprPathComponent references other ExprPaths that set its attribute values.
-		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
-		//    before its instantiated and its value attribute is set via an expression.
-
-		let exprIndex = exprs.length - 1; // Update exprs at paths.
-		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
-
-		let root = this.getRootNode();
-
-		// if (window.debug) {
-		// 	debugger;
-		// 	if (paths.length)
-		// 		console.log(paths[0].nodeMarker, root, fromTemplate);
-		// }
-
-		for (let i = paths.length - 1, path; path = paths[i]; i--) {
-
-			if (i===0 && path instanceof ExprPathComponent && path.nodeMarker === root)
-			  	continue;
-
-			// Get the expressions associated with this path.
-			if (path.attrValue?.length > 2) {
-				let startIndex = (exprIndex - (path.attrValue.length - 1)) + 1;
-				pathExprs[i] = exprs.slice(startIndex, exprIndex + 1); // probably doesn't allocate if the JS vm implements copy on write.
-				exprIndex -= pathExprs[i].length;
-			}
-
-			else if (!(path instanceof ExprPathComponent)) {
-				pathExprs[i] = [exprs[exprIndex]];
-				exprIndex--;
-			}
-
-			// Component expressions don't have a corresponding user-provided expression.
-			// They use expressions from the paths that provide their attributes.
-			if (path instanceof ExprPathComponent) {
-				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
-				path.apply(attribExprs);
-			}
-			else {
-				path.apply(pathExprs[i]);
-			}
-
-		} // end for(path of this.paths)
+		this.applyExprs2(exprs);
 
 
 		// TODO: Only do this if we have ExprPaths within styles?
@@ -269,14 +221,48 @@ export default class NodeGroup {
 		// Invalidate the nodes cache because we just changed it.
 		this.nodesCache = null;
 
-		// If there's leftover expressions, there's probably an issue with the Shell that created this NodeGroup,
-		// and the number of paths not matching.
-		/*#IFDEV*/
-		assert(exprIndex === -1);/*#ENDIF*/
-
 
 		/*#IFDEV*/
 		this.verify();/*#ENDIF*/
+	}
+
+	// TODO: Give it a better name.
+	applyExprs2(exprs) {
+		let paths = this.paths;
+
+		// Things to consider:
+		// 1. Paths consume a varying number of expressions.
+		//    An ExprPathAttribs may use multipe expressions.  E.g. <div class="${1} ${2}">
+		//    While an ExprPathComponent uses zero.
+		// 2. An ExprPathComponent references other ExprPaths that set its attribute values.
+		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
+		//    before its instantiated and its value attribute is set via an expression.
+		let exprIndex = exprs.length; // Update exprs at paths.
+		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
+		for (let i = paths.length - 1, path; path = paths[i]; i--) {
+			if (i===0 && path instanceof ExprPathComponent && path.nodeMarker === this.getRootNode())
+				continue;
+
+			// Get the expressions associated with this path.
+			let exprCount = path.getExpressionCount();
+			pathExprs[i] = exprs.slice(exprIndex-exprCount, exprIndex); // slice() probably doesn't allocate if the JS vm implements copy on write.
+			exprIndex -= exprCount;
+
+			// Component expressions don't have a corresponding user-provided expression.
+			// They use expressions from the paths that provide their attributes.
+			if (path instanceof ExprPathComponent) {
+				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
+				path.apply(attribExprs);
+			}
+			else
+				path.apply(pathExprs[i]);
+		}
+
+		// If there's leftover expressions, there's probably an issue with the Shell that created this NodeGroup,
+		// and the number of paths not matching.
+		/*#IFDEV*/
+		assert(exprIndex === 0);
+		/*#ENDIF*/
 	}
 
 	/**

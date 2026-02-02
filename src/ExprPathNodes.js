@@ -1,5 +1,5 @@
 import ExprPath from "./ExprPath.js";
-import {assert} from "./assert.js";
+import assert from "./assert.js";
 import NodeGroup from "./NodeGroup.js";
 import Util from "./Util.js";
 import udomdiff from "./udomdiff.js";
@@ -7,6 +7,7 @@ import Template from "./Template.js";
 import Globals from "./Globals.js";
 import MultiValueMap from "./MultiValueMap.js";
 import ExprPathComponent from "./ExprPathComponent.js";
+import ExprPathAttribValue from "./ExprPathAttribValue.js";
 
 export default class ExprPathNodes extends ExprPath {
 
@@ -51,6 +52,10 @@ export default class ExprPathNodes extends ExprPath {
 	 * @param freeNodeGroups {boolean}
 	 * @return {Node[]} New Nodes created. */
 	apply(exprs, freeNodeGroups=true) {
+		//#IFDEV
+		assert(Array.isArray(exprs));
+		//#ENDIF
+
 		let path = this;
 		let expr = exprs[0];
 
@@ -158,9 +163,25 @@ export default class ExprPathNodes extends ExprPath {
 				// Call render() on web components even though none of their arguments have changed:
 				// Do we want it to work this way?  Yes, because even if this component hasn't changed,
 				// perhaps something in a sub-component has.
-				for (let path of ng.paths)
-					if (path instanceof ExprPathComponent)
-						path.apply([expr.exprs]);
+				let paths = ng.paths;
+				let exprs = expr.exprs;
+
+				let exprIndex = exprs.length; // Update exprs at paths.
+				let pathExprs = new Array(paths.length);
+				for (let i = paths.length - 1, path; path = paths[i]; i--) {
+
+					// Get the expressions associated with this path.
+					let exprCount = path.getExpressionCount();
+					pathExprs[i] = exprs.slice(exprIndex-exprCount, exprIndex); // slice() probably doesn't allocate if the JS vm implements copy on write.
+					exprIndex -= exprCount;
+
+					// Component expressions don't have a corresponding user-provided expression.
+					// They use expressions from the paths that provide their attributes.
+					if (path instanceof ExprPathComponent) {
+						let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
+						path.apply(attribExprs);
+					}
+				}
 
 				this.nodeGroups.push(ng);
 				return ng;

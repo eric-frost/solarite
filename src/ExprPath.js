@@ -1,4 +1,4 @@
-import {assert} from "./assert.js";
+import assert from "./assert.js";
 
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup. */
@@ -61,18 +61,28 @@ export default class ExprPath {
 	}
 
 	/**
-	 * Apply any type of expression.
-	 * This calls other apply functions.
-	 *
-	 * One very messy part of this function is that it may apply multiple expressions if they're all part
-	 * of the same attribute value.
-	 *
-	 * We should modify path.applyValueAttrib so it stores the procssed parts and then only calls
-	 * setAttribute() once all the pieces are in place.
+	 * Apply expressions to a path.
+	 * This is called by NodeGroup.applyExprs() when it's time to put the expression values into the DOM.
 	 *
 	 * @param exprs {Expr[]}
+	 * Suppose we have the following tagged template:
+	 * `<div title=${expr1} class="big ${expr2} muted ${expr3}">
+	 *    ${expr4}
+	 *    <my-component></my-component>
+	 *    <my-component user=${expr5} roles="${expr6},${expr7}"></my-component>
+	 * </div>`
+	 * The exprs arrays will look like this, with each being passed to a path.
+	 * [expr1]                   // title attribute value.
+	 * [expr2, expr3]            // class attribute values.
+	 * [expr4]                   // children of div.
+	 * []                        // arguments to first my-component constructor.
+	 * [[expr5], [expr6, expr7]] // arguments to second my-component constructor.
+	 * [expr5]                   // user attribute value.
+	 * [expr6, expr7]            // role attribute value.
 	 * @param freeNodeGroups {boolean} Used only by watch. */
 	apply(exprs, freeNodeGroups=true) {}
+
+	getExpressionCount() { return 1 }
 
 
 	/**

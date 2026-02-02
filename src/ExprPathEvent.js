@@ -1,4 +1,4 @@
-import {assert} from "./assert.js";
+import assert from "./assert.js";
 import ExprPathAttribValue from "./ExprPathAttribValue.js";
 
 // TODO: Merge this into ExprPathAttribValue?
@@ -16,6 +16,10 @@ export default class ExprPathEvent extends ExprPathAttribValue {
 	 *
 	 * @param exprs {Expr[]} Only the first is used.*/
 	apply(exprs) {
+		//#IFDEV
+		assert(Array.isArray(exprs));
+		//#ENDIF
+
 		// Don't bind events to component placeholders.
 		// ExprPathComponent will do the binding later when it instantiates the component.
 		if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
