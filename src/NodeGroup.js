@@ -2,11 +2,11 @@ import assert from "./assert.js";
 import Util, {flattenAndIndent, nodeToArrayTree, setIndent} from "./Util.js";
 import Shell from "./Shell.js";
 import RootNodeGroup from './RootNodeGroup.js';
-import ExprPath from "./ExprPath.js";
+import PathTo from "./Path.js";
 import Globals from './Globals.js';
 import NodePath from "./NodePath.js";
-import ExprPathComponent from "./ExprPathComponent.js";
-import ExprPathNodes from "./ExprPathNodes.js";
+import PathToComponent from "./PathToComponent.js";
+import PathToNodes from "./PathToNodes.js";
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
@@ -25,7 +25,7 @@ export default class NodeGroup {
 	 * @Type {RootNodeGroup} */
 	rootNg;
 
-	/** @type {ExprPath} */
+	/** @type {PathTo} */
 	parentPath;
 
 	/** @type {Node|HTMLElement} First node of NodeGroup. Should never be null. */
@@ -36,7 +36,7 @@ export default class NodeGroup {
 	 * TODO: But sometimes startNode and endNode point to the same node.  Document htis inconsistency. */
 	endNode;
 
-	/** @type {ExprPath[]} */
+	/** @type {PathTo[]} */
 	paths = [];
 
 	/** @type {string} Key that matches the template and the expressions. */
@@ -70,7 +70,7 @@ export default class NodeGroup {
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * Don't call applyExprs() yet to apply expressions or instantiate components yet.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param parentPath {?ExprPath}
+	 * @param parentPath {?PathTo}
 	 * @param el {?HTMLElement} Optional, pre-existing htmlElement that will be the root.
 	 * @param options {?object} Only used for RootNodeGroup */
 	constructor(template, parentPath=null, el=null, options=null) {
@@ -87,7 +87,7 @@ export default class NodeGroup {
 		}
 
 		else {
-			// Get a cached version of the parsed and instantiated html, and ExprPaths:
+			// Get a cached version of the parsed and instantiated html, and PathTos:
 			const shell = Shell.get(template.html);
 			const shellFragment = shell.fragment.cloneNode(true);
 
@@ -118,7 +118,7 @@ export default class NodeGroup {
 						this.root = el;
 
 						// Save slot
-						// 1. Globals.currentSlotChildren is set if this is called via ExprPathComponent.applyComponent() calls render()
+						// 1. Globals.currentSlotChildren is set if this is called via PathToComponent.applyComponent() calls render()
 						// 2. el.childNodes is set if render() is called manually for the first time.
 						let slotChildren;
 						if (Globals.currentSlotChildren || el.childNodes.length) {
@@ -176,7 +176,7 @@ export default class NodeGroup {
 
 					// Exclude the path to ourself.  Otherwise we get infinite recursion.
 					// let paths = [...shell.paths];
-					// if (paths[0] instanceof ExprPathComponent)
+					// if (paths[0] instanceof PathToComponent)
 					// 	paths.shift();
 
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
@@ -207,7 +207,7 @@ export default class NodeGroup {
 	 * Dispatches expression handling to other functions depending on the path type.
 	 * @param exprs {(*|*[]|function|Template)[]}
 	 * @param changed {boolean} If true, the expr's have changed since the last time thsi function was called.
-	 * We still need to call ExprPathComponent.apply() even if changed=false so the user can handle the rendering. */
+	 * We still need to call PathToComponent.apply() even if changed=false so the user can handle the rendering. */
 	applyExprs(exprs, changed=true, others=true) {
 
 		/*#IFDEV*/
@@ -218,15 +218,15 @@ export default class NodeGroup {
 
 		// Things to consider:
 		// 1. Paths consume a varying number of expressions.
-		//    An ExprPathAttribs may use multipe expressions.  E.g. <div class="${1} ${2}">
-		//    While an ExprPathComponent uses zero.
-		// 2. An ExprPathComponent references other ExprPaths that set its attribute values.
+		//    An PathToAttribs may use multipe expressions.  E.g. <div class="${1} ${2}">
+		//    While an PathToComponent uses zero.
+		// 2. An PathToComponent references other PathTos that set its attribute values.
 		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
 		//    before its instantiated and its value attribute is set via an expression.
 		let exprIndex = exprs.length; // Update exprs at paths.
 		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
 		for (let i = paths.length - 1, path; path = paths[i]; i--) {
-			if (i===0 && path instanceof ExprPathComponent && path.nodeMarker === this.getRootNode())
+			if (i===0 && path instanceof PathToComponent && path.nodeMarker === this.getRootNode())
 				continue;
 
 			// Get the expressions associated with this path.
@@ -236,7 +236,7 @@ export default class NodeGroup {
 
 			// Component expressions don't have a corresponding user-provided expression.
 			// They use expressions from the paths that provide their attributes.
-			if (path instanceof ExprPathComponent) {
+			if (path instanceof PathToComponent) {
 				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
 				path.apply(attribExprs, true, changed);
 			}
@@ -253,7 +253,7 @@ export default class NodeGroup {
 
 		if (others) {
 
-			// TODO: Only do this if we have ExprPaths within styles?
+			// TODO: Only do this if we have PathTos within styles?
 			this.updateStyles();
 
 			// Invalidate the nodes cache because we just changed it.
@@ -394,7 +394,7 @@ export default class NodeGroup {
 
 					let tree = nodeToArrayTree(item, nextNode => {
 
-						let path = this.paths.find(path=>(path instanceof ExprPathNodes) && path.getNodes().includes(nextNode));
+						let path = this.paths.find(path=>(path instanceof PathToNodes) && path.getNodes().includes(nextNode));
 						if (path)
 							return [`Path.nodes:`]
 
@@ -404,7 +404,7 @@ export default class NodeGroup {
 					// TODO: How to indend nodes belonging to a path vs those that just occur after the path?
 					return flattenAndIndent(tree)
 				}
-				else if (item instanceof ExprPath)
+				else if (item instanceof PathTo)
 					return setIndent(item.debug, 1)
 			}).flat(), 1)
 		]

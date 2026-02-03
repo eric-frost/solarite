@@ -2,16 +2,16 @@ import assert from "./assert.js";
 
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup. */
-export default class ExprPath {
+export default class Path {
 
 	// Used for attributes:
 
 	/**
-	 * @type {Node} Node that occurs before this ExprPath's first Node.
-	 * This is necessary because udomdiff() can steal nodes from another ExprPath.
+	 * @type {Node} Node that occurs before this PathTo's first Node.
+	 * This is necessary because udomdiff() can steal nodes from another PathTo.
 	 * If we had a pointer to our own startNode then that node could be moved somewhere else w/o us knowing it.
 	 * Used only for type='content'
-	 * Will be null if ExprPath has no Nodes. */
+	 * Will be null if PathTo has no Nodes. */
 	nodeBefore;
 
 	/**
@@ -108,7 +108,7 @@ export default class ExprPath {
 	/**
 	 * @param newRoot {HTMLElement}
 	 * @param pathOffset {int}
-	 * @return {ExprPath} */
+	 * @return {Path} */
 	clone(newRoot, pathOffset=0) {
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 
@@ -163,8 +163,8 @@ export default class ExprPath {
 		if (!window.verify)
 			return;
 
-		//assert(this.type!==ExprPathType.Content || this.nodeBefore)
-		//assert(this.type!==ExprPathType.Content || this.nodeBefore.parentNode)
+		//assert(this.type!==PathToType.Content || this.nodeBefore)
+		//assert(this.type!==PathToType.Content || this.nodeBefore.parentNode)
 
 		// Need either nodeMarker or parentNode
 		assert(this.nodeMarker)
@@ -173,10 +173,10 @@ export default class ExprPath {
 		assert(!this.nodeMarker || this.nodeMarker.parentNode)
 
 		// nodeBefore and nodeMarker must have same parent.
-		//assert(this.type!==ExprPathType.Content || this.nodeBefore.parentNode === this.nodeMarker.parentNode)
+		//assert(this.type!==PathToType.Content || this.nodeBefore.parentNode === this.nodeMarker.parentNode)
 
 		assert(this.nodeBefore !== this.nodeMarker)
-		//assert(this.type!==ExprPathType.Content|| !this.nodeBefore.parentNode || this.nodeBefore.compareDocumentPosition(this.nodeMarker) === Node.DOCUMENT_POSITION_FOLLOWING)
+		//assert(this.type!==PathToType.Content|| !this.nodeBefore.parentNode || this.nodeBefore.compareDocumentPosition(this.nodeMarker) === Node.DOCUMENT_POSITION_FOLLOWING)
 
 		// Detect cyclic parent and grandparent references.
 		assert(this.parentNg?.parentPath !== this)

@@ -1,4 +1,4 @@
-import ExprPath from "./ExprPath.js";
+import PathTo from "./Path.js";
 import assert from "./assert.js";
 import NodeGroup from "./NodeGroup.js";
 import Util from "./Util.js";
@@ -6,15 +6,13 @@ import udomdiff from "./udomdiff.js";
 import Template from "./Template.js";
 import Globals from "./Globals.js";
 import MultiValueMap from "./MultiValueMap.js";
-import ExprPathComponent from "./ExprPathComponent.js";
-import ExprPathAttribValue from "./ExprPathAttribValue.js";
 
-export default class ExprPathNodes extends ExprPath {
+export default class PathToNodes extends PathTo {
 
 
 	/**
-	 * @type {?function} The most recent callback passed to a .map() function in this ExprPath.  This is only used for watch.js
-	 * TODO: What if one ExprPath has two .map() calls?  Maybe we just won't support that. */
+	 * @type {?function} The most recent callback passed to a .map() function in this PathTo.  This is only used for watch.js
+	 * TODO: What if one PathTo has two .map() calls?  Maybe we just won't support that. */
 	mapCallback;
 
 
@@ -144,11 +142,11 @@ export default class ExprPathNodes extends ExprPath {
 	/**
 	 * Try to apply Nodes that are an exact match, by finding existing nodes from the last render
 	 * that have the same value as created by the expr.
-	 * This is called from ExprPath.applyNodes().
+	 * This is called from PathTo.applyNodes().
 	 *
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]} An inout parameter; we add the nodes here as we go.
-	 * @param secondPass {[int, int][]} Locations within newNodes for ExprPath.applyNodes() to evaluate later,
+	 * @param secondPass {[int, int][]} Locations within newNodes for PathTo.applyNodes() to evaluate later,
 	 *   when it tries to find partial matches. */
 	applyExactNodes(expr, newNodes, secondPass) {
 
@@ -169,7 +167,7 @@ export default class ExprPathNodes extends ExprPath {
 				return ng;
 			}
 
-			// If expression, mark it to be evaluated later in ExprPath.apply() to find partial match.
+			// If expression, mark it to be evaluated later in PathTo.apply() to find partial match.
 			else {
 				secondPass.push([newNodes.length, this.nodeGroups.length])
 				newNodes.push(expr)
@@ -280,12 +278,12 @@ export default class ExprPathNodes extends ExprPath {
 	}
 
 	/**
-	 * Clear the nodeCache of this ExprPath, as well as all parent and child ExprPaths that
+	 * Clear the nodeCache of this PathTo, as well as all parent and child PathTos that
 	 * share the same DOM parent node. */
 	clearNodesCache() {
 		let path = this;
 
-		// Clear cache parent ExprPaths that have the same parentNode
+		// Clear cache parent PathTos that have the same parentNode
 		let parentNode = this.nodeMarker.parentNode;
 		while (path && path.nodeMarker.parentNode === parentNode) {
 			path.nodesCache = null;
@@ -297,7 +295,7 @@ export default class ExprPathNodes extends ExprPath {
 	}
 
 	/**
-	 * Attempt to remove all of this ExprPath's nodes from the DOM, if it can be done using a special fast method.
+	 * Attempt to remove all of this PathTo's nodes from the DOM, if it can be done using a special fast method.
 	 * @returns {boolean} Returns false if Nodes weren't removed, and they should instead be removed manually. */
 	fastClear() {
 		let parent = this.nodeBefore.parentNode;
@@ -339,14 +337,14 @@ export default class ExprPathNodes extends ExprPath {
 				this.exprToTemplates(subExpr, callback);
 
 		else if (typeof expr === 'function') {
-			// TODO: One ExprPath can have multiple expr functions.
+			// TODO: One PathTo can have multiple expr functions.
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
-			Globals.currentExprPath = this; // Used by watch()
+			Globals.currentPathTo = this; // Used by watch()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
-			Globals.currentExprPath = null;
+			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentPathTo to mark where those watched variables are being used.
+			Globals.currentPathTo = null;
 
 			this.exprToTemplates(expr, callback);
 		}
@@ -474,7 +472,7 @@ export default class ExprPathNodes extends ExprPath {
 
 
 	/**
-	 * If not for watch.js, this could be moved to ExprPathNodes.js
+	 * If not for watch.js, this could be moved to PathToNodes.js
 	 * @return {(Node|HTMLElement)[]} */
 	getNodes() {
 
@@ -484,7 +482,7 @@ export default class ExprPathNodes extends ExprPath {
 		// 	result2.push(...ng.getNodes())
 		// return result2;
 
-		// if (this.type === ExprPathType.AttribValue || this.type === ExprPathType.AttribMultiple) {
+		// if (this.type === PathToType.AttribValue || this.type === PathToType.AttribMultiple) {
 		// 	return [this.nodeMarker];
 		// }
 

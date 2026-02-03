@@ -1,14 +1,14 @@
 import assert from "./assert.js";
-import ExprPath from "./ExprPath.js";
+import PathTo from "./Path.js";
 import Util from "./Util.js";
 import Globals from "./Globals.js";
 import HtmlParser from "./HtmlParser.js";
-import ExprPathEvent from "./ExprPathEvent.js";
-import ExprPathAttribValue from "./ExprPathAttribValue.js";
-import ExprPathAttribs from "./ExprPathAttribs.js";
-import ExprPathNodes from "./ExprPathNodes.js";
+import PathToEvent from "./PathToEvent.js";
+import PathToAttribValue from "./PathToAttribValue.js";
+import PathToAttribs from "./PathToAttribs.js";
+import PathToNodes from "./PathToNodes.js";
 import NodePath from "./NodePath.js";
-import ExprPathComponent from "./ExprPathComponent.js";
+import PathToComponent from "./PathToComponent.js";
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -23,7 +23,7 @@ export default class Shell {
 	 * @type {DocumentFragment|Text} DOM parent of the shell's nodes. */
 	fragment;
 
-	/** @type {ExprPath[]} Paths to where expressions should go. */
+	/** @type {PathTo[]} Paths to where expressions should go. */
 	paths = [];
 
 	// Elements with events.  Is there a reason to use this?  We already mark event Exprs in Shell.js.
@@ -89,7 +89,7 @@ export default class Shell {
 					// Whole attribute
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/)
 					if (matches) {
-						let path = new ExprPathAttribs(null, node);
+						let path = new PathToAttribs(null, node);
 						this.paths.push(path);
 						if (isComponent)
 							componentAttribPaths.push(path);
@@ -105,8 +105,8 @@ export default class Shell {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
 
 							let path = Util.isEvent(attr.name)
-								? new ExprPathEvent(null, node, attr.name, nonEmptyParts)
-								: new ExprPathAttribValue(null, node, attr.name, nonEmptyParts);
+								? new PathToEvent(null, node, attr.name, nonEmptyParts)
+								: new PathToAttribValue(null, node, attr.name, nonEmptyParts);
 							this.paths.push(path);
 							if (isComponent) {
 								path.isComponentAttrib = true;
@@ -121,7 +121,7 @@ export default class Shell {
 
 				// Web components
 				if (isComponent) {
-					let path = new ExprPathComponent(null, node);
+					let path = new PathToComponent(null, node);
 					path.attribPaths = componentAttribPaths;
 					this.paths.splice(this.paths.length - componentAttribPaths.length, 0, path); // Insert before its componentAttribPaths
 
@@ -141,7 +141,7 @@ export default class Shell {
 				// Get or create nodeBefore.
 				let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
 				if (!nodeBefore) {
-					nodeBefore = Globals.doc.createComment('ExprPath:'+this.paths.length);
+					nodeBefore = Globals.doc.createComment('PathTo:'+this.paths.length);
 					node.parentNode.insertBefore(nodeBefore, node)
 				}
 				/*#IFDEV*/assert(nodeBefore);/*#ENDIF*/
@@ -157,11 +157,11 @@ export default class Shell {
 				// Re-use existing comment placeholder.
 				else {
 					nodeMarker = node;
-					nodeMarker.textContent = 'ExprPathEnd:'+ this.paths.length;
+					nodeMarker.textContent = 'PathToEnd:'+ this.paths.length;
 				}
 				/*#IFDEV*/assert(nodeMarker);/*#ENDIF*/
 
-				let path = new ExprPathNodes(nodeBefore, nodeMarker);
+				let path = new PathToNodes(nodeBefore, nodeMarker);
 				this.paths.push(path);
 				placeholdersUsed ++;
 			}
@@ -178,7 +178,7 @@ export default class Shell {
 			else if (node.nodeType === 8) { // Node.COMMENT_NODE
 				let parts = node.textContent.split(/[\ue000-\uf8ff]/g);
 				for (let i=0; i<parts.length-1; i++) {
-					let path = new ExprPath(node.previousSibling, node)
+					let path = new PathTo(node.previousSibling, node)
 					this.paths.push(path);
 					placeholdersUsed ++;
 				}
@@ -198,7 +198,7 @@ export default class Shell {
 					}
 
 					for (let i=0, node; node=placeholders[i]; i++) {
-						let path = new ExprPathNodes(node.previousSibling, node);
+						let path = new PathToNodes(node.previousSibling, node);
 						this.paths.push(path);
 						placeholdersUsed ++;
 
@@ -249,17 +249,17 @@ export default class Shell {
 
 			// Append -solarite-placholder to web component tags, so we can pass args to them when they're instantiated.
 			let lastIndex = 0;
-			let context = htmlParser.parse(lastHtml, (html, index, prevContext, nextContext) => { // This function is called every time the html context changes.
+			let context = htmlParser.parse(lastHtml, (html, index, prevContext/*, nextContext*/) => { // This function is called every time the html context changes.
 				if (lastIndex !== index) {
 					let token = html.slice(lastIndex, index);
 
 					if (prevContext === HtmlParser.Tag) {
 						// Find Web Component tags and append -solarite-placeholder to their tag names
 						// This way we can gather their constructor arguments and their children before we call their constructor.
-						// Later, ExprPathComponent.apply() will replace them with the real components.
+						// Later, PathToComponent.apply() will replace them with the real components.
 						// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 						const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i; // a dash in the middle
-						token = token.replace(isWebComponentTagName, match => match + '-solarite-placeholder');
+						token = token.replace(isWebComponentTagName, match => match + '-SOLARITE-PLACEHOLDER'); // caps to match other instances of this string, for better compression.
 					}
 
 					result.push(token);
@@ -290,7 +290,7 @@ export default class Shell {
 	findEmbeds() {
 		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => NodePath.get(el))
 
-		// TODO: only find styles that have ExprPaths in them?
+		// TODO: only find styles that have PathTos in them?
 		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => NodePath.get(el))
 
 		let idEls = this.fragment.querySelectorAll('[id],[data-id]');

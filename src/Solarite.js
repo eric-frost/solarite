@@ -12,6 +12,7 @@ export {default as h} from './h.js'; //Named exports for h() are deprecated.
 export {default as delve} from './delve.js';
 export {default as Template} from './Template.js';
 export {default as toEl} from './toEl.js';
+import Template from './Template.js';
 
 // Experimental:
 //--------------
@@ -23,19 +24,14 @@ export {default as SolariteUtil} from './Util.js';
 export {getArg, ArgType} from './getArg.js';
 export {setArgs} from './getArg.js';
 export {default as r} from './h.js';
-import Template from './Template.js';
 export function t(html) {
 	return new Template([html], []);
 }
-
 //export {default as watch, renderWatched} from './watch.js'; // unfinished
 
 
 
-
-
-
-// Internal:
+// Solarite Class:
 //--------------
 import Util from "./Util.js";
 import Globals from "./Globals.js";
@@ -91,11 +87,8 @@ export class Solarite extends HTMLElementAutoDefine {
 		// 2. Wrap render function so it always provides the attribs argument.
 		let originalRender = this.render;
 		this.render = (attribs, changed=true) => {
-			if (!attribs) {
-				let oldAttribs = Solarite.getAttribs(this);
-				attribs = oldAttribs;
-				// If we have to look up the attribs, we don't know if they changed or not.
-			}
+			if (!attribs) // If we have to look up the attribs, we don't know if they changed or not.
+				attribs = Solarite.getAttribs(this);
 			originalRender.call(this, attribs, changed);
 		}
 	}

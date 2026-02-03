@@ -74,7 +74,7 @@ export function delve(obj: object, path: string[], createVal?: any): any;
  * Internal utilities and state. */
 export const Globals: {
     connected: WeakSet<HTMLElement>;
-    currentExprPath: any;
+    currentPathTo: any;
     currentSlotChildren: any[] | null;
     div: HTMLDivElement;
     doc: Document;

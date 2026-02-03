@@ -1,8 +1,8 @@
-import ExprPath from "./ExprPath.js";
+import PathTo from "./Path.js";
 import Globals from "./Globals.js";
 import assert from "./assert.js";
 
-export default class ExprPathAttribs extends ExprPath {
+export default class PathToAttribs extends PathTo {
 
 	/**
 	 * @type {Set<string>} Used for type=AttribType.Multiple to remember the attributes that were added. */
@@ -33,10 +33,10 @@ export default class ExprPathAttribs extends ExprPath {
 		this.attrNames = new Set();
 		if (expr) {
 			if (typeof expr === 'function') {
-				Globals.currentExprPath = this; // Used by watch()
+				Globals.currentPathTo = this; // Used by watch()
 				this.watchFunction = expr; // used by renderWatched()
 				expr = expr();
-				Globals.currentExprPath = null;
+				Globals.currentPathTo = null;
 			}
 
 			// Attribute as name: value object.

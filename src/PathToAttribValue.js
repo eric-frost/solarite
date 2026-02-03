@@ -1,10 +1,10 @@
-import ExprPath from "./ExprPath.js";
+import PathTo from "./Path.js";
 import Globals from "./Globals.js";
 import Util from "./Util.js";
 import delve from "./delve.js";
 import assert from "./assert.js";
 
-export default class ExprPathAttribValue extends ExprPath {
+export default class PathToAttribValue extends PathTo {
 
 
 	/** @type {?string} Used only if type=AttribType.Value. */
@@ -45,7 +45,7 @@ export default class ExprPathAttribValue extends ExprPath {
 		if (!multiple && Util.isPath(expr)) {
 
 			// Don't bind events to component placeholders.
-			// ExprPathComponent will do the binding later when it instantiates the component.
+			// PathToComponent will do the binding later when it instantiates the component.
 			if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
 				return;
 
@@ -99,15 +99,15 @@ export default class ExprPathAttribValue extends ExprPath {
 
 		// Regular attribute
 		else {
-			// Cache this on ExprPath.isHtmlProperty when Shell creates the props.
-			// Have ExprPath.clone() copy .isHtmlProperty?
+			// Cache this on PathTo.isHtmlProperty when Shell creates the props.
+			// Have PathTo.clone() copy .isHtmlProperty?
 			let isProp = this.isHtmlProperty;
 			if (isProp === undefined)
 				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
 			if (!multiple) {
-				Globals.currentExprPath = this; // Used by watch()
+				Globals.currentPathTo = this; // Used by watch()
 				if (typeof expr === 'function') {
 					if (this.isComponentAttrib)
 						return;
@@ -117,7 +117,7 @@ export default class ExprPathAttribValue extends ExprPath {
 				}
 				else
 					expr = Util.makePrimitive(expr);
-				Globals.currentExprPath = null;
+				Globals.currentPathTo = null;
 			}
 
 
@@ -194,9 +194,9 @@ export default class ExprPathAttribValue extends ExprPath {
 		for (let i = 0; i < values.length; i++) {
 			result.push(values[i]);
 			if (i < values.length - 1) {
-				Globals.currentExprPath = this; // Used by watch()
+				Globals.currentPathTo = this; // Used by watch()
 				let val = Util.makePrimitive(exprs[i]);
-				Globals.currentExprPath = null;
+				Globals.currentPathTo = null;
 				if (!Util.isFalsy(val))
 					result.push(val);
 			}

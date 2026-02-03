@@ -1,8 +1,8 @@
 import assert from "./assert.js";
-import ExprPathAttribValue from "./ExprPathAttribValue.js";
+import PathToAttribValue from "./PathToAttribValue.js";
 
-// TODO: Merge this into ExprPathAttribValue?
-export default class ExprPathEvent extends ExprPathAttribValue {
+// TODO: Merge this into PathToAttribValue?
+export default class PathToEvent extends PathToAttribValue {
 
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
 		super(null, nodeMarker, attrName, attrValue);
@@ -21,7 +21,7 @@ export default class ExprPathEvent extends ExprPathAttribValue {
 		//#ENDIF
 
 		// Don't bind events to component placeholders.
-		// ExprPathComponent will do the binding later when it instantiates the component.
+		// PathToComponent will do the binding later when it instantiates the component.
 		if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
 			return;
 

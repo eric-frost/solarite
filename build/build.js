@@ -40,7 +40,7 @@ const terserOptions = {
 		comments: false
 	},
 	compress: { // https://github.com/terser/terser#compress-options
-		passes: 5,
+		passes: 5, // 3 gives the same result as 5.
 		//hoist_funs: true, // Increases size
 		//hoist_vars: true, // Increases size
 		pure_getters: true,

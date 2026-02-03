@@ -112,10 +112,10 @@ function reset() {
 		connected: new WeakSet(),
 
 		/**
-		 * ExprPath.applyExactNodes() sets this property when an expression is being accessed.
-		 * watch() then adds the ExprPath to the list of ExprPaths that should be re-rendered when the value changes.
-		 * @type {ExprPath}*/
-		currentExprPath: null,
+		 * PathTo.applyExactNodes() sets this property when an expression is being accessed.
+		 * watch() then adds the PathTo to the list of PathTos that should be re-rendered when the value changes.
+		 * @type {Path}*/
+		currentPathTo: null,
 
 		/**
 		 * Set by NodeGroup.instantiateComponent()
@@ -135,7 +135,7 @@ function reset() {
 		htmlProps: {},
 
 		/**
-		 * Used by ExprPath.applyEventAttrib()
+		 * Used by PathTo.applyEventAttrib()
 		 * @type {WeakMap<Node, Record<eventName:string, [original:function, bound:function, args:*[]]>>} */
 		nodeEvents: new WeakMap(),
 
@@ -162,7 +162,7 @@ function reset() {
 		/**
 		 * A map of individual untagged strings to their Templates.
 		 * This way we don't keep creating new Templates for the same string when re-rendering.
-		 * This is used by ExprPath.applyExactNodes()
+		 * This is used by PathTo.applyExactNodes()
 		 * @type {Record<string, Template>} */
 		//stringTemplates: {},
 
@@ -568,16 +568,16 @@ function flattenAndIndent(inputArray, indent = "") {
 
 /**
  * Path to where an expression should be evaluated within a Shell or NodeGroup. */
-class ExprPath {
+class Path {
 
 	// Used for attributes:
 
 	/**
-	 * @type {Node} Node that occurs before this ExprPath's first Node.
-	 * This is necessary because udomdiff() can steal nodes from another ExprPath.
+	 * @type {Node} Node that occurs before this PathTo's first Node.
+	 * This is necessary because udomdiff() can steal nodes from another PathTo.
 	 * If we had a pointer to our own startNode then that node could be moved somewhere else w/o us knowing it.
 	 * Used only for type='content'
-	 * Will be null if ExprPath has no Nodes. */
+	 * Will be null if PathTo has no Nodes. */
 	nodeBefore;
 
 	/**
@@ -674,7 +674,7 @@ class ExprPath {
 	/**
 	 * @param newRoot {HTMLElement}
 	 * @param pathOffset {int}
-	 * @return {ExprPath} */
+	 * @return {Path} */
 	clone(newRoot, pathOffset=0) {
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 
@@ -729,8 +729,8 @@ class ExprPath {
 		if (!window.verify)
 			return;
 
-		//assert(this.type!==ExprPathType.Content || this.nodeBefore)
-		//assert(this.type!==ExprPathType.Content || this.nodeBefore.parentNode)
+		//assert(this.type!==PathToType.Content || this.nodeBefore)
+		//assert(this.type!==PathToType.Content || this.nodeBefore.parentNode)
 
 		// Need either nodeMarker or parentNode
 		assert(this.nodeMarker);
@@ -739,10 +739,10 @@ class ExprPath {
 		assert(!this.nodeMarker || this.nodeMarker.parentNode);
 
 		// nodeBefore and nodeMarker must have same parent.
-		//assert(this.type!==ExprPathType.Content || this.nodeBefore.parentNode === this.nodeMarker.parentNode)
+		//assert(this.type!==PathToType.Content || this.nodeBefore.parentNode === this.nodeMarker.parentNode)
 
 		assert(this.nodeBefore !== this.nodeMarker);
-		//assert(this.type!==ExprPathType.Content|| !this.nodeBefore.parentNode || this.nodeBefore.compareDocumentPosition(this.nodeMarker) === Node.DOCUMENT_POSITION_FOLLOWING)
+		//assert(this.type!==PathToType.Content|| !this.nodeBefore.parentNode || this.nodeBefore.compareDocumentPosition(this.nodeMarker) === Node.DOCUMENT_POSITION_FOLLOWING)
 
 		// Detect cyclic parent and grandparent references.
 		assert(this.parentNg?.parentPath !== this);
@@ -849,7 +849,7 @@ HtmlParser.Attribute = 'Attribute';
 HtmlParser.Text = 'Text';
 HtmlParser.Tag = 'Tag';
 
-class ExprPathAttribValue extends ExprPath {
+class PathToAttribValue extends Path {
 
 
 	/** @type {?string} Used only if type=AttribType.Value. */
@@ -890,7 +890,7 @@ class ExprPathAttribValue extends ExprPath {
 		if (!multiple && Util.isPath(expr)) {
 
 			// Don't bind events to component placeholders.
-			// ExprPathComponent will do the binding later when it instantiates the component.
+			// PathToComponent will do the binding later when it instantiates the component.
 			if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
 				return;
 
@@ -944,15 +944,15 @@ class ExprPathAttribValue extends ExprPath {
 
 		// Regular attribute
 		else {
-			// Cache this on ExprPath.isHtmlProperty when Shell creates the props.
-			// Have ExprPath.clone() copy .isHtmlProperty?
+			// Cache this on PathTo.isHtmlProperty when Shell creates the props.
+			// Have PathTo.clone() copy .isHtmlProperty?
 			let isProp = this.isHtmlProperty;
 			if (isProp === undefined)
 				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
 			if (!multiple) {
-				Globals$1.currentExprPath = this; // Used by watch()
+				Globals$1.currentPathTo = this; // Used by watch()
 				if (typeof expr === 'function') {
 					if (this.isComponentAttrib)
 						return;
@@ -962,7 +962,7 @@ class ExprPathAttribValue extends ExprPath {
 				}
 				else
 					expr = Util.makePrimitive(expr);
-				Globals$1.currentExprPath = null;
+				Globals$1.currentPathTo = null;
 			}
 
 
@@ -1039,9 +1039,9 @@ class ExprPathAttribValue extends ExprPath {
 		for (let i = 0; i < values.length; i++) {
 			result.push(values[i]);
 			if (i < values.length - 1) {
-				Globals$1.currentExprPath = this; // Used by watch()
+				Globals$1.currentPathTo = this; // Used by watch()
 				let val = Util.makePrimitive(exprs[i]);
-				Globals$1.currentExprPath = null;
+				Globals$1.currentPathTo = null;
 				if (!Util.isFalsy(val))
 					result.push(val);
 			}
@@ -1107,8 +1107,8 @@ class ExprPathAttribValue extends ExprPath {
 	}
 }
 
-// TODO: Merge this into ExprPathAttribValue?
-class ExprPathEvent extends ExprPathAttribValue {
+// TODO: Merge this into PathToAttribValue?
+class PathToEvent extends PathToAttribValue {
 
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
 		super(null, nodeMarker, attrName, attrValue);
@@ -1127,7 +1127,7 @@ class ExprPathEvent extends ExprPathAttribValue {
 		//#ENDIF
 
 		// Don't bind events to component placeholders.
-		// ExprPathComponent will do the binding later when it instantiates the component.
+		// PathToComponent will do the binding later when it instantiates the component.
 		if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
 			return;
 
@@ -1162,7 +1162,7 @@ class ExprPathEvent extends ExprPathAttribValue {
 
 }
 
-class ExprPathAttribs extends ExprPath {
+class PathToAttribs extends Path {
 
 	/**
 	 * @type {Set<string>} Used for type=AttribType.Multiple to remember the attributes that were added. */
@@ -1193,10 +1193,10 @@ class ExprPathAttribs extends ExprPath {
 		this.attrNames = new Set();
 		if (expr) {
 			if (typeof expr === 'function') {
-				Globals$1.currentExprPath = this; // Used by watch()
+				Globals$1.currentPathTo = this; // Used by watch()
 				this.watchFunction = expr; // used by renderWatched()
 				expr = expr();
-				Globals$1.currentExprPath = null;
+				Globals$1.currentPathTo = null;
 			}
 
 			// Attribute as name: value object.
@@ -1517,161 +1517,12 @@ class MultiValueMap {
 	}
 }
 
-class ExprPathComponent extends ExprPath {
-
-	/** @type {ExprPathAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
-	attribPaths;
-
-	constructor(nodeBefore, nodeMarker) {
-		super(null, nodeMarker);
-	}
-
-	/**
-	 * Call render() on the component pointed to by this ExprPath.
-	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet.
-	 * @param exprs {Expr[][]} Expressions to evaluate for each attribute to pass to the constructor.
-	 * This is different than other ExprPath.apply() functions which only receive Expr[] and not Expr[][].
-	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute.
-	 * @param freeNodeGroups {boolean} Used only by watch.js.
-	 * @param changed {boolean} True if the exprs have changed since the last time render() was called.*/
-	apply(exprs, freeNodeGroups=true, changed=true) {
-		//#IFDEV
-		assert(Array.isArray(exprs));
-		assert(!exprs.length || Array.isArray(exprs[0]));
-		//#ENDIF
-
-		//#IFDEV
-		assert(exprs.length === this.attribPaths.length);
-		//#ENDIF
-
-		let el = this.nodeMarker;
-
-		// 1. Attributes
-		let attribs = Util.attribsToObject(el, '_is');
-		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
-			let name = Util.dashesToCamel(attribPath.attrName);
-			attribs[name] = attribPath.getValue(exprs[i]);
-		}
-
-		// 2. Instantiate component on first time.
-		let isAttrib = el.getAttribute('_is');
-		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER') || isAttrib) {
-
-
-			// 2a. Instantiate component
-			let tagName = (isAttrib || el.tagName.slice(0, -21)).toLowerCase(); // Remove -SOLARITE-PLACEHOLDER
-			let Constructor = customElements.get(tagName);
-			if (!Constructor)
-				throw new Error(`Must call customElements.define('${tagName}', Class) before using it.`);
-
-			Globals$1.currentSlotChildren = [...el.childNodes]; // TODO: Does this need to be a stack?
-			let newEl = new Constructor(attribs);
-
-			// 2b. Copy attributes over.
-			if (isAttrib) {
-				newEl.setAttribute('is', isAttrib);
-			//	el.removeAttribute('_is');
-			}
-			for (let attrib of el.attributes)
-				if (attrib.name !== '_is')
-					newEl.setAttribute(attrib.name, attrib.value);
-
-			// Set dynamic attributes if they are primitive types.
-			for (let name in attribs) {
-				let val = attribs[name];
-				let valType = typeof val;
-				if (valType === 'boolean') {
-					if (val !== false && val !== undefined && val !== null) // Util.isFalsy() inlined
-						newEl.setAttribute(name, '');
-				}
-
-				// If type is a non-boolean primitive, set the attribute value.
-				else if (valType==='string' || valType === 'number' || valType==='bigint')
-					newEl.setAttribute(name, val);
-			}
-
-
-			// 2c. If an id pointed at the placeholder, update it to point to the new element.
-			let id = newEl.getAttribute('data-id') || newEl.getAttribute('id');
-			if (id)
-				delve(this.parentNg.getRootNode(), id.split(/\./g), newEl);
-
-			// 2d. Update paths to use replaced element.
-			let ng = this.parentNg;
-			this.nodeMarker = newEl;
-			for (let path of ng.paths) {
-				if (path.nodeMarker === el)
-					path.nodeMarker = newEl;
-				if (path.nodeBefore === el)
-					path.nodeBefore = newEl;
-			}
-			if (ng.startNode === el)
-				ng.startNode = newEl;
-			if (ng.endNode === el)
-				ng.endNode = newEl;
-
-			// 2f. Call render() if it wasn't called by the constructor.
-			// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
-			// Because that path renders it without the attribute expressions.
-			if (typeof newEl.render === 'function' && !Globals$1.rendered.has(newEl))
-				newEl.render(attribs, changed);
-
-			// 2g. Update attribute paths to use the new element and re-apply them.
-			for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
-				attribPath.parentNg = this.parentNg;
-				attribPath.nodeMarker = newEl;
-				attribPath.apply(exprs[i]);
-			}
-
-			// 2e. Swap it to the DOM.
-			el.replaceWith(newEl);
-		}
-
-		// 2f. Render
-		else if (typeof el.render === 'function')
-			el.render(attribs, changed);
-
-		Globals$1.currentSlotChildren = null;
-	}
-
-	/**
-	 * @param newRoot {HTMLElement}
-	 * @param pathOffset {int}
-	 * @return {ExprPath} */
-	clone(newRoot, pathOffset=0) {
-		/*#IFDEV*/this.verify();/*#ENDIF*/
-		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
-		let result = new ExprPathComponent(null, nodeMarker);
-		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
-
-		//#IFDEV
-		result.verify();
-		//#ENDIF
-
-		return result;
-	}
-
-	getExpressionCount() { return 0 }
-
-	//#IFDEV
-	verify() {
-		super.verify();
-		assert(this.nodeMarker.nodeType === Node.ELEMENT_NODE);
-		assert(this.nodeMarker.tagName.includes('-') || this.nodeMarker.hasAttribute('is') || this.nodeMarker.hasAttribute('_is'));
-		if (this.attribPaths)
-			for (let path of this.attribPaths)
-				path.verify();
-	}
-
-	//#ENDIF
-}
-
-class ExprPathNodes extends ExprPath {
+class PathToNodes extends Path {
 
 
 	/**
-	 * @type {?function} The most recent callback passed to a .map() function in this ExprPath.  This is only used for watch.js
-	 * TODO: What if one ExprPath has two .map() calls?  Maybe we just won't support that. */
+	 * @type {?function} The most recent callback passed to a .map() function in this PathTo.  This is only used for watch.js
+	 * TODO: What if one PathTo has two .map() calls?  Maybe we just won't support that. */
 	mapCallback;
 
 
@@ -1801,11 +1652,11 @@ class ExprPathNodes extends ExprPath {
 	/**
 	 * Try to apply Nodes that are an exact match, by finding existing nodes from the last render
 	 * that have the same value as created by the expr.
-	 * This is called from ExprPath.applyNodes().
+	 * This is called from PathTo.applyNodes().
 	 *
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]} An inout parameter; we add the nodes here as we go.
-	 * @param secondPass {[int, int][]} Locations within newNodes for ExprPath.applyNodes() to evaluate later,
+	 * @param secondPass {[int, int][]} Locations within newNodes for PathTo.applyNodes() to evaluate later,
 	 *   when it tries to find partial matches. */
 	applyExactNodes(expr, newNodes, secondPass) {
 
@@ -1826,7 +1677,7 @@ class ExprPathNodes extends ExprPath {
 				return ng;
 			}
 
-			// If expression, mark it to be evaluated later in ExprPath.apply() to find partial match.
+			// If expression, mark it to be evaluated later in PathTo.apply() to find partial match.
 			else {
 				secondPass.push([newNodes.length, this.nodeGroups.length]);
 				newNodes.push(expr);
@@ -1934,12 +1785,12 @@ class ExprPathNodes extends ExprPath {
 	}
 
 	/**
-	 * Clear the nodeCache of this ExprPath, as well as all parent and child ExprPaths that
+	 * Clear the nodeCache of this PathTo, as well as all parent and child PathTos that
 	 * share the same DOM parent node. */
 	clearNodesCache() {
 		let path = this;
 
-		// Clear cache parent ExprPaths that have the same parentNode
+		// Clear cache parent PathTos that have the same parentNode
 		let parentNode = this.nodeMarker.parentNode;
 		while (path && path.nodeMarker.parentNode === parentNode) {
 			path.nodesCache = null;
@@ -1951,7 +1802,7 @@ class ExprPathNodes extends ExprPath {
 	}
 
 	/**
-	 * Attempt to remove all of this ExprPath's nodes from the DOM, if it can be done using a special fast method.
+	 * Attempt to remove all of this PathTo's nodes from the DOM, if it can be done using a special fast method.
 	 * @returns {boolean} Returns false if Nodes weren't removed, and they should instead be removed manually. */
 	fastClear() {
 		let parent = this.nodeBefore.parentNode;
@@ -1993,14 +1844,14 @@ class ExprPathNodes extends ExprPath {
 				this.exprToTemplates(subExpr, callback);
 
 		else if (typeof expr === 'function') {
-			// TODO: One ExprPath can have multiple expr functions.
+			// TODO: One PathTo can have multiple expr functions.
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
-			Globals$1.currentExprPath = this; // Used by watch()
+			Globals$1.currentPathTo = this; // Used by watch()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentExprPath to mark where those watched variables are being used.
-			Globals$1.currentExprPath = null;
+			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentPathTo to mark where those watched variables are being used.
+			Globals$1.currentPathTo = null;
 
 			this.exprToTemplates(expr, callback);
 		}
@@ -2128,7 +1979,7 @@ class ExprPathNodes extends ExprPath {
 
 
 	/**
-	 * If not for watch.js, this could be moved to ExprPathNodes.js
+	 * If not for watch.js, this could be moved to PathToNodes.js
 	 * @return {(Node|HTMLElement)[]} */
 	getNodes() {
 
@@ -2138,7 +1989,7 @@ class ExprPathNodes extends ExprPath {
 		// 	result2.push(...ng.getNodes())
 		// return result2;
 
-		// if (this.type === ExprPathType.AttribValue || this.type === ExprPathType.AttribMultiple) {
+		// if (this.type === PathToType.AttribValue || this.type === PathToType.AttribMultiple) {
 		// 	return [this.nodeMarker];
 		// }
 
@@ -2222,6 +2073,155 @@ var NodePath = {
 	}
 };
 
+class PathToComponent extends Path {
+
+	/** @type {PathToAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
+	attribPaths;
+
+	constructor(nodeBefore, nodeMarker) {
+		super(null, nodeMarker);
+	}
+
+	/**
+	 * Call render() on the component pointed to by this PathTo.
+	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet.
+	 * @param exprs {Expr[][]} Expressions to evaluate for each attribute to pass to the constructor.
+	 * This is different than other PathTo.apply() functions which only receive Expr[] and not Expr[][].
+	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute.
+	 * @param freeNodeGroups {boolean} Used only by watch.js.
+	 * @param changed {boolean} True if the exprs have changed since the last time render() was called.*/
+	apply(exprs, freeNodeGroups=true, changed=true) {
+		//#IFDEV
+		assert(Array.isArray(exprs));
+		assert(!exprs.length || Array.isArray(exprs[0]));
+		//#ENDIF
+
+		//#IFDEV
+		assert(exprs.length === this.attribPaths.length);
+		//#ENDIF
+
+		let el = this.nodeMarker;
+
+		// 1. Attributes
+		let attribs = Util.attribsToObject(el, '_is');
+		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
+			let name = Util.dashesToCamel(attribPath.attrName);
+			attribs[name] = attribPath.getValue(exprs[i]);
+		}
+
+		// 2. Instantiate component on first time.
+		let isAttrib = el.getAttribute('_is');
+		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER') || isAttrib) {
+
+
+			// 2a. Instantiate component
+			let tagName = (isAttrib || el.tagName.slice(0, -21)).toLowerCase(); // Remove -SOLARITE-PLACEHOLDER
+			let Constructor = customElements.get(tagName);
+			if (!Constructor)
+				throw new Error(`Must call customElements.define('${tagName}', Class) before using it.`);
+
+			Globals$1.currentSlotChildren = [...el.childNodes]; // TODO: Does this need to be a stack?
+			let newEl = new Constructor(attribs);
+
+			// 2b. Copy attributes over.
+			if (isAttrib) {
+				newEl.setAttribute('is', isAttrib);
+			//	el.removeAttribute('_is');
+			}
+			for (let attrib of el.attributes)
+				if (attrib.name !== '_is')
+					newEl.setAttribute(attrib.name, attrib.value);
+
+			// Set dynamic attributes if they are primitive types.
+			for (let name in attribs) {
+				let val = attribs[name];
+				let valType = typeof val;
+				if (valType === 'boolean') {
+					if (val !== false && val !== undefined && val !== null) // Util.isFalsy() inlined
+						newEl.setAttribute(name, '');
+				}
+
+				// If type is a non-boolean primitive, set the attribute value.
+				else if (valType==='string' || valType === 'number' || valType==='bigint')
+					newEl.setAttribute(name, val);
+			}
+
+
+			// 2c. If an id pointed at the placeholder, update it to point to the new element.
+			let id = newEl.getAttribute('data-id') || newEl.getAttribute('id');
+			if (id)
+				delve(this.parentNg.getRootNode(), id.split(/\./g), newEl);
+
+			// 2d. Update paths to use replaced element.
+			let ng = this.parentNg;
+			this.nodeMarker = newEl;
+			for (let path of ng.paths) {
+				if (path.nodeMarker === el)
+					path.nodeMarker = newEl;
+				if (path.nodeBefore === el)
+					path.nodeBefore = newEl;
+			}
+			if (ng.startNode === el)
+				ng.startNode = newEl;
+			if (ng.endNode === el)
+				ng.endNode = newEl;
+
+			// 2f. Call render() if it wasn't called by the constructor.
+			// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
+			// Because that path renders it without the attribute expressions.
+			if (typeof newEl.render === 'function' && !Globals$1.rendered.has(newEl))
+				newEl.render(attribs, changed);
+
+			// 2g. Update attribute paths to use the new element and re-apply them.
+			for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
+				attribPath.parentNg = this.parentNg;
+				attribPath.nodeMarker = newEl;
+				attribPath.apply(exprs[i]);
+			}
+
+			// 2e. Swap it to the DOM.
+			el.replaceWith(newEl);
+		}
+
+		// 2f. Render
+		else if (typeof el.render === 'function')
+			el.render(attribs, changed);
+
+		Globals$1.currentSlotChildren = null;
+	}
+
+	/**
+	 * @param newRoot {HTMLElement}
+	 * @param pathOffset {int}
+	 * @return {PathTo} */
+	clone(newRoot, pathOffset=0) {
+		/*#IFDEV*/this.verify();/*#ENDIF*/
+		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
+		let result = new PathToComponent(null, nodeMarker);
+		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
+
+		//#IFDEV
+		result.verify();
+		//#ENDIF
+
+		return result;
+	}
+
+	getExpressionCount() { return 0 }
+
+	//#IFDEV
+	verify() {
+		super.verify();
+		assert(this.nodeMarker.nodeType === Node.ELEMENT_NODE);
+		assert(this.nodeMarker.tagName.includes('-') || this.nodeMarker.hasAttribute('is') || this.nodeMarker.hasAttribute('_is'));
+		if (this.attribPaths)
+			for (let path of this.attribPaths)
+				path.verify();
+	}
+
+	//#ENDIF
+}
+
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
  * but without any expressions filled in.
@@ -2235,7 +2235,7 @@ class Shell {
 	 * @type {DocumentFragment|Text} DOM parent of the shell's nodes. */
 	fragment;
 
-	/** @type {ExprPath[]} Paths to where expressions should go. */
+	/** @type {PathTo[]} Paths to where expressions should go. */
 	paths = [];
 
 	// Elements with events.  Is there a reason to use this?  We already mark event Exprs in Shell.js.
@@ -2301,7 +2301,7 @@ class Shell {
 					// Whole attribute
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/);
 					if (matches) {
-						let path = new ExprPathAttribs(null, node);
+						let path = new PathToAttribs(null, node);
 						this.paths.push(path);
 						if (isComponent)
 							componentAttribPaths.push(path);
@@ -2317,8 +2317,8 @@ class Shell {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
 
 							let path = Util.isEvent(attr.name)
-								? new ExprPathEvent(null, node, attr.name, nonEmptyParts)
-								: new ExprPathAttribValue(null, node, attr.name, nonEmptyParts);
+								? new PathToEvent(null, node, attr.name, nonEmptyParts)
+								: new PathToAttribValue(null, node, attr.name, nonEmptyParts);
 							this.paths.push(path);
 							if (isComponent) {
 								path.isComponentAttrib = true;
@@ -2333,7 +2333,7 @@ class Shell {
 
 				// Web components
 				if (isComponent) {
-					let path = new ExprPathComponent(null, node);
+					let path = new PathToComponent(null, node);
 					path.attribPaths = componentAttribPaths;
 					this.paths.splice(this.paths.length - componentAttribPaths.length, 0, path); // Insert before its componentAttribPaths
 
@@ -2353,7 +2353,7 @@ class Shell {
 				// Get or create nodeBefore.
 				let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
 				if (!nodeBefore) {
-					nodeBefore = Globals$1.doc.createComment('ExprPath:'+this.paths.length);
+					nodeBefore = Globals$1.doc.createComment('PathTo:'+this.paths.length);
 					node.parentNode.insertBefore(nodeBefore, node);
 				}
 				/*#IFDEV*/assert(nodeBefore);/*#ENDIF*/
@@ -2369,11 +2369,11 @@ class Shell {
 				// Re-use existing comment placeholder.
 				else {
 					nodeMarker = node;
-					nodeMarker.textContent = 'ExprPathEnd:'+ this.paths.length;
+					nodeMarker.textContent = 'PathToEnd:'+ this.paths.length;
 				}
 				/*#IFDEV*/assert(nodeMarker);/*#ENDIF*/
 
-				let path = new ExprPathNodes(nodeBefore, nodeMarker);
+				let path = new PathToNodes(nodeBefore, nodeMarker);
 				this.paths.push(path);
 				placeholdersUsed ++;
 			}
@@ -2390,7 +2390,7 @@ class Shell {
 			else if (node.nodeType === 8) { // Node.COMMENT_NODE
 				let parts = node.textContent.split(/[\ue000-\uf8ff]/g);
 				for (let i=0; i<parts.length-1; i++) {
-					let path = new ExprPath(node.previousSibling, node);
+					let path = new Path(node.previousSibling, node);
 					this.paths.push(path);
 					placeholdersUsed ++;
 				}
@@ -2410,7 +2410,7 @@ class Shell {
 					}
 
 					for (let i=0, node; node=placeholders[i]; i++) {
-						let path = new ExprPathNodes(node.previousSibling, node);
+						let path = new PathToNodes(node.previousSibling, node);
 						this.paths.push(path);
 						placeholdersUsed ++;
 
@@ -2461,17 +2461,17 @@ class Shell {
 
 			// Append -solarite-placholder to web component tags, so we can pass args to them when they're instantiated.
 			let lastIndex = 0;
-			let context = htmlParser.parse(lastHtml, (html, index, prevContext, nextContext) => { // This function is called every time the html context changes.
+			let context = htmlParser.parse(lastHtml, (html, index, prevContext/*, nextContext*/) => { // This function is called every time the html context changes.
 				if (lastIndex !== index) {
 					let token = html.slice(lastIndex, index);
 
 					if (prevContext === HtmlParser.Tag) {
 						// Find Web Component tags and append -solarite-placeholder to their tag names
 						// This way we can gather their constructor arguments and their children before we call their constructor.
-						// Later, ExprPathComponent.apply() will replace them with the real components.
+						// Later, PathToComponent.apply() will replace them with the real components.
 						// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 						const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i; // a dash in the middle
-						token = token.replace(isWebComponentTagName, match => match + '-solarite-placeholder');
+						token = token.replace(isWebComponentTagName, match => match + '-SOLARITE-PLACEHOLDER'); // caps to match other instances of this string, for better compression.
 					}
 
 					result.push(token);
@@ -2502,7 +2502,7 @@ class Shell {
 	findEmbeds() {
 		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => NodePath.get(el));
 
-		// TODO: only find styles that have ExprPaths in them?
+		// TODO: only find styles that have PathTos in them?
 		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => NodePath.get(el));
 
 		let idEls = this.fragment.querySelectorAll('[id],[data-id]');
@@ -2584,7 +2584,7 @@ class NodeGroup {
 	 * @Type {RootNodeGroup} */
 	rootNg;
 
-	/** @type {ExprPath} */
+	/** @type {PathTo} */
 	parentPath;
 
 	/** @type {Node|HTMLElement} First node of NodeGroup. Should never be null. */
@@ -2595,7 +2595,7 @@ class NodeGroup {
 	 * TODO: But sometimes startNode and endNode point to the same node.  Document htis inconsistency. */
 	endNode;
 
-	/** @type {ExprPath[]} */
+	/** @type {PathTo[]} */
 	paths = [];
 
 	/** @type {string} Key that matches the template and the expressions. */
@@ -2629,7 +2629,7 @@ class NodeGroup {
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * Don't call applyExprs() yet to apply expressions or instantiate components yet.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param parentPath {?ExprPath}
+	 * @param parentPath {?PathTo}
 	 * @param el {?HTMLElement} Optional, pre-existing htmlElement that will be the root.
 	 * @param options {?object} Only used for RootNodeGroup */
 	constructor(template, parentPath=null, el=null, options=null) {
@@ -2646,7 +2646,7 @@ class NodeGroup {
 		}
 
 		else {
-			// Get a cached version of the parsed and instantiated html, and ExprPaths:
+			// Get a cached version of the parsed and instantiated html, and PathTos:
 			const shell = Shell.get(template.html);
 			const shellFragment = shell.fragment.cloneNode(true);
 
@@ -2677,7 +2677,7 @@ class NodeGroup {
 						this.root = el;
 
 						// Save slot
-						// 1. Globals.currentSlotChildren is set if this is called via ExprPathComponent.applyComponent() calls render()
+						// 1. Globals.currentSlotChildren is set if this is called via PathToComponent.applyComponent() calls render()
 						// 2. el.childNodes is set if render() is called manually for the first time.
 						let slotChildren;
 						if (Globals$1.currentSlotChildren || el.childNodes.length) {
@@ -2735,7 +2735,7 @@ class NodeGroup {
 
 					// Exclude the path to ourself.  Otherwise we get infinite recursion.
 					// let paths = [...shell.paths];
-					// if (paths[0] instanceof ExprPathComponent)
+					// if (paths[0] instanceof PathToComponent)
 					// 	paths.shift();
 
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
@@ -2766,7 +2766,7 @@ class NodeGroup {
 	 * Dispatches expression handling to other functions depending on the path type.
 	 * @param exprs {(*|*[]|function|Template)[]}
 	 * @param changed {boolean} If true, the expr's have changed since the last time thsi function was called.
-	 * We still need to call ExprPathComponent.apply() even if changed=false so the user can handle the rendering. */
+	 * We still need to call PathToComponent.apply() even if changed=false so the user can handle the rendering. */
 	applyExprs(exprs, changed=true, others=true) {
 
 		/*#IFDEV*/
@@ -2777,15 +2777,15 @@ class NodeGroup {
 
 		// Things to consider:
 		// 1. Paths consume a varying number of expressions.
-		//    An ExprPathAttribs may use multipe expressions.  E.g. <div class="${1} ${2}">
-		//    While an ExprPathComponent uses zero.
-		// 2. An ExprPathComponent references other ExprPaths that set its attribute values.
+		//    An PathToAttribs may use multipe expressions.  E.g. <div class="${1} ${2}">
+		//    While an PathToComponent uses zero.
+		// 2. An PathToComponent references other PathTos that set its attribute values.
 		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
 		//    before its instantiated and its value attribute is set via an expression.
 		let exprIndex = exprs.length; // Update exprs at paths.
 		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
 		for (let i = paths.length - 1, path; path = paths[i]; i--) {
-			if (i===0 && path instanceof ExprPathComponent && path.nodeMarker === this.getRootNode())
+			if (i===0 && path instanceof PathToComponent && path.nodeMarker === this.getRootNode())
 				continue;
 
 			// Get the expressions associated with this path.
@@ -2795,7 +2795,7 @@ class NodeGroup {
 
 			// Component expressions don't have a corresponding user-provided expression.
 			// They use expressions from the paths that provide their attributes.
-			if (path instanceof ExprPathComponent) {
+			if (path instanceof PathToComponent) {
 				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
 				path.apply(attribExprs, true, changed);
 			}
@@ -2812,7 +2812,7 @@ class NodeGroup {
 
 		if (others) {
 
-			// TODO: Only do this if we have ExprPaths within styles?
+			// TODO: Only do this if we have PathTos within styles?
 			this.updateStyles();
 
 			// Invalidate the nodes cache because we just changed it.
@@ -2953,7 +2953,7 @@ class NodeGroup {
 
 					let tree = nodeToArrayTree(item, nextNode => {
 
-						let path = this.paths.find(path=>(path instanceof ExprPathNodes) && path.getNodes().includes(nextNode));
+						let path = this.paths.find(path=>(path instanceof PathToNodes) && path.getNodes().includes(nextNode));
 						if (path)
 							return [`Path.nodes:`]
 
@@ -2963,7 +2963,7 @@ class NodeGroup {
 					// TODO: How to indend nodes belonging to a path vs those that just occur after the path?
 					return flattenAndIndent(tree)
 				}
-				else if (item instanceof ExprPath)
+				else if (item instanceof Path)
 					return setIndent$1(item.debug, 1)
 			}).flat(), 1)
 		]
@@ -3103,7 +3103,7 @@ class Template {
 			Globals$1.rootNodeGroups.set(el, ng); // All tests still pass if this is commented out!
 		}
 
-		// Make sure the expresion count matches match the exprPath "hole" count.
+		// Make sure the expresion count matches match the PathTo "hole" count.
 		// This can happen if we try manually rendering one template to a NodeGroup that was created expecting a different template.
 		// These don't always have the same length, for example if one attribute has multiple expressions.
 		// if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
@@ -3707,11 +3707,8 @@ class Solarite extends HTMLElementAutoDefine {
 		// 2. Wrap render function so it always provides the attribs argument.
 		let originalRender = this.render;
 		this.render = (attribs, changed=true) => {
-			if (!attribs) {
-				let oldAttribs = Solarite.getAttribs(this);
-				attribs = oldAttribs;
-				// If we have to look up the attribs, we don't know if they changed or not.
-			}
+			if (!attribs) // If we have to look up the attribs, we don't know if they changed or not.
+				attribs = Solarite.getAttribs(this);
 			originalRender.call(this, attribs, changed);
 		};
 	}

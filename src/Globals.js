@@ -11,10 +11,10 @@ function reset() {
 		connected: new WeakSet(),
 
 		/**
-		 * ExprPath.applyExactNodes() sets this property when an expression is being accessed.
-		 * watch() then adds the ExprPath to the list of ExprPaths that should be re-rendered when the value changes.
-		 * @type {ExprPath}*/
-		currentExprPath: null,
+		 * PathTo.applyExactNodes() sets this property when an expression is being accessed.
+		 * watch() then adds the PathTo to the list of PathTos that should be re-rendered when the value changes.
+		 * @type {Path}*/
+		currentPathTo: null,
 
 		/**
 		 * Set by NodeGroup.instantiateComponent()
@@ -34,7 +34,7 @@ function reset() {
 		htmlProps: {},
 
 		/**
-		 * Used by ExprPath.applyEventAttrib()
+		 * Used by PathTo.applyEventAttrib()
 		 * @type {WeakMap<Node, Record<eventName:string, [original:function, bound:function, args:*[]]>>} */
 		nodeEvents: new WeakMap(),
 
@@ -61,7 +61,7 @@ function reset() {
 		/**
 		 * A map of individual untagged strings to their Templates.
 		 * This way we don't keep creating new Templates for the same string when re-rendering.
-		 * This is used by ExprPath.applyExactNodes()
+		 * This is used by PathTo.applyExactNodes()
 		 * @type {Record<string, Template>} */
 		//stringTemplates: {},
 

@@ -1,12 +1,12 @@
-import ExprPath from "./ExprPath.js";
+import PathTo from "./Path.js";
 import Util from "./Util.js";
 import delve from "./delve.js";
 import assert from "./assert.js";
 import Globals from "./Globals.js";
 
-export default class ExprPathComponent extends ExprPath {
+export default class PathToComponent extends PathTo {
 
-	/** @type {ExprPathAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
+	/** @type {PathToAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
 
 	constructor(nodeBefore, nodeMarker) {
@@ -14,10 +14,10 @@ export default class ExprPathComponent extends ExprPath {
 	}
 
 	/**
-	 * Call render() on the component pointed to by this ExprPath.
+	 * Call render() on the component pointed to by this PathTo.
 	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet.
 	 * @param exprs {Expr[][]} Expressions to evaluate for each attribute to pass to the constructor.
-	 * This is different than other ExprPath.apply() functions which only receive Expr[] and not Expr[][].
+	 * This is different than other PathTo.apply() functions which only receive Expr[] and not Expr[][].
 	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute.
 	 * @param freeNodeGroups {boolean} Used only by watch.js.
 	 * @param changed {boolean} True if the exprs have changed since the last time render() was called.*/
@@ -124,11 +124,11 @@ export default class ExprPathComponent extends ExprPath {
 	/**
 	 * @param newRoot {HTMLElement}
 	 * @param pathOffset {int}
-	 * @return {ExprPath} */
+	 * @return {PathTo} */
 	clone(newRoot, pathOffset=0) {
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
-		let result = new ExprPathComponent(null, nodeMarker);
+		let result = new PathToComponent(null, nodeMarker);
 		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
 
 		//#IFDEV
