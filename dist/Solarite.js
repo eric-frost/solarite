@@ -103,8 +103,8 @@ function reset() {
 		connected: new WeakSet(),
 
 		/**
-		 * PathTo.applyExactNodes() sets this property when an expression is being accessed.
-		 * watch() then adds the PathTo to the list of PathTos that should be re-rendered when the value changes.
+		 * Path.applyExactNodes() sets this property when an expression is being accessed.
+		 * watch() then adds the Path to the list of PathTos that should be re-rendered when the value changes.
 		 * @type {Path}*/
 		currentPathTo: null,
 
@@ -126,7 +126,7 @@ function reset() {
 		htmlProps: {},
 
 		/**
-		 * Used by PathTo.applyEventAttrib()
+		 * Used by Path.applyEventAttrib()
 		 * @type {WeakMap<Node, Record<eventName:string, [original:function, bound:function, args:*[]]>>} */
 		nodeEvents: new WeakMap(),
 
@@ -153,7 +153,7 @@ function reset() {
 		/**
 		 * A map of individual untagged strings to their Templates.
 		 * This way we don't keep creating new Templates for the same string when re-rendering.
-		 * This is used by PathTo.applyExactNodes()
+		 * This is used by Path.applyExactNodes()
 		 * @type {Record<string, Template>} */
 		//stringTemplates: {},
 
@@ -505,11 +505,11 @@ class Path {
 	// Used for attributes:
 
 	/**
-	 * @type {Node} Node that occurs before this PathTo's first Node.
-	 * This is necessary because udomdiff() can steal nodes from another PathTo.
+	 * @type {Node} Node that occurs before this Path's first Node.
+	 * This is necessary because udomdiff() can steal nodes from another Path.
 	 * If we had a pointer to our own startNode then that node could be moved somewhere else w/o us knowing it.
 	 * Used only for type='content'
-	 * Will be null if PathTo has no Nodes. */
+	 * Will be null if Path has no Nodes. */
 	nodeBefore;
 
 	/**
@@ -829,8 +829,8 @@ class PathToAttribValue extends Path {
 
 		// Regular attribute
 		else {
-			// Cache this on PathTo.isHtmlProperty when Shell creates the props.
-			// Have PathTo.clone() copy .isHtmlProperty?
+			// Cache this on Path.isHtmlProperty when Shell creates the props.
+			// Have Path.clone() copy .isHtmlProperty?
 			let isProp = this.isHtmlProperty;
 			if (isProp === undefined)
 				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
@@ -1396,8 +1396,8 @@ class PathToNodes extends Path {
 
 
 	/**
-	 * @type {?function} The most recent callback passed to a .map() function in this PathTo.  This is only used for watch.js
-	 * TODO: What if one PathTo has two .map() calls?  Maybe we just won't support that. */
+	 * @type {?function} The most recent callback passed to a .map() function in this Path.  This is only used for watch.js
+	 * TODO: What if one Path has two .map() calls?  Maybe we just won't support that. */
 	mapCallback;
 
 
@@ -1525,11 +1525,11 @@ class PathToNodes extends Path {
 	/**
 	 * Try to apply Nodes that are an exact match, by finding existing nodes from the last render
 	 * that have the same value as created by the expr.
-	 * This is called from PathTo.applyNodes().
+	 * This is called from Path.applyNodes().
 	 *
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]} An inout parameter; we add the nodes here as we go.
-	 * @param secondPass {[int, int][]} Locations within newNodes for PathTo.applyNodes() to evaluate later,
+	 * @param secondPass {[int, int][]} Locations within newNodes for Path.applyNodes() to evaluate later,
 	 *   when it tries to find partial matches. */
 	applyExactNodes(expr, newNodes, secondPass) {
 
@@ -1550,7 +1550,7 @@ class PathToNodes extends Path {
 				return ng;
 			}
 
-			// If expression, mark it to be evaluated later in PathTo.apply() to find partial match.
+			// If expression, mark it to be evaluated later in Path.apply() to find partial match.
 			else {
 				secondPass.push([newNodes.length, this.nodeGroups.length]);
 				newNodes.push(expr);
@@ -1656,7 +1656,7 @@ class PathToNodes extends Path {
 	}
 
 	/**
-	 * Clear the nodeCache of this PathTo, as well as all parent and child PathTos that
+	 * Clear the nodeCache of this Path, as well as all parent and child PathTos that
 	 * share the same DOM parent node. */
 	clearNodesCache() {
 		let path = this;
@@ -1673,7 +1673,7 @@ class PathToNodes extends Path {
 	}
 
 	/**
-	 * Attempt to remove all of this PathTo's nodes from the DOM, if it can be done using a special fast method.
+	 * Attempt to remove all of this Path's nodes from the DOM, if it can be done using a special fast method.
 	 * @returns {boolean} Returns false if Nodes weren't removed, and they should instead be removed manually. */
 	fastClear() {
 		let parent = this.nodeBefore.parentNode;
@@ -1715,7 +1715,7 @@ class PathToNodes extends Path {
 				this.exprToTemplates(subExpr, callback);
 
 		else if (typeof expr === 'function') {
-			// TODO: One PathTo can have multiple expr functions.
+			// TODO: One Path can have multiple expr functions.
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
 			Globals$1.currentPathTo = this; // Used by watch()
@@ -1925,10 +1925,10 @@ class PathToComponent extends Path {
 	}
 
 	/**
-	 * Call render() on the component pointed to by this PathTo.
+	 * Call render() on the component pointed to by this Path.
 	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet.
 	 * @param exprs {Expr[][]} Expressions to evaluate for each attribute to pass to the constructor.
-	 * This is different than other PathTo.apply() functions which only receive Expr[] and not Expr[][].
+	 * This is different than other Path.apply() functions which only receive Expr[] and not Expr[][].
 	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute.
 	 * @param freeNodeGroups {boolean} Used only by watch.js.
 	 * @param changed {boolean} True if the exprs have changed since the last time render() was called.*/
@@ -2030,7 +2030,7 @@ class PathToComponent extends Path {
 	/**
 	 * @param newRoot {HTMLElement}
 	 * @param pathOffset {int}
-	 * @return {PathTo} */
+	 * @return {Path} */
 	clone(newRoot, pathOffset=0) {
 		
 		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
@@ -2060,7 +2060,7 @@ class Shell {
 	 * @type {DocumentFragment|Text} DOM parent of the shell's nodes. */
 	fragment;
 
-	/** @type {PathTo[]} Paths to where expressions should go. */
+	/** @type {Path[]} Paths to where expressions should go. */
 	paths = [];
 
 	// Elements with events.  Is there a reason to use this?  We already mark event Exprs in Shell.js.
@@ -2176,7 +2176,7 @@ class Shell {
 				// Get or create nodeBefore.
 				let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
 				if (!nodeBefore) {
-					nodeBefore = Globals$1.doc.createComment('PathTo:'+this.paths.length);
+					nodeBefore = Globals$1.doc.createComment('Path:'+this.paths.length);
 					node.parentNode.insertBefore(nodeBefore, node);
 				}
 				
@@ -2399,7 +2399,7 @@ class NodeGroup {
 	 * @Type {RootNodeGroup} */
 	rootNg;
 
-	/** @type {PathTo} */
+	/** @type {Path} */
 	parentPath;
 
 	/** @type {Node|HTMLElement} First node of NodeGroup. Should never be null. */
@@ -2410,7 +2410,7 @@ class NodeGroup {
 	 * TODO: But sometimes startNode and endNode point to the same node.  Document htis inconsistency. */
 	endNode;
 
-	/** @type {PathTo[]} */
+	/** @type {Path[]} */
 	paths = [];
 
 	/** @type {string} Key that matches the template and the expressions. */
@@ -2444,7 +2444,7 @@ class NodeGroup {
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * Don't call applyExprs() yet to apply expressions or instantiate components yet.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param parentPath {?PathTo}
+	 * @param parentPath {?Path}
 	 * @param el {?HTMLElement} Optional, pre-existing htmlElement that will be the root.
 	 * @param options {?object} Only used for RootNodeGroup */
 	constructor(template, parentPath=null, el=null, options=null) {
@@ -2775,7 +2775,12 @@ function isReplaceEl(fragment, tagName) {
 		&& fragment.children[0].tagName.replace('-SOLARITE-PLACEHOLDER', '') === tagName;
 }
 
-class RootNodeGroup extends NodeGroup {}
+class RootNodeGroup extends NodeGroup {
+
+	// Used only by watch.js
+	exprsToRender;
+
+}
 
 /**
  * The html strings and evaluated expressions from an html tagged template.
@@ -2838,7 +2843,7 @@ class Template {
 			Globals$1.rootNodeGroups.set(el, ng); // All tests still pass if this is commented out!
 		}
 
-		// Make sure the expresion count matches match the PathTo "hole" count.
+		// Make sure the expresion count matches match the Path "hole" count.
 		// This can happen if we try manually rendering one template to a NodeGroup that was created expecting a different template.
 		// These don't always have the same length, for example if one attribute has multiple expressions.
 		// if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)

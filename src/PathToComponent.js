@@ -1,10 +1,10 @@
-import PathTo from "./Path.js";
+import Path from "./Path.js";
 import Util from "./Util.js";
 import delve from "./delve.js";
 import assert from "./assert.js";
 import Globals from "./Globals.js";
 
-export default class PathToComponent extends PathTo {
+export default class PathToComponent extends Path {
 
 	/** @type {PathToAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
@@ -14,10 +14,10 @@ export default class PathToComponent extends PathTo {
 	}
 
 	/**
-	 * Call render() on the component pointed to by this PathTo.
+	 * Call render() on the component pointed to by this Path.
 	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet.
 	 * @param exprs {Expr[][]} Expressions to evaluate for each attribute to pass to the constructor.
-	 * This is different than other PathTo.apply() functions which only receive Expr[] and not Expr[][].
+	 * This is different than other Path.apply() functions which only receive Expr[] and not Expr[][].
 	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute.
 	 * @param freeNodeGroups {boolean} Used only by watch.js.
 	 * @param changed {boolean} True if the exprs have changed since the last time render() was called.*/
@@ -124,7 +124,7 @@ export default class PathToComponent extends PathTo {
 	/**
 	 * @param newRoot {HTMLElement}
 	 * @param pathOffset {int}
-	 * @return {PathTo} */
+	 * @return {Path} */
 	clone(newRoot, pathOffset=0) {
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);

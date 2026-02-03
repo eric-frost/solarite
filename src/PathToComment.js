@@ -1,7 +1,7 @@
-import PathTo from "./Path.js";
+import Path from "./Path.js";
 
-// This PathTo renders nothing.
-export default class PathToComment extends PathTo {
+// This Path renders nothing.
+export default class PathToComment extends Path {
 	constructor(nodeBefore, nodeMarker) {
 		super(nodeBefore, nodeMarker);
 	}

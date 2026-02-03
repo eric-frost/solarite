@@ -1,8 +1,8 @@
-import PathTo from "./Path.js";
+import Path from "./Path.js";
 import Globals from "./Globals.js";
 import assert from "./assert.js";
 
-export default class PathToAttribs extends PathTo {
+export default class PathToAttribs extends Path {
 
 	/**
 	 * @type {Set<string>} Used for type=AttribType.Multiple to remember the attributes that were added. */

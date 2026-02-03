@@ -1,10 +1,10 @@
-import PathTo from "./Path.js";
+import Path from "./Path.js";
 import Globals from "./Globals.js";
 import Util from "./Util.js";
 import delve from "./delve.js";
 import assert from "./assert.js";
 
-export default class PathToAttribValue extends PathTo {
+export default class PathToAttribValue extends Path {
 
 
 	/** @type {?string} Used only if type=AttribType.Value. */
@@ -99,8 +99,8 @@ export default class PathToAttribValue extends PathTo {
 
 		// Regular attribute
 		else {
-			// Cache this on PathTo.isHtmlProperty when Shell creates the props.
-			// Have PathTo.clone() copy .isHtmlProperty?
+			// Cache this on Path.isHtmlProperty when Shell creates the props.
+			// Have Path.clone() copy .isHtmlProperty?
 			let isProp = this.isHtmlProperty;
 			if (isProp === undefined)
 				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);

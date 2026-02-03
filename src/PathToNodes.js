@@ -1,4 +1,4 @@
-import PathTo from "./Path.js";
+import Path from "./Path.js";
 import assert from "./assert.js";
 import NodeGroup from "./NodeGroup.js";
 import Util from "./Util.js";
@@ -7,12 +7,12 @@ import Template from "./Template.js";
 import Globals from "./Globals.js";
 import MultiValueMap from "./MultiValueMap.js";
 
-export default class PathToNodes extends PathTo {
+export default class PathToNodes extends Path {
 
 
 	/**
-	 * @type {?function} The most recent callback passed to a .map() function in this PathTo.  This is only used for watch.js
-	 * TODO: What if one PathTo has two .map() calls?  Maybe we just won't support that. */
+	 * @type {?function} The most recent callback passed to a .map() function in this Path.  This is only used for watch.js
+	 * TODO: What if one Path has two .map() calls?  Maybe we just won't support that. */
 	mapCallback;
 
 
@@ -142,11 +142,11 @@ export default class PathToNodes extends PathTo {
 	/**
 	 * Try to apply Nodes that are an exact match, by finding existing nodes from the last render
 	 * that have the same value as created by the expr.
-	 * This is called from PathTo.applyNodes().
+	 * This is called from Path.applyNodes().
 	 *
 	 * @param expr {Template|Node|Array|function|*}
 	 * @param newNodes {(Node|Template)[]} An inout parameter; we add the nodes here as we go.
-	 * @param secondPass {[int, int][]} Locations within newNodes for PathTo.applyNodes() to evaluate later,
+	 * @param secondPass {[int, int][]} Locations within newNodes for Path.applyNodes() to evaluate later,
 	 *   when it tries to find partial matches. */
 	applyExactNodes(expr, newNodes, secondPass) {
 
@@ -167,7 +167,7 @@ export default class PathToNodes extends PathTo {
 				return ng;
 			}
 
-			// If expression, mark it to be evaluated later in PathTo.apply() to find partial match.
+			// If expression, mark it to be evaluated later in Path.apply() to find partial match.
 			else {
 				secondPass.push([newNodes.length, this.nodeGroups.length])
 				newNodes.push(expr)
@@ -278,7 +278,7 @@ export default class PathToNodes extends PathTo {
 	}
 
 	/**
-	 * Clear the nodeCache of this PathTo, as well as all parent and child PathTos that
+	 * Clear the nodeCache of this Path, as well as all parent and child PathTos that
 	 * share the same DOM parent node. */
 	clearNodesCache() {
 		let path = this;
@@ -295,7 +295,7 @@ export default class PathToNodes extends PathTo {
 	}
 
 	/**
-	 * Attempt to remove all of this PathTo's nodes from the DOM, if it can be done using a special fast method.
+	 * Attempt to remove all of this Path's nodes from the DOM, if it can be done using a special fast method.
 	 * @returns {boolean} Returns false if Nodes weren't removed, and they should instead be removed manually. */
 	fastClear() {
 		let parent = this.nodeBefore.parentNode;
@@ -337,7 +337,7 @@ export default class PathToNodes extends PathTo {
 				this.exprToTemplates(subExpr, callback);
 
 		else if (typeof expr === 'function') {
-			// TODO: One PathTo can have multiple expr functions.
+			// TODO: One Path can have multiple expr functions.
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
 			Globals.currentPathTo = this; // Used by watch()

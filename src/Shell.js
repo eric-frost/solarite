@@ -1,5 +1,5 @@
 import assert from "./assert.js";
-import PathTo from "./Path.js";
+import Path from "./Path.js";
 import Util from "./Util.js";
 import Globals from "./Globals.js";
 import HtmlParser from "./HtmlParser.js";
@@ -23,7 +23,7 @@ export default class Shell {
 	 * @type {DocumentFragment|Text} DOM parent of the shell's nodes. */
 	fragment;
 
-	/** @type {PathTo[]} Paths to where expressions should go. */
+	/** @type {Path[]} Paths to where expressions should go. */
 	paths = [];
 
 	// Elements with events.  Is there a reason to use this?  We already mark event Exprs in Shell.js.
@@ -141,7 +141,7 @@ export default class Shell {
 				// Get or create nodeBefore.
 				let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
 				if (!nodeBefore) {
-					nodeBefore = Globals.doc.createComment('PathTo:'+this.paths.length);
+					nodeBefore = Globals.doc.createComment('Path:'+this.paths.length);
 					node.parentNode.insertBefore(nodeBefore, node)
 				}
 				/*#IFDEV*/assert(nodeBefore);/*#ENDIF*/
@@ -178,7 +178,7 @@ export default class Shell {
 			else if (node.nodeType === 8) { // Node.COMMENT_NODE
 				let parts = node.textContent.split(/[\ue000-\uf8ff]/g);
 				for (let i=0; i<parts.length-1; i++) {
-					let path = new PathTo(node.previousSibling, node)
+					let path = new Path(node.previousSibling, node)
 					this.paths.push(path);
 					placeholdersUsed ++;
 				}

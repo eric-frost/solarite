@@ -2,7 +2,7 @@ import assert from "./assert.js";
 import Util, {flattenAndIndent, nodeToArrayTree, setIndent} from "./Util.js";
 import Shell from "./Shell.js";
 import RootNodeGroup from './RootNodeGroup.js';
-import PathTo from "./Path.js";
+import Path from "./Path.js";
 import Globals from './Globals.js';
 import NodePath from "./NodePath.js";
 import PathToComponent from "./PathToComponent.js";
@@ -25,7 +25,7 @@ export default class NodeGroup {
 	 * @Type {RootNodeGroup} */
 	rootNg;
 
-	/** @type {PathTo} */
+	/** @type {Path} */
 	parentPath;
 
 	/** @type {Node|HTMLElement} First node of NodeGroup. Should never be null. */
@@ -36,7 +36,7 @@ export default class NodeGroup {
 	 * TODO: But sometimes startNode and endNode point to the same node.  Document htis inconsistency. */
 	endNode;
 
-	/** @type {PathTo[]} */
+	/** @type {Path[]} */
 	paths = [];
 
 	/** @type {string} Key that matches the template and the expressions. */
@@ -70,7 +70,7 @@ export default class NodeGroup {
 	 * Create an "instantiated" NodeGroup from a Template and add it to an element.
 	 * Don't call applyExprs() yet to apply expressions or instantiate components yet.
 	 * @param template {Template}  Create it from the html strings and expressions in this template.
-	 * @param parentPath {?PathTo}
+	 * @param parentPath {?Path}
 	 * @param el {?HTMLElement} Optional, pre-existing htmlElement that will be the root.
 	 * @param options {?object} Only used for RootNodeGroup */
 	constructor(template, parentPath=null, el=null, options=null) {
@@ -404,7 +404,7 @@ export default class NodeGroup {
 					// TODO: How to indend nodes belonging to a path vs those that just occur after the path?
 					return flattenAndIndent(tree)
 				}
-				else if (item instanceof PathTo)
+				else if (item instanceof Path)
 					return setIndent(item.debug, 1)
 			}).flat(), 1)
 		]

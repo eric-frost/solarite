@@ -48,12 +48,12 @@ window.getHtml = (item, includeComments=false) => {
   └─────────────────╯*/
 Testimony.test('Solarite.Shell.empty', () => {
 	let shell = new Shell(['', ''])
-	assert.eq(getHtml(shell, true), '<!--PathTo:0-->|<!--PathToEnd:0-->')
+	assert.eq(getHtml(shell, true), '<!--Path:0-->|<!--PathToEnd:0-->')
 });
 
 Testimony.test('Solarite.Shell.paragraph', () => {
 	let shell = new Shell(['<p>', '</p>'])
-	assert.eq(getHtml(shell, true), '<p><!--PathTo:0--><!--PathToEnd:0--></p>')
+	assert.eq(getHtml(shell, true), '<p><!--Path:0--><!--PathToEnd:0--></p>')
 });
 
 Testimony.test('Solarite.Shell.nodeBefore', () => {
@@ -63,7 +63,7 @@ Testimony.test('Solarite.Shell.nodeBefore', () => {
 
 Testimony.test('Solarite.Shell.nodeAfter', () => {
 	let shell = new Shell(['', 'b'])
-	assert.eq(getHtml(shell, true), '<!--PathTo:0-->|b')
+	assert.eq(getHtml(shell, true), '<!--Path:0-->|b')
 });
 
 Testimony.test('Solarite.Shell.nodeBeforeAfter', () => {
@@ -73,12 +73,12 @@ Testimony.test('Solarite.Shell.nodeBeforeAfter', () => {
 
 Testimony.test('Solarite.Shell.emptyTwoPaths', () => {
 	let shell = new Shell(['', '', ''])
-	assert.eq(getHtml(shell, true), '<!--PathTo:0-->|<!--PathToEnd:0-->|<!--PathToEnd:1-->')
+	assert.eq(getHtml(shell, true), '<!--Path:0-->|<!--PathToEnd:0-->|<!--PathToEnd:1-->')
 });
 
 Testimony.test('Solarite.Shell.nodeBetweenPaths', () => {
 	let shell = new Shell(['', 'a', ''])
-	assert.eq(getHtml(shell, true), '<!--PathTo:0-->|a|<!--PathToEnd:1-->')
+	assert.eq(getHtml(shell, true), '<!--Path:0-->|a|<!--PathToEnd:1-->')
 });
 
 Testimony.test('Solarite.Shell.nodesAroundPaths', () => {
@@ -88,7 +88,7 @@ Testimony.test('Solarite.Shell.nodesAroundPaths', () => {
 
 Testimony.test('Solarite.Shell.emptyTwoPathsNested', () => {
 	let shell = new Shell(['<p>', '', '</p>'])
-	assert.eq(getHtml(shell, true), '<p><!--PathTo:0--><!--PathToEnd:0--><!--PathToEnd:1--></p>')
+	assert.eq(getHtml(shell, true), '<p><!--Path:0--><!--PathToEnd:0--><!--PathToEnd:1--></p>')
 });
 
 Testimony.test('Solarite.Shell.nodesAroundPathsNested', () => {
@@ -1338,7 +1338,7 @@ Testimony.test('Solarite.loop.nested5', () => {
 	]
 	a.render();
 
-	assert.eq(a.outerHTML, `<a-227><!--PathTo:1--><!--PathTo:0--><div title="F2"><!--PathTo:1-->A<!--PathToEnd:1--></div><div title="F2"><!--PathTo:1-->B<!--PathToEnd:1--></div><!--PathToEnd:0--><!--PathTo:0--><div title="F2"><!--PathTo:1-->A<!--PathToEnd:1--></div><!--PathToEnd:0--><!--PathToEnd:1--></a-227>`);
+	assert.eq(a.outerHTML, `<a-227><!--Path:1--><!--Path:0--><div title="F2"><!--Path:1-->A<!--PathToEnd:1--></div><div title="F2"><!--Path:1-->B<!--PathToEnd:1--></div><!--PathToEnd:0--><!--Path:0--><div title="F2"><!--Path:1-->A<!--PathToEnd:1--></div><!--PathToEnd:0--><!--PathToEnd:1--></a-227>`);
 
 	window.verify = false;
 	a.remove();
@@ -2299,7 +2299,7 @@ Testimony.test('Solarite.attrib.inputValue', 'Make sure we can one-way bind to t
 
 
 	// Simulate typing.
-	// This caused reseting it to '2' below to fail until I modified PathTo.applyValueAttrib()
+	// This caused reseting it to '2' below to fail until I modified Path.applyValueAttrib()
 	a.input.value += '3'
 	assert.eq(a.input.value, '13');
 
@@ -2326,7 +2326,7 @@ Testimony.test('Solarite.attrib.textareaValue', 'Make sure we can one-way bind t
 
 
 	// Simulate typing.
-	// This caused reseting it to '2' below to fail until I modified PathTo.applyValueAttrib()
+	// This caused reseting it to '2' below to fail until I modified Path.applyValueAttrib()
 	a.textarea.value += '3'
 	assert.eq(a.textarea.value, '103');
 
@@ -2353,7 +2353,7 @@ Testimony.test('Solarite.attrib.contenteditableValue', 'Make sure we can one-way
 
 
 	// Simulate typing.
-	// This caused reseting it to '2' below to fail until I modified PathTo.applyValueAttrib()
+	// This caused reseting it to '2' below to fail until I modified Path.applyValueAttrib()
 	a.contenteditable.innerHTML += '3'
 	assert.eq(a.contenteditable.innerHTML, '103');
 
@@ -3183,7 +3183,7 @@ Testimony.test('Solarite.component.componentWithDynamicAttribsFromExpr', () => {
 
 	renderCount=0;
 	a.render();
-	// This only works because PathTo.applyExactNodes() calls applyExprs() if the NodeGroup has a web component.
+	// This only works because Path.applyExactNodes() calls applyExprs() if the NodeGroup has a web component.
 	assert.eq(renderCount, 1);
 });
 
@@ -3474,7 +3474,7 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 			construct++;
 		}
 
-		// The code at the end of PathTo.applyValueAttrib() updates the user property when the attribute changes.
+		// The code at the end of Path.applyValueAttrib() updates the user property when the attribute changes.
 		// So we don't need to intercept the props passed to render()
 		render(attribs=null) { // Props is set when re-rendering, so we don't have to recreate the whole component.
 			if (attribs?.user)
@@ -3912,7 +3912,7 @@ Testimony.test('Solarite.binding.contenteditable', () => {
 	b.remove();
 });
 
-// TODO: Set select.value when option children are rendered and don't exist when the value attrib is evaluated by PathTo.applyValueAttrib()
+// TODO: Set select.value when option children are rendered and don't exist when the value attrib is evaluated by Path.applyValueAttrib()
 Testimony.test('Solarite.binding.select', () => {
 
 	class B30 extends Solarite {

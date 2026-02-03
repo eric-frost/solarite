@@ -7,11 +7,11 @@ export default class Path {
 	// Used for attributes:
 
 	/**
-	 * @type {Node} Node that occurs before this PathTo's first Node.
-	 * This is necessary because udomdiff() can steal nodes from another PathTo.
+	 * @type {Node} Node that occurs before this Path's first Node.
+	 * This is necessary because udomdiff() can steal nodes from another Path.
 	 * If we had a pointer to our own startNode then that node could be moved somewhere else w/o us knowing it.
 	 * Used only for type='content'
-	 * Will be null if PathTo has no Nodes. */
+	 * Will be null if Path has no Nodes. */
 	nodeBefore;
 
 	/**
