@@ -8,7 +8,6 @@ JavasCript UI library
 https://vorticode.github.io/solarite/ */
 import h from './h.js';
 export default h;
-export {default as h} from './h.js'; //Named exports for h() are deprecated.
 export {default as delve} from './delve.js';
 export {default as Template} from './Template.js';
 export {default as toEl} from './toEl.js';
@@ -21,6 +20,7 @@ export {default as SolariteUtil} from './Util.js';
 
 // Deprecated:
 //--------------
+export {default as h} from './h.js'; // Named exports for h() are deprecated.
 export {getArg, ArgType} from './getArg.js';
 export {setArgs} from './getArg.js';
 export {default as r} from './h.js';

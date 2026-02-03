@@ -596,7 +596,6 @@ class Path {
 	/** @type {NodeGroup[]} */
 	nodeGroups = [];
 
-
 	// Caches to make things faster
 
 	/**
@@ -611,7 +610,6 @@ class Path {
 	/**
 	 * @type {int[]} Path to the node marker, in reverse for performance reasons. */
 	nodeMarkerPath;
-
 
 	/** @type {?function} A function called by renderWatched() to update the value of this expression. */
 	watchFunction
@@ -705,6 +703,9 @@ class Path {
 		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
 
 		result.isComponentAttrib = this.isComponentAttrib;
+
+		// TODO: Put this in PathToAttribValue.clone().
+		result.isHtmlProperty = this.isHtmlProperty;
 
 		//#IFDEV
 		result.verify();
@@ -868,7 +869,6 @@ HtmlParser.Tag = 'Tag';
 
 class PathToAttribValue extends Path {
 
-
 	/** @type {?string} Used only if type=AttribType.Value. */
 	attrName;
 
@@ -887,7 +887,6 @@ class PathToAttribValue extends Path {
 	/**
 	 * Set the value of an attribute.  This can be for any attribute, not just attributes named "value".
 	 * @param exprs {Expr[]} */
-	// TODO: node is always this.nodeMarker?
 	apply(exprs) {
 		//#IFDEV
 		assert(Array.isArray(exprs));
@@ -908,9 +907,10 @@ class PathToAttribValue extends Path {
 
 			// Don't bind events to component placeholders.
 			// PathToComponent will do the binding later when it instantiates the component.
-			if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
+			if (this.isComponentAttrib && node.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
 				return;
 
+			/** @type {[Object, string[]]} */
 			let [obj, path] = [expr[0], expr.slice(1)];
 
 			if (!obj)
@@ -964,8 +964,6 @@ class PathToAttribValue extends Path {
 			// Cache this on Path.isHtmlProperty when Shell creates the props.
 			// Have Path.clone() copy .isHtmlProperty?
 			let isProp = this.isHtmlProperty;
-			if (isProp === undefined)
-				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
 			if (!multiple) {
@@ -1004,7 +1002,6 @@ class PathToAttribValue extends Path {
 
 				// Only update attributes if the value has changed.
 				// This is needed for setting input.value, .checked, option.selected, etc.
-
 				let oldVal = isProp
 					? node[this.attrName]
 					: node.getAttribute(this.attrName);
@@ -2305,6 +2302,7 @@ class Shell {
 							let path = Util.isEvent(attr.name)
 								? new PathToEvent(null, node, attr.name, nonEmptyParts)
 								: new PathToAttribValue(null, node, attr.name, nonEmptyParts);
+							path.isHtmlProperty = Util.isHtmlProp(node, attr.name);
 							this.paths.push(path);
 							if (isComponent) {
 								path.isComponentAttrib = true;
@@ -3275,11 +3273,11 @@ const addChild = (template, html, exprs) => {
 /**
  * Convert a template, string, or object into a DOM Node or Element
  *
- * 1. h('Hello');                      // Create single text node.
- * 2. h('<b>Hello</b>');               // Create single HTMLElement
- * 3. h('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
- * 4. h(template)                      // Render Template created by h`<html>` or h();
- * 5. h({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
+ * 1. toEl('Hello');                      // Create single text node.
+ * 2. toEl('<b>Hello</b>');               // Create single HTMLElement
+ * 3. toEl('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
+ * 4. toEl(template)                      // Render Template created by h`<html>` or h();
+ * 5. toEl({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
  * @param arg {string|Template|{render:()=>void}}
  * @returns {Node|DocumentFragment|HTMLElement} */
 function toEl(arg) {
@@ -3310,7 +3308,7 @@ function toEl(arg) {
 		return arg.render();
 	}
 
-		// 5. Create dynamic element from an object with a render() function.
+	// 5. Create dynamic element from an object with a render() function.
 	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (arg && typeof arg === 'object') {
 		let obj = arg;
@@ -3346,7 +3344,6 @@ function toEl(arg) {
 	}
 
 	throw new Error('toEl() does not support argument of type: ' + (arg ? typeof arg : arg));
-
 }
 
 

@@ -1,15 +1,15 @@
 import Globals from "./Globals.js";
-import {Template} from "./Solarite.js";
+import Template from "./Template.js";
 import Util from "./Util.js";
 
 /**
  * Convert a template, string, or object into a DOM Node or Element
  *
- * 1. h('Hello');                      // Create single text node.
- * 2. h('<b>Hello</b>');               // Create single HTMLElement
- * 3. h('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
- * 4. h(template)                      // Render Template created by h`<html>` or h();
- * 5. h({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
+ * 1. toEl('Hello');                      // Create single text node.
+ * 2. toEl('<b>Hello</b>');               // Create single HTMLElement
+ * 3. toEl('<b>Hello</b><u>Goodbye</u>'); // Create document fragment because there's more than one node.
+ * 4. toEl(template)                      // Render Template created by h`<html>` or h();
+ * 5. toEl({render(){...}})               // Pass an object with a render method, and optionally other props/methods.
  * @param arg {string|Template|{render:()=>void}}
  * @returns {Node|DocumentFragment|HTMLElement} */
 export default function toEl(arg) {
@@ -40,7 +40,7 @@ export default function toEl(arg) {
 		return arg.render();
 	}
 
-		// 5. Create dynamic element from an object with a render() function.
+	// 5. Create dynamic element from an object with a render() function.
 	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (arg && typeof arg === 'object') {
 		let obj = arg;
@@ -76,7 +76,6 @@ export default function toEl(arg) {
 	}
 
 	throw new Error('toEl() does not support argument of type: ' + (arg ? typeof arg : arg));
-
 }
 
 

@@ -106,6 +106,7 @@ export default class Shell {
 							let path = Util.isEvent(attr.name)
 								? new PathToEvent(null, node, attr.name, nonEmptyParts)
 								: new PathToAttribValue(null, node, attr.name, nonEmptyParts);
+							path.isHtmlProperty = Util.isHtmlProp(node, attr.name);
 							this.paths.push(path);
 							if (isComponent) {
 								path.isComponentAttrib = true;

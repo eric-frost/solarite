@@ -30,7 +30,6 @@ export default class Path {
 	/** @type {NodeGroup[]} */
 	nodeGroups = [];
 
-
 	// Caches to make things faster
 
 	/**
@@ -45,7 +44,6 @@ export default class Path {
 	/**
 	 * @type {int[]} Path to the node marker, in reverse for performance reasons. */
 	nodeMarkerPath;
-
 
 	/** @type {?function} A function called by renderWatched() to update the value of this expression. */
 	watchFunction
@@ -139,6 +137,9 @@ export default class Path {
 		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
 
 		result.isComponentAttrib = this.isComponentAttrib;
+
+		// TODO: Put this in PathToAttribValue.clone().
+		result.isHtmlProperty = this.isHtmlProperty;
 
 		//#IFDEV
 		result.verify();

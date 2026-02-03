@@ -6,7 +6,6 @@ import assert from "./assert.js";
 
 export default class PathToAttribValue extends Path {
 
-
 	/** @type {?string} Used only if type=AttribType.Value. */
 	attrName;
 
@@ -25,7 +24,6 @@ export default class PathToAttribValue extends Path {
 	/**
 	 * Set the value of an attribute.  This can be for any attribute, not just attributes named "value".
 	 * @param exprs {Expr[]} */
-	// TODO: node is always this.nodeMarker?
 	apply(exprs) {
 		//#IFDEV
 		assert(Array.isArray(exprs));
@@ -46,9 +44,10 @@ export default class PathToAttribValue extends Path {
 
 			// Don't bind events to component placeholders.
 			// PathToComponent will do the binding later when it instantiates the component.
-			if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
+			if (this.isComponentAttrib && node.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
 				return;
 
+			/** @type {[Object, string[]]} */
 			let [obj, path] = [expr[0], expr.slice(1)];
 
 			if (!obj)
@@ -102,8 +101,6 @@ export default class PathToAttribValue extends Path {
 			// Cache this on Path.isHtmlProperty when Shell creates the props.
 			// Have Path.clone() copy .isHtmlProperty?
 			let isProp = this.isHtmlProperty;
-			if (isProp === undefined)
-				isProp = this.isHtmlProperty = Util.isHtmlProp(node, this.attrName);
 
 			// Values to toggle an attribute
 			if (!multiple) {
@@ -142,7 +139,6 @@ export default class PathToAttribValue extends Path {
 
 				// Only update attributes if the value has changed.
 				// This is needed for setting input.value, .checked, option.selected, etc.
-
 				let oldVal = isProp
 					? node[this.attrName]
 					: node.getAttribute(this.attrName);
