@@ -4,7 +4,6 @@ import Shell from "./Shell.js";
 import RootNodeGroup from './RootNodeGroup.js';
 import Path from "./Path.js";
 import Globals from './Globals.js';
-import NodePath from "./NodePath.js";
 import PathToComponent from "./PathToComponent.js";
 import PathToNodes from "./PathToNodes.js";
 
@@ -346,7 +345,7 @@ export default class NodeGroup {
 				for (let path of shell.ids) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
-					let el = NodePath.resolve(root, path);
+					let el = Path.resolve(root, path);
 					Util.bindId(rootEl, el);
 				}
 			}
@@ -360,7 +359,7 @@ export default class NodeGroup {
 						path = path.slice(0, -pathOffset);
 
 					/** @type {HTMLStyleElement} */
-					let style = NodePath.resolve(root, path);
+					let style = Path.resolve(root, path);
 					if (rootEl.nodeType === 1) {
 						Util.bindStyles(style, rootEl);
 						this.styles.set(style, style.textContent);
@@ -373,7 +372,7 @@ export default class NodeGroup {
 				for (let path of shell.scripts) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
-					let script = NodePath.resolve(root, path);
+					let script = Path.resolve(root, path);
 					eval(script.textContent)
 				}
 			}

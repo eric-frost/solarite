@@ -718,6 +718,30 @@ class Path {
 		return [this.nodeMarker];
 	}
 
+	/** @return {int[]} Returns indices in reverse order, because doing it that way is faster. */
+	static get(node) {
+		let result = [];
+		while(true) {
+			let parent = node.parentNode;
+			if (!parent)
+				break;
+			result.push(Array.prototype.indexOf.call(node.parentNode.childNodes, node));
+			node = parent;
+		}
+		return result;
+	}
+
+	/**
+	 * Note that the path is backward, with the outermost element at the end.
+	 * @param root {HTMLElement|Document|DocumentFragment|ParentNode}
+	 * @param path {int[]}
+	 * @returns {Node|HTMLElement|HTMLStyleElement} */
+	static resolve(root, path) {
+		for (let i=path.length-1; i>=0; i--)
+			root = root.childNodes[path[i]];
+		return root;
+	}
+
 	//#IFDEV
 
 	/** @return {HTMLElement|ParentNode} */
@@ -2046,33 +2070,6 @@ class PathToNodes extends Path {
 	//#ENDIF
 }
 
-var NodePath = {
-
-	/** @return {int[]} Returns indices in reverse order, because doing it that way is faster. */
-	get(node) {
-		let result = [];
-		while(true) {
-			let parent = node.parentNode;
-			if (!parent)
-				break;
-			result.push(Array.prototype.indexOf.call(node.parentNode.childNodes, node));
-			node = parent;
-		}
-		return result;
-	},
-
-	/**
-	 * Note that the path is backward, with the outermost element at the end.
-	 * @param root {HTMLElement|Document|DocumentFragment|ParentNode}
-	 * @param path {int[]}
-	 * @returns {Node|HTMLElement|HTMLStyleElement} */
-	resolve(root, path) {
-		for (let i=path.length-1; i>=0; i--)
-			root = root.childNodes[path[i]];
-		return root;
-	}
-};
-
 class PathToComponent extends Path {
 
 	/** @type {PathToAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
@@ -2434,7 +2431,7 @@ class Shell {
 				path.nodeBeforeIndex = Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore);
 
 			// Must be calculated after we remove the toRemove nodes:
-			path.nodeMarkerPath = NodePath.get(path.nodeMarker);
+			path.nodeMarkerPath = Path.get(path.nodeMarker);
 
 
 		}
@@ -2500,10 +2497,10 @@ class Shell {
 	 * this.ids
 	 * this.staticComponents */
 	findEmbeds() {
-		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => NodePath.get(el));
+		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => Path.get(el));
 
 		// TODO: only find styles that have PathTos in them?
-		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => NodePath.get(el));
+		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => Path.get(el));
 
 		let idEls = this.fragment.querySelectorAll('[id],[data-id]');
 
@@ -2514,24 +2511,7 @@ class Shell {
 				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement id property.`)
 		}
 
-		this.ids = Array.prototype.map.call(idEls, el => NodePath.get(el));
-
-		/*
-		for (let el of this.fragment.querySelectorAll('*')) {
-			if (el.tagName.includes('-') || el.hasAttribute('_is')) {
-
-				let path = NodePath.get(el);
-				this.componentPaths.push(path);
-
-
-				// Dynamic components are components that have attributes with expression values.
-				// They are created from applyExprs()
-				// But static components are created in a separate path inside the NodeGroup constructor.
-				if (!this.paths.find(path => path.nodeMarker === el))
-					this.staticComponentPaths.push(path);
-			}
-		}
-		*/
+		this.ids = Array.prototype.map.call(idEls, el => Path.get(el));
 	}
 
 	/**
@@ -2905,7 +2885,7 @@ class NodeGroup {
 				for (let path of shell.ids) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
-					let el = NodePath.resolve(root, path);
+					let el = Path.resolve(root, path);
 					Util.bindId(rootEl, el);
 				}
 			}
@@ -2919,7 +2899,7 @@ class NodeGroup {
 						path = path.slice(0, -pathOffset);
 
 					/** @type {HTMLStyleElement} */
-					let style = NodePath.resolve(root, path);
+					let style = Path.resolve(root, path);
 					if (rootEl.nodeType === 1) {
 						Util.bindStyles(style, rootEl);
 						this.styles.set(style, style.textContent);
@@ -2932,7 +2912,7 @@ class NodeGroup {
 				for (let path of shell.scripts) {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
-					let script = NodePath.resolve(root, path);
+					let script = Path.resolve(root, path);
 					eval(script.textContent);
 				}
 			}

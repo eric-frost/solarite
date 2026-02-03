@@ -7,7 +7,6 @@ import PathToEvent from "./PathToEvent.js";
 import PathToAttribValue from "./PathToAttribValue.js";
 import PathToAttribs from "./PathToAttribs.js";
 import PathToNodes from "./PathToNodes.js";
-import NodePath from "./NodePath.js";
 import PathToComponent from "./PathToComponent.js";
 
 /**
@@ -222,7 +221,7 @@ export default class Shell {
 				path.nodeBeforeIndex = Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore)
 
 			// Must be calculated after we remove the toRemove nodes:
-			path.nodeMarkerPath = NodePath.get(path.nodeMarker)
+			path.nodeMarkerPath = Path.get(path.nodeMarker)
 
 
 		}
@@ -288,10 +287,10 @@ export default class Shell {
 	 * this.ids
 	 * this.staticComponents */
 	findEmbeds() {
-		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => NodePath.get(el))
+		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => Path.get(el))
 
 		// TODO: only find styles that have PathTos in them?
-		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => NodePath.get(el))
+		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => Path.get(el))
 
 		let idEls = this.fragment.querySelectorAll('[id],[data-id]');
 
@@ -302,24 +301,7 @@ export default class Shell {
 				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement id property.`)
 		}
 
-		this.ids = Array.prototype.map.call(idEls, el => NodePath.get(el))
-
-		/*
-		for (let el of this.fragment.querySelectorAll('*')) {
-			if (el.tagName.includes('-') || el.hasAttribute('_is')) {
-
-				let path = NodePath.get(el);
-				this.componentPaths.push(path);
-
-
-				// Dynamic components are components that have attributes with expression values.
-				// They are created from applyExprs()
-				// But static components are created in a separate path inside the NodeGroup constructor.
-				if (!this.paths.find(path => path.nodeMarker === el))
-					this.staticComponentPaths.push(path);
-			}
-		}
-		*/
+		this.ids = Array.prototype.map.call(idEls, el => Path.get(el))
 	}
 
 	/**
