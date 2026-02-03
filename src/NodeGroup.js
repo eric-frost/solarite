@@ -14,10 +14,7 @@ import PathToNodes from "./PathToNodes.js";
  *
  * The range is determined by startNode and nodeMarker.
  * startNode - never null.  An empty text node is created before the first path if none exists.
- * nodeMarker - null if this Nodegroup is at the end of its parents' nodes.
- *
- *
- * */
+ * nodeMarker - null if this Nodegroup is at the end of its parents' nodes.*/
 export default class NodeGroup {
 
 	/**
@@ -32,7 +29,7 @@ export default class NodeGroup {
 
 	/** @type {Node|HTMLElement} A node that never changes that this NodeGroup should always insert its nodes before.
 	 * An empty text node will be created to insertBefore if there's no other NodeMarker and this isn't at the last position.
-	 * TODO: But sometimes startNode and endNode point to the same node.  Document htis inconsistency. */
+	 * TODO: But sometimes startNode and endNode point to the same node.  Document this inconsistency. */
 	endNode;
 
 	/** @type {Path[]} */
@@ -86,7 +83,7 @@ export default class NodeGroup {
 		}
 
 		else {
-			// Get a cached version of the parsed and instantiated html, and PathTos:
+			// Get a cached version of the parsed and instantiated html, and Paths:
 			const shell = Shell.get(template.html);
 			const shellFragment = shell.fragment.cloneNode(true);
 
@@ -206,8 +203,9 @@ export default class NodeGroup {
 	 * Dispatches expression handling to other functions depending on the path type.
 	 * @param exprs {(*|*[]|function|Template)[]}
 	 * @param changed {boolean} If true, the expr's have changed since the last time thsi function was called.
+	 * @param includeNonComponents {boolean}
 	 * We still need to call PathToComponent.apply() even if changed=false so the user can handle the rendering. */
-	applyExprs(exprs, changed=true, others=true) {
+	applyExprs(exprs, changed=true, includeNonComponents=true) {
 
 		/*#IFDEV*/
 		this.verify();
@@ -219,7 +217,7 @@ export default class NodeGroup {
 		// 1. Paths consume a varying number of expressions.
 		//    An PathToAttribs may use multipe expressions.  E.g. <div class="${1} ${2}">
 		//    While an PathToComponent uses zero.
-		// 2. An PathToComponent references other PathTos that set its attribute values.
+		// 2. An PathToComponent references other Paths that set its attribute values.
 		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
 		//    before its instantiated and its value attribute is set via an expression.
 		let exprIndex = exprs.length; // Update exprs at paths.
@@ -239,7 +237,7 @@ export default class NodeGroup {
 				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
 				path.apply(attribExprs, true, changed);
 			}
-			else if (others)
+			else if (includeNonComponents)
 				path.apply(pathExprs[i]);
 		}
 
@@ -250,9 +248,9 @@ export default class NodeGroup {
 		/*#ENDIF*/
 
 
-		if (others) {
+		if (includeNonComponents) {
 
-			// TODO: Only do this if we have PathTos within styles?
+			// TODO: Only do this if we have Paths within styles?
 			this.updateStyles();
 
 			// Invalidate the nodes cache because we just changed it.

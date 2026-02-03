@@ -278,12 +278,12 @@ export default class PathToNodes extends Path {
 	}
 
 	/**
-	 * Clear the nodeCache of this Path, as well as all parent and child PathTos that
+	 * Clear the nodeCache of this Path, as well as all parent and child Paths that
 	 * share the same DOM parent node. */
 	clearNodesCache() {
 		let path = this;
 
-		// Clear cache parent PathTos that have the same parentNode
+		// Clear cache parent Paths that have the same parentNode
 		let parentNode = this.nodeMarker.parentNode;
 		while (path && path.nodeMarker.parentNode === parentNode) {
 			path.nodesCache = null;
@@ -340,11 +340,11 @@ export default class PathToNodes extends Path {
 			// TODO: One Path can have multiple expr functions.
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
-			Globals.currentPathTo = this; // Used by watch()
+			Globals.currentPath = this; // Used by watch()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentPathTo to mark where those watched variables are being used.
-			Globals.currentPathTo = null;
+			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentPath to mark where those watched variables are being used.
+			Globals.currentPath = null;
 
 			this.exprToTemplates(expr, callback);
 		}
@@ -481,10 +481,6 @@ export default class PathToNodes extends Path {
 		// for (let ng of this.nodeGroups)
 		// 	result2.push(...ng.getNodes())
 		// return result2;
-
-		// if (this.type === PathToType.AttribValue || this.type === PathToType.AttribMultiple) {
-		// 	return [this.nodeMarker];
-		// }
 
 		let result
 

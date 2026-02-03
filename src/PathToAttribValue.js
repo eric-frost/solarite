@@ -107,7 +107,7 @@ export default class PathToAttribValue extends Path {
 
 			// Values to toggle an attribute
 			if (!multiple) {
-				Globals.currentPathTo = this; // Used by watch()
+				Globals.currentPath = this; // Used by watch()
 				if (typeof expr === 'function') {
 					if (this.isComponentAttrib)
 						return;
@@ -117,7 +117,7 @@ export default class PathToAttribValue extends Path {
 				}
 				else
 					expr = Util.makePrimitive(expr);
-				Globals.currentPathTo = null;
+				Globals.currentPath = null;
 			}
 
 
@@ -194,9 +194,9 @@ export default class PathToAttribValue extends Path {
 		for (let i = 0; i < values.length; i++) {
 			result.push(values[i]);
 			if (i < values.length - 1) {
-				Globals.currentPathTo = this; // Used by watch()
+				Globals.currentPath = this; // Used by watch()
 				let val = Util.makePrimitive(exprs[i]);
-				Globals.currentPathTo = null;
+				Globals.currentPath = null;
 				if (!Util.isFalsy(val))
 					result.push(val);
 			}

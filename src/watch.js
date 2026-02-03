@@ -44,7 +44,7 @@ customElements.define('watch-example', WatchExample);
 let a = new WatchExample();
 
 // Items is a Proxy.
-// Calling push() will trigger the map'd PathTos to add another at the end.
+// Calling push() will trigger the map'd Paths to add another at the end.
 // And the .length expression to update.
 // Because accessing .items returns a proxy.
 a.items.push({name: 'Fred'});
@@ -65,7 +65,7 @@ function removeProxy(obj) {
 }
 
 /**
- * Render the PathTos that were added to rootNg.exprsToRender.
+ * Render the Paths that were added to rootNg.exprsToRender.
  * @param root {HTMLElement}
  * @param trackModified {boolean}
  * @returns {Node[]} Modified elements.  */
@@ -213,14 +213,14 @@ class ProxyHandler {
 	/** @type {Record<string, [Proxy, ProxyHandler]>} Proxies for child properties. */
 	proxies = {}
 
-	/** @type Set<Path> PathTos that will need to be re-rendered when this variable is modified. */
-	PathTos = new Set();
+	/** @type Set<Path> Paths that will need to be re-rendered when this variable is modified. */
+	paths = new Set();
 
 	/**
-	 * PathTos that will need to be re-rendered when one of this variable's primitive properties is modified,
+	 * Paths that will need to be re-rendered when one of this variable's primitive properties is modified,
 	 * since primitives can't have their own ProxyHandler.
 	 * @type {Record<prop:string, affected:Set<Path>>} */
-	childPathTos = {};
+	childPaths = {};
 
 
 	constructor(root, value) {
@@ -250,8 +250,8 @@ class ProxyHandler {
 	}
 
 	/**
-	 * We override get() so we can mark which PathTos read from each variable in the hierarchy.
-	 * Then later when we call set on a variable, we can see which PathTos use it, and can mark them to be re-rendered.
+	 * We override get() so we can mark which Paths read from each variable in the hierarchy.
+	 * Then later when we call set on a variable, we can see which Paths use it, and can mark them to be re-rendered.
 	 * @param obj
 	 * @param prop {string}
 	 * @param receiver
@@ -275,20 +275,20 @@ class ProxyHandler {
 
 				// This outer function is so the Path calls it as a function,
 				// instead of it being evaluated immediately when the Template is created.
-				// This allows Path.apply() to set the Globals.currentPathTo before evaluating further.
+				// This allows Path.apply() to set the Globals.currentPath before evaluating further.
 				return (callback) =>
 
 					// This is the new map function.
 					function mapFunction() {
 
-						// Save the PathTos that called the array used by .map()
-						const currPathTo = Globals.currentPathTo;
-						if (currPathTo)
-							self.PathTos.add(currPathTo);
+						// Save the Paths that called the array used by .map()
+						const currPath = Globals.currentPath;
+						if (currPath)
+							self.paths.add(currPath);
 
 						// Apply the map function.
 						const newObj = mapFunction.newValue || obj;
-						Globals.currentPathTo.mapCallback = callback;
+						Globals.currentPath.mapCallback = callback;
 						// If new Proxy fails b/c newObj isn't an object, make sure the expression is a function.
 						// TODO: Find a way to warn about this automatically.
 						let p = new Proxy(newObj, self);
@@ -298,57 +298,57 @@ class ProxyHandler {
 
 			else if (prop === 'push' || prop==='pop' || prop === 'splice') {
 				const rootNg = Globals.rootNodeGroups.get(this.root);
-				return new WatchedArray(rootNg, obj, this.PathTos)[prop];
+				return new WatchedArray(rootNg, obj, this.paths)[prop];
 			}
 		}
 
 
 		// Save the Path that's currently accessing this variable.
-		const currPathTo = Globals.currentPathTo;
+		const currPath = Globals.currentPath;
 
 		// Accessing a sub-property
 		if (result && typeof result === 'object') {
 			let [proxiedResult, handler] = this.getProxyandHandler(prop, result);  // Clone this handler and append prop to the path.
 
-			if (currPathTo && prop !== 'constructor')
-				handler.PathTos.add(currPathTo);
+			if (currPath && prop !== 'constructor')
+				handler.paths.add(currPath);
 
 			return proxiedResult;
 		}
 		else {
-			if (currPathTo && prop !== 'constructor') {
+			if (currPath && prop !== 'constructor') {
 
 				// We can't have Proxies on primitive types,
 				// So we store the affected expressions in the parent Proxy.
-				if (!this.childPathTos[prop])
-					this.childPathTos[prop] = new Set([currPathTo]);
+				if (!this.childPaths[prop])
+					this.childPaths[prop] = new Set([currPath]);
 				else
-					this.childPathTos[prop].add(currPathTo);
+					this.childPaths[prop].add(currPath);
 			}
 
 			return result;
 		}
 	}
 
-	// TODO: Will fail for attribute w/ a value having multiple PathTos.
+	// TODO: Will fail for attribute w/ a value having multiple Paths.
 	// TODO: This won't update a component's expressions.
 	set(obj, prop, val, receiver) {
 
 		val = removeProxy(val);
 
-		// 1. Add to the list of PathTos to re-render.
+		// 1. Add to the list of Paths to re-render.
 		if (!this.rootNodeGroup)
 			this.rootNodeGroup = Globals.rootNodeGroups.get(this.root);
 		const rootNg = this.rootNodeGroup
 
 		// New: // TODO: Should I instead be checking if the old value of val is a primitive?
 		let isPrimitive = !val || typeof val !== 'object';
-		let PathTos = isPrimitive
-			? this.childPathTos[prop] || []
-			: this.getProxyandHandler(prop, val)[1].PathTos;
+		let paths = isPrimitive
+			? this.childPaths[prop] || []
+			: this.getProxyandHandler(prop, val)[1].paths;
 
 		const isArray = Array.isArray(obj);
-		for (let Path of PathTos) {
+		for (let Path of paths) {
 
 			if (isArray) {
 				if (Number.isInteger(+prop)) {
@@ -422,14 +422,14 @@ class WatchedArray {
 	/**
 	 * @param array {Array}
 	 * @param rootNg {RootNodeGroup}
-	 * @param PathTos {Path[]|Set<Path>} Expression paths that use this array. */
-	constructor(rootNg, array, PathTos) {
+	 * @param paths {Path[]|Set<Path>} Expression paths that use this array. */
+	constructor(rootNg, array, paths) {
 		this.rootNg = rootNg;
 		//#IFDEV
 		assert(Array.isArray(array));
 		//#ENDIF
 		this.array = array;
-		this.PathTos = PathTos;
+		this.paths = paths;
 		this.push = this.push.bind(this);
 		this.pop = this.pop.bind(this);
 		this.splice = this.splice.bind(this);
@@ -450,7 +450,7 @@ class WatchedArray {
 
 	internalSplice(func, args, spliceArgs) {
 		// Mark all expressions affected by the array function to be re-rendered
-		for (let Path of this.PathTos) {
+		for (let Path of this.paths) {
 			let exprsToRender = this.rootNg.exprsToRender.get(Path);
 			if (!(exprsToRender instanceof WholeArrayOp)) // If we're not already going to re-render the whole array.
 				Util.mapArrayAdd(this.rootNg.exprsToRender, Path, new ArraySpliceOp(...spliceArgs));

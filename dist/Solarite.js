@@ -104,9 +104,9 @@ function reset() {
 
 		/**
 		 * Path.applyExactNodes() sets this property when an expression is being accessed.
-		 * watch() then adds the Path to the list of PathTos that should be re-rendered when the value changes.
+		 * watch() then adds the Path to the list of Paths that should be re-rendered when the value changes.
 		 * @type {Path}*/
-		currentPathTo: null,
+		currentPath: null,
 
 		/**
 		 * Set by NodeGroup.instantiateComponent()
@@ -115,7 +115,7 @@ function reset() {
 
 		div: document.createElement("div"),
 
-		/** @type {HTMLDocument} */
+		/** @type {HTMLDocument} The global document. */
 		doc: document,
 
 		/**
@@ -861,7 +861,7 @@ class PathToAttribValue extends Path {
 
 			// Values to toggle an attribute
 			if (!multiple) {
-				Globals$1.currentPathTo = this; // Used by watch()
+				Globals$1.currentPath = this; // Used by watch()
 				if (typeof expr === 'function') {
 					if (this.isComponentAttrib)
 						return;
@@ -871,7 +871,7 @@ class PathToAttribValue extends Path {
 				}
 				else
 					expr = Util.makePrimitive(expr);
-				Globals$1.currentPathTo = null;
+				Globals$1.currentPath = null;
 			}
 
 
@@ -944,9 +944,9 @@ class PathToAttribValue extends Path {
 		for (let i = 0; i < values.length; i++) {
 			result.push(values[i]);
 			if (i < values.length - 1) {
-				Globals$1.currentPathTo = this; // Used by watch()
+				Globals$1.currentPath = this; // Used by watch()
 				let val = Util.makePrimitive(exprs[i]);
-				Globals$1.currentPathTo = null;
+				Globals$1.currentPath = null;
 				if (!Util.isFalsy(val))
 					result.push(val);
 			}
@@ -1092,10 +1092,10 @@ class PathToAttribs extends Path {
 		this.attrNames = new Set();
 		if (expr) {
 			if (typeof expr === 'function') {
-				Globals$1.currentPathTo = this; // Used by watch()
+				Globals$1.currentPath = this; // Used by watch()
 				this.watchFunction = expr; // used by renderWatched()
 				expr = expr();
-				Globals$1.currentPathTo = null;
+				Globals$1.currentPath = null;
 			}
 
 			// Attribute as name: value object.
@@ -1680,12 +1680,12 @@ class PathToNodes extends Path {
 	}
 
 	/**
-	 * Clear the nodeCache of this Path, as well as all parent and child PathTos that
+	 * Clear the nodeCache of this Path, as well as all parent and child Paths that
 	 * share the same DOM parent node. */
 	clearNodesCache() {
 		let path = this;
 
-		// Clear cache parent PathTos that have the same parentNode
+		// Clear cache parent Paths that have the same parentNode
 		let parentNode = this.nodeMarker.parentNode;
 		while (path && path.nodeMarker.parentNode === parentNode) {
 			path.nodesCache = null;
@@ -1742,11 +1742,11 @@ class PathToNodes extends Path {
 			// TODO: One Path can have multiple expr functions.
 			// But if using it as a watch, it should only have one at the top level.
 			// So maybe this is ok.
-			Globals$1.currentPathTo = this; // Used by watch()
+			Globals$1.currentPath = this; // Used by watch()
 
 			this.watchFunction = expr; // TODO: Only do this if it's a top level function.
-			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentPathTo to mark where those watched variables are being used.
-			Globals$1.currentPathTo = null;
+			expr = expr(); // As expr accesses watched variables, watch() uses Globals.currentPath to mark where those watched variables are being used.
+			Globals$1.currentPath = null;
 
 			this.exprToTemplates(expr, callback);
 		}
@@ -1883,10 +1883,6 @@ class PathToNodes extends Path {
 		// for (let ng of this.nodeGroups)
 		// 	result2.push(...ng.getNodes())
 		// return result2;
-
-		// if (this.type === PathToType.AttribValue || this.type === PathToType.AttribMultiple) {
-		// 	return [this.nodeMarker];
-		// }
 
 		let result;
 
@@ -2189,7 +2185,7 @@ class Shell {
 				// Re-use existing comment placeholder.
 				else {
 					nodeMarker = node;
-					nodeMarker.textContent = 'PathToEnd:'+ this.paths.length;
+					nodeMarker.textContent = 'PathEnd:'+ this.paths.length;
 				}
 				
 
@@ -2322,7 +2318,7 @@ class Shell {
 	findEmbeds() {
 		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => Path.get(el));
 
-		// TODO: only find styles that have PathTos in them?
+		// TODO: only find styles that have Paths in them?
 		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => Path.get(el));
 
 		let idEls = this.fragment.querySelectorAll('[id],[data-id]');
@@ -2369,10 +2365,7 @@ const attribPlaceholder = 0xe000; // https://en.wikipedia.org/wiki/Private_Use_A
  *
  * The range is determined by startNode and nodeMarker.
  * startNode - never null.  An empty text node is created before the first path if none exists.
- * nodeMarker - null if this Nodegroup is at the end of its parents' nodes.
- *
- *
- * */
+ * nodeMarker - null if this Nodegroup is at the end of its parents' nodes.*/
 class NodeGroup {
 
 	/**
@@ -2387,7 +2380,7 @@ class NodeGroup {
 
 	/** @type {Node|HTMLElement} A node that never changes that this NodeGroup should always insert its nodes before.
 	 * An empty text node will be created to insertBefore if there's no other NodeMarker and this isn't at the last position.
-	 * TODO: But sometimes startNode and endNode point to the same node.  Document htis inconsistency. */
+	 * TODO: But sometimes startNode and endNode point to the same node.  Document this inconsistency. */
 	endNode;
 
 	/** @type {Path[]} */
@@ -2441,7 +2434,7 @@ class NodeGroup {
 		}
 
 		else {
-			// Get a cached version of the parsed and instantiated html, and PathTos:
+			// Get a cached version of the parsed and instantiated html, and Paths:
 			const shell = Shell.get(template.html);
 			const shellFragment = shell.fragment.cloneNode(true);
 
@@ -2559,8 +2552,9 @@ class NodeGroup {
 	 * Dispatches expression handling to other functions depending on the path type.
 	 * @param exprs {(*|*[]|function|Template)[]}
 	 * @param changed {boolean} If true, the expr's have changed since the last time thsi function was called.
+	 * @param includeNonComponents {boolean}
 	 * We still need to call PathToComponent.apply() even if changed=false so the user can handle the rendering. */
-	applyExprs(exprs, changed=true, others=true) {
+	applyExprs(exprs, changed=true, includeNonComponents=true) {
 
 		
 
@@ -2570,7 +2564,7 @@ class NodeGroup {
 		// 1. Paths consume a varying number of expressions.
 		//    An PathToAttribs may use multipe expressions.  E.g. <div class="${1} ${2}">
 		//    While an PathToComponent uses zero.
-		// 2. An PathToComponent references other PathTos that set its attribute values.
+		// 2. An PathToComponent references other Paths that set its attribute values.
 		// 3. We apply them in reverse order so that a <select> box has its children created from an expression
 		//    before its instantiated and its value attribute is set via an expression.
 		let exprIndex = exprs.length; // Update exprs at paths.
@@ -2590,7 +2584,7 @@ class NodeGroup {
 				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
 				path.apply(attribExprs, true, changed);
 			}
-			else if (others)
+			else if (includeNonComponents)
 				path.apply(pathExprs[i]);
 		}
 
@@ -2599,9 +2593,9 @@ class NodeGroup {
 		
 
 
-		if (others) {
+		if (includeNonComponents) {
 
-			// TODO: Only do this if we have PathTos within styles?
+			// TODO: Only do this if we have Paths within styles?
 			this.updateStyles();
 
 			// Invalidate the nodes cache because we just changed it.

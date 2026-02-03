@@ -12,9 +12,9 @@ function reset() {
 
 		/**
 		 * Path.applyExactNodes() sets this property when an expression is being accessed.
-		 * watch() then adds the Path to the list of PathTos that should be re-rendered when the value changes.
+		 * watch() then adds the Path to the list of Paths that should be re-rendered when the value changes.
 		 * @type {Path}*/
-		currentPathTo: null,
+		currentPath: null,
 
 		/**
 		 * Set by NodeGroup.instantiateComponent()
@@ -23,7 +23,7 @@ function reset() {
 
 		div: document.createElement("div"),
 
-		/** @type {HTMLDocument} */
+		/** @type {HTMLDocument} The global document. */
 		doc: document,
 
 		/**

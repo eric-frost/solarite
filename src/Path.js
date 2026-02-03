@@ -187,20 +187,13 @@ export default class Path {
 		if (!window.verify)
 			return;
 
-		//assert(this.type!==PathToType.Content || this.nodeBefore)
-		//assert(this.type!==PathToType.Content || this.nodeBefore.parentNode)
-
 		// Need either nodeMarker or parentNode
 		assert(this.nodeMarker)
 
 		// nodeMarker must be attached.
 		assert(!this.nodeMarker || this.nodeMarker.parentNode)
 
-		// nodeBefore and nodeMarker must have same parent.
-		//assert(this.type!==PathToType.Content || this.nodeBefore.parentNode === this.nodeMarker.parentNode)
-
 		assert(this.nodeBefore !== this.nodeMarker)
-		//assert(this.type!==PathToType.Content|| !this.nodeBefore.parentNode || this.nodeBefore.compareDocumentPosition(this.nodeMarker) === Node.DOCUMENT_POSITION_FOLLOWING)
 
 		// Detect cyclic parent and grandparent references.
 		assert(this.parentNg?.parentPath !== this)

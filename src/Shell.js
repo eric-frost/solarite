@@ -156,7 +156,7 @@ export default class Shell {
 				// Re-use existing comment placeholder.
 				else {
 					nodeMarker = node;
-					nodeMarker.textContent = 'PathToEnd:'+ this.paths.length;
+					nodeMarker.textContent = 'PathEnd:'+ this.paths.length;
 				}
 				/*#IFDEV*/assert(nodeMarker);/*#ENDIF*/
 
@@ -289,7 +289,7 @@ export default class Shell {
 	findEmbeds() {
 		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => Path.get(el))
 
-		// TODO: only find styles that have PathTos in them?
+		// TODO: only find styles that have Paths in them?
 		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => Path.get(el))
 
 		let idEls = this.fragment.querySelectorAll('[id],[data-id]');

@@ -33,10 +33,10 @@ export default class PathToAttribs extends Path {
 		this.attrNames = new Set();
 		if (expr) {
 			if (typeof expr === 'function') {
-				Globals.currentPathTo = this; // Used by watch()
+				Globals.currentPath = this; // Used by watch()
 				this.watchFunction = expr; // used by renderWatched()
 				expr = expr();
-				Globals.currentPathTo = null;
+				Globals.currentPath = null;
 			}
 
 			// Attribute as name: value object.

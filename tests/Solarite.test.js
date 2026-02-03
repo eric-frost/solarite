@@ -48,17 +48,17 @@ window.getHtml = (item, includeComments=false) => {
   └─────────────────╯*/
 Testimony.test('Solarite.Shell.empty', () => {
 	let shell = new Shell(['', ''])
-	assert.eq(getHtml(shell, true), '<!--Path:0-->|<!--PathToEnd:0-->')
+	assert.eq(getHtml(shell, true), '<!--Path:0-->|<!--PathEnd:0-->')
 });
 
 Testimony.test('Solarite.Shell.paragraph', () => {
 	let shell = new Shell(['<p>', '</p>'])
-	assert.eq(getHtml(shell, true), '<p><!--Path:0--><!--PathToEnd:0--></p>')
+	assert.eq(getHtml(shell, true), '<p><!--Path:0--><!--PathEnd:0--></p>')
 });
 
 Testimony.test('Solarite.Shell.nodeBefore', () => {
 	let shell = new Shell(['a', ''])
-	assert.eq(getHtml(shell, true), 'a|<!--PathToEnd:0-->')
+	assert.eq(getHtml(shell, true), 'a|<!--PathEnd:0-->')
 });
 
 Testimony.test('Solarite.Shell.nodeAfter', () => {
@@ -73,12 +73,12 @@ Testimony.test('Solarite.Shell.nodeBeforeAfter', () => {
 
 Testimony.test('Solarite.Shell.emptyTwoPaths', () => {
 	let shell = new Shell(['', '', ''])
-	assert.eq(getHtml(shell, true), '<!--Path:0-->|<!--PathToEnd:0-->|<!--PathToEnd:1-->')
+	assert.eq(getHtml(shell, true), '<!--Path:0-->|<!--PathEnd:0-->|<!--PathEnd:1-->')
 });
 
 Testimony.test('Solarite.Shell.nodeBetweenPaths', () => {
 	let shell = new Shell(['', 'a', ''])
-	assert.eq(getHtml(shell, true), '<!--Path:0-->|a|<!--PathToEnd:1-->')
+	assert.eq(getHtml(shell, true), '<!--Path:0-->|a|<!--PathEnd:1-->')
 });
 
 Testimony.test('Solarite.Shell.nodesAroundPaths', () => {
@@ -88,7 +88,7 @@ Testimony.test('Solarite.Shell.nodesAroundPaths', () => {
 
 Testimony.test('Solarite.Shell.emptyTwoPathsNested', () => {
 	let shell = new Shell(['<p>', '', '</p>'])
-	assert.eq(getHtml(shell, true), '<p><!--Path:0--><!--PathToEnd:0--><!--PathToEnd:1--></p>')
+	assert.eq(getHtml(shell, true), '<p><!--Path:0--><!--PathEnd:0--><!--PathEnd:1--></p>')
 });
 
 Testimony.test('Solarite.Shell.nodesAroundPathsNested', () => {
@@ -1338,7 +1338,7 @@ Testimony.test('Solarite.loop.nested5', () => {
 	]
 	a.render();
 
-	assert.eq(a.outerHTML, `<a-227><!--Path:1--><!--Path:0--><div title="F2"><!--Path:1-->A<!--PathToEnd:1--></div><div title="F2"><!--Path:1-->B<!--PathToEnd:1--></div><!--PathToEnd:0--><!--Path:0--><div title="F2"><!--Path:1-->A<!--PathToEnd:1--></div><!--PathToEnd:0--><!--PathToEnd:1--></a-227>`);
+	assert.eq(a.outerHTML, `<a-227><!--Path:1--><!--Path:0--><div title="F2"><!--Path:1-->A<!--PathEnd:1--></div><div title="F2"><!--Path:1-->B<!--PathEnd:1--></div><!--PathEnd:0--><!--Path:0--><div title="F2"><!--Path:1-->A<!--PathEnd:1--></div><!--PathEnd:0--><!--PathEnd:1--></a-227>`);
 
 	window.verify = false;
 	a.remove();
