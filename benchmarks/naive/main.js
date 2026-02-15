@@ -234,7 +234,6 @@ class JSFrameworkBenchmark extends Solarite {
 let app = new JSFrameworkBenchmark();
 document.body.append(app);
 
-
 if (benchmark)
 	app.benchmark(benchmark);
 else if (run)

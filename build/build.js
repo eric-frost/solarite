@@ -59,7 +59,7 @@ const terserOptions = {
 		toplevel: true, // Does nothing?
 		properties: {
 			builtins: false,
-			keep_quoted: false,
+			keep_quoted: true,
 			regex: /./,  // match all properties
 			reserved: [
 				'arguments',

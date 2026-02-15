@@ -3010,10 +3010,10 @@ class RootNodeGroup extends NodeGroup {
 class Template {
 
 	/** @type {Expr[]} Evaulated expressions.  */
-	exprs = []
+	'exprs' = []
 
 	/** @type {string[]} */
-	html = [];
+	'html' = [];
 
 	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
@@ -3061,7 +3061,7 @@ class Template {
 	 * @param el {?HTMLElement} Null if we're rendering to a standalone element.
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
-	render(el=null, options={}) {
+	'render'(el=null, options={}) {
 
 
 
@@ -3698,13 +3698,13 @@ class Solarite extends HTMLElementAutoDefine {
 		// }
 	}
 
-	render() {
+	'render'() {
 		throw new Error('render() is not defined for ' + this.constructor.name);
 	}
 
 	/**
 	 * Call render() only if it hasn't already been called.	 */
-	renderFirstTime() {
+	'renderFirstTime'() {
 		if (!Globals$1.rendered.has(this)) {
 			let attribs = Solarite.getAttribs(this);
 			this.render(attribs); // calls Globals.rendered.add(this); inside the call to h()'...'.
@@ -3713,7 +3713,7 @@ class Solarite extends HTMLElementAutoDefine {
 
 	/**
 	 * Called automatically by the browser. */
-	connectedCallback() {
+	'connectedCallback'() { // quoted so terser doesn't remove it.
 		this.renderFirstTime();
 	}
 

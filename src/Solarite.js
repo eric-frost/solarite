@@ -105,13 +105,13 @@ export class Solarite extends HTMLElementAutoDefine {
 		// }
 	}
 
-	render() {
+	'render'() {
 		throw new Error('render() is not defined for ' + this.constructor.name);
 	}
 
 	/**
 	 * Call render() only if it hasn't already been called.	 */
-	renderFirstTime() {
+	'renderFirstTime'() {
 		if (!Globals.rendered.has(this)) {
 			let attribs = Solarite.getAttribs(this);
 			this.render(attribs); // calls Globals.rendered.add(this); inside the call to h()'...'.
@@ -120,7 +120,7 @@ export class Solarite extends HTMLElementAutoDefine {
 
 	/**
 	 * Called automatically by the browser. */
-	connectedCallback() {
+	'connectedCallback'() { // quoted so terser doesn't remove it.
 		this.renderFirstTime();
 	}
 

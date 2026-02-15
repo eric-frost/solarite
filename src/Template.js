@@ -10,10 +10,10 @@ import RootNodeGroup from "./RootNodeGroup.js";
 export default class Template {
 
 	/** @type {Expr[]} Evaulated expressions.  */
-	exprs = []
+	'exprs' = []
 
 	/** @type {string[]} */
-	html = [];
+	'html' = [];
 
 	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
@@ -61,7 +61,7 @@ export default class Template {
 	 * @param el {?HTMLElement} Null if we're rendering to a standalone element.
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} */
-	render(el=null, options={}) {
+	'render'(el=null, options={}) {
 
 
 
