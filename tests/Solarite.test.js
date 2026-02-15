@@ -2797,11 +2797,15 @@ Testimony.test('Solarite.component.attribsFromDOM', () => {
 		constructor(attribs={}) {
 			super(attribs);
 			construct++;
-			this.render(attribs);
+			this.attribs = attribs;
+			this.render();
 		}
 
-		render(attribs={}, changed=true) {
-			h(this)`<c-500>${attribs.name}:${attribs.rows.join('|')}</c-500>`;
+		render(attribs=null, changed=true) {
+			if (attribs)
+				this.attribs = attribs;
+
+			h(this)`<c-500>${this.attribs.name}:${this.attribs.rows.join('|')}</c-500>`;
 			render++;
 			isChanged = changed;
 		}
@@ -2820,7 +2824,8 @@ Testimony.test('Solarite.component.attribsFromDOM', () => {
 	assert.eq(render, 1);
 	assert.eq(isChanged, true);
 
-	c.render(); // Call without passing in attribs.  Solarite provides them.
+	c.render(); // Call without passing in attribs.
+	assert.eq(getHtml(c), '<c-500 name="a" rows="${[1, 2, 3, 4]}">a:1|2|3|4</c-500>'); // unchanged
 	assert.eq(construct, 1);
 	assert.eq(render, 2);
 	assert.eq(isChanged, true);

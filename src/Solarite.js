@@ -55,9 +55,9 @@ let HTMLElementAutoDefine = new Proxy(HTMLElement, {
  * Reasons to inherit from Solarite instead of HTMLElement.
  * 1.  customElements.define() is called automatically when you create the first instance.
  * 2.  Calls render() when added to the DOM, if it hasn't been called already.
- * 3.  Populates the attribs argument to the constructor, parsing JSON from DOM attribute values surrouned with '${...}'
- * 4.  Populates the attribs argument to the render() function
- * 5.  Shows an error if render() isn't defined.
+ * 3.  Populates the attribs argument to the constructor when instantiated from regular html outside a template string.
+ *         It parses JSON from DOM attribute values surrouned with '${...}'
+ * 4.  Shows an error if render() isn't defined.
  *
  * Advantages to inheriting from HTMLElement
  * 1.  We can inherit from things like HTMLTableRowElement directly.
@@ -71,26 +71,38 @@ export class Solarite extends HTMLElementAutoDefine {
 	constructor(attribs=null) {
 		super();
 
-		// 1. Populate attribs if it's an empty object.
 		if (attribs) {
 			if (typeof attribs !== 'object')
 				throw new Error('First argument to custom element constructor must be an object.');
 
+			// 1. Populate attribs if it's an empty object.
 			if (attribs && !Object.keys(attribs).length) {
 				let attribs2 =  Solarite.getAttribs(this);
 				for (let name in attribs2) {
 					attribs[name] = attribs2[name];
 				}
 			}
+
+			// 2. Populate fields from attribs.
+			// This does nothing because the fields are overwritten by the child class after this super() constructor executes.
+			//for (let name in attribs || {}) {
+			//	if (name in this) {
+			//		const descriptor = Object.getOwnPropertyDescriptor(this, name);
+			//		if (!descriptor || descriptor.writable || descriptor.set)
+			//			this[name] = attribs[name];
+			//	}
+			//}
 		}
 
-		// 2. Wrap render function so it always provides the attribs argument.
-		let originalRender = this.render;
-		this.render = (attribs, changed=true) => {
-			if (!attribs) // If we have to look up the attribs, we don't know if they changed or not.
-				attribs = Solarite.getAttribs(this);
-			originalRender.call(this, attribs, changed);
-		}
+		// 3. Wrap render function so it always provides the attribs argument.
+		// Disabled because this gives us strings for attribute values when we call render manually.
+		// Instead of values given from ${...} expressions.
+		// let originalRender = this.render;
+		// this.render = (attribs, changed=true) => {
+		// 	if (!attribs) // If we have to look up the attribs, we don't know if they changed or not.
+		// 		attribs = Solarite.getAttribs(this);
+		// 	originalRender.call(this, attribs, changed);
+		// }
 	}
 
 	render() {

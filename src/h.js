@@ -98,9 +98,9 @@ export default function h(htmlStrings=undefined, ...exprs) {
 	// 5. Create a static element: h()`<div></div>`
 	else if (!arguments.length) {
 		return (htmlStrings, ...exprs) => {
-				let template = h(htmlStrings, ...exprs);
-				return toEl(template);
-			}
+			let template = h(htmlStrings, ...exprs);
+			return toEl(template);
+		}
 	}
 
 	// 6. Help toEl() with objects: h(this)`<div>...</div>` inside an object's render()
@@ -127,6 +127,10 @@ export default function h(htmlStrings=undefined, ...exprs) {
 				Globals.objToEl.set(obj, el);
 			}.bind(obj);
 	}
+	// TODO: Handle other primitive types?
+	else if (Util.isFalsy(arguments[0]))
+		return new Template();
+
 	else
 		throw new Error('h() does not support argument of type: ' + (arguments[0] ? typeof arguments[0] : arguments[0]))
 }

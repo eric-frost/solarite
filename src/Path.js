@@ -84,7 +84,8 @@ export default class Path {
 
 
 	/**
-	 * Resolve nodeMarkerPath to new root. */
+	 * Resolve nodeMarkerPath to new root.
+	 * TODO: Make clone() use this.*/
 	getNewNodeMarker(newRoot, pathOffset) {
 		let root = newRoot;
 		let path = this.nodeMarkerPath;

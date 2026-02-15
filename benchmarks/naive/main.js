@@ -1,6 +1,6 @@
-import {Solarite, r} from './Solarite.min.js';
-//import {Solarite, r} from '../../src/Solarite.js';
-let debug2 = window.location.search.includes('debug');
+import {Solarite, h} from './Solarite.min.js';
+//import {Solarite, h} from '../../src/Solarite.js';
+let debug = window.location.search.includes('debug');
 
 
 let urlParams = new URLSearchParams(window.location.search);
@@ -9,7 +9,7 @@ if (benchmark === '')
 	benchmark = 1;
 let run = urlParams.has('run');
 
-if (debug2) {
+if (debug) {
 	window.getHtml = (item, includeComments=false) => {
 		if (!item)
 			return item;
@@ -66,12 +66,6 @@ function buildData(count) {
 
 class JSFrameworkBenchmark extends Solarite {
 	data = [];
-
-	constructor() {
-		// Disable features we don't need, for performance.
-		// At least until these new features are more performant.
-		super({ids: false, scripts: false, styles: false})
-	}
 
 	// quickly mimic what the js-framework-benchmark does.
 	// This is useful to see if performance changes after code modifications.
@@ -179,8 +173,8 @@ class JSFrameworkBenchmark extends Solarite {
 	}
 
 	render() {
-		let options = {ids: false, scripts: false, styles: false} // doesn't seem to make that much performance difference to disable these?
-		r(this, options)`
+		let options = {}; //{ids: false, scripts: false, styles: false} // doesn't seem to make that much performance difference to disable these?
+		h(this, options)`
 		<div class="container">
 			<div class="jumbotron">
 				<div class="row">
@@ -219,7 +213,7 @@ class JSFrameworkBenchmark extends Solarite {
 			</div>
 			<table class="table table-hover table-striped test-data"><tbody>
 				${this.data.map(row =>
-					r`<tr class=${row.selected ? 'danger' : ''}>
+					h`<tr class=${row.selected ? 'danger' : ''}>
 						<td class="col-md-1">${row.id}</td>
 						<td class="col-md-4">
 							<a onclick=${[this.setSelectedBench, row]}>${row.label}</a></td>

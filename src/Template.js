@@ -24,7 +24,7 @@ export default class Template {
 	 *
 	 * @param htmlStrings {string[]}
 	 * @param exprs {*[]} */
-	constructor(htmlStrings, exprs) {
+	constructor(htmlStrings=[''], exprs=[]) {
 		this.html = htmlStrings;
 
 		this.exprs = exprs;

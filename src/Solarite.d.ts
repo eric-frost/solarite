@@ -28,7 +28,7 @@ export {h as r};
  * Solarite provides more features if your web component extends Solarite instead of HTMLElement. */
 export class Solarite extends HTMLElement {
     constructor(attribs?: Record<string, any> | null);
-    render(attribs?: Record<string, any>): void;
+    render(attribs?: Record<string, any>, changed?:boolean): void;
     renderFirstTime(): void;
     connectedCallback(): void;
     static define(tagName?: string | null): void;
@@ -41,14 +41,17 @@ export class Solarite extends HTMLElement {
 export function toEl(arg: string | Template | {render: () => void}): Node | HTMLElement | DocumentFragment;
 
 /**
+ * @deprecated
  * Retrieve and cast an attribute value from an HTMLElement. */
 export function getArg(el: HTMLElement, attributeName: string, defaultValue?: any,
     type?: typeof ArgType[keyof typeof ArgType] | Function | any[]): any;
 
 /**
+ * @deprecated
  * Update attributes on an element from an object. */
 export function setArgs(el: HTMLElement, args: object): void;
 
+/** @deprecated */
 export const ArgType: {
     Bool: string;
     Int: string;

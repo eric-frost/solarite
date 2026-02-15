@@ -1,4 +1,7 @@
-
+/*@__NO_SIDE_EFFECTS__*/
+function assert(val) {
+	
+}
 
 let lastObjectId = 1>>>0; // Is a 32-bit int faster to increment than JavaScript's Number, which is a 64-bit float?
 let objectIds = new WeakMap();
@@ -209,7 +212,7 @@ function delve(obj, path, createVal = d) {
 // d means "don't create"
 let d = {};
 
-let Util = {
+let Util$1 = {
 
 	/**
 	 * Returns true if they're the same.
@@ -237,7 +240,7 @@ let Util = {
 		let result = {};
 		for (let attrib of el.attributes)
 			if (attrib.name !== ignore)
-				result[Util.dashesToCamel(attrib.name)] = attrib.value;
+				result[Util$1.dashesToCamel(attrib.name)] = attrib.value;
 		return result;
 	},
 
@@ -347,7 +350,7 @@ let Util = {
 
 	defineClass(Class, tagName) {
 		if (!customElements[getName](Class)) { // If not previously defined.
-			tagName = tagName || Util.camelToDashes(Class.name);
+			tagName = tagName || Util$1.camelToDashes(Class.name);
 			if (!tagName.includes('-')) // Browsers require that web components always have a dash in the name.
 				tagName += '-element';
 			customElements[define](tagName, Class);
@@ -432,7 +435,7 @@ let Util = {
 	 * @returns {string|number|boolean} */
 	makePrimitive(val) {
 		if (typeof val === 'function')
-			return Util.makePrimitive(val());
+			return Util$1.makePrimitive(val());
 		else if (val instanceof Date)
 			return val.toISOString().replace(/T/, ' ');
 		else if (Array.isArray(val) || typeof val === 'object')
@@ -582,7 +585,8 @@ class Path {
 
 
 	/**
-	 * Resolve nodeMarkerPath to new root. */
+	 * Resolve nodeMarkerPath to new root.
+	 * TODO: Make clone() use this.*/
 	getNewNodeMarker(newRoot, pathOffset) {
 		let root = newRoot;
 		let path = this.nodeMarkerPath;
@@ -795,7 +799,7 @@ class PathToAttribValue extends Path {
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.instantiateComponent() for components.
-		if (!multiple && Util.isPath(expr)) {
+		if (!multiple && Util$1.isPath(expr)) {
 
 			// Don't bind events to component placeholders.
 			// PathToComponent will do the binding later when it instantiates the component.
@@ -819,7 +823,7 @@ class PathToAttribValue extends Path {
 			}
 			else {
 				// TODO: should we remove isFalsy, since these are always props?
-				const strValue = Util.isFalsy(value) ? '' : value;
+				const strValue = Util$1.isFalsy(value) ? '' : value;
 
 				// Special case for contenteditable
 				if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
@@ -840,7 +844,7 @@ class PathToAttribValue extends Path {
 			// Does bindEvent() now handle that?
 			let func = () => {
 				let value = (this.attrName === 'value')
-					? Util.getInputValue(node)
+					? Util$1.getInputValue(node)
 					: node[this.attrName];
 				delve(obj, path, value);
 			};
@@ -868,7 +872,7 @@ class PathToAttribValue extends Path {
 					expr = expr();
 				}
 				else
-					expr = Util.makePrimitive(expr);
+					expr = Util$1.makePrimitive(expr);
 				Globals$1.currentPath = null;
 			}
 
@@ -942,9 +946,9 @@ class PathToAttribValue extends Path {
 			result.push(values[i]);
 			if (i < values.length - 1) {
 				Globals$1.currentPath = this; // Used by watch()
-				let val = Util.makePrimitive(exprs[i]);
+				let val = Util$1.makePrimitive(exprs[i]);
 				Globals$1.currentPath = null;
-				if (!Util.isFalsy(val))
+				if (!Util$1.isFalsy(val))
 					result.push(val);
 			}
 		}
@@ -1512,7 +1516,7 @@ class PathToNodes extends Path {
 		let oldNodes = path.getNodes();
 
 		// This pre-check makes it a few percent faster?
-		let same = Util.arraySame(oldNodes, newNodes);
+		let same = Util$1.arraySame(oldNodes, newNodes);
 		if (!same) {
 
 			path.nodesCache = newNodes; // Replaces value set by path.getNodes()
@@ -1534,7 +1538,7 @@ class PathToNodes extends Path {
 
 			for (let ng of oldNodeGroups)
 				if (!ng.startNode.parentNode)
-					Util.saveOrphans(ng.getNodes());
+					Util$1.saveOrphans(ng.getNodes());
 		}
 
 		
@@ -1634,7 +1638,7 @@ class PathToNodes extends Path {
 
 					// Remove the old nodes.
 					if (ng !== oldNg)
-						Util.saveOrphans(oldNg.getNodes());
+						Util$1.saveOrphans(oldNg.getNodes());
 				}
 			});
 		}
@@ -1643,7 +1647,7 @@ class PathToNodes extends Path {
 		if (deleteCount > 0) {
 			for (let i=0; i<deleteCount; i++) {
 				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
-				Util.saveOrphans(oldNg.getNodes());
+				Util$1.saveOrphans(oldNg.getNodes());
 			}
 			this.nodeGroups.splice(op.index + replaceCount, deleteCount);
 		}
@@ -1930,9 +1934,9 @@ class PathToComponent extends Path {
 		let el = this.nodeMarker;
 
 		// 1. Attributes
-		let attribs = Util.attribsToObject(el, '_is');
+		let attribs = Util$1.attribsToObject(el, '_is');
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
-			let name = Util.dashesToCamel(attribPath.attrName);
+			let name = Util$1.dashesToCamel(attribPath.attrName);
 			attribs[name] = attribPath.getValue(exprs[i]);
 		}
 
@@ -2129,10 +2133,10 @@ class Shell {
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
 
-							let path = Util.isEvent(attr.name)
+							let path = Util$1.isEvent(attr.name)
 								? new PathToEvent(null, node, attr.name, nonEmptyParts)
 								: new PathToAttribValue(null, node, attr.name, nonEmptyParts);
-							path.isHtmlProperty = Util.isHtmlProp(node, attr.name);
+							path.isHtmlProperty = Util$1.isHtmlProp(node, attr.name);
 							this.paths.push(path);
 							if (isComponent) {
 								path.isComponentAttrib = true;
@@ -2665,7 +2669,7 @@ class NodeGroup {
 			for (let [style, oldText] of this.styles) {
 				let newText = style.textContent;
 				if (oldText !== newText)
-					Util.bindStyles(style, this.getRootNodeGroup().root);
+					Util$1.bindStyles(style, this.getRootNodeGroup().root);
 			}
 	}
 
@@ -2685,7 +2689,7 @@ class NodeGroup {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
 					let el = Path.resolve(root, path);
-					Util.bindId(rootEl, el);
+					Util$1.bindId(rootEl, el);
 				}
 			}
 
@@ -2700,7 +2704,7 @@ class NodeGroup {
 					/** @type {HTMLStyleElement} */
 					let style = Path.resolve(root, path);
 					if (rootEl.nodeType === 1) {
-						Util.bindStyles(style, rootEl);
+						Util$1.bindStyles(style, rootEl);
 						this.styles.set(style, style.textContent);
 					}
 				}
@@ -2775,7 +2779,7 @@ class Template {
 	 *
 	 * @param htmlStrings {string[]}
 	 * @param exprs {*[]} */
-	constructor(htmlStrings, exprs) {
+	constructor(htmlStrings=[''], exprs=[]) {
 		this.html = htmlStrings;
 
 		this.exprs = exprs;
@@ -3037,7 +3041,7 @@ function toEl(arg) {
 		templateEl.innerHTML = html;
 
 		// 1+2. Return Node if there's one child.
-		let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);
+		let relevantNodes = Util$1.trimEmptyNodes(templateEl.content.childNodes);
 		if (relevantNodes.length === 1)
 			return relevantNodes[0];
 
@@ -3188,9 +3192,9 @@ function h(htmlStrings=undefined, ...exprs) {
 	// 5. Create a static element: h()`<div></div>`
 	else if (!arguments.length) {
 		return (htmlStrings, ...exprs) => {
-				let template = h(htmlStrings, ...exprs);
-				return toEl(template);
-			}
+			let template = h(htmlStrings, ...exprs);
+			return toEl(template);
+		}
 	}
 
 	// 6. Help toEl() with objects: h(this)`<div>...</div>` inside an object's render()
@@ -3217,6 +3221,10 @@ function h(htmlStrings=undefined, ...exprs) {
 				Globals$1.objToEl.set(obj, el);
 			}.bind(obj);
 	}
+	// TODO: Handle other primitive types?
+	else if (Util.isFalsy(arguments[0]))
+		return new Template();
+
 	else
 		throw new Error('h() does not support argument of type: ' + (arguments[0] ? typeof arguments[0] : arguments[0]))
 }
@@ -3253,7 +3261,7 @@ function h(htmlStrings=undefined, ...exprs) {
  * @return {*} Undefined if attribute isn't set and there's no defaultValue, or if the value couldn't be parsed as the type.  */
 function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String) {
 	let val = defaultValue;
-	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util.camelToDashes(attributeName));
+	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util$1.camelToDashes(attributeName));
 	if (attrVal !== null) // If attribute doesn't exist.
 		val = attrVal;
 
@@ -3373,7 +3381,7 @@ let HTMLElementAutoDefine = new Proxy(HTMLElement, {
 	construct(Parent, args, Class) {
 
 		// 1. Call customElements.define() automatically.
-		Util.defineClass(Class);
+		Util$1.defineClass(Class);
 
 		// 2. This line is equivalent the to super() call to HTMLElement:
 		return Reflect.construct(Parent, args, Class);
@@ -3386,9 +3394,9 @@ let HTMLElementAutoDefine = new Proxy(HTMLElement, {
  * Reasons to inherit from Solarite instead of HTMLElement.
  * 1.  customElements.define() is called automatically when you create the first instance.
  * 2.  Calls render() when added to the DOM, if it hasn't been called already.
- * 3.  Populates the attribs argument to the constructor, parsing JSON from DOM attribute values surrouned with '${...}'
- * 4.  Populates the attribs argument to the render() function
- * 5.  Shows an error if render() isn't defined.
+ * 3.  Populates the attribs argument to the constructor when instantiated from regular html outside a template string.
+ *         It parses JSON from DOM attribute values surrouned with '${...}'
+ * 4.  Shows an error if render() isn't defined.
  *
  * Advantages to inheriting from HTMLElement
  * 1.  We can inherit from things like HTMLTableRowElement directly.
@@ -3402,26 +3410,38 @@ class Solarite extends HTMLElementAutoDefine {
 	constructor(attribs=null) {
 		super();
 
-		// 1. Populate attribs if it's an empty object.
 		if (attribs) {
 			if (typeof attribs !== 'object')
 				throw new Error('First argument to custom element constructor must be an object.');
 
+			// 1. Populate attribs if it's an empty object.
 			if (attribs && !Object.keys(attribs).length) {
 				let attribs2 =  Solarite.getAttribs(this);
 				for (let name in attribs2) {
 					attribs[name] = attribs2[name];
 				}
 			}
+
+			// 2. Populate fields from attribs.
+			// This does nothing because the fields are overwritten by the child class after this super() constructor executes.
+			//for (let name in attribs || {}) {
+			//	if (name in this) {
+			//		const descriptor = Object.getOwnPropertyDescriptor(this, name);
+			//		if (!descriptor || descriptor.writable || descriptor.set)
+			//			this[name] = attribs[name];
+			//	}
+			//}
 		}
 
-		// 2. Wrap render function so it always provides the attribs argument.
-		let originalRender = this.render;
-		this.render = (attribs, changed=true) => {
-			if (!attribs) // If we have to look up the attribs, we don't know if they changed or not.
-				attribs = Solarite.getAttribs(this);
-			originalRender.call(this, attribs, changed);
-		};
+		// 3. Wrap render function so it always provides the attribs argument.
+		// Disabled because this gives us strings for attribute values when we call render manually.
+		// Instead of values given from ${...} expressions.
+		// let originalRender = this.render;
+		// this.render = (attribs, changed=true) => {
+		// 	if (!attribs) // If we have to look up the attribs, we don't know if they changed or not.
+		// 		attribs = Solarite.getAttribs(this);
+		// 	originalRender.call(this, attribs, changed);
+		// }
 	}
 
 	render() {
@@ -3444,11 +3464,11 @@ class Solarite extends HTMLElementAutoDefine {
 	}
 
 	static define(tagName=null) {
-		Util.defineClass(this, tagName);
+		Util$1.defineClass(this, tagName);
 	}
 
 	static getAttribs(el) {
-		let result = Util.attribsToObject(el);
+		let result = Util$1.attribsToObject(el);
 		for (let name in result) {
 			let val = result[name];
 			if (val.startsWith('${') && val.endsWith('}'))
@@ -3459,4 +3479,4 @@ class Solarite extends HTMLElementAutoDefine {
 }
 
 export default h;
-export { ArgType, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, t, toEl };
+export { ArgType, Globals$1 as Globals, Solarite, Util$1 as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, t, toEl };
