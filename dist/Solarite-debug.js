@@ -3717,11 +3717,11 @@ class Solarite extends HTMLElementAutoDefine {
 		this.renderFirstTime();
 	}
 
-	static define(tagName=null) {
+	static 'define'(tagName=null) {
 		Util$1.defineClass(this, tagName);
 	}
 
-	static getAttribs(el) {
+	static 'getAttribs'(el) {
 		let result = Util$1.attribsToObject(el);
 		for (let name in result) {
 			let val = result[name];
@@ -3733,4 +3733,4 @@ class Solarite extends HTMLElementAutoDefine {
 }
 
 export default h;
-export { ArgType, Globals$1 as Globals, Solarite, Util$1 as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, t, toEl };
+export { ArgType, Globals$1 as Globals, HtmlParser, NodeGroup, Shell, Solarite, Util$1 as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, t, toEl };

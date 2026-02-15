@@ -1,12 +1,9 @@
 // noinspection DuplicatedCode,JSUnusedAssignment
 
-import h, {toEl, Solarite, Template, Globals, SolariteUtil} from '../src/Solarite.js';
-//import h, {toEl, Solarite, Template, Globals, SolariteUtil} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
+import h, {toEl, Solarite, Template, Globals, SolariteUtil, HtmlParser, NodeGroup, Shell} from '../src/Solarite.js';
+//import h, {toEl, Solarite, Template, Globals, SolariteUtil, HtmlParser, NodeGroup, Shell} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 
 import {watch, renderWatched} from "../src/watch.js";
-import HtmlParser from "../src/HtmlParser.js";
-import NodeGroup from "../src/NodeGroup.js";
-import Shell from "../src/Shell.js";
 
 import Testimony, {assert} from './Testimony.js';
 

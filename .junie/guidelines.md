@@ -16,6 +16,9 @@ Put the last trailing */ of a doc comment on the same line, not a line by itself
 
 When documenting the return value, use @return, not @returns.
 
+## Building
+You can run build/build.bat to recreate Solarite.min.js from the source files.
+
 ## Tests
 Test are hierarchical, so we can easily run groups of tests.  Test names are written as group.testName or group.subgroup.testName.
 

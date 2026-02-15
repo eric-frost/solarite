@@ -29,6 +29,14 @@ export function t(html) {
 }
 //export {default as watch, renderWatched} from './watch.js'; // unfinished
 
+// Only used for tests:
+//--------------
+export {default as HtmlParser} from './HtmlParser.js';
+export {default as NodeGroup} from './NodeGroup.js';
+export {default as Shell} from './Shell.js';
+
+
+
 
 
 // Solarite Class:
@@ -124,11 +132,11 @@ export class Solarite extends HTMLElementAutoDefine {
 		this.renderFirstTime();
 	}
 
-	static define(tagName=null) {
+	static 'define'(tagName=null) {
 		Util.defineClass(this, tagName);
 	}
 
-	static getAttribs(el) {
+	static 'getAttribs'(el) {
 		let result = Util.attribsToObject(el);
 		for (let name in result) {
 			let val = result[name];
