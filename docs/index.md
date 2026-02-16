@@ -95,7 +95,7 @@ For the best development experience, use an IDE like [WebStorm](https://www.jetb
 
 ## Performance
 
-Solarite provides near-native performance by performing targeted DOM updates.  Benchmark is un on a Ryzen 7 3700X on Windows 10.  Performance is still improving.
+Solarite provides near-native performance by performing targeted DOM updates. Benchmarks were run on a Ryzen 7 3700X on Windows 10.
 
 ![js-framework-benchmark](docs/js-framework-benchmark.png)
 
@@ -192,7 +192,7 @@ document.body.append(myComponent);
 
 If you do wrap the web component's html in its tag, that tag name must exactly match the tag name passed to `customElements.define()`.
 
-Note that by default, `h()` will render expressions as text, with escaped html entities.  To render as html, wrap a variable in the `h()` function to create a template.  This example also uses Solarite's `toEl()` function which converts a string or Template to a DOM element.
+By default, `h()` renders expressions as text. To render HTML, wrap the string in `h()` as well.
 
 ```javascript
 import h, {toEl} from './dist/Solarite.min.js';
@@ -329,7 +329,7 @@ Id's that have values matching built-in HTMLElement attribute names such as `tit
 
 ### Events
 
-To intercept events, set the value of an event attribute like `onclick` to a function.  Alternatively, set the value to an array where the first item is a function and subsequent items are arguments to that function.
+To capture events, set an event attribute like `onclick` to a function. Alternatively, use an array where the first item is the function and subsequent items are its arguments.
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -358,11 +358,11 @@ Make sure to put your events inside `${...}` expressions, because classic events
 
 ### Two-Way Binding
 
-Two-way binding creates a connection between your component's data and form elements, so changes in either one automatically update the other. This is particularly useful for forms and interactive UI elements.
+Two-way binding connects your component's data to form elements, keeping them in sync automatically.
 
 #### Basic Two-Way Binding
 
-Form elements can update the properties that provide their values when an event attribute such as `oninput` is assigned a function to perform the update:
+Form elements update properties when an event like `oninput` is assigned a function to handle the change:
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -480,9 +480,9 @@ document.body.append(new TodoList());
 
 #### Efficient List Updates
 
-When youadd another element to the `items` list (or if you changed/removed one) and call `render()`, Solarite only redraws the changed elements.
+When you update the `items` list and call `render()`, Solarite only redraws the changed elements.
 
-**Important**: Nested template literals must also have the `h` prefix. Without this prefix, they'll be rendered as escaped text instead of HTML elements.  Try removing the `h` from line 15 to see what happens.
+**Important**: Nested template literals must also have the `h` prefix, or they'll be rendered as escaped text.  Try removing the `h` from line 15 to see what happens.
 
 ### Scoped Styles
 
@@ -559,7 +559,7 @@ document.body.append(new FancyText());
 
 ### Slots
 
-Slots allow you to pass HTML content from a parent component into specific locations within a child component's template. This is useful for creating reusable layout components like modals, cards, or tabs.
+Slots let you pass HTML content from a parent into specific locations within a child component. This is useful for reusable layouts like cards, modals, or tabs.
 
 #### Basic Slots
 
@@ -572,24 +572,21 @@ class MyFrame extends Solarite {
     render() {
         h(this)`
         <my-frame>
-            <div style="border: 10px solid gray">
+            <div style="border: 1px solid gray; padding: 10px">
                 <slot></slot>
             </div>
         </my-frame>`
     }
 }
-MyFrame.define('my-frame');
+MyFrame.define();
 
 // Usage:
-document.body.append(toEl(`
-	<my-frame><span>Inside the frame</span></my-frame>
-`));
-
+document.body.append(toEl('<my-frame><span>Inside the frame</span></my-frame>'));
 ```
 
 #### Named Slots
 
-To use multiple slots, give them a `name` attribute. Children are then assigned to these slots using the `slot` attribute:
+To use multiple slots, give them a `name` attribute. Assign children to these slots using the `slot` attribute:
 
 ```javascript
 import h, {Solarite, toEl} from './dist/Solarite.min.js';
@@ -603,7 +600,7 @@ class MyLayout extends Solarite {
         </my-layout>`
     }
 }
-MyLayout.define('my-layout');
+MyLayout.define();
 
 // Usage:
 document.body.append(toEl(`
@@ -615,11 +612,11 @@ document.body.append(toEl(`
 `));
 ```
 
-Elements without a `slot` attribute are placed in the unnamed (default) slot. Multiple elements can be assigned to the same slot; they will be appended in the order they appear.
+Elements without a `slot` attribute go into the unnamed (default) slot. Multiple elements can be assigned to the same slot; they appear in the order they are provided.
 
 #### Slotless Components
 
-If a component's template doesn't contain any `<slot>` elements, any children provided to the component will be appended to the end of the component's root element by default.
+If a component has no `<slot>` elements, any provided children are appended to the end of the component by default.
 
 
 
@@ -715,16 +712,14 @@ Since HTML attributes are case-insensitive, Solarite automatically converts dash
 
 #### Component Rendering Hierarchy
 
-When calling `render()` on a parent component:
+When a parent component renders:
 
-1. The code in the render() function is executed, which typically means the `h()` function  is executed to render itself and its children.
-2. For each child web component in the template (whether a Solarite web component or otherwise), Solarite calls that child's `render()` method, if it has one.
-3. The child component receives its attributes as an object in the first argument of its `render()` function, and the boolean `changed` flag as its second argument.
-4. The child component can then decide whether to call the `h()` function to render itself and its children.
+1. Its `render()` function executes, typically calling `h()` to update itself and its children.
+2. For each child web component (whether a Solarite component or otherwise), `h()` then calls that child's `render()` method, if it exists.
+3. The child receives its attributes as an object (first argument) and a `changed` boolean (second argument).
+4. The child then decides whether to call its own `h()` function to update.
 
-This allows each component to control its own rendering while maintaining a predictable data flow.
-
-In the above code, we alternatively could've created the `<notes-item>` element via the `new` keyword, but this is ill-advised.  Doing so would cause all `NotesItem` components to be recreated on every render:
+In the example above, creating `<notes-item>` via `new` instead of its tag name is discouraged, as it would cause the component to be recreated on every render:
 
 ```JavaScript
 class NotesList extends HTMLElement {
@@ -825,20 +820,13 @@ document.body.append(table);
 
 #### Manual DOM Operations
 
-While Solarite handles most DOM updates automatically, there are cases where you might want to perform manual DOM operations for specific optimizations or integrations with third-party libraries.
+While Solarite handles most updates automatically, you can perform manual DOM operations in these scenarios:
 
-You can safely perform manual DOM operations in these scenarios:
+1. **Static Attributes**: Modify attributes not created by expressions.
+2. **Static Nodes**: Add or remove nodes not created by expressions, and not directly adjacent to node-creating expressions.
+3. **Temporary Changes**: Modify any node if you restore its original state before the next `render()`.
 
-1. **Attribute Modifications**: You can modify any attributes that were not created by expressions, on any nodes that were not created by expressions.
-
-2. **Node Addition/Removal**: You can add or remove nodes that meet all these criteria:
-   - Not created by an expression
-   - Not positioned directly before or after an expression that creates nodes
-   - Do not have any attributes created by expressions
-
-3. **Temporary Modifications**: You can modify any node temporarily, as long as you restore its previous position and attributes before `render()` is called again.
-
-Following these guidelines ensures that Solarite's rendering system continues to work correctly alongside your manual DOM operations.  This example creates a list inside a `div` element and demonstrates which manual DOM operations are allowed:
+This example demonstrates these rules:
 
 ```javascript
 import h, {toEl} from './dist/Solarite.min.js';
@@ -891,16 +879,7 @@ list.render();
 
 #### Non-Component Elements
 
-The `toEl()` function can create html elements.  
-
-```javascript
-import {toEl} from './dist/Solarite.min.js';
-
-let button = toEl(`<button>Hello World</button>`);
-document.body.append(button);
-```
-
-You can also pass objects to `toEl()` with a `render()` method.  This object can optionally have additional properties and methods, which become bound to the resulting element.  When `render()` is called, only the changed nodes will be updated.
+The `toEl()` function (discussed above) can also be given an object with a `render()` method to `toEl()`. Properties and methods of the object become bound to the resulting element.
 
 ```javascript
 import h, {toEl} from './src/Solarite.js';
