@@ -1,6 +1,7 @@
 import Template from "./Template.js";
 import Globals from "./Globals.js";
 import toEl from "./toEl.js";
+import Util from "./Util.js";
 
 /**
  * Convert strings to HTMLNodes.

@@ -18,7 +18,7 @@ export default function toEl(arg) {
 		let html = arg;
 
 		// If it's an element with whitespace before or after it, trim both ends.
-		if (html.match(/^\s^</) || html.match(/>\s+$/))
+		if (html.match(/^\s^<\S+/) || html.match(/\S+>\s+$/))
 			html = html.trim();
 
 		// We create a new one each time because otherwise

@@ -212,7 +212,7 @@ function delve(obj, path, createVal = d) {
 // d means "don't create"
 let d = {};
 
-let Util$1 = {
+let Util = {
 
 	/**
 	 * Returns true if they're the same.
@@ -240,7 +240,7 @@ let Util$1 = {
 		let result = {};
 		for (let attrib of el.attributes)
 			if (attrib.name !== ignore)
-				result[Util$1.dashesToCamel(attrib.name)] = attrib.value;
+				result[Util.dashesToCamel(attrib.name)] = attrib.value;
 		return result;
 	},
 
@@ -350,7 +350,7 @@ let Util$1 = {
 
 	defineClass(Class, tagName) {
 		if (!customElements[getName](Class)) { // If not previously defined.
-			tagName = tagName || Util$1.camelToDashes(Class.name);
+			tagName = tagName || Util.camelToDashes(Class.name);
 			if (!tagName.includes('-')) // Browsers require that web components always have a dash in the name.
 				tagName += '-element';
 			customElements[define](tagName, Class);
@@ -435,7 +435,7 @@ let Util$1 = {
 	 * @returns {string|number|boolean} */
 	makePrimitive(val) {
 		if (typeof val === 'function')
-			return Util$1.makePrimitive(val());
+			return Util.makePrimitive(val());
 		else if (val instanceof Date)
 			return val.toISOString().replace(/T/, ' ');
 		else if (Array.isArray(val) || typeof val === 'object')
@@ -799,7 +799,7 @@ class PathToAttribValue extends Path {
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.instantiateComponent() for components.
-		if (!multiple && Util$1.isPath(expr)) {
+		if (!multiple && Util.isPath(expr)) {
 
 			// Don't bind events to component placeholders.
 			// PathToComponent will do the binding later when it instantiates the component.
@@ -823,7 +823,7 @@ class PathToAttribValue extends Path {
 			}
 			else {
 				// TODO: should we remove isFalsy, since these are always props?
-				const strValue = Util$1.isFalsy(value) ? '' : value;
+				const strValue = Util.isFalsy(value) ? '' : value;
 
 				// Special case for contenteditable
 				if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
@@ -844,7 +844,7 @@ class PathToAttribValue extends Path {
 			// Does bindEvent() now handle that?
 			let func = () => {
 				let value = (this.attrName === 'value')
-					? Util$1.getInputValue(node)
+					? Util.getInputValue(node)
 					: node[this.attrName];
 				delve(obj, path, value);
 			};
@@ -872,7 +872,7 @@ class PathToAttribValue extends Path {
 					expr = expr();
 				}
 				else
-					expr = Util$1.makePrimitive(expr);
+					expr = Util.makePrimitive(expr);
 				Globals$1.currentPath = null;
 			}
 
@@ -946,9 +946,9 @@ class PathToAttribValue extends Path {
 			result.push(values[i]);
 			if (i < values.length - 1) {
 				Globals$1.currentPath = this; // Used by watch()
-				let val = Util$1.makePrimitive(exprs[i]);
+				let val = Util.makePrimitive(exprs[i]);
 				Globals$1.currentPath = null;
-				if (!Util$1.isFalsy(val))
+				if (!Util.isFalsy(val))
 					result.push(val);
 			}
 		}
@@ -1516,7 +1516,7 @@ class PathToNodes extends Path {
 		let oldNodes = path.getNodes();
 
 		// This pre-check makes it a few percent faster?
-		let same = Util$1.arraySame(oldNodes, newNodes);
+		let same = Util.arraySame(oldNodes, newNodes);
 		if (!same) {
 
 			path.nodesCache = newNodes; // Replaces value set by path.getNodes()
@@ -1538,7 +1538,7 @@ class PathToNodes extends Path {
 
 			for (let ng of oldNodeGroups)
 				if (!ng.startNode.parentNode)
-					Util$1.saveOrphans(ng.getNodes());
+					Util.saveOrphans(ng.getNodes());
 		}
 
 		
@@ -1638,7 +1638,7 @@ class PathToNodes extends Path {
 
 					// Remove the old nodes.
 					if (ng !== oldNg)
-						Util$1.saveOrphans(oldNg.getNodes());
+						Util.saveOrphans(oldNg.getNodes());
 				}
 			});
 		}
@@ -1647,7 +1647,7 @@ class PathToNodes extends Path {
 		if (deleteCount > 0) {
 			for (let i=0; i<deleteCount; i++) {
 				let oldNg = this.nodeGroups[op.index + replaceCount +  i];
-				Util$1.saveOrphans(oldNg.getNodes());
+				Util.saveOrphans(oldNg.getNodes());
 			}
 			this.nodeGroups.splice(op.index + replaceCount, deleteCount);
 		}
@@ -1934,9 +1934,9 @@ class PathToComponent extends Path {
 		let el = this.nodeMarker;
 
 		// 1. Attributes
-		let attribs = Util$1.attribsToObject(el, '_is');
+		let attribs = Util.attribsToObject(el, '_is');
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
-			let name = Util$1.dashesToCamel(attribPath.attrName);
+			let name = Util.dashesToCamel(attribPath.attrName);
 			attribs[name] = attribPath.getValue(exprs[i]);
 		}
 
@@ -2133,10 +2133,10 @@ class Shell {
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
 
-							let path = Util$1.isEvent(attr.name)
+							let path = Util.isEvent(attr.name)
 								? new PathToEvent(null, node, attr.name, nonEmptyParts)
 								: new PathToAttribValue(null, node, attr.name, nonEmptyParts);
-							path.isHtmlProperty = Util$1.isHtmlProp(node, attr.name);
+							path.isHtmlProperty = Util.isHtmlProp(node, attr.name);
 							this.paths.push(path);
 							if (isComponent) {
 								path.isComponentAttrib = true;
@@ -2669,7 +2669,7 @@ class NodeGroup {
 			for (let [style, oldText] of this.styles) {
 				let newText = style.textContent;
 				if (oldText !== newText)
-					Util$1.bindStyles(style, this.getRootNodeGroup().root);
+					Util.bindStyles(style, this.getRootNodeGroup().root);
 			}
 	}
 
@@ -2689,7 +2689,7 @@ class NodeGroup {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
 					let el = Path.resolve(root, path);
-					Util$1.bindId(rootEl, el);
+					Util.bindId(rootEl, el);
 				}
 			}
 
@@ -2704,7 +2704,7 @@ class NodeGroup {
 					/** @type {HTMLStyleElement} */
 					let style = Path.resolve(root, path);
 					if (rootEl.nodeType === 1) {
-						Util$1.bindStyles(style, rootEl);
+						Util.bindStyles(style, rootEl);
 						this.styles.set(style, style.textContent);
 					}
 				}
@@ -3032,7 +3032,7 @@ function toEl(arg) {
 		let html = arg;
 
 		// If it's an element with whitespace before or after it, trim both ends.
-		if (html.match(/^\s^</) || html.match(/>\s+$/))
+		if (html.match(/^\s^<\S+/) || html.match(/\S+>\s+$/))
 			html = html.trim();
 
 		// We create a new one each time because otherwise
@@ -3041,7 +3041,7 @@ function toEl(arg) {
 		templateEl.innerHTML = html;
 
 		// 1+2. Return Node if there's one child.
-		let relevantNodes = Util$1.trimEmptyNodes(templateEl.content.childNodes);
+		let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);
 		if (relevantNodes.length === 1)
 			return relevantNodes[0];
 
@@ -3261,7 +3261,7 @@ function h(htmlStrings=undefined, ...exprs) {
  * @return {*} Undefined if attribute isn't set and there's no defaultValue, or if the value couldn't be parsed as the type.  */
 function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String) {
 	let val = defaultValue;
-	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util$1.camelToDashes(attributeName));
+	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util.camelToDashes(attributeName));
 	if (attrVal !== null) // If attribute doesn't exist.
 		val = attrVal;
 
@@ -3381,7 +3381,7 @@ let HTMLElementAutoDefine = new Proxy(HTMLElement, {
 	construct(Parent, args, Class) {
 
 		// 1. Call customElements.define() automatically.
-		Util$1.defineClass(Class);
+		Util.defineClass(Class);
 
 		// 2. This line is equivalent the to super() call to HTMLElement:
 		return Reflect.construct(Parent, args, Class);
@@ -3464,11 +3464,11 @@ class Solarite extends HTMLElementAutoDefine {
 	}
 
 	static 'define'(tagName=null) {
-		Util$1.defineClass(this, tagName);
+		Util.defineClass(this, tagName);
 	}
 
 	static 'getAttribs'(el) {
-		let result = Util$1.attribsToObject(el);
+		let result = Util.attribsToObject(el);
 		for (let name in result) {
 			let val = result[name];
 			if (val.startsWith('${') && val.endsWith('}'))
@@ -3479,4 +3479,4 @@ class Solarite extends HTMLElementAutoDefine {
 }
 
 export default h;
-export { ArgType, Globals$1 as Globals, HtmlParser, NodeGroup, Shell, Solarite, Util$1 as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, t, toEl };
+export { ArgType, Globals$1 as Globals, HtmlParser, NodeGroup, Shell, Solarite, Util as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, t, toEl };

@@ -1,11 +1,15 @@
 // noinspection DuplicatedCode,JSUnusedAssignment
 
-import h, {toEl, Solarite, Template, Globals, SolariteUtil, HtmlParser, NodeGroup, Shell} from '../src/Solarite.js';
-//import h, {toEl, Solarite, Template, Globals, SolariteUtil, HtmlParser, NodeGroup, Shell} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
+import Testimony, {assert} from './Testimony.js';
+
+import h, {toEl, Solarite, Template, Globals, SolariteUtil,
+	HtmlParser, NodeGroup, Shell} from '../src/Solarite.js';
+
+//import h, {toEl, Solarite, Template, Globals, SolariteUtil,
+// HtmlParser, NodeGroup, Shell} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 
 import {watch, renderWatched} from "../src/watch.js";
 
-import Testimony, {assert} from './Testimony.js';
 
 // This function is used by the various tests.
 window.getHtml = (item, includeComments=false) => {
@@ -39,7 +43,7 @@ window.getHtml = (item, includeComments=false) => {
 
 
 
-//<editor-fold desc="shell">
+//region shell
 /*┌─────────────────╮
   | Shell           |
   └─────────────────╯*/
@@ -102,11 +106,11 @@ Testimony.test('Solarite.Shell.nodesAroundPathsNested', () => {
 
 
 
-//</editor-fold>
+//endregion
 
 
 
-//<editor-fold desc="nodegroup">
+//region nodegroup
 /*┌─────────────────╮
   | NodeGroup       |
   └─────────────────╯*/
@@ -203,11 +207,11 @@ Testimony.test('Solarite.NodeGroup.arrayReverse', () => {
 	ng.applyExprs([list])
 	assert(getHtml(ng), '<div>ba</div')
 });
-//</editor-fold>
+//endregion
 
 
 
-//<editor-fold desc="util">
+//region util
 /*┌─────────────────╮
   | SolariteUtil    |
   └─────────────────╯*/
@@ -232,11 +236,11 @@ Testimony.test('Solarite.Util.camelToDashes', () => {
 	assert.eq(SolariteUtil.camelToDashes('UIForm'), 'ui-form');
 	assert.eq(SolariteUtil.camelToDashes('A100'), 'a-100');
 });
-//</editor-fold>
+//endregion
 
 
 
-//<editor-fold desc="basic">
+//region basic
 /*┌─────────────────╮
   | Basic           |
   └─────────────────╯*/
@@ -367,11 +371,11 @@ Testimony.test('Solarite.basic.instanceof', () => {
 	assert(r instanceof HTMLElement);
 	assert(r instanceof Node);
 });
-//</editor-fold>
+//endregion
 
 
 
-//<editor-fold desc="expr">
+//region expr
 /*┌─────────────────╮
   | Expr            |
   └─────────────────╯*/
@@ -834,11 +838,11 @@ Testimony.test('Solarite.expr.contenteditableGrandchild', 'Make sure we throw if
 	assert(error);
 	assert(error.message.includes(`Contenteditable can't have expressions`));
 });
-//</editor-fold>
+//endregion
 
 
 
-//<editor-fold desc="loop">
+//region loop
 /*┌─────────────────╮
   | Loop            |
   └─────────────────╯*/
@@ -1496,12 +1500,12 @@ Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 	a.remove();
 });
 
-//</editor-fold>
+//endregion
 
 
 
 
-//<editor-fold desc="embed">
+//region embed
 /*┌─────────────────╮
   | Embed           |
   └─────────────────╯*/
@@ -1809,12 +1813,11 @@ Testimony.test('Solarite.embed._scriptDynamic', () => {
 	delete window.scriptStaticCount;
 });
 
-//</editor-fold>
+//endregion
 
 
 
-
-//<editor-fold desc="attrib">
+//region attrib
 /*┌─────────────────╮
   | Attrib          |
   └─────────────────╯*/
@@ -2416,12 +2419,12 @@ Testimony.test('Solarite.attrib.objectAttributes', 'Make sure we can specify att
 
 	a.remove();
 });
-//</editor-fold>
+//endregion
 
 
 
 
-//<editor-fold desc="comments">
+//region comments
 /*┌─────────────────╮
   | comments        |
   └─────────────────╯*/
@@ -2453,12 +2456,11 @@ Testimony.test('Solarite.comments.two', () => {
 	assert.eq(getHtml(a), `<a-482><div>3</div></a-482>`)
 	a.remove();
 });
-//</editor-fold>
+//endregion
 
 
 
-//<editor-fold desc="toEl">
-
+//region toEl
 /*┌─────────────────╮
   | toEl            |
   └─────────────────╯*/
@@ -2501,44 +2503,7 @@ Testimony.test('Solarite.toEl.fragment', () => {
 	assert.eq(getHtml(fragment), `Hello |<button>hi</button>`)
 });
 
-//</editor-fold>
-
-
-
-//<editor-fold desc="h">
-
-/*┌─────────────────╮
-  | h               |
-  └─────────────────╯*/
-
-Testimony.test('Solarite.h.fragment2', () => {
-	let fragment = h()`Hello <button>hi</button>`;
-	assert(fragment instanceof DocumentFragment);
-	assert.eq(getHtml(fragment), `Hello |<button>hi</button>`)
-});
-
-Testimony.test('Solarite.h.staticElement3', () => {
-	let button = h()`<button>hi</button>`;
-	assert(button instanceof HTMLElement);
-	assert.eq(getHtml(button), `<button>hi</button>`)
-});
-
-Testimony.test('Solarite.h.staticElement4', () => {
-	// with line return
-	let button = h()`
-		<button>hi</button>`;
-	assert(button instanceof HTMLElement);
-	assert.eq(getHtml(button), `<button>hi</button>`)
-})
-
-Testimony.test('Solarite.h.element', () => {
-	let adjective = 'better'
-	let button = h()`<button>I'm a <b>${adjective}</b> button</button>`;
-
-	assert.eq(getHtml(button), `<button>I'm a <b>better</b> button</button>`)
-})
-
-Testimony.test('Solarite.h.standalone1', () => {
+Testimony.test('Solarite.toEl.standalone1', () => {
 	let button = toEl({
 		count: 0,
 
@@ -2564,7 +2529,7 @@ Testimony.test('Solarite.h.standalone1', () => {
 	//button.remove();
 });
 
-Testimony.test('Solarite.h.standalone2', () => {
+Testimony.test('Solarite.toEl.standalone2', () => {
 	let list = toEl({
 		items: [],
 
@@ -2576,12 +2541,12 @@ Testimony.test('Solarite.h.standalone2', () => {
 		render() {
 			h(this)`
 			<div>
-	            <button onclick=${this.add}>Add Item</button>
-	            <hr>
-	            ${this.items.map(item => h`
-	                <p>${item}</p>
-	            `)}
-	        </div>`
+				<button onclick=${()=>this.add()}>Add Item</button>
+				<hr>
+				${this.items.map(item => h`
+					<p>${item}</p>
+				`)}
+			</div>`
 		}
 	});
 
@@ -2602,10 +2567,10 @@ Testimony.test('Solarite.h.standalone2', () => {
 	list.querySelector('button').dispatchEvent(new MouseEvent('click'));
 	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><p>Item 0</p><p>Item 1</p></div>`);
 
-	//button.remove();
+	//list.remove();
 });
 
-Testimony.test('Solarite.h.standaloneId', "Test id's on standalone elmenets.", () => {
+Testimony.test('Solarite.toEl.standaloneId', "Test id's on standalone elmenets.", () => {
 	let list = toEl({
 		items: [],
 
@@ -2625,7 +2590,7 @@ Testimony.test('Solarite.h.standaloneId', "Test id's on standalone elmenets.", (
 	assert.eq(list.button.tagName, 'BUTTON');
 });
 
-Testimony.test('Solarite.h.standaloneStyle', "Test id's on standalone elmenets.", () => {
+Testimony.test('Solarite.toEl.standaloneStyle', "Test id's on standalone elmenets.", () => {
 	let box = toEl({
 		render() {
 			h(this)`
@@ -2639,7 +2604,7 @@ Testimony.test('Solarite.h.standaloneStyle', "Test id's on standalone elmenets."
 	assert.eq(box.firstElementChild.textContent, `div[data-style="${styleId}"] { display: block; background: red; width: 20px; height: 20px }`);
 });
 
-Testimony.test('Solarite.h.standalone3', () => {
+Testimony.test('Solarite.toEl.standalone3', () => {
 
 	// Make sure a div inside a div doesn't replace the parent div.
 	let list = toEl({
@@ -2700,7 +2665,7 @@ Testimony.test('Solarite.h.standalone3', () => {
 	})
  */
 
-Testimony.test('Solarite.h.standaloneChild', () => {
+Testimony.test('Solarite.toEl.standaloneChild', () => {
 
 	function createItem(item) {
 		return toEl({
@@ -2751,17 +2716,53 @@ Testimony.test('Solarite.h.standaloneChild', () => {
 
 	list.remove();
 });
-//</editor-fold>
+
+//endregion
+
+
+
+//region h
+/*┌─────────────────╮
+  | h               |
+  └─────────────────╯*/
+
+Testimony.test('Solarite.h.fragment2', () => {
+	let fragment = h()`Hello <button>hi</button>`;
+	assert(fragment instanceof DocumentFragment);
+	assert.eq(getHtml(fragment), `Hello |<button>hi</button>`)
+});
+
+Testimony.test('Solarite.h.staticElement3', () => {
+	let button = h()`<button>hi</button>`;
+	assert(button instanceof HTMLElement);
+	assert.eq(getHtml(button), `<button>hi</button>`)
+});
+
+Testimony.test('Solarite.h.staticElement4', () => {
+	// with line return
+	let button = h()`
+		<button>hi</button>`;
+	assert(button instanceof HTMLElement);
+	assert.eq(getHtml(button), `<button>hi</button>`)
+})
+
+Testimony.test('Solarite.h.element', () => {
+	let adjective = 'better'
+	let button = h()`<button>I'm a <b>${adjective}</b> button</button>`;
+
+	assert.eq(getHtml(button), `<button>I'm a <b>better</b> button</button>`)
+})
+
+
+//endregion
 
 
 
 
-//<editor-fold desc="component">
+//region component
 /*┌─────────────────╮
   | Component       |
   └─────────────────╯*/
-/*
-*/
 Testimony.test('Solarite.component.tr', () => {
 
 	class TR510 extends HTMLTableRowElement {
@@ -3530,11 +3531,11 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 
 	table.remove();
 });
-//</editor-fold>
+//endregion
 
 
 
-//<editor-fold desc="slots">
+//region slots
 /*┌─────────────────╮
   | Slots           |
   └─────────────────╯*/
@@ -3609,12 +3610,12 @@ Testimony.test('Solarite.slots.slotless', `Add children even when no slots prese
 
 	div.remove();
 });
-//</editor-fold>
+//endregion
 
 
 
 
-//<editor-fold desc="events">
+//region events
 /*┌─────────────────╮
   | Events          |
   └─────────────────╯*/
@@ -3769,12 +3770,12 @@ Testimony.test('Solarite.events.onExprChild', () => {
 	e.querySelector('button').dispatchEvent(new MouseEvent('click'));
 	assert.eq(e.items.length, 1);
 });
-//</editor-fold>
+//endregion
 
 
 
 
-//<editor-fold desc="binding">
+//region binding
 /*┌─────────────────╮
   | Binding         |
   └─────────────────╯*/
@@ -4128,12 +4129,12 @@ Testimony.test('Solarite.binding.loop', 'similar to the loop.continuity2 test ab
 	v.remove();
 });
 
-//</editor-fold>
+//endregion
 
 
 
 
-//<editor-fold desc="jsx">
+//region jsx
 /*┌─────────────────╮
   | JSX             |
   └─────────────────╯*/
@@ -4173,10 +4174,10 @@ Testimony.test('Solarite.jsx.full', () => {
 
 
 
-//</editor-fold>
+//endregion
 
 
-//<editor-fold desc="additional jsx tests">
+//region additional jsx tests
 /*┌─────────────────╮
   | JSX - More      |
   └─────────────────╯*/
@@ -4247,12 +4248,12 @@ Testimony.test('Solarite.jsx.arrayChildren', () => {
     assert.eqJson(jsx.exprs, template.exprs);
 });
 
-//</editor-fold>
+//endregion
 
 
 
 
-//<editor-fold desc="watch">
+//region watch
 /*┌─────────────────╮
   | Watch           |
   └─────────────────╯*/
@@ -4738,7 +4739,7 @@ Testimony.test('Solarite.watch.loopDeepPushPop', () => {
 
 
 
-//<editor-fold desc="full">
+//region full
 /*┌─────────────────╮
   | Full            |
   └─────────────────╯*/
