@@ -19,10 +19,11 @@ declare function h(el: HTMLElement | DocumentFragment, options?: RenderOptions):
 declare function h(el: HTMLElement | DocumentFragment, template: Template, options?: RenderOptions): void;
 declare function h(tag: string, props: object, ...children: any[]): Template; // JSX
 declare function h(obj: {render: Function}): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => void; // Rebound render
+declare function h(): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => Node|DocumentFragment;
 
 export default h;
 export {h};
-export {h as r};
+export {h as r}; // deprecated
 
 /**
  * Solarite provides more features if your web component extends Solarite instead of HTMLElement. */
@@ -39,6 +40,12 @@ export class Solarite extends HTMLElement {
 /**
  * Convert a template, string, or object into a DOM Node or Element. */
 export function toEl(arg: string | Template | {render: () => void}): Node | HTMLElement | DocumentFragment;
+
+/**
+ * Assign fields from `src` to `dest` if they exist in `dest` and don't exist in `ignore`.
+ * When a value in `src` is a string and the existing value in `dest` is a boolean, number, or Date,
+ * it will be converted to that type. */
+export function assignFields(dest: object, src: object|null, ignore?: string[]): void;
 
 /**
  * @deprecated

@@ -1140,6 +1140,14 @@ class PathToEvent extends PathToAttribValue {
 		assert(Array.isArray(exprs));
 		//#ENDIF
 
+		// Tested by Solariate.events.classicWithExpr
+		// We have expressions within a string attribute value that's not a Solarite event.  E.g.
+		// <div onclick="alert(${1});"
+		if (this.attrValue?.length > 1) {
+			super.apply(exprs);
+			return;
+		}
+
 		// Don't bind events to component placeholders.
 		// PathToComponent will do the binding later when it instantiates the component.
 		if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
@@ -2310,7 +2318,12 @@ class Shell {
 							}
 
 							placeholdersUsed += parts.length - 1;
-							node.setAttribute(attr.name, parts.join(''));
+							try {
+								node.setAttribute(attr.name, parts.join(''));
+							}
+							catch (e) {
+								throw new Error(`Error setting attribute "${attr.name}" on node <${node.tagName}>: ${e.message}`);
+							}
 						}
 					}
 				}
@@ -3017,6 +3030,9 @@ class Template {
 
 	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
+
+	closeKey;
+	exactKey;
 
 	isText;
 
@@ -3730,7 +3746,145 @@ class Solarite extends HTMLElementAutoDefine {
 		}
 		return result;
 	}
+
+
+	// TODO: Do we want to use this to get the tag name from the render() function, instead of having the user define it?
+	/**
+	 * Get the tag name for a class, as defined by the tag used in render().
+	 *
+	 * This will parse the JavaScript code of the render() function to find the tag name.
+	 * It will itarage every character, keeping track of quotes and comments so it can
+	 * skip them until it finds the tag name passed to h(this)`<tagname>` inside the render() function.
+	 *
+	 * */
+	/*
+	static getTagName(Class) {
+		let code = Class.prototype.render.toString();
+		let i = 0;
+		while (i < code.length) {
+			let char = code[i];
+			let next = code[i + 1];
+
+			// Skip single line comments
+			if (char === '/' && next === '/') {
+				i = code.indexOf('\n', i);
+				if (i === -1) break;
+				continue;
+			}
+			// Skip multi-line comments
+			if (char === '/' && next === '*') {
+				i = code.indexOf('*'+'/', i + 2);
+				if (i === -1) break;
+				i += 2;
+				continue;
+			}
+			// Skip strings and template literals
+			if (char === "'" || char === '"' || char === '`') {
+				let quote = char;
+				i++;
+				while (i < code.length) {
+					if (code[i] === '\\') i += 2;
+					else if (code[i] === quote) { i++; break; }
+					else i++;
+				}
+				continue;
+			}
+			// Skip regex literals (simple heuristic)
+			if (char === '/') {
+				let prev = code.slice(Math.max(0, i - 10), i).trim();
+				// If / is preceded by something that indicates an operator or start of expression
+				if (/[=(,;:[!&|?]$|return$|yield$|case$/.test(prev)) {
+					i++;
+					while (i < code.length) {
+						if (code[i] === '\\') i += 2;
+						else if (code[i] === '[') { // Skip character classes
+							i++;
+							while (i < code.length && code[i] !== ']') {
+								if (code[i] === '\\') i += 2;
+								else i++;
+							}
+							i++;
+						}
+						else if (code[i] === '/') { i++; break; }
+						else i++;
+					}
+					continue;
+				}
+			}
+			// Check for h(this)`
+			if (char === 'h' && code.slice(i, i + 8) === 'h(this)`') {
+				i += 8;
+				// We are now inside the template literal.
+				// Skip whitespace and HTML comments
+				while (i < code.length) {
+					// Skip JS template literal end (shouldn't happen before tag, but for safety)
+					if (code[i] === '`') return null;
+
+					// Skip whitespace
+					if (/\s/.test(code[i])) { i++; continue; }
+
+					// Skip HTML comments <!-- ... -->
+					if (code.slice(i, i + 4) === '<!--') {
+						i = code.indexOf('-->', i + 4);
+						if (i === -1) return null;
+						i += 3;
+						continue;
+					}
+
+					// Find the first tag
+					if (code[i] === '<') {
+						let start = ++i;
+						while (i < code.length && /[a-zA-Z0-9-]/.test(code[i])) i++;
+						return code.slice(start, i);
+					}
+
+					// If we encounter anything else (like text before a tag),
+					// we can keep looking or return null depending on how strict we want to be.
+					// For now, let's just skip non-tag characters.
+					i++;
+				}
+			}
+			i++;
+		}
+		return null;
+	}
+	*/
+}
+
+
+/**
+ * Assign fields from `src` to `dest` if they exist in `dest` and their names are not in the `ignore` list.
+ * When a value in `src` is a string and the existing value in `dest` is a boolean, number, or Date,
+ * it will be converted to that type.
+ * This is often used in class constructors that accept an object of arguments.
+ * @param {object} dest
+ * @param {?object} src
+ * @param {string[]} [ignore=[]] */
+function assignFields(dest, src, ignore=[]) {
+	for (let name in src || {}) {
+		if (name in dest && !ignore.includes(name)) {
+			const descriptor = Object.getOwnPropertyDescriptor(dest, name)
+				|| Object.getOwnPropertyDescriptor(Object.getPrototypeOf(dest), name); // Also find (parent?) setters.  Is this necssary?
+			if (!descriptor || descriptor.writable || descriptor.set) {
+				let srcVal = src[name];
+				let destVal = dest[name];
+				if (typeof src[name] === 'string') {
+					if (typeof destVal === 'boolean') // empty string (when an attribute is present with no value) is true
+						dest[name] = ![false, 'false', 0, '0'].includes(srcVal);
+					else if (typeof destVal === 'number')
+						dest[name] = Number(srcVal);
+					else if (destVal instanceof Date) {
+						dest[name] = new Date(srcVal); // TODO: read it as UTC 0 by default.
+					}
+					else
+						dest[name] = srcVal;
+				}
+				else
+					dest[name] = srcVal;
+			}
+		}
+	}
 }
 
 export default h;
-export { ArgType, Globals$1 as Globals, HtmlParser, NodeGroup, Shell, Solarite, Util as SolariteUtil, Template, delve, getArg, h, h as r, setArgs, t, toEl };
+export { ArgType, Globals$1 as Globals, HtmlParser, NodeGroup, Shell, Solarite, Util as SolariteUtil, Template, assignFields, delve, getArg, h, h as r, setArgs, t, toEl };

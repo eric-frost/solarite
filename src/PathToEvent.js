@@ -20,6 +20,14 @@ export default class PathToEvent extends PathToAttribValue {
 		assert(Array.isArray(exprs));
 		//#ENDIF
 
+		// Tested by Solariate.events.classicWithExpr
+		// We have expressions within a string attribute value that's not a Solarite event.  E.g.
+		// <div onclick="alert(${1});"
+		if (this.attrValue?.length > 1) {
+			super.apply(exprs);
+			return;
+		}
+
 		// Don't bind events to component placeholders.
 		// PathToComponent will do the binding later when it instantiates the component.
 		if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))

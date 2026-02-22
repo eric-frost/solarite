@@ -114,7 +114,12 @@ export default class Shell {
 							}
 
 							placeholdersUsed += parts.length - 1;
-							node.setAttribute(attr.name, parts.join(''));
+							try {
+								node.setAttribute(attr.name, parts.join(''));
+							}
+							catch (e) {
+								throw new Error(`Error setting attribute "${attr.name}" on node <${node.tagName}>: ${e.message}`);
+							}
 						}
 					}
 				}

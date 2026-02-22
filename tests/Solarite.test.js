@@ -2951,10 +2951,11 @@ Testimony.test('Solarite.component.attribFunctions', 'Make sure we can pass func
 	customElements.define('c-510', C510);
 
 	let c = new C510();
-	document.body.append(c);
-	console.log(getHtml(c));
+	document.body.append(c); // renders
 
 	assert.eq(getHtml(c), `<c-510><c-510-child get-content="">a1</c-510-child></c-510>`);
+
+	c.remove();
 });
 
 
@@ -3625,13 +3626,35 @@ Testimony.test('Solarite.events.classic', () => {
 		count = 1
 
 		render() {
-			h(this)`<input data-id="input" value=${this.count} oninput="this.count=el.count">`
+			h(this)`<input data-id="input" value=${this.count} oninput="this.closest('ev-10').count = 3">`
 		}
 	}
 
 	let a = new Ev10();
 	document.body.append(a);
 
+	a.input.dispatchEvent(new Event('input'));
+	assert.eq(a.count, 3);
+
+	a.remove();
+});
+
+
+Testimony.test('Solarite.events.classicWithExpr', () => {
+
+	class Ev12 extends Solarite {
+		count = 1
+
+		render() {
+			h(this)`<input data-id="input" value=${this.count} oninput="this.closest('ev-12').count = ${5}">`
+		}
+	}
+
+	let a = new Ev12();
+	document.body.append(a);
+
+	a.input.dispatchEvent(new Event('input'));
+	assert.eq(a.count, 5);
 
 	a.remove();
 });

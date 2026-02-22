@@ -18,6 +18,9 @@ export default class Template {
 	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
 
+	closeKey;
+	exactKey;
+
 	isText;
 
 	/**
