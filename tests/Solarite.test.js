@@ -3191,6 +3191,43 @@ Testimony.test('Solarite.component.componentWithDynamicAttribsFromExpr', () => {
 	assert.eq(renderCount, 1);
 });
 
+Testimony.test('Solarite.component.componentWithDynamicAttribsFromExpr2', () => {
+
+	class B522 extends HTMLElement {
+		constructor(attribs) {
+			super();
+			this.attribs = attribs;
+		}
+
+		render(attribs) {
+			this.attribs = attribs;
+			h(this)`Title: ${attribs.title}`
+		}
+	}
+	customElements.define('b-522', B522);
+
+	let flag = true;
+
+	class A522 extends HTMLElement {
+		render() {
+			h(this)`<a-522><b-522 ${flag && 'title="test"'}></b-522></a-522>`
+		}
+	}
+	customElements.define('a-522', A522);
+
+	let a = new A522();
+	a.render();
+	assert.eq(`<a-522><b-522 title="test">Title: test</b-522></a-522>`, getHtml(a));
+
+	flag = false;
+	a.render();
+	assert.eq(`<a-522><b-522>Title: </b-522></a-522>`, getHtml(a));
+
+	flag = true;
+	a.render();
+	assert.eq(`<a-522><b-522 title="test">Title: test</b-522></a-522>`, getHtml(a));
+});
+
 Testimony.test('Solarite.component.nested', () => {
 
 	let bRenderCount = 0;

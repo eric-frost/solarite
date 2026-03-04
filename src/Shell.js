@@ -85,13 +85,15 @@ export default class Shell {
 
 				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes with placeholders as we go.
 
-					// Whole attribute
+					// One or more whole attributes
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/)
 					if (matches) {
 						let path = new PathToAttribs(null, node);
 						this.paths.push(path);
-						if (isComponent)
+						if (isComponent) {
+							path.isComponentAttrib = true;
 							componentAttribPaths.push(path);
+						}
 
 						placeholdersUsed ++;
 						node.removeAttribute(matches[0]); // TODO: Is this necessary?

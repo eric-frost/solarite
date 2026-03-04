@@ -2,6 +2,7 @@ import Path from "./Path.js";
 import Util from "./Util.js";
 import delve from "./delve.js";
 import assert from "./assert.js";
+import PathToAttribValue from "./PathToAttribValue.js";
 import Globals from "./Globals.js";
 
 export default class PathToComponent extends Path {
@@ -36,8 +37,27 @@ export default class PathToComponent extends Path {
 		// 1. Attributes
 		let attribs = Util.attribsToObject(el, '_is');
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
-			let name = Util.dashesToCamel(attribPath.attrName);
-			attribs[name] = attribPath.getValue(exprs[i]);
+			if (attribPath instanceof PathToAttribValue) {
+				let name = Util.dashesToCamel(attribPath.attrName);
+				attribs[name] = attribPath.getValue(exprs[i]);
+			}
+			else { // PathToAttribs
+				let val = attribPath.getValue(exprs[i]);
+				if (typeof val === 'object')
+					for (let name in val)
+						attribs[Util.dashesToCamel(name)] = val[name];
+				else if (typeof val === 'string') {
+					let attrs = val.split(/([\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|\S+))/g)
+						.map(text => text.trim())
+						.filter(text => text.length);
+
+					for (let attr of attrs) {
+						let [name, value] = attr.split(/\s*=\s*/); // split on first equals.
+						value = (value || '').replace(/^(['"])(.*)\1$/, '$2'); // trim value quotes if they match.
+						attribs[Util.dashesToCamel(name)] = value;
+					}
+				}
+			}
 		}
 
 		// 2. Instantiate component on first time.

@@ -13,6 +13,9 @@ export default class PathToAttribValue extends Path {
 	 * @type {?string[]} Used only if type=AttribType.Value. If null, use one expr to set the whole attribute value. */
 	attrValue;
 
+	/** @type {boolean} Provides value for attribute on a component. */
+	isComponent;
+
 	isHtmlProperty;
 
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {

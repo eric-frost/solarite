@@ -774,6 +774,9 @@ class PathToAttribValue extends Path {
 	 * @type {?string[]} Used only if type=AttribType.Value. If null, use one expr to set the whole attribute value. */
 	attrValue;
 
+	/** @type {boolean} Provides value for attribute on a component. */
+	isComponent;
+
 	isHtmlProperty;
 
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
@@ -1078,6 +1081,9 @@ class PathToAttribs extends Path {
 	 * @type {Set<string>} Used for type=AttribType.Multiple to remember the attributes that were added. */
 	attrNames;
 
+	/** @type {boolean} Provides one or more attributes on a component. */
+	isComponent;
+
 	constructor(nodeBefore, nodeMarker) {
 		super(null, null);
 		this.nodeMarker = nodeMarker;
@@ -1142,6 +1148,7 @@ class PathToAttribs extends Path {
 
 
 	getExpressionCount() { return 1 }
+	getValue(exprs) { return exprs[0]; }
 }
 
 /**
@@ -1944,8 +1951,27 @@ class PathToComponent extends Path {
 		// 1. Attributes
 		let attribs = Util.attribsToObject(el, '_is');
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
-			let name = Util.dashesToCamel(attribPath.attrName);
-			attribs[name] = attribPath.getValue(exprs[i]);
+			if (attribPath instanceof PathToAttribValue) {
+				let name = Util.dashesToCamel(attribPath.attrName);
+				attribs[name] = attribPath.getValue(exprs[i]);
+			}
+			else { // PathToAttribs
+				let val = attribPath.getValue(exprs[i]);
+				if (typeof val === 'object')
+					for (let name in val)
+						attribs[Util.dashesToCamel(name)] = val[name];
+				else if (typeof val === 'string') {
+					let attrs = val.split(/([\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|\S+))/g)
+						.map(text => text.trim())
+						.filter(text => text.length);
+
+					for (let attr of attrs) {
+						let [name, value] = attr.split(/\s*=\s*/); // split on first equals.
+						value = (value || '').replace(/^(['"])(.*)\1$/, '$2'); // trim value quotes if they match.
+						attribs[Util.dashesToCamel(name)] = value;
+					}
+				}
+			}
 		}
 
 		// 2. Instantiate component on first time.
@@ -2123,13 +2149,15 @@ class Shell {
 
 				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes with placeholders as we go.
 
-					// Whole attribute
+					// One or more whole attributes
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/);
 					if (matches) {
 						let path = new PathToAttribs(null, node);
 						this.paths.push(path);
-						if (isComponent)
+						if (isComponent) {
+							path.isComponentAttrib = true;
 							componentAttribPaths.push(path);
+						}
 
 						placeholdersUsed ++;
 						node.removeAttribute(matches[0]); // TODO: Is this necessary?

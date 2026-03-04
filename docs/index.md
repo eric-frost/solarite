@@ -781,9 +781,9 @@ document.body.append(a, b, c, d);
 
 
 
-### Advanced Techniques
+## Advanced Techniques
 
-#### Extending Native HTML Elements
+### Extending Native HTML Elements
 
 HTML has strict rules about which elements can be children of certain container elements. For example, a `<table>` can only have specific children like `<tr>`, `<thead>`, etc.
 
@@ -818,7 +818,7 @@ for (let i=0; i<10; i++) {
 document.body.append(table);
 ```
 
-#### Manual DOM Operations
+### Manual DOM Operations
 
 While Solarite handles most updates automatically, you can perform manual DOM operations in these scenarios:
 
@@ -877,7 +877,7 @@ list.render();
 // list.render();
 ```
 
-#### Non-Component Elements
+### Non-Component Elements
 
 The `toEl()` function (discussed above) can also be given an object with a `render()` method to `toEl()`. Properties and methods of the object become bound to the resulting element.
 

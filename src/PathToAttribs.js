@@ -8,6 +8,9 @@ export default class PathToAttribs extends Path {
 	 * @type {Set<string>} Used for type=AttribType.Multiple to remember the attributes that were added. */
 	attrNames;
 
+	/** @type {boolean} Provides one or more attributes on a component. */
+	isComponent;
+
 	constructor(nodeBefore, nodeMarker) {
 		super(null, null);
 		this.nodeMarker = nodeMarker;
@@ -74,4 +77,5 @@ export default class PathToAttribs extends Path {
 
 
 	getExpressionCount() { return 1 }
+	getValue(exprs) { return exprs[0]; }
 }
