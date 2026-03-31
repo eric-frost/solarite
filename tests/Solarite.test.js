@@ -652,6 +652,34 @@ Testimony.test('Solarite.expr.twoArrays', () => {
 	assert.eq(getHtml(a), '<r-65>AppleCat</r-65>');
 });
 
+Testimony.test('Solarite.expr.set', () => {
+	class A extends Solarite {
+		render() {
+			h(this)`${new Set(['Apple', 'Banana', 'Cherry'])}`
+		}
+	}
+	customElements.define('r-66', A);
+	let a = new A();
+	a.render();
+	assert.eq(getHtml(a), '<r-66>AppleBananaCherry</r-66>');
+});
+
+Testimony.test('Solarite.expr.nodeList', () => {
+	let div = document.createElement('div');
+	div.innerHTML = '<span>A</span><span>B</span><span>C</span>';
+	let nodeList = div.querySelectorAll('span');
+
+	class A extends Solarite {
+		render() {
+			h(this)`${nodeList}`
+		}
+	}
+	customElements.define('r-67', A);
+	let a = new A();
+	a.render();
+	assert.eq(getHtml(a), '<r-67><span>A</span><span>B</span><span>C</span></r-67>');
+});
+
 Testimony.test('Solarite.expr.staticFunction', () => {
 	class A extends Solarite {
 		constructor() {

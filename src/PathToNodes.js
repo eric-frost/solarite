@@ -332,7 +332,7 @@ export default class PathToNodes extends Path {
 	 * @param expr
 	 * @param callback {function(Node|Template)}*/
 	exprToTemplates(expr, callback) {
-		if (Array.isArray(expr)) // TODO: use typeof obj[Symbol.iterator] === 'function'  so we can also iterate over objects and NodeList?
+		if (expr != null && typeof expr !== 'string' && typeof expr[Symbol.iterator] === 'function' && !(expr instanceof Template))
 			for (let subExpr of expr)
 				this.exprToTemplates(subExpr, callback);
 
