@@ -332,7 +332,7 @@ Testimony.test('Solarite.assignFields.castRecord_array', () => {
 
 Testimony.test('Solarite.assignFields.castRecord_arrayError', () => {
 	let dest = { users: null };
-	assert.error(() => {
+	assert.throws(() => {
 		assignFields(dest, { users: 'not an array' }, { users: [User] });
 	}, 'Field users must be an array.');
 });
@@ -2070,28 +2070,6 @@ Testimony.test('Solarite.attrib.double', () => {
 	val2 = 'twoB';
 	a.render();
 	assert.eq(getHtml(a), `<r-420><div class="oneBtwoB">oneB</div></r-420>`)
-});
-
-Testimony.test('Solarite.attrib.doubleAndText', () => {
-
-	let val1 = 'one';
-	let val2 = 'two';
-
-	class R430 extends Solarite {
-		render() {
-			h(this)`<div class="a ${val1} b ${val2} c">${val1}</div>`;
-		}
-	}
-
-	let a = new R430();
-	a.render();
-
-	assert.eq(getHtml(a), `<r-430><div class="a one b two c">one</div></r-430>`)
-
-	val1 = 'oneB';
-	val2 = 'twoB';
-	a.render();
-	assert.eq(getHtml(a), `<r-430><div class="a oneB b twoB c">oneB</div></r-430>`)
 });
 
 Testimony.test('Solarite.attrib.doubleAndText', () => {
