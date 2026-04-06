@@ -11,8 +11,8 @@ rem Or pass individual test and test group names separated by spaces like this:
 rem ./run.bat StringUtil.nextInSequence ObjectUtilTest
 rem --------------------------------------
 
-deno run -A "%~dp0Testimony.js" --headless --webroot=../ --page=tests/index.html %*
+deno run --node-modules-dir=none -A "%~dp0Testimony.js" --headless --webroot=../ --page=tests/index.html %*
 GOTO :EOF
 ::CMDLITERAL
 
-deno run -A "$(dirname "$0")/Testimony.js" --headless --webroot=../ --page=tests/index.html "$@"
+deno run --node-modules-dir=none -A "$(dirname "$0")/Testimony.js" --headless --webroot=../ --page=tests/index.html "$@"

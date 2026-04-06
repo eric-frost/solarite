@@ -1,13 +1,3 @@
 /.idea
-/_internal
-/benchmarks/results
-/benchmarks/vanilla3
-/benchmarks/watch/Solarite.min.js
-/benchmarks/naive/Solarite.min.js
-/css
-/deno.lock
-/editor.html
-/editor2.html
-/tests/.run
-/tools
 /.npmrc
+

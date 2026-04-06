@@ -1,4 +1,5 @@
 import Path from "./Path.js";
+import Util from "./Util.js";
 import Globals from "./Globals.js";
 import assert from "./assert.js";
 
@@ -55,16 +56,10 @@ export default class PathToAttribs extends Path {
 
 			// Attributes as string
 			else {
-				let attrs = (expr + '') // Split string into multiple attributes.
-					.split(/([\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|\S+))/g)
-					.map(text => text.trim())
-					.filter(text => text.length);
-
-				for (let attr of attrs) {
-					let [name, value] = attr.split(/\s*=\s*/); // split on first equals.
-					value = (value || '').replace(/^(['"])(.*)\1$/, '$2'); // trim value quotes if they match.
-					node.setAttribute(name, value);
-					this.attrNames.add(name)
+				let attribs = Util.splitAttribs(expr);
+				for (let name in attribs) {
+					node.setAttribute(name, attribs[name]);
+					this.attrNames.add(name);
 				}
 			}
 		}

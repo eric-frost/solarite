@@ -239,6 +239,141 @@ Testimony.test('Solarite.Util.camelToDashes', () => {
 //endregion
 
 
+//region assignFields
+/*┌─────────────────╮
+  | assignFields    |
+  └─────────────────╯*/
+import {assignFields} from '../src/Solarite.js';
+
+Testimony.test('Solarite.assignFields.basic', () => {
+	let dest = { name: 'test', age: 30 };
+	assignFields(dest, { name: 'new', age: 31 });
+	assert.eq(dest.name, 'new');
+	assert.eq(dest.age, 31);
+});
+
+
+Testimony.test('Solarite.assignFields.castRecord_ignore', () => {
+	let dest = { name: 'test', age: 30 };
+	assignFields(dest, { name: 'new', age: 31 }, { age: false });
+	assert.eq(dest.name, 'new');
+	assert.eq(dest.age, 30);
+});
+
+Testimony.test('Solarite.assignFields.castRecord_types', () => {
+	let dest = { age: 0, price: 0, score: 0, active: false, label: '' };
+	assignFields(dest, {
+		age: '30',
+		price: '19.99',
+		score: '100',
+		active: 'true',
+		label: 123
+	}, {
+		age: 'int',
+		price: 'float',
+		score: 'number',
+		active: 'boolean',
+		label: 'string'
+	});
+	assert.eq(dest.age, 30);
+	assert.eq(dest.price, 19.99);
+	assert.eq(dest.score, 100);
+	assert.eq(dest.active, true);
+	assert.eq(dest.label, '123');
+});
+
+class User {
+	constructor(name) {
+		this.name = name;
+	}
+}
+
+Testimony.test('Solarite.assignFields.castRecord_class', () => {
+	window.User = User; // Make it global for lookup
+	let dest = { user: null, friend: null };
+	assignFields(dest, {
+		user: 'John',
+		friend: 'Jane'
+	}, {
+		user: User,
+		friend: 'User'
+	});
+
+	assert.eq(dest.user instanceof User, true);
+	assert.eq(dest.user.name, 'John');
+	assert.eq(dest.friend instanceof User, true);
+	assert.eq(dest.friend.name, 'Jane');
+	delete window.User;
+});
+
+Testimony.test('Solarite.assignFields.castRecord_array', () => {
+	window.User = User;
+	let dest = { users: null, friends: null };
+	assignFields(dest, {
+		users: ['John', 'Jane'],
+		friends: ['Doe', 'Smith']
+	}, {
+		users: [User],
+		friends: 'User[]'
+	});
+
+	assert.eq(dest.users.length, 2);
+	assert.eq(dest.users[0] instanceof User, true);
+	assert.eq(dest.users[0].name, 'John');
+	assert.eq(dest.users[1].name, 'Jane');
+
+	assert.eq(dest.friends.length, 2);
+	assert.eq(dest.friends[0] instanceof User, true);
+	assert.eq(dest.friends[0].name, 'Doe');
+	assert.eq(dest.friends[1].name, 'Smith');
+
+	delete window.User;
+});
+
+Testimony.test('Solarite.assignFields.castRecord_arrayError', () => {
+	let dest = { users: null };
+	assert.error(() => {
+		assignFields(dest, { users: 'not an array' }, { users: [User] });
+	}, 'Field users must be an array.');
+});
+
+Testimony.test('Solarite.assignFields.defaultCasting', () => {
+	let dest = {
+		age: 1,
+		active: false,
+		date: new Date('2020-01-01T00:00:00Z')
+	};
+	assignFields(dest, {
+		age: '42',
+		active: 'true',
+		date: '2024-01-01T00:00:00Z'
+	});
+	assert.eq(dest.age, 42);
+	assert.eq(dest.active, true);
+	assert.eq(dest.date instanceof Date, true);
+	assert.eq(dest.date.getUTCFullYear(), 2024);
+});
+
+Testimony.test('Solarite.assignFields.nullHandling', () => {
+	let dest = { user: new User('old'), date: new Date() };
+	assignFields(dest, { user: null, date: null }, { user: User });
+	assert.eq(dest.user, null);
+	assert.eq(dest.date, null);
+});
+
+Testimony.test('Solarite.assignFields.instanceOfCheck', () => {
+	let dest = { user: null };
+	let existingUser = new User('existing');
+	assignFields(dest, { user: existingUser }, { user: User });
+	assert.eq(dest.user, existingUser);
+
+	dest = { users: [] };
+	assignFields(dest, { users: [existingUser] }, { users: [User] });
+	assert.eq(dest.users[0], existingUser);
+});
+//endregion
+
+
 
 //region basic
 /*┌─────────────────╮

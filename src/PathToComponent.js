@@ -39,7 +39,13 @@ export default class PathToComponent extends Path {
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 			if (attribPath instanceof PathToAttribValue) {
 				let name = Util.dashesToCamel(attribPath.attrName);
-				attribs[name] = attribPath.getValue(exprs[i]);
+				
+				// Resolve two way bindimg path before we pass it to the component.
+				let value = attribPath.getValue(exprs[i]);
+				if (!attribPath.attrValue && Util.isPath(value))
+					value = delve(value[0], value.slice(1));
+				
+				attribs[name] = value;
 			}
 			else { // PathToAttribs
 				let val = attribPath.getValue(exprs[i]);
@@ -47,15 +53,9 @@ export default class PathToComponent extends Path {
 					for (let name in val)
 						attribs[Util.dashesToCamel(name)] = val[name];
 				else if (typeof val === 'string') {
-					let attrs = val.split(/([\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|\S+))/g)
-						.map(text => text.trim())
-						.filter(text => text.length);
-
-					for (let attr of attrs) {
-						let [name, value] = attr.split(/\s*=\s*/); // split on first equals.
-						value = (value || '').replace(/^(['"])(.*)\1$/, '$2'); // trim value quotes if they match.
-						attribs[Util.dashesToCamel(name)] = value;
-					}
+					let attrs = Util.splitAttribs(val);
+					for (let name in attrs)
+						attribs[Util.dashesToCamel(name)] = attrs[name];
 				}
 			}
 		}

@@ -42,10 +42,17 @@ export class Solarite extends HTMLElement {
 export function toEl(arg: string | Template | {render: () => void}): Node | HTMLElement | DocumentFragment;
 
 /**
- * Assign fields from `src` to `dest` if they exist in `dest` and don't exist in `ignore`.
- * When a value in `src` is a string and the existing value in `dest` is a boolean, number, or Date,
- * it will be converted to that type. */
-export function assignFields(dest: object, src: object|null, ignore?: string[]): void;
+ * Assign fields from `src` to `dest` if they exist in `dest`.
+ *
+ * `cast` is an optional record where the key is the field name.
+ * - Ignore fields: Use `false` as the value.
+ * - Basic Casting: Use `'int'`, `'float'`, `'number'`, `'boolean'`, `'string'`.
+ * - Class Casting: Pass a class constructor or its string name to instantiate the field.
+ * - Array Casting: Use `[Class]` or `'Class[]'`. The source must be an array.
+ *
+ * If `cast` is omitted and the source is a string, it is automatically cast to boolean,
+ * number, or Date if the destination field already contains a value of that type. */
+export function assignFields(dest: object, src: object|null, cast?: Record<string, string|Function|boolean|string[]|Function[]>): void;
 
 /**
  * @deprecated

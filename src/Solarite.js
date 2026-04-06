@@ -252,35 +252,74 @@ export class Solarite extends HTMLElementAutoDefine {
 
 
 /**
- * Assign fields from `src` to `dest` if they exist in `dest` and their names are not in the `ignore` list.
- * When a value in `src` is a string and the existing value in `dest` is a boolean, number, or Date,
- * it will be converted to that type.
- * This is often used in class constructors that accept an object of arguments.
+ * Assign fields from `src` to `dest` if they exist in `dest`.
+ *
+ * `cast` is an optional record where the key is the field name.
+ * - Ignore fields: Use `false` as the value.
+ * - Basic Casting: Use `'int'`, `'float'`, `'number'`, `'boolean'`, `'string'`.
+ * - Class Casting: Pass a class constructor or its string name to instantiate the field.
+ * - Array Casting: Use `[Class]` or `'Class[]'`. The source must be an array.
+ *
+ * If `cast` is omitted and the source is a string, it is automatically cast to boolean, 
+ * number, or Date if the destination field already contains a value of that type.
  * @param {object} dest
  * @param {?object} src
- * @param {string[]} [ignore=[]] */
-export function assignFields(dest, src, ignore=[]) {
+ * @param {Record<string, string|Function|boolean>} [cast={}] */
+export function assignFields(dest, src, cast={}) {
 	for (let name in src || {}) {
-		if (name in dest && !ignore.includes(name)) {
-			const descriptor = Object.getOwnPropertyDescriptor(dest, name)
-				|| Object.getOwnPropertyDescriptor(Object.getPrototypeOf(dest), name); // Also find (parent?) setters.  Is this necssary?
-			if (!descriptor || descriptor.writable || descriptor.set) {
-				let srcVal = src[name];
-				let destVal = dest[name];
-				if (typeof src[name] === 'string') {
-					if (typeof destVal === 'boolean') // empty string (when an attribute is present with no value) is true
-						dest[name] = ![false, 'false', 0, '0'].includes(srcVal);
-					else if (typeof destVal === 'number')
-						dest[name] = Number(srcVal);
-					else if (destVal instanceof Date) {
-						dest[name] = new Date(srcVal); // TODO: read it as UTC 0 by default.
-					}
-					else
-						dest[name] = srcVal;
-				}
-				else
-					dest[name] = srcVal;
-			}
+		let castVal = name in cast
+			? cast[name]
+			: typeof dest[name];
+
+		// Ignore fields
+		if (castVal === false || !(name in dest))
+			continue;
+
+		// Skip properties that are not writable and don't have a setter
+		const desc = Object.getOwnPropertyDescriptor(dest, name)
+			|| Object.getOwnPropertyDescriptor(Object.getPrototypeOf(dest), name);
+		if (desc && !desc.writable && !desc.set)
+			continue;
+
+		// Array Casting: [Class] or 'Class[]'
+		let arrayCast = castVal && (Array.isArray(castVal) && castVal.length === 1
+			? castVal[0]
+			: (typeof castVal === 'string' && castVal.endsWith('[]')
+				? castVal.slice(0, -2)
+				: null
+			));
+
+		const getConstructor = (c) =>
+			typeof c === 'function' ? c : (window[c] || customElements.get(c));
+
+		let srcVal = src[name];
+		if (arrayCast) {
+			if (!Array.isArray(srcVal))
+				throw new Error(`Field ${name} must be an array.`);
+			let constructor = getConstructor(arrayCast);
+			dest[name] = srcVal.map(v => (constructor && !(v instanceof constructor)) ? new constructor(v) : v);
+			continue;
 		}
+
+		// Basic Type Casting
+		if (castVal === 'int')
+			srcVal = parseInt(srcVal);
+		else if (castVal === 'float' || castVal === 'number')
+			srcVal = Number(srcVal);
+		else if (castVal === 'boolean')
+			srcVal = ![false, 'false', 0, '0'].includes(srcVal);
+		else if (castVal === 'string')
+			srcVal = String(srcVal);
+
+		// Class or Date Casting
+		else if (srcVal != null) {
+			let constructor = getConstructor(castVal);
+			if (constructor && !(srcVal instanceof constructor))
+				srcVal = new constructor(srcVal);
+			else if (dest[name] instanceof Date && !(srcVal instanceof Date))
+				srcVal = new Date(srcVal);
+		}
+
+		dest[name] = srcVal;
 	}
 }

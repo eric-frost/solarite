@@ -211,6 +211,26 @@ let Util = {
 		return val === undefined || val === false || val === null;
 	},
 
+	/**
+	 * Split a string like 'foo="bar" baz=123' into an object like {foo: 'bar', baz: '123'}.
+	 * @param str {string}
+	 * @returns {Object} */
+	splitAttribs(str) {
+		let result = {};
+		let attrs = (str + '') // Split string into multiple attributes.
+			.split(/([\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|\S+))/g)
+			.map(text => text.trim())
+			.filter(text => text.length);
+
+		for (let attr of attrs) {
+			let [name, value] = attr.split(/\s*=\s*/); // split on first equals.
+			value = (value || '').replace(/^(['"])(.*)\1$/, '$2'); // trim value quotes if they match.
+			result[name] = value;
+		}
+
+		return result;
+	},
+
 	/*
 	isPrimitive(val) {
 		return typeof val === 'string' || typeof val === 'number'

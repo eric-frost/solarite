@@ -1146,39 +1146,30 @@ async function runPage(path, webServer=null, webRoot=null, tests=null, headless=
 	const [
 		{default: puppeteer},
 		{Launcher},
-		{serve},
 		{serveFile},
 	] = await Promise.all([
-		import('https://deno.land/x/puppeteer@16.2.0/mod.ts'),
-		import('https://esm.sh/chrome-launcher@0.15.0'),
-		import('https://deno.land/std@0.102.0/http/server.ts'),
-		import('https://deno.land/std@0.102.0/http/file_server.ts')
+		import('npm:puppeteer@24.40.0'),
+		import('npm:chrome-launcher@0.15.0'),
+		import('jsr:@std/http/file-server')
 	]);
 
 	const startServer = () => {
 
 		const absWebRoot = Deno.realPathSync(webRoot);
-		const server = serve({port});
+		const server = Deno.serve({port}, request => {
+			const url = new URL(request.url);
+			const filepath = `${absWebRoot}${url.pathname}`;
+			return serveFile(request, filepath)
+				.catch(() => new Response("File not found", {status: 404}));
+		});
 		//console.log(`HTTP web server running. Access it at: http://localhost:${port}/`);
-
-		(async () => {
-			for await (const request of server) {
-				const url = new URL(request.url, `http://${request.headers.get("host")}`);
-				const filepath = `${absWebRoot}${url.pathname}`;
-				try {
-					const content = await serveFile(request, filepath);
-					request.respond(content);
-				} catch {
-					request.respond({status: 404, body: "File not found"});
-				}
-			}
-		})();
 
 		return server;
 	};
 
-	const stopServer = (server) => {
-		server.close();
+	const stopServer = async (server) => {
+		server.shutdown();
+		await server.finished.catch(() => {});
 	};
 
 	const server = webServer
@@ -1247,7 +1238,7 @@ async function runPage(path, webServer=null, webRoot=null, tests=null, headless=
 
 	await browser.close();
 	if (server)
-		stopServer(server);
+		await stopServer(server);
 
 	Deno.exit(failedTests.length ? 1 : 0);
 }
