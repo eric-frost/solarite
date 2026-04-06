@@ -1,7 +1,7 @@
 import Path from "./Path.js";
 import Globals from "./Globals.js";
 import Util from "./Util.js";
-import delve from "./delve.js";
+import delve, {isDelvePath} from "./delve.js";
 import assert from "./assert.js";
 
 export default class PathToAttribValue extends Path {
@@ -43,7 +43,7 @@ export default class PathToAttribValue extends Path {
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.instantiateComponent() for components.
-		if (!multiple && Util.isPath(expr)) {
+		if (!multiple && isDelvePath(expr)) {
 
 			// Don't bind events to component placeholders.
 			// PathToComponent will do the binding later when it instantiates the component.

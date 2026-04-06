@@ -1,6 +1,6 @@
 import Path from "./Path.js";
 import Util from "./Util.js";
-import delve from "./delve.js";
+import delve, {isDelvePath} from "./delve.js";
 import assert from "./assert.js";
 import PathToAttribValue from "./PathToAttribValue.js";
 import Globals from "./Globals.js";
@@ -42,7 +42,7 @@ export default class PathToComponent extends Path {
 				
 				// Resolve two way bindimg path before we pass it to the component.
 				let value = attribPath.getValue(exprs[i]);
-				if (!attribPath.attrValue && Util.isPath(value))
+				if (!attribPath.attrValue && isDelvePath(value))
 					value = delve(value[0], value.slice(1));
 				
 				attribs[name] = value;

@@ -196,17 +196,6 @@ let Util = {
 		return result;
 	},
 
-	/**
-	 * Is it an array and a path that can be evaluated by delve() ?
-	 * We allow the first element to be null/undefined so binding can report errors.
-	 * @param arr {Array|*}
-	 * @returns {boolean} */
-	isPath(arr) {
-		return Array.isArray(arr) && arr.length >=2  // An array of at least two elements.
-			&& (typeof arr[0] === 'object' || arr[0] === undefined) // Where the first element is an object, null, or undefined.
-			&& !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number'); // Path 1..x is only numbers and strings.
-	},
-
 	isFalsy(val) {
 		return val === undefined || val === false || val === null;
 	},
