@@ -7,13 +7,13 @@ rem --------------------------------------
 
 cd %~dp0
 deno run --allow-read --allow-write build.js ../src/Solarite.js ../dist/Solarite.js
-copy "..\dist\Solarite.min.js" "..\benchmarks\naive\Solarite.min.js"
+copy "..\dist\Solarite.min.js" "..\benchmarks\solarite\Solarite.min.js"
 copy "..\dist\Solarite.min.js" "..\benchmarks\watch\Solarite.min.js"
 GOTO :EOF
 ::CMDLITERAL
 
-# Linux/macOS version
-cd "$(dirname "$0")"
-deno run --allow-read --allow-write build.js ../src/Solarite.js ../dist/Solarite.js
-cp "../dist/Solarite.min.js" "../benchmarks/naive/Solarite.min.js"
-cp "../dist/Solarite.min.js" "../benchmarks/watch/Solarite.min.js"
+ # Linux/macOS version
+ cd "$(dirname "$0")"
+ deno run --allow-read --allow-write build.js ../src/Solarite.js ../dist/Solarite.js
+ ln -sf "../../dist/Solarite.min.js" "../benchmarks/solarite/Solarite.min.js"
+ ln -sf "../../dist/Solarite.min.js" "../benchmarks/watch/Solarite.min.js"

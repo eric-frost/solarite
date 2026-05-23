@@ -1,3 +1,7 @@
 /.idea
 /.npmrc
 
+/agents/
+/.directory
+/benchmarks/solarite/Solarite.min.js
+/benchmarks/watch/Solarite.min.js

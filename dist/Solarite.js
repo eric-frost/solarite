@@ -209,6 +209,18 @@ function delve(obj, path, createVal = d) {
 	return obj;
 }
 
+
+/**
+ * Is it an array and a path that can be evaluated by delve() ?
+ * We allow the first element to be null/undefined so binding can report errors.
+ * @param arr {Array|*}
+ * @returns {boolean} */
+function isDelvePath(arr) {
+	return Array.isArray(arr) && arr.length >=2  // An array of at least two elements.
+		&& (typeof arr[0] === 'object' || arr[0] === undefined) // Where the first element is an object, null, or undefined.
+		&& !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number'); // Path 1..x is only numbers and strings.
+}
+
 // d means "don't create"
 let d = {};
 
@@ -405,17 +417,6 @@ let Util = {
 				: false);
 		}
 		return result;
-	},
-
-	/**
-	 * Is it an array and a path that can be evaluated by delve() ?
-	 * We allow the first element to be null/undefined so binding can report errors.
-	 * @param arr {Array|*}
-	 * @returns {boolean} */
-	isPath(arr) {
-		return Array.isArray(arr) && arr.length >=2  // An array of at least two elements.
-			&& (typeof arr[0] === 'object' || arr[0] === undefined) // Where the first element is an object, null, or undefined.
-			&& !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number'); // Path 1..x is only numbers and strings.
 	},
 
 	isFalsy(val) {
@@ -822,7 +823,7 @@ class PathToAttribValue extends Path {
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.instantiateComponent() for components.
-		if (!multiple && Util.isPath(expr)) {
+		if (!multiple && isDelvePath(expr)) {
 
 			// Don't bind events to component placeholders.
 			// PathToComponent will do the binding later when it instantiates the component.
@@ -1967,7 +1968,13 @@ class PathToComponent extends Path {
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 			if (attribPath instanceof PathToAttribValue) {
 				let name = Util.dashesToCamel(attribPath.attrName);
-				attribs[name] = attribPath.getValue(exprs[i]);
+				
+				// Resolve two way bindimg path before we pass it to the component.
+				let value = attribPath.getValue(exprs[i]);
+				if (!attribPath.attrValue && isDelvePath(value))
+					value = delve(value[0], value.slice(1));
+				
+				attribs[name] = value;
 			}
 			else { // PathToAttribs
 				let val = attribPath.getValue(exprs[i]);
