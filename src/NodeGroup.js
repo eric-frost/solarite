@@ -176,6 +176,9 @@ export default class NodeGroup {
 					// 	paths.shift();
 
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
+
+					// TODO: What about child nodes?  The Path needs to be bound to them, not me.
+
 					this.activateEmbeds(this.root, shell, startingPathDepth);
 				}
 				this.startNode = this.endNode = this.root;

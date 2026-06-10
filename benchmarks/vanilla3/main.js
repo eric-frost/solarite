@@ -56,50 +56,73 @@ tbody.onclick = (e) => {
 document.querySelector('#app-actions').onclick = (e) => { e.stopPropagation(); e.preventDefault(); app[e.target.id](); op = e.target.id };
 
 
-if (benchmark) {
+let params = new URLSearchParams(window.location.search);
+let runsStr = params.get('benchmark');
 
+if (runsStr) {
 	(async () => {
+		let runs = Number(runsStr) || 1;
+		let results = [];
 
-		const times = [];
+		const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 		// Helper function to calculate geometric mean
 		const geometricMean = (arr) => {
 			return Math.pow(arr.reduce((a, b) => (a || .1) * (b||.1), 1), 1 / arr.length);
 		};
 
-		const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+		for (let r = 0; r < runs; r++) {
+			const times = [];
+			async function run(name, callback) {
+				const start = performance.now();
+				callback();
+				const time = performance.now() - start;
+				times.push(time);
+				console.log(`${name}: ${time.toFixed(2)}ms.`);
+				await sleep(20); // wait for render
+			}
 
-		async function run(name, callback) {
-			const start = performance.now();
-			callback();
-			const time = performance.now() - start;
-			times.push(time);
-			console.log(`${name}: ${time.toFixed(2)}ms.`);
-			await sleep(20); // wait for render
+			await run('Create Rows', () => app.run());
+			await run('Replace All Rows', () => app.run());
+			await run('Partial Update', () => app.update());
+			await run('Select Row', () => {
+				let element = tbody.children[0];
+				if (selected) selected.className = '';
+				selected = (element === selected) ? null : element;
+				if (selected) selected.className = 'danger';
+			});
+			await run('Swap Rows', () => app.swaprows());
+			await run('Remove Row', () => {
+				let element = tbody.children[0];
+				let index = Array.prototype.indexOf.call(tbody.children, element);
+				element.remove(); data.splice(index, 1);
+			});
+			await run('Clear Rows', () => app.clear());
+			await run('Create Many Rows', () => app.runlots());
+			await run('Append Rows', () => app.add());
+			await run('Clear Rows', () => app.clear());
+
+			// Log the geometric mean of all steps
+			const geoMean = geometricMean(times);
+			results.push(geoMean);
+			console.log(`Geometric mean: ${geoMean.toFixed(2)}ms`);
 		}
 
-		await run('Create Rows', () => app.run());
-		await run('Replace All Rows', () => app.run());
-		await run('Partial Update', () => app.update());
-		await run('Select Row', () => {
-			let element = tbody.children[0];
-			if (selected) selected.className = '';
-			selected = (element === selected) ? null : element;
-			if (selected) selected.className = 'danger';
-		});
-		await run('Swap Rows', () => app.swaprows());
-		await run('Remove Row', () => {
-			let element = tbody.children[0];
-			let index = Array.prototype.indexOf.call(tbody.children, element);
-			element.remove(); data.splice(index, 1);
-		});
-		await run('Clear Rows', () => app.clear());
-		await run('Create Many Rows', () => app.runlots());
-		await run('Append Rows', () => app.add());
-		await run('Clear Rows', () => app.clear());
+		if (runs > 1) {
+			console.log('---');
+			let avg = results.reduce((a, b) => a + b) / results.length;
+			let best = Math.min(...results);
+			console.log(`Min: ${best}ms`);
+			console.log(`Max: ${Math.max(...results)}ms`);
+			console.log(`Avg: ${avg}ms`);
 
-		// Log the geometric mean of all steps
-		const geoMean = geometricMean(times);
-		console.log(`Geometric mean: ${geoMean}ms`);
+			if (window.parent && window.parent.onBenchmarkComplete) {
+				window.parent.onBenchmarkComplete(avg, best);
+			}
+		} else if (runs === 1 && results.length > 0) {
+			if (window.parent && window.parent.onBenchmarkComplete) {
+				window.parent.onBenchmarkComplete(results[0], results[0]);
+			}
+		}
 	})();
 }

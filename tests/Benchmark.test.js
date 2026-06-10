@@ -185,7 +185,7 @@ Testimony.test('Benchmark.solarite._createRows',  `Create ${rowCount.toLocaleStr
 });
 
 Testimony.test('Benchmark.solarite._partialUpdate',  `Update ${rowCount.toLocaleString()} rows`, async () => {
-	
+
 	class R810 extends Solarite {
 		data = []
 
@@ -320,3 +320,75 @@ Testimony.test('Benchmark._getObjectHash',  () => {
 	//console.log(data)
 });
 */
+
+function runIframeBenchmark(runs) {
+	return async (context) => {
+		let avgResult = null;
+		let bestResult = null;
+
+		// Wait until iframe is created
+		while (!context.iframe || !context.iframe.contentWindow) {
+			await new Promise(resolve => setTimeout(resolve, 10));
+		}
+
+		// Expose callback on iframe's parent window (which is our window)
+		window.onBenchmarkComplete = (avg, best=avg) => {
+			avgResult = avg;
+			bestResult = best;
+		};
+
+		// Poll until the benchmark completes (with a timeout)
+		let start = Date.now();
+		while (avgResult === null && Date.now() - start < 20000) {
+			await new Promise(resolve => setTimeout(resolve, 50));
+		}
+
+		// Clean up
+		delete window.onBenchmarkComplete;
+
+		if (avgResult === null) {
+			throw new Error("Benchmark timed out or did not report a result.");
+		}
+
+		console.log(`Final Average Geometric Mean: ${avgResult.toFixed(2)}ms`);
+
+		// Adjust this threshold as we optimize!
+		if (avgResult > 150) {
+			throw new Error(`Performance regression detected! Mean is ${avgResult.toFixed(2)}ms (expected < 150ms)`);
+		}
+
+		return `avg: ${avgResult.toFixed(2)}ms, best: ${bestResult.toFixed(2)}ms`;
+	};
+}
+
+Testimony.testIframe(
+	'Benchmark.solarite._jsFramework-1x',
+	'Run the internal benchmark 1 time',
+	{ timeout: 15000 },
+	'<iframe src="/benchmarks/solarite/index.html?benchmark=1" style="width: 100%; height: 500px; border: 1px solid #ccc;"></iframe>',
+	runIframeBenchmark(1)
+);
+
+Testimony.testIframe(
+	'Benchmark.solarite._jsFramework-10x',
+	'Run the internal benchmark 10 times',
+	{ timeout: 30000 },
+	'<iframe src="/benchmarks/solarite/index.html?benchmark=10" style="width: 100%; height: 500px; border: 1px solid #ccc;"></iframe>',
+	runIframeBenchmark(10)
+);
+
+Testimony.testIframe(
+	'Benchmark.vanilla._jsFramework-1x',
+	'Run the vanilla benchmark 1 time',
+	{ timeout: 15000 },
+	'<iframe src="/benchmarks/vanilla3/index.html?benchmark=1" style="width: 100%; height: 500px; border: 1px solid #ccc;"></iframe>',
+	runIframeBenchmark(1)
+);
+
+Testimony.testIframe(
+	'Benchmark.vanilla._jsFramework-10x',
+	'Run the vanilla benchmark 10 times',
+	{ timeout: 30000 },
+	'<iframe src="/benchmarks/vanilla3/index.html?benchmark=10" style="width: 100%; height: 500px; border: 1px solid #ccc;"></iframe>',
+	runIframeBenchmark(10)
+);

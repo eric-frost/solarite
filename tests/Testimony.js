@@ -384,11 +384,14 @@ class TestComponent extends HTMLElement {
 				TestComponent.enableCB.checked = false;
 		});
 
-		// Make every parent checked if all its children are checked.
+		// Make every parent checked if all its non-underscored children are checked.
 		let p = this;
 		while (p = p.parentNode)
 			if (p.nodeType === 1 && p.matches('test-item'))
-				p.querySelector('[name=r]').checked = ![...p.childContainer.querySelectorAll('[name=r]:not([data-disabled])')].find(cb => !cb.checked);
+				p.querySelector('[name=r]').checked = ![...p.childContainer.querySelectorAll('[name=r]:not([data-disabled])')].find(cb => {
+					let isUnderscored = cb.value.split('.').pop().startsWith('_');
+					return !cb.checked && !isUnderscored;
+				});
 	}
 
 	/**
@@ -877,6 +880,7 @@ class Test {
 		} catch {}
 
 		this.status = TestStatus.Running;
+		Testimony.currentTest = this;
 		if (this.element)
 			this.element.renderStatus();
 
@@ -915,7 +919,7 @@ class Test {
 		}
 		finally {
  		if (this.teardown) // Always call teardown() even on error.
-				await this.teardown(context);
+				await this.teardown(setupResponse);
 
 			if (!pass && !(this.status instanceof Error))
 				this.status = TestStatus.Fail;
@@ -926,6 +930,8 @@ class Test {
 			}
 			if (this.parent)
 				this.parent.updateStatusFromChildren();
+
+			Testimony.currentTest = null;
 		}
 	}
 
@@ -1045,7 +1051,7 @@ export class TestimonyContext {
 	}
 
 	/**
-	 * Take a screenshot and save the result to tests/screenshots/.
+	 * Take a screenshot and save the result to tests/files/screenshots/.
 	 * This ONLY works when running under Puppeteer/Deno.
 	 * In the browser it will do nothing and return null.
 	 * @param filename {?string} Optional custom filename (without extension).
@@ -1053,21 +1059,23 @@ export class TestimonyContext {
 	async screenshot(filename=null) {
 		if (!globalThis.__testimonyScreenshot)
 			return null;
+		const targetId = 'screenshot-' + Math.random().toString(36).slice(2);
+		const selector = `[data-screenshot-id="${targetId}"]`;
 
 		if (this.test.isShadowDom) {
-			// Mark the shadow host so Puppeteer can find it on the outer page.
+			// Mark the shadow host so Puppeteer can find this exact target on the outer page.
 			let host = this.shadowRoot.host;
-			host.setAttribute('id', 'screenshot-shadow-host');
-			let result = await globalThis.__testimonyScreenshot(this.test.name, filename);
-			host.removeAttribute('id');
+			host.setAttribute('data-screenshot-id', targetId);
+			let result = await globalThis.__testimonyScreenshot(this.test.name, filename, selector);
+			host.removeAttribute('data-screenshot-id');
 			return result;
 		}
 
 		if (this.test.isIframe) {
-			// Mark the iframe so Puppeteer can find it on the outer page.
-			this.iframe.setAttribute('id', 'screenshot-iframe');
-			let result = await globalThis.__testimonyScreenshot(this.test.name, filename);
-			this.iframe.removeAttribute('id');
+			// Mark the iframe so Puppeteer can find this exact target on the outer page.
+			this.iframe.setAttribute('data-screenshot-id', targetId);
+			let result = await globalThis.__testimonyScreenshot(this.test.name, filename, selector);
+			this.iframe.removeAttribute('data-screenshot-id');
 			return result;
 		}
 	}
@@ -1084,13 +1092,16 @@ var Testimony = {
 	expandLevel: 1,
 	defaultTimeout: 20000, // Default per-test timeout in ms.  Set to 0 or null to disable.
 	defaultSize: [500, 300], // Default [width, height] for iframe/shadow DOM tests.
-	testFileRootPath: 'js',
+	testFileRootPath: '',
 
 	rootTest: new Test(),
 	passedTests: [],
 
 	/** @type {[string, string][]} E.g: [ [ 'users.account.resetPassword', 'Error: expected 1 to equal 2']] */
 	failedTests: [],
+
+	/** @type {?Test} The leaf test currently executing its fn. */
+	currentTest: null,
 
 	finished: false,
 
@@ -1102,9 +1113,16 @@ var Testimony = {
 			if (callerUrlStr) {
 				if (callerUrlStr.includes('?forTestimony=1')) return '';
 				callerUrlStr = callerUrlStr.replace(/:\d+(:\d+)?$/, '');
+
+				// Extract filename from URL
+				let filename = callerUrlStr.split('/').pop().replace(/\.test\.(js|ts)$/, '');
+
 				let callerDir = new URL('.', callerUrlStr).href;
 				let testimonyDir = new URL('.', import.meta.url).href;
-				return this._calculatePrefix(callerDir, testimonyDir, this.testFileRootPath);
+				let prefix = this._calculatePrefix(callerDir, testimonyDir, this.testFileRootPath);
+
+				if (prefix) return prefix + '.' + filename;
+				return filename;
 			}
 		} catch (e) {
 			// Fail silently
@@ -1207,9 +1225,16 @@ var Testimony = {
 		// If all non-underscored children enabled, use the group name (plus any individually enabled underscored tests).
 		if (allNonUnderscoreEnabled && test.name && (isChecked || hasNonUnderscoredChild)) {
 			let result = [test.name];
-			for (let child of Object.values(test.children))
-				if (child.getShortName().startsWith('_') && child.element?.enableCB?.checked)
-					result.push(child.name);
+			
+			const addCheckedUnderscored = (t) => {
+				for (let child of Object.values(t.children || {})) {
+					if (child.getShortName().startsWith('_') && child.element?.enableCB?.checked)
+						result.push(child.name);
+					addCheckedUnderscored(child);
+				}
+			};
+			addCheckedUnderscored(test);
+			
 			return result;
 		}
 
@@ -1253,8 +1278,59 @@ var Testimony = {
 			}
 		}
 
+		// Catch fire-and-forget async errors that no test awaits.
+		// Attribute to the currently running test, or report as unattributed.
+		window.addEventListener('unhandledrejection', this._onUnhandledRejection);
+
 		await this.rootTest.run();
+
+		// Drain: wait briefly to catch late async rejections (e.g. in-flight requests
+		// that fail after teardown drops the test database).
+		await new Promise(r => setTimeout(r, 500));
+
 		this.finished = true;
+	},
+
+	/** @param e {PromiseRejectionEvent} */
+	_onUnhandledRejection(e) {
+		e.preventDefault(); // Suppress default console error (we handle it ourselves).
+		let reason = e.reason;
+		let msg = reason instanceof Error
+			? Testimony.shortenError(reason, '\n')
+			: String(reason);
+
+		// Attribute to the currently running test, or label as unattributed.
+		let test = Testimony.currentTest;
+		let testName = test?.name || '(unattributed)';
+
+		console.error(`Unhandled rejection in ${testName}: ${msg}`);
+
+		// Mark test as failed if it was running or already passed.
+		if (test && !(test.status instanceof Error)) {
+			let err = reason instanceof Error ? reason : new Error(msg);
+			test.status = err;
+
+			// Move from passed to failed if it already finished.
+			let passedIdx = Testimony.passedTests.indexOf(testName);
+			if (passedIdx >= 0)
+				Testimony.passedTests.splice(passedIdx, 1);
+
+			if (!Testimony.failedTests.some(([n]) => n === testName))
+				Testimony.failedTests.push([testName, msg]);
+
+			// Update browser UI.
+			if (test.element) {
+				test.element.renderStatus();
+				test.element.renderResult();
+			}
+			if (test.parent)
+				test.parent.updateStatusFromChildren();
+		}
+		else {
+			// No test is running — attribute to last-run or generic.
+			if (!Testimony.failedTests.some(([n]) => n === testName))
+				Testimony.failedTests.push([testName, msg]);
+		}
 	},
 
 	/**
@@ -1275,8 +1351,10 @@ var Testimony = {
 			throw new Error(`Cannot register test "${name}" after run() has completed.`);
 
 		let prefix = this._getCallerPrefix();
-		if (prefix && !name.startsWith(prefix + '.')) {
-			name = prefix + '.' + name;
+		if (prefix) {
+			if (!name.startsWith(prefix + '.')) {
+				name = prefix + '.' + name;
+			}
 		}
 
 		if (name.split('.').some(part => part === 'constructor'))
@@ -1416,6 +1494,9 @@ var Testimony = {
 				// test.status = new Error(responseText); // Mark as failed even if we don't catch it.
 				throw new Error(responseText);
 			}
+			let result = responseText.slice(responseText.indexOf(passText) + passText.length).trim();
+			result = result.replace(/^in [\d.]+ seconds\.\s*/, '');
+			return result || undefined;
 		});
 
 		// Allow clicking the link icon to go directly to the test.
@@ -1589,7 +1670,7 @@ async function runPage(path, webServer=null, webRoot=null, tests=null, headless=
 
 	// Cleanup: Expose bridges for taking and cleaning up screenshots of the test's iframe.
 	await page.exposeFunction('__testimonyCleanupScreenshots', testName => CommandLineUtil.screenshotCleanup(testName, counts));
-	await page.exposeFunction('__testimonyScreenshot', (testName, filename) => CommandLineUtil.screenshot(testName, page, counts, filename));
+	await page.exposeFunction('__testimonyScreenshot', (testName, filename, selector=null) => CommandLineUtil.screenshot(testName, page, counts, filename, selector));
 
 	// Forward page console output to our terminal, preserving error stacks when possible.
 	page.on('console', CommandLineUtil.consoleLog);
@@ -1598,30 +1679,84 @@ async function runPage(path, webServer=null, webRoot=null, tests=null, headless=
 	const failure = new Promise((_, reject) => {
 		rejectFailure = reject;
 	});
-	page.on('pageerror', err => {
-		const text = `Page error: ${err && (err.stack || err.message) ? (err.stack || err.message) : String(err)}`;
-		console.error(`%c${text}`, 'color: #c00');
+	let pageErrorHandled = false;
+	page.on('pageerror', async err => {
+		if (pageErrorHandled) return;
+		pageErrorHandled = true;
+
+		// Extract the actual page content (e.g. PHP error rendered as text)
+		// instead of showing the useless JS SyntaxError.
+		let detail = '';
+		try {
+			detail = await page.evaluate(() =>
+				document.body?.innerText || document.documentElement?.innerText || '');
+		} catch {}
+		const trimmed = detail.trim().slice(0, 3000);
+		if (trimmed)
+			console.error(`\x1b[31mTest page error:\n${trimmed}\x1b[0m`);
+		else
+			console.error(`\x1b[31mPage error: ${err?.stack || err?.message || err}\x1b[0m`);
 		rejectFailure(err);
 	});
 
 	// Wait for the tests to finish
-	// TODO: Also collect errors.
-	const success = page.waitForFunction(() => window.Testimony?.finished === true);
+	const success = page.waitForFunction(() => window.Testimony?.finished === true, {timeout: 0});
 
 	// Go to test pages.
 	const url = webServer
 		? `${webServer}/${path}?${urlArgs.join('&')}`
 		: `http:/localhost:${port}/${path}?${urlArgs.join('&')}`;
-	await page.goto(url);
+	const response = await page.goto(url);
 
-	await Promise.race([success, failure]);
+	// 1. If the HTTP response itself is an error, surface it immediately.
+	if (response && !response.ok()) {
+		const body = await response.text().catch(() => '');
+		const plain = body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+		console.error(`\x1b[31mTest page returned HTTP ${response.status()}:\n${plain.slice(0, 2000)}\x1b[0m`);
+		success.catch(() => {});
+		await browser.close();
+		if (server) stopServer(server);
+		Deno.exit(1);
+	}
+
+	// 2. Wait for Testimony to initialize. If the page has a fatal PHP error,
+	// JS modules won't load and window.Testimony will never appear.
+	const initTimeout = 5_000;
+	const initResult = await Promise.race([
+		page.waitForFunction(() => !!window.Testimony, {timeout: initTimeout})
+			.then(() => 'ok')
+			.catch(() => 'timeout'),
+		failure.then(() => 'ok').catch(() => 'pageerror'),
+	]);
+
+	if (initResult !== 'ok') {
+		const bodyText = await page.evaluate(() =>
+			document.body?.innerText || document.documentElement?.innerText || '')
+			.catch(() => '');
+		const trimmed = bodyText.trim().slice(0, 3000);
+		if (initResult === 'timeout')
+			console.error(`\x1b[31mTest page failed to initialize Testimony within ${initTimeout / 1000}s.\nPage content:\n${trimmed || '(empty)'}\x1b[0m`);
+		// pageerror case: error already printed by the handler above.
+		success.catch(() => {});
+		await browser.close();
+		if (server) stopServer(server);
+		Deno.exit(1);
+	}
+
+	// 3. Wait for all tests to finish (or a page error to occur).
+	try {
+		await Promise.race([success, failure]);
+	} catch {
+		// Error already printed by pageerror handler.
+		success.catch(() => {});
+		await browser.close();
+		if (server) stopServer(server);
+		Deno.exit(1);
+	}
 
 	const failedTests = await page.evaluate(() => window.Testimony?.failedTests);
 	const passedTests = await page.evaluate(() => window.Testimony?.passedTests);
 	CommandLineUtil.printTestResult(passedTests, failedTests);
-
-	// Sleep for manual testing.
-	//await new Promise(resolve => setTimeout(resolve, 500000));
 
 	await browser.close();
 	if (server)
@@ -1683,17 +1818,19 @@ const CommandLineUtil = {
 	 * @param page
 	 * @param counts
 	 * @return {Promise<string>} The path to the screenshot relative to the document root. */
-	async screenshot(testName, page, counts, customFilename=null) {
+	async screenshot(testName, page, counts, customFilename=null, selector=null) {
 		const sep = Deno.build.os === 'windows' ? '\\' : '/';
-		const abs = (rel) => `${Deno.cwd()}${sep}screenshots${sep}${rel}`;
+		const abs = (rel) => `${Deno.cwd()}${sep}files${sep}screenshots${sep}${rel}`;
 
 		// Find the target element: iframe or shadow host
-		let handle = await page.$('iframe#screenshot-iframe');
-		let isIframe = !!handle;
+		let handle = selector ? await page.$(selector) : null;
+		if (!handle)
+			handle = await page.$('iframe#screenshot-iframe');
 		if (!handle)
 			handle = await page.$('#screenshot-shadow-host');
 		if (!handle)
 			throw new Error('test iframe or shadow host not found');
+		let isIframe = await handle.evaluate(el => el.tagName === 'IFRAME');
 
 		let filename;
 		if (customFilename) {
@@ -1707,7 +1844,8 @@ const CommandLineUtil = {
 			filename = `${base}${n > 1 ? n : ''}.png`;
 		}
 		const path = abs(filename);
-		await Deno.mkdir('screenshots', {recursive: true});
+		await Deno.mkdir(`files${sep}screenshots`, {recursive: true});
+		await handle.evaluate(el => el.scrollIntoView({block: 'center', inline: 'center'}));
 
 		if (isIframe) {
 			// Measure the full content size inside the iframe
@@ -1750,7 +1888,8 @@ const CommandLineUtil = {
 		try {
 			const base = CommandLineUtil.sanitizePath(testName);
 			const sep = Deno.build.os === 'windows' ? '\\' : '/';
-			for await (const entry of Deno.readDir(Deno.cwd())) {
+			const screenshotDir = `${Deno.cwd()}${sep}files${sep}screenshots`;
+			for await (const entry of Deno.readDir(screenshotDir)) {
 				if (!entry.isFile)
 					continue;
 				if (!entry.name.toLowerCase().endsWith('.png'))
@@ -1758,7 +1897,7 @@ const CommandLineUtil = {
 				if (!entry.name.startsWith(base))
 					continue;
 				try {
-					await Deno.remove(`${Deno.cwd()}${sep}screenshots${sep}${entry.name}`)
+					await Deno.remove(`${screenshotDir}${sep}${entry.name}`)
 				} catch {}
 			}
 			counts[base] = 0;
