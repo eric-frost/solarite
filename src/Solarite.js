@@ -11,6 +11,7 @@ export default h;
 export {default as delve} from './delve.js';
 export {default as Template} from './Template.js';
 export {default as toEl} from './toEl.js';
+export {svg} from './h.js';
 import Template from './Template.js';
 
 // Experimental:
@@ -140,6 +141,8 @@ export class Solarite extends HTMLElementAutoDefine {
 		let result = Util.attribsToObject(el);
 		for (let name in result) {
 			let val = result[name];
+
+			// We don't do eval because that seems too dangerous.
 			if (val.startsWith('${') && val.endsWith('}'))
 				result[name] = JSON.parse(val.slice(2, -1));
 		}
@@ -260,7 +263,7 @@ export class Solarite extends HTMLElementAutoDefine {
  * - Class Casting: Pass a class constructor or its string name to instantiate the field.
  * - Array Casting: Use `[Class]` or `'Class[]'`. The source must be an array.
  *
- * If `cast` is omitted and the source is a string, it is automatically cast to boolean, 
+ * If `cast` is omitted and the source is a string, it is automatically cast to boolean,
  * number, or Date if the destination field already contains a value of that type.
  * @param {object} dest
  * @param {?object} src

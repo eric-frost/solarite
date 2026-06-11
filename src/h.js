@@ -36,6 +36,19 @@ import Util from "./Util.js";
  * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template|Function} */
+/**
+ * Like h`...` but the fragment is parsed in the SVG namespace.
+ * Required for nested SVG fragments, since they're parsed standalone without an <svg> ancestor:
+ * h`<svg>${svg`<circle r="1"/>`}</svg>`
+ * @param htmlStrings {string[]}
+ * @param exprs {*[]}
+ * @return {Template} */
+export function svg(htmlStrings, ...exprs) {
+	let template = new Template(htmlStrings, exprs);
+	template.svgMode = true;
+	return template;
+}
+
 export default function h(htmlStrings=undefined, ...exprs) {
 
 	// 1. Tagged template: h`<div>...</div>`

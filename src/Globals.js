@@ -54,8 +54,8 @@ function reset() {
 		rendered: new WeakSet(),
 
 		/**
-		 * Map from array of Html strings to a Shell created from them.
-		 * @type {WeakMap<string[], Shell>} */
+		 * Map from array of Html strings to the Shells created from them, one per parse mode.
+		 * @type {WeakMap<string[], {html?:Shell, svg?:Shell}>} */
 		shells: new WeakMap(),
 
 		/**

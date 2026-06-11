@@ -21,8 +21,12 @@ declare function h(tag: string, props: object, ...children: any[]): Template; //
 declare function h(obj: {render: Function}): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => void; // Rebound render
 declare function h(): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => Node|DocumentFragment;
 
+/** Tagged template literal for SVG markup and SVG child fragments. */
+declare function svg(htmlStrings: TemplateStringsArray, ...exprs: any[]): Template;
+declare function svg(htmlStrings: string | string[], ...exprs: any[]): Template;
+
 export default h;
-export {h};
+export {h, svg};
 export {h as r}; // deprecated
 
 /**

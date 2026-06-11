@@ -23,6 +23,9 @@ export default class Template {
 
 	isText;
 
+	/** @type {boolean} True if created by the svg`` tag; the Shell parses the html in the SVG namespace. */
+	svgMode = false;
+
 	/**
 	 *
 	 * @param htmlStrings {string[]}

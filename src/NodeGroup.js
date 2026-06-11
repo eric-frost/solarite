@@ -84,7 +84,7 @@ export default class NodeGroup {
 
 		else {
 			// Get a cached version of the parsed and instantiated html, and Paths:
-			const shell = Shell.get(template.html);
+			const shell = Shell.get(template.html, template.svgMode);
 			const shellFragment = shell.fragment.cloneNode(true);
 
 			if (shellFragment.nodeType === 11) { // DocumentFragment
@@ -176,9 +176,6 @@ export default class NodeGroup {
 					// 	paths.shift();
 
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
-
-					// TODO: What about child nodes?  The Path needs to be bound to them, not me.
-
 					this.activateEmbeds(this.root, shell, startingPathDepth);
 				}
 				this.startNode = this.endNode = this.root;

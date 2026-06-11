@@ -2,7 +2,7 @@
 
 import Testimony, {assert} from './Testimony.js';
 
-import h, {toEl, Solarite, Template, Globals, SolariteUtil,
+import h, {toEl, Solarite, Template, Globals, SolariteUtil, svg,
 	HtmlParser, NodeGroup, Shell} from '../src/Solarite.js';
 
 //import h, {toEl, Solarite, Template, Globals, SolariteUtil,
@@ -977,6 +977,123 @@ Testimony.test('Solarite.expr.contenteditableGrandchild', 'Make sure we throw if
 
 
 
+
+/*┌─────────────────╮
+  | SVG             |
+  └─────────────────╯*/
+//region SVG
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const HTML_NS = 'http://www.w3.org/1999/xhtml';
+
+Testimony.test('svg.template', 'svg`` produces a Template flagged svgMode', async () => {
+	let t = svg`<circle r="1"/>`;
+	assert(t instanceof Template);
+	assert.eq(t.svgMode, true);
+	assert.eq((h`<circle r="1"/>`).svgMode, false);
+});
+
+Testimony.test('svg.nested', 'Nested svg`` fragment keeps the SVG namespace', async () => {
+
+	let el = toEl(h`<svg viewBox="0 0 10 10">${svg`<rect width="10" height="10"/>`}<polyline points="0,0 10,10"/></svg>`);
+	assert.eq(el.namespaceURI, SVG_NS);
+	assert.eq(el.querySelector('rect').namespaceURI, SVG_NS);
+	assert.eq(el.querySelector('polyline').namespaceURI, SVG_NS);
+});
+
+Testimony.test('svg.array', 'Array of svg`` fragments are all SVG-namespaced', async () => {
+
+	let el = toEl(h`<svg viewBox="0 0 10 10">${[1, 2, 3].map(r => svg`<circle r="${r}"/>`)}</svg>`);
+	let circles = el.querySelectorAll('circle');
+	assert.eq(circles.length, 3);
+	for (let i = 0; i < 3; i++) {
+		assert.eq(circles[i].namespaceURI, SVG_NS);
+		assert.eq(circles[i].getAttribute('r'), String(i + 1));
+	}
+});
+
+Testimony.test('svg.text', 'Text interpolation inside <text> works', async () => {
+
+	let el = toEl(h`<svg viewBox="0 0 10 10">${svg`<text x="1" y="9">${'Label ' + 42}</text>`}</svg>`);
+	let text = el.querySelector('text');
+	assert.eq(text.namespaceURI, SVG_NS);
+	assert.eq(text.textContent, 'Label 42');
+});
+
+Testimony.test('svg.cacheReuse', 'Same svg`` call site reused in a loop; h and svg of identical strings do not collide', async () => {
+
+	// Same call site in a loop shares one strings array → one cached SVG shell.
+	let templates = [1, 2].map(() => svg`<rect width="2" height="2"/>`);
+	assert(templates[0].html === templates[1].html); // same strings array identity
+	assert(Shell.get(templates[0].html, true) === Shell.get(templates[1].html, true));
+
+	// Same strings array fetched in html mode gets a different shell.
+	assert(Shell.get(templates[0].html, false) !== Shell.get(templates[0].html, true));
+
+	let el = toEl(h`<svg viewBox="0 0 4 4">${templates}</svg>`);
+	let rects = el.querySelectorAll('rect');
+	assert.eq(rects.length, 2);
+	assert.eq(rects[0].namespaceURI, SVG_NS);
+	assert.eq(rects[1].namespaceURI, SVG_NS);
+});
+
+Testimony.test('svg.plainHUnchanged', 'A plain h`` fragment inside an svg stays HTML-namespaced', async () => {
+	let el = toEl(h`<svg viewBox="0 0 10 10">${h`<rect width="10" height="10"/>`}</svg>`);
+	assert.eq(el.querySelector('rect').namespaceURI, HTML_NS); // unchanged (broken) behavior without the svg tag
+});
+
+Testimony.test('svg.embeds', 'svg`` fragments support data-id and event bindings', () => {
+
+	let clicks = 0;
+	class SvgR1 extends HTMLElement {
+		marker;
+		render() {
+			h(this)`<svg-r1><svg viewBox="0 0 20 20" width="60" height="60">${
+				svg`<circle data-id="marker" cx="10" cy="10" r="8" fill="teal" onclick=${() => clicks++} />`
+			}</svg></svg-r1>`;
+		}
+	}
+	customElements.define('svg-r1', SvgR1);
+
+	let el = new SvgR1();
+	document.body.append(el);
+	el.render();
+
+	assert(el.marker instanceof Element, 'data-id resolved');
+	assert.eq(el.marker.namespaceURI, 'http://www.w3.org/2000/svg');
+	el.marker.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(clicks, 1);
+
+	el.remove();
+});
+
+Testimony.test('svg.chart', 'A composed chart from nested fragments paints', () => {
+
+	let points = [{x: 0, y: 40}, {x: 25, y: 10}, {x: 50, y: 30}, {x: 75, y: 5}, {x: 100, y: 25}];
+	let grid = svg`<line x1="0" y1="25" x2="100" y2="25" stroke="#ccc" stroke-width="0.5"/>
+		<line x1="50" y1="0" x2="50" y2="50" stroke="#ccc" stroke-width="0.5"/>
+		<text x="2" y="48" font-size="6" fill="#888">composed</text>`;
+
+	let el = toEl(h`<svg viewBox="0 0 100 50" width="300" height="150" style="border:1px solid #999">
+		${grid}
+		<polyline points="${points.map(p => p.x + ',' + p.y).join(' ')}" fill="none" stroke="steelblue"/>
+		${points.map(p => svg`<circle cx="${p.x}" cy="${p.y}" r="2" fill="tomato"/>`)}
+	</svg>`);
+	document.body.append(el);
+
+	assert.eq(el.querySelectorAll('line').length, 2);
+	assert.eq(el.querySelectorAll('circle').length, 5);
+
+	// SVG-namespaced elements inside a sized svg report a bounding box; HTML-namespaced ones don't paint.
+	let circle = el.querySelector('circle');
+	assert(circle.getBoundingClientRect().width > 0, 'circle paints');
+	let line = el.querySelector('line');
+	assert(line.getBoundingClientRect().width > 0, 'grid line paints');
+
+	el.remove();
+});
+//endregion
+
+
 //region loop
 /*┌─────────────────╮
   | Loop            |
@@ -1159,7 +1276,7 @@ Testimony.test('Solarite.loop.continuity2', `Identical items`, () => {
 			h(this)`
 			<a-214>
 				${this.items.map(item => h`
-					<div>${item}</div>		   
+					<div>${item}</div>
 				`)}
 				<button onclick=${this.render}>Render</button>
 			</a-214>`
@@ -1652,7 +1769,7 @@ Testimony.test('Solarite.embed.styleStatic', () => {
 		render() {
 			h(this)`
 				<style>
-					:host { color: blue }			
+					:host { color: blue }
 				</style>
 				Text that should be blue.
 				${count}
@@ -1783,7 +1900,7 @@ Testimony.test('Solarite.embed.optionsNoStyles', () => {
 			let options = {styles: false};
 			h(this, options)`
 				<style>
-					:host { color: blue }			
+					:host { color: blue }
 				</style>
 				Text that should be blue.
 				${count}
@@ -1889,6 +2006,45 @@ Testimony.test('Solarite.embed.svg', () => {
 	document.body.append(a);
 
 	// Not sure how to test this, but it looks good visually.
+	a.remove();
+});
+
+Testimony.test('Solarite.svg.dynamicChildren', () => {
+	class R335 extends Solarite {
+		values = [8, 14, 6];
+
+		render() {
+			let max = Math.max(...this.values);
+
+			h(this)`
+			<r-335>
+				${svg`
+				<svg viewBox="0 0 ${this.values.length * 14} 40" width="12em" height="4em" fill="currentColor">
+					${this.values.map((value, i) => svg`
+						<rect x=${i * 14} y=${40 - value / max * 40} width="10" height=${value / max * 40} rx="2">
+							<title>${value}</title>
+						</rect>`
+					)}
+				</svg>`}
+			</r-335>`;
+		}
+	}
+
+	let a = new R335();
+	document.body.append(a);
+
+	let rects = a.querySelectorAll('rect');
+	assert.eq(rects.length, 3);
+	assert.eq(rects[0].namespaceURI, 'http://www.w3.org/2000/svg');
+	assert.eq(rects[0].querySelector('title').textContent, '8');
+
+	a.values = [2, 4];
+	a.render();
+	rects = a.querySelectorAll('rect');
+	assert.eq(rects.length, 2);
+	assert.eq(rects[1].namespaceURI, 'http://www.w3.org/2000/svg');
+	assert.eq(rects[1].querySelector('title').textContent, '4');
+
 	a.remove();
 });
 
@@ -2708,7 +2864,7 @@ Testimony.test('Solarite.toEl.standaloneStyle', "Test id's on standalone elmenet
 		render() {
 			h(this)`
 			<div>
-	         <style>:host { display: block; background: red; width: 20px; height: 20px }</style>      
+	         <style>:host { display: block; background: red; width: 20px; height: 20px }</style>
 	      </div>`
 		}
 	});
@@ -2731,7 +2887,7 @@ Testimony.test('Solarite.toEl.standalone3', () => {
 						<input placeholder="Name" value=${item.name}>
 						<input type="number" value=${item.qty}>
 						<button onclick=${()=>this.removeItem(item)}>x</button>
-					</div>		   
+					</div>
 				`)}
 			</div>`
 		}
@@ -2838,7 +2994,6 @@ Testimony.test('Solarite.toEl.standaloneChild', () => {
 /*┌─────────────────╮
   | h               |
   └─────────────────╯*/
-
 Testimony.test('Solarite.h.fragment2', () => {
 	let fragment = h()`Hello <button>hi</button>`;
 	assert(fragment instanceof DocumentFragment);
@@ -2994,7 +3149,6 @@ Testimony.test('Solarite.component.attribsFromParentComponent', () => {
 
 });
 
-
 Testimony.test('Solarite.component.renderChanged', () => {
 	let isChanged = false;
 
@@ -3032,8 +3186,6 @@ Testimony.test('Solarite.component.renderChanged', () => {
 	a.remove();
 });
 
-
-
 Testimony.test('Solarite.component.attribFunctions', 'Make sure we can pass functions to components via attributes', () => {
 	let construct = 0;
 	let render = 0;
@@ -3070,8 +3222,6 @@ Testimony.test('Solarite.component.attribFunctions', 'Make sure we can pass func
 
 	c.remove();
 });
-
-
 
 Testimony.test('Solarite.component.staticChildrenInDom', () => {
 	let construct = 0;
@@ -3434,7 +3584,7 @@ Testimony.test('Solarite.component.nestedEventAttrib', () => {
 
 		render() {
 			h(this)`
-			<b-530>				
+			<b-530>
 				<div>Name:</div><div>Fred</div>
 			</b-530>`;
 		}
@@ -3482,7 +3632,7 @@ Testimony.test('Solarite.component.nestedBinding', () => {
 
 		render() {
 			h(this)`
-			<b-535>				
+			<b-535>
 				<div>Value: ${this.#value}</div>
 			</b-535>`;
 		}
@@ -3495,7 +3645,7 @@ Testimony.test('Solarite.component.nestedBinding', () => {
 
 		render() {
 			h(this)`
-			<a-535>				
+			<a-535>
 				<b-535 value=${[this, 'value']}></b-535>
 			</a-535>`
 		}
@@ -3904,7 +4054,7 @@ Testimony.test('Solarite.events.onChild', () => {
 
 		render() {
 			h(this)`
-			<e-50>				
+			<e-50>
 				<button onclick=${this.addItem}>Add Item</button>
 			</e-50>`
 		}
@@ -3932,7 +4082,7 @@ Testimony.test('Solarite.events.onExprChild', () => {
 
 		render() {
 			h(this)`
-			<e-60>				
+			<e-60>
 				${h`<button onclick=${this.addItem}>Add Item</button>`}
 			</e-60>`
 		}
@@ -4246,12 +4396,12 @@ Testimony.test('Solarite.binding.loop', 'similar to the loop.continuity2 test ab
 
 		render() {
 			h(this)`
-			<v-70>	
+			<v-70>
 				${this.items.map((item, i) => h`
 					<div>
 						<input type="number" oninput=${this.render} value=${[item, 'qty']}>
 						<button onclick=${()=>this.removeItem(i)}>x</button>
-					</div>		   
+					</div>
 				`)}
 				<button onclick=${this.render}>Render</button>
 			</v-70>`
@@ -4951,7 +5101,7 @@ Testimony.test('Solarite.full.tree', ()=> {
 			};
 
 			h(this)`
-			<tree-parent class="'dt-root">	
+			<tree-parent class="'dt-root">
 				<tree-item data-id="root" tree-data=${treeData}></tree-item>
 			</tree-parent>`
 		}
@@ -4986,7 +5136,7 @@ Testimony.test('Solarite.full.reRender', `Render a child web component multiple 
 			<re-render>
 				${this.columns.map(col => h`
 					<re-render-child></re-render-child>`
-				)}						
+				)}
 			</re-render>`
 		}
 	}
@@ -5026,12 +5176,12 @@ Testimony.test('Solarite.full._todoList', () => {
 
 				${this.items.map(item => h`
 					<div>
-						<input placeholder="Item" value=${item.name} 
+						<input placeholder="Item" value=${item.name}
 							oninput=${e => { // two-way binding
 				item.name = e.target.value;
 				this.render()
 			}}>
-					</div>		   
+					</div>
 				`)}
 			</shopping-list>`
 		}
@@ -5064,7 +5214,7 @@ Testimony.test('Solarite.full._treeItems', () => {
 				<tree-item>
 					<style>
 						:host #childItems { padding-left: 20px }
-					</style>				
+					</style>
 					<div onclick="${this.toggleChildren}">${this.titleText}</div>
 					<div hidden="${!this.showChildren}">
 						${this.childItems}
@@ -5177,12 +5327,12 @@ Testimony.test('Solarite.full._misc', () => {
 			h(this)`
 			<misc-1>
 				${this.items.map(item => h`
-					<p>						
+					<p>
 						${this.options.map(option => h`
 							<div style="display: flex">
 								${h`<button onclick=${() => this.setValue(item, option, option.name, '')}>${option.name}</button>`}
 
-								${option[item.id + '_showOther']  && h`<input>`}							
+								${option[item.id + '_showOther']  && h`<input>`}
 							</div>`
 			)}
 					</p>

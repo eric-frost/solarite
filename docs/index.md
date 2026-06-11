@@ -192,33 +192,68 @@ document.body.append(myComponent);
 
 If you do wrap the web component's html in its tag, that tag name must exactly match the tag name passed to `customElements.define()`.
 
-By default, `h()` renders expressions as text. To render HTML, wrap the string in `h()` as well.
+#### SVG
+
+Use the `svg` tagged-template prefix for SVG markup. The resulting template can be embedded in a normal `h` template. Use `svg` for dynamically generated SVG child fragments too, such as shapes created in a loop.
 
 ```javascript
-import h, {toEl} from './dist/Solarite.min.js';
+import h, {Solarite, svg} from './dist/Solarite.min.js';
 
-let folderIcon = // https://icon-sets.iconify.design/material-symbols/folder-outline/
-`<svg width="10em" height="10em" viewBox="0 0 24 24">
+class BarChart extends Solarite {
+	values = [8, 14, 6, 18, 10];
+
+	render() {
+		let max = Math.max(...this.values);
+
+		h(this)`
+		<bar-chart>
+			${svg`
+			<svg viewBox="0 0 ${this.values.length * 14} 40" width="12em" height="4em" fill="currentColor">
+				${this.values.map((value, i) => svg`
+					<rect x=${i * 14} y=${40 - value / max * 40} width="10" height=${value / max * 40} rx="2">
+						<title>${value}</title>
+					</rect>`
+				)}
+			</svg>`}
+		</bar-chart>`
+	}
+}
+
+document.body.append(new BarChart());
+```
+
+By default, expressions render as text. So raw SVG markup in a string expression is escaped and displayed as text. Put SVG markup in an `svg` tagged template instead.
+
+```javascript
+import h, {toEl, svg} from './dist/Solarite.min.js';
+
+let folderIcon = svg`<svg width="10em" height="10em" viewBox="0 0 24 24">
 	<path fill="currentColor" d="M2 4h8l2 2h10v14H2V4Zm2 2v12h16V8h-8.825l-2-2H4Zm0 12V6v12Z"/>
 </svg>`;
 
-console.log(h(folderIcon));
-
-let icon1 = toEl({
-	render() { // Bad:  Renders svg as html entities.
+let icon = toEl({
+	render() {
 		h(this)`<div>${folderIcon}</div>`
 	}
 });
-document.body.append(icon1);
+document.body.append(icon);
+```
 
+For reusable SVG icons, store the whole icon as an `svg` template:
 
-let icon2 = toEl({
-	render() { // Good: folderIcon html string wrapped in h()
-		h(this)`<div>${h(folderIcon)}</div>`
+```javascript
+import h, {toEl, svg} from './dist/Solarite.min.js';
+
+const playIcon = svg`<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true">
+	<path d="M8 5v14l11-7L8 5z"></path>
+</svg>`;
+
+let button = toEl({
+	render() {
+		h(this)`<button>${playIcon} Play</button>`
 	}
 });
-document.body.append(icon2);
-
+document.body.append(button);
 ```
 
 These types of objects can be returned by in expressions with `h` tagged template literals:

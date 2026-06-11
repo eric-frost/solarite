@@ -40,8 +40,9 @@ export default class Shell {
 	/**
 	 * Create the nodes but without filling in the expressions.
 	 * This is useful because the expression-less nodes created by a template can be cached.
-	 * @param html {string[]} Html strings, split on places where an expression exists.  */
-	constructor(html=null) {
+	 * @param html {string[]} Html strings, split on places where an expression exists.
+	 * @param svgMode {boolean} Parse the html in the SVG namespace.  */
+	constructor(html=null, svgMode=false) {
 		if (!html)
 			return;
 
@@ -60,11 +61,26 @@ export default class Shell {
 		let htmlWithPlaceholders = Shell.addPlaceholders(html);
 
 		let template = Globals.doc.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
-		if (htmlWithPlaceholders)
-			template.innerHTML = htmlWithPlaceholders;
-		else // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
+		if (htmlWithPlaceholders) {
+			// Wrap in <svg> so the parser's foreign-content rules create the nodes in the SVG namespace,
+			// then lift the children back out so the fragment has no wrapper.
+			if (svgMode) {
+				template.innerHTML = '<svg>' + htmlWithPlaceholders + '</svg>';
+				let svgEl = template.content.firstChild;
+				let frag = Globals.doc.createDocumentFragment();
+				while (svgEl.firstChild)
+					frag.append(svgEl.firstChild);
+				this.fragment = frag;
+			}
+			else {
+				template.innerHTML = htmlWithPlaceholders;
+				this.fragment = template.content;
+			}
+		}
+		else { // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
 			template.content.append(Globals.doc.createTextNode(''))
-		this.fragment = template.content;
+			this.fragment = template.content;
+		}
 
 		// 2. Find placeholders
 		let node;
@@ -116,7 +132,12 @@ export default class Shell {
 							}
 
 							placeholdersUsed += parts.length - 1;
-							try {
+							// In svgMode, setting typed SVG attributes (viewBox, r, etc.) with the placeholders
+							// stripped out makes the browser log parse errors, both here and when the fragment is cloned.
+							// Remove the attribute instead; apply() recreates it with the real values.
+							if (svgMode)
+								node.removeAttribute(attr.name);
+							else try {
 								node.setAttribute(attr.name, parts.join(''));
 							}
 							catch (e) {
@@ -315,13 +336,18 @@ export default class Shell {
 	/**
 	 * Get the shell for the html strings.
 	 * @param htmlStrings {string[]} Typically comes from a Template.
+	 * @param svgMode {boolean} Parse the html in the SVG namespace.
 	 * @returns {Shell} */
-	static get(htmlStrings) {
-		let result = Globals.shells.get(htmlStrings);
-		if (!result) {
-			result = new Shell(htmlStrings);
-			Globals.shells.set(htmlStrings, result); // cache
+	static get(htmlStrings, svgMode=false) {
+		let entry = Globals.shells.get(htmlStrings);
+		if (!entry) {
+			entry = {};
+			Globals.shells.set(htmlStrings, entry); // cache
 		}
+		let key = svgMode ? 'svg' : 'html';
+		let result = entry[key];
+		if (!result)
+			result = entry[key] = new Shell(htmlStrings, svgMode);
 
 		/*#IFDEV*/result.verify();/*#ENDIF*/
 		return result;

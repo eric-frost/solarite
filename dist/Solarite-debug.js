@@ -2669,6 +2669,7 @@ class NodeGroup {
 			// Get a cached version of the parsed and instantiated html, and Paths:
 			const shell = Shell.get(template.html);
 			const shellFragment = shell.fragment.cloneNode(true);
+			const svgFragmentRoot = template.isSvgFragment && shellFragment.firstElementChild;
 
 			if (shellFragment.nodeType === 11) { // DocumentFragment
 				this.startNode = shellFragment.firstChild;
@@ -2759,6 +2760,9 @@ class NodeGroup {
 					// 	paths.shift();
 
 					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
+
+					// TODO: What about child nodes?  The Path needs to be bound to them, not me.
+
 					this.activateEmbeds(this.root, shell, startingPathDepth);
 				}
 				this.startNode = this.endNode = this.root;
@@ -2767,11 +2771,29 @@ class NodeGroup {
 			} // end if RootNodeGroup
 
 			else if (shell) {
-				if (shell.paths.length) {
-					this.setPathsFromFragment(shellFragment, shell.paths);
-				}
+				if (svgFragmentRoot) {
+					if (shell.paths.length)
+						this.setPathsFromFragment(svgFragmentRoot, shell.paths, 1);
 
-				this.activateEmbeds(shellFragment, shell);
+					this.activateEmbeds(svgFragmentRoot, shell, 1);
+
+					if (svgFragmentRoot.firstChild) {
+						this.startNode = svgFragmentRoot.firstChild;
+						this.endNode = svgFragmentRoot.lastChild;
+						shellFragment.append(...svgFragmentRoot.childNodes);
+					}
+					else {
+						this.startNode = this.endNode = Globals$1.doc.createTextNode('');
+						shellFragment.append(this.startNode);
+					}
+				}
+				else {
+					if (shell.paths.length) {
+						this.setPathsFromFragment(shellFragment, shell.paths);
+					}
+
+					this.activateEmbeds(shellFragment, shell);
+				}
 			}
 		}
 
@@ -3078,6 +3100,7 @@ class Template {
 	exactKey;
 
 	isText;
+	isSvgFragment;
 
 	/**
 	 *
@@ -3542,6 +3565,29 @@ function h(htmlStrings=undefined, ...exprs) {
 		throw new Error('h() does not support argument of type: ' + (arguments[0] ? typeof arguments[0] : arguments[0]))
 }
 
+const wrappedHtml = new WeakMap();
+
+/** Create SVG templates, including standalone SVG child fragments. */
+function svg(htmlStrings=[''], ...exprs) {
+	if (!Array.isArray(htmlStrings))
+		htmlStrings = [htmlStrings + ''];
+
+	if (htmlStrings[0].trimStart().startsWith('<svg'))
+		return new Template(htmlStrings, exprs);
+
+	let html = wrappedHtml.get(htmlStrings);
+	if (!html) {
+		html = [...htmlStrings];
+		html[0] = '<svg>' + html[0];
+		html[html.length - 1] += '</svg>';
+		wrappedHtml.set(htmlStrings, html);
+	}
+
+	let result = new Template(html, exprs);
+	result.isSvgFragment = true;
+	return result;
+}
+
 /**
  * @deprecated Inherit from Solarite and pass arribs to super() instead.
  * There are three ways to create an instance of a Solarite Component:
@@ -3904,7 +3950,7 @@ class Solarite extends HTMLElementAutoDefine {
  * - Class Casting: Pass a class constructor or its string name to instantiate the field.
  * - Array Casting: Use `[Class]` or `'Class[]'`. The source must be an array.
  *
- * If `cast` is omitted and the source is a string, it is automatically cast to boolean, 
+ * If `cast` is omitted and the source is a string, it is automatically cast to boolean,
  * number, or Date if the destination field already contains a value of that type.
  * @param {object} dest
  * @param {?object} src
@@ -3969,4 +4015,4 @@ function assignFields(dest, src, cast={}) {
 }
 
 export default h;
-export { ArgType, Globals$1 as Globals, HtmlParser, NodeGroup, Shell, Solarite, Util as SolariteUtil, Template, assignFields, delve, getArg, h, h as r, setArgs, t, toEl };
+export { ArgType, Globals$1 as Globals, HtmlParser, NodeGroup, Shell, Solarite, Util as SolariteUtil, Template, assignFields, delve, getArg, h, h as r, setArgs, svg, t, toEl };
