@@ -49,6 +49,8 @@ export function svg(htmlStrings, ...exprs) {
 	return template;
 }
 
+const renderTemplateKey = Symbol('solariteRender');
+
 export default function h(htmlStrings=undefined, ...exprs) {
 
 	// 1. Tagged template: h`<div>...</div>`
@@ -95,16 +97,25 @@ export default function h(htmlStrings=undefined, ...exprs) {
 		else {
 			let parent = arguments[0], options = arguments[1];
 
-			// Remove shadowroot if present.  TODO: This could mess up paths?
-			if (parent.shadowRoot)
-				parent.innerHTML = '';
+			// The closure is cached on the element so repeated renders don't recreate it.
+			if (options === undefined) {
+				let cached = parent[renderTemplateKey];
+				if (cached)
+					return cached;
+			}
 
 			// Return a tagged template function that applies the tagged template to parent.
 			let renderTemplate = (htmlStrings, ...exprs) => {
+				// Remove shadowroot if present.  TODO: This could mess up paths?
+				if (parent.shadowRoot)
+					parent.innerHTML = '';
+
 				Globals.rendered.add(parent)
 				let template = new Template(htmlStrings, exprs);
 				return template.render(parent, options);
 			}
+			if (options === undefined)
+				parent[renderTemplateKey] = renderTemplate;
 			return renderTemplate;
 		}
 	}

@@ -66,7 +66,8 @@ const terserOptions = {
 				'prototype',
 				'caller',
 				'callee',
-				'constructor'
+				'constructor',
+				'handleEvent' // Looked up by name by addEventListener(name, object).
 			],
 			undeclared: true
 		}

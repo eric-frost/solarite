@@ -1,7 +1,6 @@
 import assert from "./assert.js";
 import Util, {flattenAndIndent, nodeToArrayTree, setIndent} from "./Util.js";
 import Shell from "./Shell.js";
-import RootNodeGroup from './RootNodeGroup.js';
 import Path from "./Path.js";
 import Globals from './Globals.js';
 import PathToComponent from "./PathToComponent.js";
@@ -32,14 +31,24 @@ export default class NodeGroup {
 	 * TODO: But sometimes startNode and endNode point to the same node.  Document this inconsistency. */
 	endNode;
 
-	/** @type {Path[]} */
-	paths = [];
+	/** @type {?Path[]} Null for text NodeGroups; created by setPathsFromFragment(). */
+	paths = null;
 
 	/** @type {string} Key that matches the template and the expressions. */
 	exactKey;
 
 	/** @type {string} Key that only matches the template. */
 	closeKey;
+
+	/** @type {boolean} True if any of this NodeGroup's own paths is a PathToComponent. */
+	hasComponentPaths = false;
+
+	/** @type {boolean} True if every path consumes exactly one expression and none are components. */
+	pathsSingleExpr = false;
+
+	/** @type {boolean} True until applyExprs() finishes the first time.
+	 * While true, ancestor node caches can't reference this NodeGroup's nodes, so they don't need invalidation. */
+	firstApply = true;
 
 	/**
 	 * @internal
@@ -54,12 +63,6 @@ export default class NodeGroup {
 
 	/** @type {Template} */
 	template;
-
-	/**
-	 * Root node at the top of the hierarchy.
-	 * Should be moved to RootNodeGroup
-	 * @type {HTMLElement} */
-	root;
 
 
 	/**
@@ -87,114 +90,36 @@ export default class NodeGroup {
 			const shell = Shell.get(template.html, template.svgMode);
 			const shellFragment = shell.fragment.cloneNode(true);
 
+			this.hasComponentPaths = shell.hasComponentPaths;
+			this.pathsSingleExpr = shell.pathsSingleExpr;
+
 			if (shellFragment.nodeType === 11) { // DocumentFragment
 				this.startNode = shellFragment.firstChild;
 				this.endNode = shellFragment.lastChild;
 			} else
 				this.startNode = this.endNode = shellFragment;
 
-
-			// Special setup for RootNodeGroup
-			if (this instanceof RootNodeGroup) {
-
-
-				let startingPathDepth = 0;
-				this.options = options;
-				if (shellFragment instanceof Text) {
-					if (!el)
-						throw new Error('Cannot create a standalone text node');
-
-					this.root = el;
-					if (shellFragment.nodeValue.length)
-						this.root.append(shellFragment);
-				}
-
-				else {
-					if (el) {
-						this.root = el;
-
-						// Save slot
-						// 1. Globals.currentSlotChildren is set if this is called via PathToComponent.applyComponent() calls render()
-						// 2. el.childNodes is set if render() is called manually for the first time.
-						let slotChildren;
-						if (Globals.currentSlotChildren || el.childNodes.length) {
-							slotChildren = Globals.doc.createDocumentFragment();
-							slotChildren.append(...(Globals.currentSlotChildren || el.childNodes));
-						}
-
-						// If el should replace the root node of the fragment.
-						if (isReplaceEl(shellFragment, this.root.tagName)) {
-							this.root.append(...shellFragment.children[0].childNodes);
-
-							// Copy attributes
-							for (let attrib of shellFragment.children[0].attributes)
-								if (!this.root.hasAttribute(attrib.name))
-									this.root.setAttribute(attrib.name, attrib.value);
-
-							// Go one level deeper into all of shell's paths.
-							startingPathDepth = 1;
-						}
-
-						else {
-							let isEmpty = shellFragment.childNodes.length === 1 && shellFragment.childNodes[0].nodeType === 3 && shellFragment.childNodes[0].textContent === '';
-							if (!isEmpty)
-								this.root.append(...shellFragment.childNodes);
-						}
-
-
-						// Setup slot children (deprecated)
-						if (slotChildren) {
-							// Named slots
-							for (let slot of el.querySelectorAll('slot[name]')) {
-								let name = slot.getAttribute('name')
-								if (name) {
-									let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
-									slot.append(...slotChildren2);
-								}
-							}
-							// Unnamed slots
-							let unamedSlot = el.querySelector('slot:not([name])')
-							if (unamedSlot)
-								unamedSlot.append(slotChildren);
-							// No slots
-							else
-								el.append(slotChildren);
-						}
-					}
-
-					// Instantiate as a standalone element.
-					else {
-						let onlyChild = getSingleEl(shellFragment);
-						this.root = onlyChild || shellFragment; // We return the whole fragment when calling h() with a collection of nodes.
-						if (onlyChild)
-							startingPathDepth = 1;
-					}
-
-					// Exclude the path to ourself.  Otherwise we get infinite recursion.
-					// let paths = [...shell.paths];
-					// if (paths[0] instanceof PathToComponent)
-					// 	paths.shift();
-
-					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
-					this.activateEmbeds(this.root, shell, startingPathDepth);
-				}
-				this.startNode = this.endNode = this.root;
-
-				Globals.rootNodeGroups.set(this.root, this);
-			} // end if RootNodeGroup
-
-			else if (shell) {
-				if (shell.paths.length) {
-					this.setPathsFromFragment(shellFragment, shell.paths);
-				}
-
-				this.activateEmbeds(shellFragment, shell);
-			}
+			this.instantiate(shell, shellFragment, el, options);
 		}
 
 		//#IFDEV
 		this.verify();
 		//#ENDIF
+	}
+
+	/**
+	 * Set up paths and embeds from the cloned fragment.
+	 * RootNodeGroup overrides this with its more involved setup.
+	 * @param shell {Shell}
+	 * @param shellFragment {DocumentFragment|HTMLElement|Text}
+	 * @param el {?HTMLElement} Unused here; used by RootNodeGroup.
+	 * @param options {?object} Unused here; used by RootNodeGroup. */
+	instantiate(shell, shellFragment, el, options) {
+		if (shell.paths.length)
+			this.setPathsFromFragment(shellFragment, shell.paths);
+
+		if (shell.hasEmbeds)
+			this.activateEmbeds(shellFragment, shell);
 	}
 
 
@@ -212,6 +137,28 @@ export default class NodeGroup {
 		/*#ENDIF*/
 
 		let paths = this.paths;
+
+		// Fast path: every path consumes exactly one expression and none are components,
+		// so skip the bookkeeping that maps expressions to paths.
+		if (this.pathsSingleExpr) {
+			if (includeNonComponents) {
+				for (let i = paths.length - 1; i >= 0; i--)
+					paths[i].applySingle(exprs[i]);
+
+				if (this.styles)
+					this.updateStyles();
+
+				// Invalidate the nodes cache because we just changed it.
+				this.nodesCache = null;
+			}
+			this.firstApply = false;
+			return;
+		}
+
+		if (!paths) { // Text NodeGroups have no paths.
+			this.firstApply = false;
+			return;
+		}
 
 		// Things to consider:
 		// 1. Paths consume a varying number of expressions.
@@ -257,6 +204,7 @@ export default class NodeGroup {
 			this.nodesCache = null;
 
 		}
+		this.firstApply = false;
 
 		/*#IFDEV*/
 		this.verify();
@@ -311,11 +259,11 @@ export default class NodeGroup {
 	 * @param startingPathDepth {int} */
 	setPathsFromFragment(fragment, paths, startingPathDepth=0) {
 		let pathLength = paths.length; // For faster iteration
-		this.paths.length = pathLength;
+		let result = this.paths = new Array(pathLength);
 		for (let i=0; i<pathLength; i++) {
 			let path = paths[i].clone(fragment, startingPathDepth)
 			path.parentNg = this;
-			this.paths[i] = path;
+			result[i] = path;
 		}
 	}
 
@@ -427,7 +375,7 @@ export default class NodeGroup {
 		// if (this.parentPath)
 		// 	assert(this.parentPath.nodeGroups.includes(this));
 
-		for (let path of this.paths) {
+		for (let path of this.paths || []) {
 			assert(path.parentNg === this)
 
 			// Fails for detached NodeGroups.
@@ -446,25 +394,3 @@ export default class NodeGroup {
 
 
 
-function getSingleEl(fragment) {
-	let nonempty = [];
-	for (let n of fragment.childNodes) {
-		if (n.nodeType === 1 || n.nodeType === 3 && n.textContent.trim().length) {
-			if (nonempty.length)
-				return null;
-			nonempty.push(n);
-		}
-	}
-	return nonempty[0];
-}
-
-/**
- * Does the fragment have one child that's an element matching the tagname of el?
- * @param fragment {DocumentFragment}
- * @param tagName {string}
- * @returns {boolean} */
-function isReplaceEl(fragment, tagName) {
-	return fragment.children.length===1
-		&& tagName.includes('-')
-		&& fragment.children[0].tagName.replace('-SOLARITE-PLACEHOLDER', '') === tagName;
-}

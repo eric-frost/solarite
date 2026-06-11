@@ -25,8 +25,12 @@ export default class PathToAttribs extends Path {
 		//#IFDEV
 		assert(Array.isArray(exprs));
 		//#ENDIF
+		this.applySingle(exprs[0]);
+	}
 
-		let expr = exprs[0];
+	/**
+	 * @param expr {Expr} */
+	applySingle(expr) {
 		let node = this.nodeMarker;
 
 		if (Array.isArray(expr))

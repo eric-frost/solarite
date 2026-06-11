@@ -53,6 +53,7 @@ a.items.push({name: 'Fred'});
 import Globals from "./Globals.js";
 import Util from "./Util.js";
 import assert from "./assert.js";
+import MultiValueMap from "./MultiValueMap.js";
 
 let unusedArg = Symbol('unusedArg');
 
@@ -491,11 +492,12 @@ export class ArraySpliceOp extends WatchOp {
 
 	markNodeGroupsAvailable(Path) {
 		if (this.deleteCount > 0) {
+			let pool = Path.nodeGroupsAttachedAvailable ??= new MultiValueMap();
 			let count = this.index+this.deleteCount;
 			for (let i=this.index; i<count; i++) {
 				let oldNg = Path.nodeGroups[i];
-				Path.nodeGroupsAttachedAvailable.add(oldNg.exactKey, oldNg);
-				Path.nodeGroupsAttachedAvailable.add(oldNg.closeKey, oldNg);
+				pool.add(oldNg.exactKey, oldNg);
+				pool.add(oldNg.closeKey, oldNg);
 			}
 		}
 	}
@@ -534,10 +536,11 @@ class WholeArrayOp extends WatchOp {
 	}
 
 	markNodeGroupsAvailable(Path) {
+		let pool = Path.nodeGroupsAttachedAvailable ??= new MultiValueMap();
 		for (let i=0; i<Path.nodeGroups.length; i++) {
 			let oldNg = Path.nodeGroups[i];
-			Path.nodeGroupsAttachedAvailable.add(oldNg.exactKey, oldNg);
-			Path.nodeGroupsAttachedAvailable.add(oldNg.closeKey, oldNg);
+			pool.add(oldNg.exactKey, oldNg);
+			pool.add(oldNg.closeKey, oldNg);
 		}
 	}
 }

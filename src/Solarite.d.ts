@@ -101,7 +101,6 @@ export const Globals: {
     doc: Document;
     elementClasses: {[key: string]: typeof Node};
     htmlProps: {[key: string]: boolean};
-    nodeEvents: WeakMap<Node, {[eventName: string]: [Function, Function, any[]]}>;
     rootNodeGroups: WeakMap<HTMLElement, any>;
     objToEl: WeakMap<any, any>;
     rendered: WeakSet<HTMLElement>;

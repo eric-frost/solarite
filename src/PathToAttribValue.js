@@ -32,10 +32,38 @@ export default class PathToAttribValue extends Path {
 		assert(Array.isArray(exprs));
 		//#ENDIF
 
-		let node = this.nodeMarker;
-		let expr = exprs[0];
+		// Multiple expressions in one attribute value, e.g. class="a ${b} c ${d}"
+		if (this.attrValue) {
+			let node = this.nodeMarker;
+			let joinedValue = this.getValue(exprs);
+			let isProp = this.isHtmlProperty;
 
-		let multiple = this.attrValue;
+			// Only update attributes if the value has changed.
+			// This is needed for setting input.value, .checked, option.selected, etc.
+			let oldVal = isProp
+				? node[this.attrName]
+				: node.getAttribute(this.attrName);
+			if (oldVal !== joinedValue) {
+				if (isProp)
+					node[this.attrName] = joinedValue;
+				else if (this.attrName === 'value' && node.hasAttribute('contenteditable'))
+					node.innerHTML = joinedValue;
+				node.setAttribute(this.attrName, joinedValue);
+			}
+		}
+		else
+			this.applySingle(exprs[0]);
+	}
+
+	/**
+	 * Set the attribute from a single expression that makes up its whole value.
+	 * @param expr {Expr} */
+	applySingle(expr) {
+		// One expression surrounded by strings, e.g. class="a ${b} c".  Join through apply().
+		if (this.attrValue)
+			return this.apply([expr]);
+
+		let node = this.nodeMarker;
 
 		// Two-way binding between attributes
 		// Passing a path to the value attribute.
@@ -43,7 +71,7 @@ export default class PathToAttribValue extends Path {
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.instantiateComponent() for components.
-		if (!multiple && isDelvePath(expr)) {
+		if (isDelvePath(expr)) {
 
 			// Don't bind events to component placeholders.
 			// PathToComponent will do the binding later when it instantiates the component.
@@ -96,7 +124,7 @@ export default class PathToAttribValue extends Path {
 			// We use capture so we update the values before other events added by the user.
 			// TODO: Bind to scroll events also?
 			// What about resize events and width/height?
-			this.bindEvent(node, this.parentNg.getRootNode(), this.attrName, 'input', func, [], true);
+			this.bindEvent(node, this.parentNg.getRootNode(), this.attrName, 'input', func, null, true);
 		}
 
 		// Regular attribute
@@ -105,28 +133,27 @@ export default class PathToAttribValue extends Path {
 			// Have Path.clone() copy .isHtmlProperty?
 			let isProp = this.isHtmlProperty;
 
-			// Values to toggle an attribute
-			if (!multiple) {
-				Globals.currentPath = this; // Used by watch()
-				if (typeof expr === 'function') {
-					if (this.isComponentAttrib)
-						return;
-
-					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
-					expr = expr();
+			Globals.currentPath = this; // Used by watch()
+			if (typeof expr === 'function') {
+				if (this.isComponentAttrib) {
+					Globals.currentPath = null;
+					return;
 				}
-				else
-					expr = Util.makePrimitive(expr);
-				Globals.currentPath = null;
+
+				this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
+				expr = expr();
 			}
+			else
+				expr = Util.makePrimitive(expr);
+			Globals.currentPath = null;
 
-
-			if (!multiple && (expr === undefined || expr === false || expr === null)) { // Util.isFalsy() inlined.
+			// Values to toggle an attribute
+			if (expr === undefined || expr === false || expr === null) { // Util.isFalsy() inlined.
 				if (isProp)
 					node[this.attrName] = false;
 				node.removeAttribute(this.attrName);
 			}
-			else if (!multiple && expr === true) {
+			else if (expr === true) {
 				if (isProp)
 					node[this.attrName] = true;
 				node.setAttribute(this.attrName, '');
@@ -134,34 +161,28 @@ export default class PathToAttribValue extends Path {
 
 			// A non-toggled attribute
 			else {
-
-				// If it's a series of expressions among strings, join them together.
-				let joinedValue = multiple // avoid function call if there are no strings
-					? this.getValue(exprs)
-					: expr 	// If the attribute is one expression with no strings
-
 				// Only update attributes if the value has changed.
 				// This is needed for setting input.value, .checked, option.selected, etc.
 				let oldVal = isProp
 					? node[this.attrName]
 					: node.getAttribute(this.attrName);
-				if (oldVal !== joinedValue) {
+				if (oldVal !== expr) {
 
 					// <textarea value=${expr}></textarea>
 					// Without this branch we have no way to set the value of a textarea,
 					// since we also prohibit expressions that are a child of textarea.
 					if (isProp)
-						node[this.attrName] = joinedValue;
+						node[this.attrName] = expr;
 
 						// Allow one-way binding to contenteditable value attribute.
 						// Contenteditables normally don't have a value attribute and have their content set via innerHTML.
 					// Solarite doesn't allow contenteditables to have expressions as their children.
 					else if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
-						node.innerHTML = joinedValue;
+						node.innerHTML = expr;
 					}
 
 					// TODO: Putting an 'else' here would be more performant
-					node.setAttribute(this.attrName, joinedValue);
+					node.setAttribute(this.attrName, expr);
 				}
 			}
 		}
@@ -212,51 +233,55 @@ export default class PathToAttribValue extends Path {
 	 * @param func {function}
 	 * @param args {array}
 	 * @param capture {boolean} */
-	bindEvent(node, root, key, eventName, func, args, capture=false) {
-		let nodeEvents = Globals.nodeEvents.get(node);
-		if (!nodeEvents) {
-			nodeEvents = {[key]: new Array(3)};
-			Globals.nodeEvents.set(node, nodeEvents);
-		}
-		let nodeEvent = nodeEvents[key];
-		if (!nodeEvent)
-			nodeEvents[key] = nodeEvent = new Array(3);
-
+	/**
+	 * @param funcAndArgs {?Array} The [func, ...args] array from the template, or null if func stands alone. */
+	bindEvent(node, root, key, eventName, func, funcAndArgs, capture=false) {
 		if (typeof func !== 'function')
 			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
 
-		// If function has changed, remove and rebind the event.
-		if (nodeEvent[0] !== func) {
+		// One stable EventBinding object per node+key is registered with addEventListener
+		// and dispatches to the current func/args.  This way, assigning a new function
+		// (e.g. a fresh arrow function on each render) never needs add/removeEventListener.
+		let nodeEvents = node[eventBindingsKey];
+		if (!nodeEvents)
+			nodeEvents = node[eventBindingsKey] = {};
 
-			// TODO: We should be removing event listeners when calling getNodeGroup(),
-			// when we get the node from the list of nodeGroupsAttached/nodeGroupsDetached,
-			// instead of only when we rebind an event.
-			let [existing, existingBound, _] = nodeEvent;
-			if (existing)
-				node.removeEventListener(eventName, existingBound, capture);
-
-			let originalFunc = func;
-
-			// BoundFunc sets the "this" variable to be the current Solarite component.
-			let boundFunc = (event) => {
-				let args = nodeEvent[2];
-				return originalFunc.call(root, ...args, event, node);
-			}
-
-			// Save both the original and bound functions.
-			// Original so we can compare it against a newly assigned function.
-			// Bound so we can use it with removeEventListner().
-			nodeEvent[0] = originalFunc;
-			nodeEvent[1] = boundFunc;
-
-			node.addEventListener(eventName, boundFunc, capture);
-
-			// TODO: classic event attribs?
-			//el[attr.name] = e => // e.g. el.onclick = ... // put "event", "el", and "this" in scope for the event code.
-			//	(new Function('event', 'el', attr.value)).bind(this.manager.rootEl)(e, el)
+		let binding = nodeEvents[key];
+		if (!binding) {
+			binding = nodeEvents[key] = new EventBinding(root, node);
+			node.addEventListener(eventName, binding, capture);
 		}
+		binding.root = root;
+		binding.func = func;
+		binding.args = funcAndArgs;
+	}
+}
 
-		//  Otherwise just update the args to the function.
-		nodeEvents[key][2] = args;
+const eventBindingsKey = Symbol('solariteEvents');
+
+class EventBinding {
+	constructor(root, node) {
+		this.root = root;
+		this.node = node;
+		this.func = null;
+
+		/** @type {?Array} [func, ...args] or null if func stands alone. */
+		this.args = null;
+	}
+
+	// Called by the browser via the addEventListener(name, object) form.
+	// Sets the "this" variable to be the current Solarite component.
+	// Quoted so the minifier's property mangling doesn't rename it, since the browser looks it up by name.
+	'handleEvent'(event) {
+		let a = this.args;
+		if (a) {
+			switch (a.length) {
+				case 1: return a[0].call(this.root, event, this.node);
+				case 2: return a[0].call(this.root, a[1], event, this.node);
+				case 3: return a[0].call(this.root, a[1], a[2], event, this.node);
+			}
+			return a[0].call(this.root, ...a.slice(1), event, this.node);
+		}
+		return this.func.call(this.root, event, this.node);
 	}
 }

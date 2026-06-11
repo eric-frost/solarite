@@ -4,8 +4,12 @@ import PathToAttribValue from "./PathToAttribValue.js";
 // TODO: Merge this into PathToAttribValue?
 export default class PathToEvent extends PathToAttribValue {
 
+	/** @type {string} The attrName without the "on" prefix. */
+	eventName;
+
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
 		super(null, nodeMarker, attrName, attrValue);
+		this.eventName = attrName ? attrName.slice(2) : null;
 	}
 
 	/**
@@ -28,12 +32,21 @@ export default class PathToEvent extends PathToAttribValue {
 			return;
 		}
 
+		this.applySingle(exprs[0]);
+	}
+
+	/**
+	 * @param expr {Expr} */
+	applySingle(expr) {
+		// Expressions within a string attribute value that's not a Solarite event.
+		if (this.attrValue?.length > 1)
+			return super.apply([expr]);
+
 		// Don't bind events to component placeholders.
 		// PathToComponent will do the binding later when it instantiates the component.
 		if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
 			return;
 
-		let expr = exprs[0];
 		let root = this.parentNg.rootNg.root
 
 		/*#IFDEV*/
@@ -42,22 +55,21 @@ export default class PathToEvent extends PathToAttribValue {
 
 		let node = this.nodeMarker;
 
-		let eventName = this.attrName.slice(2); // remove "on-" prefix.
+		let eventName = this.eventName;
 		let func;
-		let args = [];
 
-		// Convert array to function.
-		// oninput=${[this.doSomething, 'meow']}
-		if (Array.isArray(expr) && typeof expr[0] === 'function') {
+		// Array form: oninput=${[this.doSomething, 'meow']}
+		// The whole array is passed to bindEvent so no args array has to be allocated here.
+		if (Array.isArray(expr) && typeof expr[0] === 'function')
 			func = expr[0];
-			args = expr.slice(1);
-		}
-		else if (typeof expr === 'function')
+		else if (typeof expr === 'function') {
 			func = expr;
+			expr = null;
+		}
 		else
 			throw new Error(`Invalid event binding: <${node.tagName.toLowerCase()} ${this.attrName}=\${${JSON.stringify(expr)}}>`);
 
-		this.bindEvent(node, root, eventName, eventName, func, args);
+		this.bindEvent(node, root, eventName, eventName, func, expr);
 	}
 
 

@@ -34,11 +34,6 @@ function reset() {
 		htmlProps: {},
 
 		/**
-		 * Used by Path.applyEventAttrib()
-		 * @type {WeakMap<Node, Record<eventName:string, [original:function, bound:function, args:*[]]>>} */
-		nodeEvents: new WeakMap(),
-
-		/**
 		 * Get the RootNodeGroup for an element.
 		 * @type {WeakMap<HTMLElement, RootNodeGroup>} */
 		rootNodeGroups: new WeakMap(),

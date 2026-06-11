@@ -129,11 +129,6 @@ function reset() {
 		htmlProps: {},
 
 		/**
-		 * Used by Path.applyEventAttrib()
-		 * @type {WeakMap<Node, Record<eventName:string, [original:function, bound:function, args:*[]]>>} */
-		nodeEvents: new WeakMap(),
-
-		/**
 		 * Get the RootNodeGroup for an element.
 		 * @type {WeakMap<HTMLElement, RootNodeGroup>} */
 		rootNodeGroups: new WeakMap(),
@@ -149,8 +144,8 @@ function reset() {
 		rendered: new WeakSet(),
 
 		/**
-		 * Map from array of Html strings to a Shell created from them.
-		 * @type {WeakMap<string[], Shell>} */
+		 * Map from array of Html strings to the Shells created from them, one per parse mode.
+		 * @type {WeakMap<string[], {html?:Shell, svg?:Shell}>} */
 		shells: new WeakMap(),
 
 		/**
@@ -543,14 +538,16 @@ class Path {
 	 * @type {Node|HTMLElement} */
 	nodeMarker;
 
+	/**
+	 * @type {boolean} True if the expression is the only child of its parent element.
+	 * Then nodeMarker is that parent element, nodeBefore is null, and no marker comments exist. */
+	wholeParent = false;
+
 
 	// These are set after an expression is assigned:
 
 	/** @type {NodeGroup} */
 	parentNg;
-
-	/** @type {NodeGroup[]} */
-	nodeGroups = [];
 
 	// Caches to make things faster
 
@@ -601,6 +598,12 @@ class Path {
 	 * [expr6, expr7]            // role attribute value.
 	 * @param freeNodeGroups {boolean} Used only by watch. */
 	apply(exprs, freeNodeGroups=true) {}
+
+	/**
+	 * Fast path used by NodeGroup.applyExprs() when every path consumes exactly one expression.
+	 * Avoids allocating per-path expression arrays.
+	 * @param expr {Expr} */
+	applySingle(expr) {}
 
 	getExpressionCount() { return 1 }
 
@@ -654,6 +657,7 @@ class Path {
 		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
 
 		result.isComponentAttrib = this.isComponentAttrib;
+		result.wholeParent = this.wholeParent;
 
 		// TODO: Put this in PathToAttribValue.clone().
 		result.isHtmlProperty = this.isHtmlProperty;
@@ -812,10 +816,38 @@ class PathToAttribValue extends Path {
 	apply(exprs) {
 		
 
-		let node = this.nodeMarker;
-		let expr = exprs[0];
+		// Multiple expressions in one attribute value, e.g. class="a ${b} c ${d}"
+		if (this.attrValue) {
+			let node = this.nodeMarker;
+			let joinedValue = this.getValue(exprs);
+			let isProp = this.isHtmlProperty;
 
-		let multiple = this.attrValue;
+			// Only update attributes if the value has changed.
+			// This is needed for setting input.value, .checked, option.selected, etc.
+			let oldVal = isProp
+				? node[this.attrName]
+				: node.getAttribute(this.attrName);
+			if (oldVal !== joinedValue) {
+				if (isProp)
+					node[this.attrName] = joinedValue;
+				else if (this.attrName === 'value' && node.hasAttribute('contenteditable'))
+					node.innerHTML = joinedValue;
+				node.setAttribute(this.attrName, joinedValue);
+			}
+		}
+		else
+			this.applySingle(exprs[0]);
+	}
+
+	/**
+	 * Set the attribute from a single expression that makes up its whole value.
+	 * @param expr {Expr} */
+	applySingle(expr) {
+		// One expression surrounded by strings, e.g. class="a ${b} c".  Join through apply().
+		if (this.attrValue)
+			return this.apply([expr]);
+
+		let node = this.nodeMarker;
 
 		// Two-way binding between attributes
 		// Passing a path to the value attribute.
@@ -823,7 +855,7 @@ class PathToAttribValue extends Path {
 		// value=${[this, 'value]'}
 		// checked=${[this, 'isAgree']}
 		// This same logic is in NodeGroup.instantiateComponent() for components.
-		if (!multiple && isDelvePath(expr)) {
+		if (isDelvePath(expr)) {
 
 			// Don't bind events to component placeholders.
 			// PathToComponent will do the binding later when it instantiates the component.
@@ -876,7 +908,7 @@ class PathToAttribValue extends Path {
 			// We use capture so we update the values before other events added by the user.
 			// TODO: Bind to scroll events also?
 			// What about resize events and width/height?
-			this.bindEvent(node, this.parentNg.getRootNode(), this.attrName, 'input', func, [], true);
+			this.bindEvent(node, this.parentNg.getRootNode(), this.attrName, 'input', func, null, true);
 		}
 
 		// Regular attribute
@@ -885,28 +917,27 @@ class PathToAttribValue extends Path {
 			// Have Path.clone() copy .isHtmlProperty?
 			let isProp = this.isHtmlProperty;
 
-			// Values to toggle an attribute
-			if (!multiple) {
-				Globals$1.currentPath = this; // Used by watch()
-				if (typeof expr === 'function') {
-					if (this.isComponentAttrib)
-						return;
-
-					this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
-					expr = expr();
+			Globals$1.currentPath = this; // Used by watch()
+			if (typeof expr === 'function') {
+				if (this.isComponentAttrib) {
+					Globals$1.currentPath = null;
+					return;
 				}
-				else
-					expr = Util.makePrimitive(expr);
-				Globals$1.currentPath = null;
+
+				this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
+				expr = expr();
 			}
+			else
+				expr = Util.makePrimitive(expr);
+			Globals$1.currentPath = null;
 
-
-			if (!multiple && (expr === undefined || expr === false || expr === null)) { // Util.isFalsy() inlined.
+			// Values to toggle an attribute
+			if (expr === undefined || expr === false || expr === null) { // Util.isFalsy() inlined.
 				if (isProp)
 					node[this.attrName] = false;
 				node.removeAttribute(this.attrName);
 			}
-			else if (!multiple && expr === true) {
+			else if (expr === true) {
 				if (isProp)
 					node[this.attrName] = true;
 				node.setAttribute(this.attrName, '');
@@ -914,34 +945,28 @@ class PathToAttribValue extends Path {
 
 			// A non-toggled attribute
 			else {
-
-				// If it's a series of expressions among strings, join them together.
-				let joinedValue = multiple // avoid function call if there are no strings
-					? this.getValue(exprs)
-					: expr; 	// If the attribute is one expression with no strings
-
 				// Only update attributes if the value has changed.
 				// This is needed for setting input.value, .checked, option.selected, etc.
 				let oldVal = isProp
 					? node[this.attrName]
 					: node.getAttribute(this.attrName);
-				if (oldVal !== joinedValue) {
+				if (oldVal !== expr) {
 
 					// <textarea value=${expr}></textarea>
 					// Without this branch we have no way to set the value of a textarea,
 					// since we also prohibit expressions that are a child of textarea.
 					if (isProp)
-						node[this.attrName] = joinedValue;
+						node[this.attrName] = expr;
 
 						// Allow one-way binding to contenteditable value attribute.
 						// Contenteditables normally don't have a value attribute and have their content set via innerHTML.
 					// Solarite doesn't allow contenteditables to have expressions as their children.
 					else if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
-						node.innerHTML = joinedValue;
+						node.innerHTML = expr;
 					}
 
 					// TODO: Putting an 'else' here would be more performant
-					node.setAttribute(this.attrName, joinedValue);
+					node.setAttribute(this.attrName, expr);
 				}
 			}
 		}
@@ -988,60 +1013,68 @@ class PathToAttribValue extends Path {
 	 * @param func {function}
 	 * @param args {array}
 	 * @param capture {boolean} */
-	bindEvent(node, root, key, eventName, func, args, capture=false) {
-		let nodeEvents = Globals$1.nodeEvents.get(node);
-		if (!nodeEvents) {
-			nodeEvents = {[key]: new Array(3)};
-			Globals$1.nodeEvents.set(node, nodeEvents);
-		}
-		let nodeEvent = nodeEvents[key];
-		if (!nodeEvent)
-			nodeEvents[key] = nodeEvent = new Array(3);
-
+	/**
+	 * @param funcAndArgs {?Array} The [func, ...args] array from the template, or null if func stands alone. */
+	bindEvent(node, root, key, eventName, func, funcAndArgs, capture=false) {
 		if (typeof func !== 'function')
 			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
 
-		// If function has changed, remove and rebind the event.
-		if (nodeEvent[0] !== func) {
+		// One stable EventBinding object per node+key is registered with addEventListener
+		// and dispatches to the current func/args.  This way, assigning a new function
+		// (e.g. a fresh arrow function on each render) never needs add/removeEventListener.
+		let nodeEvents = node[eventBindingsKey];
+		if (!nodeEvents)
+			nodeEvents = node[eventBindingsKey] = {};
 
-			// TODO: We should be removing event listeners when calling getNodeGroup(),
-			// when we get the node from the list of nodeGroupsAttached/nodeGroupsDetached,
-			// instead of only when we rebind an event.
-			let [existing, existingBound, _] = nodeEvent;
-			if (existing)
-				node.removeEventListener(eventName, existingBound, capture);
-
-			let originalFunc = func;
-
-			// BoundFunc sets the "this" variable to be the current Solarite component.
-			let boundFunc = (event) => {
-				let args = nodeEvent[2];
-				return originalFunc.call(root, ...args, event, node);
-			};
-
-			// Save both the original and bound functions.
-			// Original so we can compare it against a newly assigned function.
-			// Bound so we can use it with removeEventListner().
-			nodeEvent[0] = originalFunc;
-			nodeEvent[1] = boundFunc;
-
-			node.addEventListener(eventName, boundFunc, capture);
-
-			// TODO: classic event attribs?
-			//el[attr.name] = e => // e.g. el.onclick = ... // put "event", "el", and "this" in scope for the event code.
-			//	(new Function('event', 'el', attr.value)).bind(this.manager.rootEl)(e, el)
+		let binding = nodeEvents[key];
+		if (!binding) {
+			binding = nodeEvents[key] = new EventBinding(root, node);
+			node.addEventListener(eventName, binding, capture);
 		}
+		binding.root = root;
+		binding.func = func;
+		binding.args = funcAndArgs;
+	}
+}
 
-		//  Otherwise just update the args to the function.
-		nodeEvents[key][2] = args;
+const eventBindingsKey = Symbol('solariteEvents');
+
+class EventBinding {
+	constructor(root, node) {
+		this.root = root;
+		this.node = node;
+		this.func = null;
+
+		/** @type {?Array} [func, ...args] or null if func stands alone. */
+		this.args = null;
+	}
+
+	// Called by the browser via the addEventListener(name, object) form.
+	// Sets the "this" variable to be the current Solarite component.
+	// Quoted so the minifier's property mangling doesn't rename it, since the browser looks it up by name.
+	'handleEvent'(event) {
+		let a = this.args;
+		if (a) {
+			switch (a.length) {
+				case 1: return a[0].call(this.root, event, this.node);
+				case 2: return a[0].call(this.root, a[1], event, this.node);
+				case 3: return a[0].call(this.root, a[1], a[2], event, this.node);
+			}
+			return a[0].call(this.root, ...a.slice(1), event, this.node);
+		}
+		return this.func.call(this.root, event, this.node);
 	}
 }
 
 // TODO: Merge this into PathToAttribValue?
 class PathToEvent extends PathToAttribValue {
 
+	/** @type {string} The attrName without the "on" prefix. */
+	eventName;
+
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
 		super(null, nodeMarker, attrName, attrValue);
+		this.eventName = attrName ? attrName.slice(2) : null;
 	}
 
 	/**
@@ -1062,34 +1095,42 @@ class PathToEvent extends PathToAttribValue {
 			return;
 		}
 
+		this.applySingle(exprs[0]);
+	}
+
+	/**
+	 * @param expr {Expr} */
+	applySingle(expr) {
+		// Expressions within a string attribute value that's not a Solarite event.
+		if (this.attrValue?.length > 1)
+			return super.apply([expr]);
+
 		// Don't bind events to component placeholders.
 		// PathToComponent will do the binding later when it instantiates the component.
 		if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
 			return;
 
-		let expr = exprs[0];
 		let root = this.parentNg.rootNg.root;
 
 		
 
 		let node = this.nodeMarker;
 
-		let eventName = this.attrName.slice(2); // remove "on-" prefix.
+		let eventName = this.eventName;
 		let func;
-		let args = [];
 
-		// Convert array to function.
-		// oninput=${[this.doSomething, 'meow']}
-		if (Array.isArray(expr) && typeof expr[0] === 'function') {
+		// Array form: oninput=${[this.doSomething, 'meow']}
+		// The whole array is passed to bindEvent so no args array has to be allocated here.
+		if (Array.isArray(expr) && typeof expr[0] === 'function')
 			func = expr[0];
-			args = expr.slice(1);
-		}
-		else if (typeof expr === 'function')
+		else if (typeof expr === 'function') {
 			func = expr;
+			expr = null;
+		}
 		else
 			throw new Error(`Invalid event binding: <${node.tagName.toLowerCase()} ${this.attrName}=\${${JSON.stringify(expr)}}>`);
 
-		this.bindEvent(node, root, eventName, eventName, func, args);
+		this.bindEvent(node, root, eventName, eventName, func, expr);
 	}
 
 
@@ -1116,8 +1157,12 @@ class PathToAttribs extends Path {
 	 * @param freeNodeGroups {boolean} Used only for watch. */
 	apply(exprs, freeNodeGroups) {
 		
+		this.applySingle(exprs[0]);
+	}
 
-		let expr = exprs[0];
+	/**
+	 * @param expr {Expr} */
+	applySingle(expr) {
 		let node = this.nodeMarker;
 
 		if (Array.isArray(expr))
@@ -1341,20 +1386,25 @@ const udomdiff = (parentNode, a, b, before) => {
 	return b;
 };
 
+/**
+ * Maps a string key to multiple values.
+ * Values are stored in arrays because pushing them is much faster than Set operations,
+ * and deleteAny() needs no iterator allocation.
+ * deleteAny() returns values first-in-first-out by advancing a head index (array.head)
+ * instead of calling shift(), which would be O(n). */
 class MultiValueMap {
 
-	/** @type {Record<string, Set>} */
+	/** @type {Record<string, Array>} */
 	data = {};
 
-	// Set a new value for a key
+	// Add a new value for a key
 	add(key, value) {
 		let data = this.data;
-		let set = data[key];
-		if (!set) {
-			set = new Set();
-			data[key] = set;
-		}
-		set.add(value);
+		let array = data[key];
+		if (!array)
+			data[key] = [value];
+		else
+			array.push(value);
 	}
 
 	isEmpty() {
@@ -1366,9 +1416,12 @@ class MultiValueMap {
 	/**
 	 * Get all values for a key.
 	 * @param key {string}
-	 * @returns {Set|*[]} */
+	 * @returns {Array} */
 	getAll(key) {
-		return this.data[key] || [];
+		let array = this.data[key];
+		if (!array)
+			return [];
+		return array.head ? array.slice(array.head) : array;
 	}
 
 	/**
@@ -1377,71 +1430,54 @@ class MultiValueMap {
 	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
 	 * @returns {*|undefined} The deleted item. */
 	delete(key, val=undefined) {
-		let data = this.data;
-		let result;
-		let set = data[key];
-		if (!set)
-			return undefined;
-
-		// Delete any value.
-		if (val === undefined) {
-			[result] = set; //  Get the first value from the set.
-			set.delete(result);
-		}
-
-		// Delete a specific value.
-		else {
-			set.delete(val);
-			result = val;
-		}
-
-		if (set.size === 0)
-			delete data[key];
-
-		return result;
+		if (val === undefined)
+			return this.deleteAny(key);
+		return this.deleteSpecific(key, val);
 	}
 
 	/**
-	 * Remove any one value from a key, and return it.
+	 * Remove the oldest value from a key, and return it.
 	 * @param key {string}
 	 * @returns {*|undefined} The deleted item. */
 	deleteAny(key) {
 		let data = this.data;
-		let result;
-		let set = data[key];
-		if (!set) // slower than pre-check.
+		let array = data[key];
+		if (!array) // slower than pre-check.
 			return undefined;
 
-		[result] = set; // Get the first value from the set.
-		set.delete(result);
-
-		if (set.size === 0)
+		let head = array.head || 0;
+		let result = array[head];
+		head++;
+		if (head >= array.length)
 			delete data[key];
+		else
+			array.head = head;
 
 		return result;
 	}
 
 	deleteSpecific(key, val) {
 		let data = this.data;
-		let result;
-		let set = data[key];
-		if (!set)
+		let array = data[key];
+		if (!array)
 			return undefined;
 
-		set.delete(val);
-		result = val;
+		let i = array.indexOf(val, array.head || 0);
+		if (i === -1)
+			return undefined;
+		array.splice(i, 1);
 
-		if (set.size === 0)
+		if ((array.head || 0) >= array.length)
 			delete data[key];
 
-		return result;
+		return val;
 	}
 
 	hasValue(val) {
 		let data = this.data;
 		let names = [];
 		for (let name in data)
-			if (data[name].has(val)) // TODO: iterate twice to pre-size array?
+			if (data[name].includes(val))
 				names.push(name);
 		return names;
 	}
@@ -1455,28 +1491,32 @@ class PathToNodes extends Path {
 	 * TODO: What if one Path has two .map() calls?  Maybe we just won't support that. */
 	mapCallback;
 
+	/** @type {NodeGroup[]} The NodeGroups created by this path's expression, in order. */
+	nodeGroups = [];
+
 
 
 	/**
-	 * TODO: Rename this to nodeGroupsInUse, nodeGroupsAvialableAttached and nodeGroupsAvailableDetached?
 	 * Nodes that have been used during the current render().
-	 * Used with getNodeGroup() and freeNodeGroups().
-	 * TODO: Use an array of WeakRef so the gc can collect them?
-	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
-	 * @type {NodeGroup[]} */
-	nodeGroupsRendered = [];
+	 * Used with getNodeGroup() and freeNodeGroups() on the generic path; the positional diff
+	 * tracks in-use NodeGroups in this.nodeGroups instead.
+	 * Lazily created since most paths never use it.
+	 * @type {?NodeGroup[]} */
+	nodeGroupsRendered = null;
 
 	/**
 	 * Nodes that were added to the web component during the last render(), but are available to be used again.
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
-	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
-	nodeGroupsAttachedAvailable = new MultiValueMap();
+	 * Lazily created since most paths never use it.
+	 * @type {?MultiValueMap} */
+	nodeGroupsAttachedAvailable = null;
 
 	/**
 	 * Nodes that were not added to the web component during the last render(), and available to be used again.
-	 * @type {MultiValueMap} */
-	nodeGroupsDetachedAvailable = new MultiValueMap();
+	 * Lazily created since most paths never use it.
+	 * @type {?MultiValueMap} */
+	nodeGroupsDetachedAvailable = null;
 
 	constructor(nodeBefore, nodeMarker) {
 		super(nodeBefore, nodeMarker);
@@ -1485,23 +1525,340 @@ class PathToNodes extends Path {
 	/**
 	 * Insert/replace the nodes created by a single expression.
 	 * Called by applyExprs()
-	 * This function is recursive.  It calls functions that call applyNodes().
 	 * @param exprs {Expr[]} Only the first is used.
 	 * @param freeNodeGroups {boolean}
 	 * @return {Node[]} New Nodes created. */
 	apply(exprs, freeNodeGroups=true) {
 		
+		this.applySingle(exprs[0], freeNodeGroups);
+	}
 
+	/**
+	 * Make the DOM between nodeBefore and nodeMarker match the value of expr.
+	 * This is the main entry point for rendering an expression's nodes, chosen from three strategies:
+	 * 1. A primitive expr updating (or creating) a single text node is handled inline with no allocations.
+	 * 2. Otherwise expr is flattened to a list of Templates, strings, and Nodes via collectItems(),
+	 *    then applyDiff() positionally diffs them against the previous render's NodeGroups.
+	 * 3. If the items contain raw Nodes, now or on the previous render, applyGeneric() uses the older
+	 *    hash-key matching and udomdiff, since this.nodeGroups can't track raw Nodes positionally.
+	 * @param expr {Expr}
+	 * @param freeNodeGroups {boolean} Only false when called by watch.js, which pre-populates the pools. */
+	applySingle(expr, freeNodeGroups=true) {
+
+		
+
+		// Fast path for a single primitive expression, the most common case in loops.
+		let exprType = typeof expr;
+		if ((exprType === 'string' || exprType === 'number') && !this.itemsHaveNodes) {
+			if (exprType !== 'string')
+				expr += '';
+			let ngs = this.nodeGroups;
+
+			// Update an existing single text node.
+			if (ngs.length === 1) {
+				let ng = ngs[0], tpl = ng.template;
+				if (tpl.isText === true) {
+					if (tpl.html[0] !== expr) {
+						ng.startNode.nodeValue = expr;
+						tpl.html[0] = expr; // Text templates have their own html array, so this can't affect others.
+						ng.closeKey = expr;
+						ng.exactKey = undefined;
+					}
+					return;
+				}
+			}
+
+			// Create a text node in an empty path.
+			else if (ngs.length === 0) {
+				let ng = new NodeGroup(textTemplate(expr), this);
+				if (this.wholeParent)
+					this.nodeMarker.appendChild(ng.startNode);
+				else
+					this.nodeMarker.parentNode.insertBefore(ng.startNode, this.nodeMarker);
+				ngs.push(ng);
+
+				// During a NodeGroup's first applyExprs(), no ancestor caches can reference its nodes yet.
+				if (!this.parentNg.firstApply) {
+					this.nodesCache = null;
+					if (this.parentNg.parentPath)
+						this.parentNg.parentPath.clearNodesCache();
+				}
+				return;
+			}
+		}
+
+		// 1. Flatten the expression to a list of Templates, strings and Nodes, evaluating functions along the way.
+		/** @type {(Template|string|Node)[]} */
+		let newItems = [];
+		let hasNodesNow = this.collectItems(expr, newItems, false);
+
+		// 2. Raw Nodes in the items (now or on the previous render) can't be diffed positionally
+		// because this.nodeGroups only tracks NodeGroups.  Use the generic path for those.
+		if (hasNodesNow || this.itemsHaveNodes) {
+			this.itemsHaveNodes = hasNodesNow;
+			this.applyGeneric(newItems, freeNodeGroups);
+		}
+		else
+			this.applyDiff(newItems);
+
+		
+	}
+
+	/**
+	 * Positionally diff newItems (all Templates) against this.nodeGroups.
+	 * Unchanged NodeGroups are kept without any hashing or map lookups.
+	 * NodeGroups created from the same html are rewritten in place.
+	 * Leftover items are removed/inserted with direct DOM operations.
+	 * @param newItems {Template[]} */
+	applyDiff(newItems) {
+		let oldNgs = this.nodeGroups;
+		let oldLen = oldNgs.length, newLen = newItems.length;
+		let newNgs = new Array(newLen);
+
+		let start = 0;
+		let oldEnd = oldLen, newEnd = newLen;
+
+		// 1. Keep the matching prefix.
+		// This runs before the suffix scan so that removing one of several identical items keeps the first ones.
+		while (start < oldEnd && start < newEnd) {
+			let ng = oldNgs[start], t = newItems[start];
+			if (!itemSame(ng, t))
+				break;
+			if (ng.hasComponentPaths)
+				ng.applyExprs(t.exprs, false, false);
+			newNgs[start] = ng;
+			start++;
+		}
+
+		// 2. Keep the matching suffix.  This makes removing items from the middle cheap.
+		while (oldEnd > start && newEnd > start) {
+			let ng = oldNgs[oldEnd-1], t = newItems[newEnd-1];
+			if (!itemSame(ng, t))
+				break;
+			if (ng.hasComponentPaths)
+				ng.applyExprs(t.exprs, false, false);
+			newNgs[--newEnd] = ng;
+			oldEnd--;
+		}
+
+		// 3. Aligned middle scan: keep unchanged NodeGroups, rewrite same-shape ones in place.
+		while (start < oldEnd && start < newEnd) {
+			let ng = oldNgs[start], t = newItems[start];
+			if (itemSame(ng, t)) { // Can happen between changed rows, e.g. partial updates.
+				if (ng.hasComponentPaths)
+					ng.applyExprs(t.exprs, false, false);
+			}
+			else if (itemClose(ng, t))
+				this.rewriteNodeGroup(ng, t);
+			else
+				break; // Different html at this position.  Remove/insert the remaining window below.
+			newNgs[start] = ng;
+			start++;
+		}
+
+		let oldRemain = oldEnd - start, newRemain = newEnd - start;
+		if (oldRemain || newRemain) {
+
+			// 4. Remove leftover old NodeGroups.
+			if (oldRemain) {
+				// Materialize node caches of multi-node groups while still attached,
+				// since detaching breaks sibling links.  Single-node groups don't need it.
+				for (let i=start; i<oldEnd; i++) {
+					let ng = oldNgs[i];
+					if (ng.startNode !== ng.endNode)
+						ng.getNodes();
+				}
+
+				// Fast clear when removing everything.
+				let cleared = newLen === 0 && start === 0 && this.fastClear();
+				let pool = this.nodeGroupsDetachedAvailable ??= new MultiValueMap();
+				for (let i=start; i<oldEnd; i++) {
+					let ng = oldNgs[i];
+					if (ng.startNode !== ng.endNode)
+						Util.saveOrphans(ng.getNodes()); // Moves the nodes out of the DOM, into their own fragment.
+					else if (!cleared)
+						ng.startNode.remove();
+					if (!ng.template.isText)
+						pool.add(ng.closeKey, ng);
+				}
+			}
+
+			// 5. Insert leftover new items.
+			if (newRemain) {
+				let wholeParent = this.wholeParent;
+				let anchor = newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker);
+				let parent = wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
+				let target = parent, before = anchor;
+				let fragment = null;
+				if (newRemain > 1) { // Batch-insert through a fragment.
+					fragment = Globals$1.doc.createDocumentFragment();
+					target = fragment;
+					before = null;
+				}
+				for (let i=start; i<newEnd; i++) {
+					let ng = this.createOrReuse(newItems[i]);
+					newNgs[i] = ng;
+					let node = ng.startNode, end = ng.endNode;
+					while (true) {
+						let next = node.nextSibling;
+						target.insertBefore(node, before);
+						if (node === end)
+							break;
+						node = next;
+					}
+				}
+				if (fragment)
+					parent.insertBefore(fragment, anchor);
+			}
+
+			// 6. Node membership changed, so invalidate caches.
+			// During a NodeGroup's first applyExprs(), no ancestor caches can reference its nodes yet.
+			if (!this.parentNg.firstApply) {
+				this.nodesCache = null;
+				if (this.parentNg.parentPath)
+					this.parentNg.parentPath.clearNodesCache();
+			}
+		}
+
+		this.nodeGroups = newNgs;
+
+		// Keep state used by the generic path and watch.js from going stale.
+		if (this.nodeGroupsRendered)
+			this.nodeGroupsRendered = null;
+		if (this.nodeGroupsAttachedAvailable)
+			this.nodeGroupsAttachedAvailable = null;
+	}
+
+	/**
+	 * Update an existing NodeGroup, created from the same html strings, with new values.
+	 * @param ng {NodeGroup}
+	 * @param item {Template|string} */
+	rewriteNodeGroup(ng, item) {
+		if (typeof item === 'string') { // Text content.
+			ng.startNode.nodeValue = item;
+			ng.template.html[0] = item; // Text templates have their own html array, so this can't affect others.
+			ng.closeKey = item;
+			ng.exactKey = undefined;
+		}
+		else {
+			// When every path consumes exactly one expression, paths align 1:1 with exprs,
+			// so only the expressions that changed need to be applied.
+			if (ng.pathsSingleExpr) {
+				let oldExprs = ng.template.exprs, newExprs = item.exprs;
+				let paths = ng.paths;
+				for (let i = paths.length - 1; i >= 0; i--)
+					if (!exprSame(oldExprs[i], newExprs[i]))
+						paths[i].applySingle(newExprs[i]);
+
+				if (ng.styles)
+					ng.updateStyles();
+				ng.nodesCache = null;
+				ng.firstApply = false;
+			}
+			else
+				ng.applyExprs(item.exprs);
+			ng.exactKey = undefined;
+			ng.template = item;
+		}
+	}
+
+	/**
+	 * Create a NodeGroup for an item, reusing a detached one with the same html if available.
+	 * @param item {Template|string}
+	 * @return {NodeGroup} */
+	createOrReuse(item) {
+		let ng;
+		if (typeof item === 'string') {
+			item = textTemplate(item);
+			return new NodeGroup(item, this); // Text NodeGroups have no paths to apply.
+		}
+
+		let pool = this.nodeGroupsDetachedAvailable;
+		if (pool) {
+			ng = pool.deleteAny(item.getCloseKey());
+			if (ng) {
+				ng.applyExprs(item.exprs);
+				ng.exactKey = undefined;
+				ng.template = item;
+				return ng;
+			}
+		}
+
+		ng = new NodeGroup(item, this);
+		if (item.exprs.length || (ng.paths && ng.paths.length))
+			ng.applyExprs(item.exprs);
+		return ng;
+	}
+
+	/**
+	 * Recursively flatten expr into items, evaluating functions and converting primitives to text Templates.
+	 * Mirrors the behavior of exprToTemplates() but produces a flat array.
+	 * @param expr
+	 * @param items {(Template|Node)[]}
+	 * @param hasNodes {boolean}
+	 * @return {boolean} True if any raw Nodes were added to items. */
+	collectItems(expr, items, hasNodes) {
+		if (expr instanceof Template)
+			items.push(expr);
+
+		else if (Array.isArray(expr)) {
+			for (let subExpr of expr) {
+				if (subExpr instanceof Template) // Inline the most common case.
+					items.push(subExpr);
+				else
+					hasNodes = this.collectItems(subExpr, items, hasNodes);
+			}
+		}
+
+		else if (typeof expr === 'function') {
+			Globals$1.currentPath = this; // Used by watch()
+			this.watchFunction = expr;
+			expr = expr();
+			Globals$1.currentPath = null;
+			hasNodes = this.collectItems(expr, items, hasNodes);
+		}
+
+		else if (expr instanceof NodeList) {
+			for (let node of expr)
+				items.push(node);
+			hasNodes = hasNodes || expr.length > 0;
+		}
+
+		else if (expr?.nodeType) {
+			if (expr.nodeType === 11) { // DocumentFragment
+				for (let node of [...expr.childNodes])
+					items.push(node);
+			}
+			else
+				items.push(expr);
+			hasNodes = true;
+		}
+
+		// String/Number/Date/Boolean.  Pushed as a plain string to avoid allocating a Template.
+		else {
+			if (expr === undefined || expr === false || expr === null) // Util.isFalsy() inlined
+				expr = '';
+			else if (typeof expr !== 'string')
+				expr += '';
+
+			items.push(expr);
+		}
+		return hasNodes;
+	}
+
+	/**
+	 * The original hash/map based reconciliation.  Used when expressions contain raw Nodes,
+	 * since those can't be tracked by the positional diff.
+	 * @param items {(Template|Node)[]}
+	 * @param freeNodeGroups {boolean} */
+	applyGeneric(items, freeNodeGroups=true) {
 		let path = this;
-		let expr = exprs[0];
 
 		// This can be done at the beginning or the end of this function.
 		// If at the end, we may get rendering done faster.
 		// But when at the beginning, it leaves all the nodes in-use so we can do a renderWatched().
 		if (freeNodeGroups)
 			path.freeNodeGroups();
-
-		
 
 		/** @type {(Node|NodeGroup|Expr)[]} */
 		let newNodes = [];
@@ -1510,13 +1867,11 @@ class PathToNodes extends Path {
 		let secondPass = []; // indices
 
 		path.nodeGroups = []; // Reset before applyExactNodes and the code below rebuilds it.
-		path.applyExactNodes(expr, newNodes, secondPass);
-
-		//this.existingTextNodes = null;
-
-		// TODO: Create an array of old vs Nodes and NodeGroups together.
-		// If they're all the same, skip the next steps.
-		// Or calculate it in the loop above as we go?  Have a path.lastNodeGroups property?
+		for (let item of items) {
+			if (typeof item === 'string')
+				item = textTemplate(item);
+			path.applyExactNodes(item, newNodes, secondPass);
+		}
 
 		// Second pass to find close-match NodeGroups.
 		let flatten = false;
@@ -1559,7 +1914,10 @@ class PathToNodes extends Path {
 			if (!isNowEmpty || !path.fastClear()) {
 
 				// Rearrange nodes.
-				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker);
+				if (path.wholeParent)
+					udomdiff(path.nodeMarker, oldNodes, newNodes, null);
+				else
+					udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker);
 			}
 
 			// TODO: Put this in a remove() function of NodeGroup.
@@ -1570,8 +1928,6 @@ class PathToNodes extends Path {
 				if (!ng.startNode.parentNode)
 					Util.saveOrphans(ng.getNodes());
 		}
-
-		
 	}
 
 
@@ -1599,7 +1955,8 @@ class PathToNodes extends Path {
 				// Call render() on web components even though none of their arguments have changed:
 				// Do we want it to work this way?  Yes, because even if this component hasn't changed,
 				// perhaps something in a sub-component has.
-				ng.applyExprs(expr.exprs, false, false);
+				if (ng.hasComponentPaths)
+					ng.applyExprs(expr.exprs, false, false);
 
 				this.nodeGroups.push(ng);
 				return ng;
@@ -1686,9 +2043,10 @@ class PathToNodes extends Path {
 		else {
 			let newItems = op.items.slice(replaceCount);
 
-			let insertBefore = this.nodeGroups[op.index + replaceCount]?.startNode || this.nodeMarker;
-			for (let i = 0; i < newItems.length; i++) { // We use nodeMarker if the subequent (or all) nodeGroups have been removed.
-
+			// We use the path's end (nodeMarker, or the end of the parent) if the subsequent (or all) nodeGroups have been removed.
+			let anchor = this.nodeGroups[op.index + replaceCount]?.startNode || (this.wholeParent ? null : this.nodeMarker);
+			let parent = this.wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
+			for (let i = 0; i < newItems.length; i++) {
 
 				// Try to find exact match
 				let template = this.mapCallback(newItems[i]);
@@ -1700,7 +2058,7 @@ class PathToNodes extends Path {
 
 				// Splice in the new nodes.
 				for (let node of ng.getNodes())
-					insertBefore.parentNode.insertBefore(node, insertBefore);
+					parent.insertBefore(node, anchor);
 			}
 		}
 
@@ -1717,8 +2075,8 @@ class PathToNodes extends Path {
 		let path = this;
 
 		// Clear cache parent Paths that have the same parentNode
-		let parentNode = this.nodeMarker.parentNode;
-		while (path && path.nodeMarker.parentNode === parentNode) {
+		let parentNode = this.wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
+		while (path && (path.wholeParent ? path.nodeMarker : path.nodeMarker.parentNode) === parentNode) {
 			path.nodesCache = null;
 			path = path.parentNg?.parentPath;
 
@@ -1731,6 +2089,11 @@ class PathToNodes extends Path {
 	 * Attempt to remove all of this Path's nodes from the DOM, if it can be done using a special fast method.
 	 * @returns {boolean} Returns false if Nodes weren't removed, and they should instead be removed manually. */
 	fastClear() {
+		if (this.wholeParent) {
+			this.nodeMarker.textContent = '';
+			return true;
+		}
+
 		let parent = this.nodeBefore.parentNode;
 		if (this.nodeBefore === parent.firstChild && this.nodeMarker === parent.lastChild) {
 
@@ -1824,15 +2187,16 @@ class PathToNodes extends Path {
 
 		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
 		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
-			result = collection.deleteAny(template.getExactKey());
+			result = collection?.deleteAny(template.getExactKey());
 			if (!result) { // try searching detached
 				collection = this.nodeGroupsDetachedAvailable;
-				result = collection.deleteAny(template.getExactKey());
+				result = collection?.deleteAny(template.getExactKey());
 			}
 
 			if (result) {// also delete the matching close key.
 				collection.deleteSpecific(template.getCloseKey(), result);
 
+				result.template = template; // Keep current so the positional diff can compare exprs.
 				//result.applyExprs(template.exprs);
 			}
 			else
@@ -1844,19 +2208,20 @@ class PathToNodes extends Path {
 		// We can then apply the expressions to make it an exact match.
 		// If the template has no expressions, the key is the html, and we've already searched for an exact match.  There won't be an inexact match.
 		else if (template.exprs.length) {
-			result = collection.deleteAny(template.getCloseKey());
+			result = collection?.deleteAny(template.getCloseKey());
 			if (!result) { // try searching detached
 				collection = this.nodeGroupsDetachedAvailable;
-				result = collection.deleteAny(template.getCloseKey());
+				result = collection?.deleteAny(template.getCloseKey());
 			}
 
 			if (result) {
-				
-				collection.deleteSpecific(result.exactKey, result);
+				if (result.exactKey !== undefined)
+					collection.deleteSpecific(result.exactKey, result);
 
 				// Update this close match with the new expression values.
 				result.applyExprs(template.exprs);
 				result.exactKey = template.getExactKey();
+				result.template = template; // Keep current so the positional diff can compare exprs.
 			}
 		}
 
@@ -1866,8 +2231,7 @@ class PathToNodes extends Path {
 			result.exactKey = template.getExactKey();
 		}
 
-
-		this.nodeGroupsRendered.push(result);
+		(this.nodeGroupsRendered ??= []).push(result);
 
 		
 		return result;
@@ -1880,26 +2244,34 @@ class PathToNodes extends Path {
 	 * TODO: this could run as needed in getNodeGroup? */
 	freeNodeGroups() {
 		// Add nodes that weren't used during render() to nodeGroupsDetached
-		let previouslyAttached = this.nodeGroupsAttachedAvailable.data;
-		let detached = this.nodeGroupsDetachedAvailable.data;
-		for (let key in previouslyAttached) {
-			let set = detached[key];
-			if (!set)
-				detached[key] = previouslyAttached[key];
-			else
-				for (let ng of previouslyAttached[key])
-					set.add(ng);
+		let previouslyAttached = this.nodeGroupsAttachedAvailable?.data;
+		if (previouslyAttached) {
+			let detached = (this.nodeGroupsDetachedAvailable ??= new MultiValueMap()).data;
+			for (let key in previouslyAttached) {
+				let src = previouslyAttached[key];
+				let from = src.head || 0; // Skip entries already consumed by deleteAny().
+				let array = detached[key];
+				if (!array)
+					detached[key] = from ? src.slice(from) : src;
+				else
+					for (let i=from; i<src.length; i++)
+						array.push(src[i]);
+			}
 		}
 
 		// Add nodes that were used during render() to nodeGroupsRendered.
+		// If the last render used the positional diff, the in-use NodeGroups are in
+		// this.nodeGroups instead of nodeGroupsRendered.
 		this.nodeGroupsAttachedAvailable = new MultiValueMap();
 		let nga = this.nodeGroupsAttachedAvailable;
-		for (let ng of this.nodeGroupsRendered) {
-			nga.add(ng.exactKey, ng);
+		let source = this.nodeGroupsRendered?.length ? this.nodeGroupsRendered : this.nodeGroups;
+		for (let ng of source) {
+			if (ng.exactKey !== undefined) // The positional diff leaves exactKey undefined.
+				nga.add(ng.exactKey, ng);
 			nga.add(ng.closeKey, ng);
 		}
 
-		this.nodeGroupsRendered = [];
+		this.nodeGroupsRendered = null;
 	}
 
 
@@ -1925,9 +2297,14 @@ class PathToNodes extends Path {
 		}
 
 		result = [];
-		let current = this.nodeBefore.nextSibling;
-		let nodeMarker = this.nodeMarker;
-		while (current && current !== nodeMarker) {
+		let current, stop = null;
+		if (this.wholeParent)
+			current = this.nodeMarker.firstChild;
+		else {
+			current = this.nodeBefore.nextSibling;
+			stop = this.nodeMarker;
+		}
+		while (current && current !== stop) {
 			result.push(current);
 			current = current.nextSibling;
 		}
@@ -1937,6 +2314,81 @@ class PathToNodes extends Path {
 	}
 
 	
+}
+
+/**
+ * @param text {string}
+ * @return {Template} */
+function textTemplate(text) {
+	let result = new Template([text], []);
+	result.isText = true;
+	return result;
+}
+
+/**
+ * Does the NodeGroup already have content identical to item?
+ * @param ng {NodeGroup}
+ * @param item {Template|string}
+ * @return {boolean} */
+function itemSame(ng, item) {
+	let tpl = ng.template;
+	if (typeof item === 'string')
+		return tpl.isText === true && tpl.html[0] === item;
+	return templatesSame(tpl, item);
+}
+
+/**
+ * Could ng be rewritten in place with the values of item?
+ * True when both come from the same html strings (and thus the same Shell), or both are text.
+ * @param ng {NodeGroup}
+ * @param item {Template|string}
+ * @return {boolean} */
+function itemClose(ng, item) {
+	let tpl = ng.template;
+	if (typeof item === 'string')
+		return tpl.isText === true;
+	return tpl.html === item.html && tpl.svgMode === item.svgMode;
+}
+
+/**
+ * Do two templates produce identical content?
+ * Compares expression values by identity, so no hashing or stringification is needed.
+ * @param a {Template}
+ * @param b {Template}
+ * @return {boolean} */
+function templatesSame(a, b) {
+	if (a.html === b.html && a.svgMode === b.svgMode) {
+		let ae = a.exprs, be = b.exprs;
+		for (let i=0; i<ae.length; i++)
+			if (!exprSame(ae[i], be[i]))
+				return false;
+		return true;
+	}
+
+	// Text and other single-string templates get a new html array each time, so compare by content.
+	if (a.isText === b.isText && !a.exprs.length && !b.exprs.length
+		&& a.html.length === 1 && b.html.length === 1 && a.svgMode === b.svgMode)
+		return a.html[0] === b.html[0];
+
+	return false;
+}
+
+/**
+ * @return {boolean} */
+function exprSame(a, b) {
+	if (a === b)
+		return true;
+	if (Array.isArray(a)) {
+		if (!Array.isArray(b) || a.length !== b.length)
+			return false;
+		for (let i=0; i<a.length; i++)
+			if (!exprSame(a[i], b[i]))
+				return false;
+		return true;
+	}
+	if (a instanceof Template && b instanceof Template)
+		return templatesSame(a, b);
+	return false;
 }
 
 class PathToComponent extends Path {
@@ -2118,11 +2570,22 @@ class Shell {
 	/** @type {int[][]} Array of paths */
 	styles = [];
 
+	/** @type {boolean} True if any of this Shell's own paths is a PathToComponent. */
+	hasComponentPaths = false;
+
+	/** @type {boolean} True if every path consumes exactly one expression and none are components.
+	 * Lets NodeGroup.applyExprs() use a fast loop without allocating per-path expression arrays. */
+	pathsSingleExpr = false;
+
+	/** @type {boolean} True if this Shell has any ids, styles, or scripts. */
+	hasEmbeds = false;
+
 	/**
 	 * Create the nodes but without filling in the expressions.
 	 * This is useful because the expression-less nodes created by a template can be cached.
-	 * @param html {string[]} Html strings, split on places where an expression exists.  */
-	constructor(html=null) {
+	 * @param html {string[]} Html strings, split on places where an expression exists.
+	 * @param svgMode {boolean} Parse the html in the SVG namespace.  */
+	constructor(html=null, svgMode=false) {
 		if (!html)
 			return;
 
@@ -2139,11 +2602,26 @@ class Shell {
 		let htmlWithPlaceholders = Shell.addPlaceholders(html);
 
 		let template = Globals$1.doc.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
-		if (htmlWithPlaceholders)
-			template.innerHTML = htmlWithPlaceholders;
-		else // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
+		if (htmlWithPlaceholders) {
+			// Wrap in <svg> so the parser's foreign-content rules create the nodes in the SVG namespace,
+			// then lift the children back out so the fragment has no wrapper.
+			if (svgMode) {
+				template.innerHTML = '<svg>' + htmlWithPlaceholders + '</svg>';
+				let svgEl = template.content.firstChild;
+				let frag = Globals$1.doc.createDocumentFragment();
+				while (svgEl.firstChild)
+					frag.append(svgEl.firstChild);
+				this.fragment = frag;
+			}
+			else {
+				template.innerHTML = htmlWithPlaceholders;
+				this.fragment = template.content;
+			}
+		}
+		else { // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
 			template.content.append(Globals$1.doc.createTextNode(''));
-		this.fragment = template.content;
+			this.fragment = template.content;
+		}
 
 		// 2. Find placeholders
 		let node;
@@ -2195,7 +2673,12 @@ class Shell {
 							}
 
 							placeholdersUsed += parts.length - 1;
-							try {
+							// In svgMode, setting typed SVG attributes (viewBox, r, etc.) with the placeholders
+							// stripped out makes the browser log parse errors, both here and when the fragment is cloned.
+							// Remove the attribute instead; apply() recreates it with the real values.
+							if (svgMode)
+								node.removeAttribute(attr.name);
+							else try {
 								node.setAttribute(attr.name, parts.join(''));
 							}
 							catch (e) {
@@ -2224,32 +2707,65 @@ class Shell {
 				if (node?.parentNode?.closest && node?.parentNode?.closest('[contenteditable]'))
 					throw new Error(`Contenteditable can't have expressions inside them. Use <div contenteditable value="\${...}"> instead.`);
 
-				// Get or create nodeBefore.
-				let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
-				if (!nodeBefore) {
-					nodeBefore = Globals$1.doc.createComment('Path:'+this.paths.length);
-					node.parentNode.insertBefore(nodeBefore, node);
-				}
-				
+				let parent = node.parentNode;
 
-				// Get the next node.
-				let nodeMarker;
-
-				// A subsequent node is available to be a nodeMarker.
-				if (node.nextSibling && (node.nextSibling.nodeType !== 8 || node.nextSibling.textContent !== '!✨!')) {
-					nodeMarker = node.nextSibling;
-					toRemove.push(node); // Removing them here will mess up the treeWalker.
+				// Whitespace-only text nodes between table-structure tags are never rendered,
+				// so remove them to give the expression sole ownership of its parent.
+				if (parent.nodeType === 1 && tableTags.includes(parent.tagName)
+						&& (node.previousSibling || node.nextSibling)) {
+					let canTrim = true;
+					for (let sibling of parent.childNodes)
+						if (sibling !== node && (sibling.nodeType !== 3 || sibling.textContent.trim().length)) {
+							canTrim = false;
+							break;
+						}
+					if (canTrim)
+						for (let sibling of [...parent.childNodes])
+							if (sibling !== node)
+								sibling.remove();
 				}
-				// Re-use existing comment placeholder.
+
+				// The expression is the only child of an element, so the element itself
+				// can delimit the expression's nodes and no marker comments are needed.
+				// Components and slots are excluded because they move their children
+				// during instantiation, which would orphan the expression's region.
+				if (parent.nodeType === 1 && !node.previousSibling && !node.nextSibling
+					&& !parent.tagName.includes('-') && parent.tagName !== 'SLOT' && !parent.hasAttribute('is')) {
+					let path = new PathToNodes(null, parent);
+					path.wholeParent = true;
+					this.paths.push(path);
+					placeholdersUsed ++;
+					toRemove.push(node); // Removing it here would mess up the treeWalker.
+				}
+
 				else {
-					nodeMarker = node;
-					nodeMarker.textContent = 'PathEnd:'+ this.paths.length;
-				}
-				
+					// Get or create nodeBefore.
+					let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
+					if (!nodeBefore) {
+						nodeBefore = Globals$1.doc.createComment('Path:'+this.paths.length);
+						node.parentNode.insertBefore(nodeBefore, node);
+					}
+					
 
-				let path = new PathToNodes(nodeBefore, nodeMarker);
-				this.paths.push(path);
-				placeholdersUsed ++;
+					// Get the next node.
+					let nodeMarker;
+
+					// A subsequent node is available to be a nodeMarker.
+					if (node.nextSibling && (node.nextSibling.nodeType !== 8 || node.nextSibling.textContent !== '!✨!')) {
+						nodeMarker = node.nextSibling;
+						toRemove.push(node); // Removing them here will mess up the treeWalker.
+					}
+					// Re-use existing comment placeholder.
+					else {
+						nodeMarker = node;
+						nodeMarker.textContent = 'PathEnd:'+ this.paths.length;
+					}
+					
+
+					let path = new PathToNodes(nodeBefore, nodeMarker);
+					this.paths.push(path);
+					placeholdersUsed ++;
+				}
 			}
 
 			// Comments become text nodes when inside textareas.
@@ -2315,6 +2831,16 @@ class Shell {
 
 		this.findEmbeds();
 
+		this.pathsSingleExpr = true;
+		for (let path of this.paths) {
+			if (path instanceof PathToComponent) {
+				this.hasComponentPaths = true;
+				this.pathsSingleExpr = false;
+				break; // Both facts are now decided.
+			}
+			if (path.getExpressionCount() !== 1)
+				this.pathsSingleExpr = false; // Keep scanning for components.
+		}
 
 		
 	}
@@ -2389,18 +2915,33 @@ class Shell {
 		}
 
 		this.ids = Array.prototype.map.call(idEls, el => Path.get(el));
+
+		this.hasEmbeds = this.ids.length > 0 || this.styles.length > 0 || this.scripts.length > 0;
 	}
 
 	/**
 	 * Get the shell for the html strings.
 	 * @param htmlStrings {string[]} Typically comes from a Template.
+	 * @param svgMode {boolean} Parse the html in the SVG namespace.
 	 * @returns {Shell} */
-	static get(htmlStrings) {
-		let result = Globals$1.shells.get(htmlStrings);
-		if (!result) {
-			result = new Shell(htmlStrings);
-			Globals$1.shells.set(htmlStrings, result); // cache
+	static get(htmlStrings, svgMode=false) {
+		// One-entry memo, since loops request the same shell for every item.
+		if (htmlStrings === lastHtmlStrings && svgMode === lastSvgMode)
+			return lastShell;
+
+		let entry = Globals$1.shells.get(htmlStrings);
+		if (!entry) {
+			entry = {};
+			Globals$1.shells.set(htmlStrings, entry); // cache
 		}
+		let key = svgMode ? 'svg' : 'html';
+		let result = entry[key];
+		if (!result)
+			result = entry[key] = new Shell(htmlStrings, svgMode);
+
+		lastHtmlStrings = htmlStrings;
+		lastSvgMode = svgMode;
+		lastShell = result;
 
 		
 		return result;
@@ -2411,6 +2952,12 @@ class Shell {
 
 
 const commentPlaceholder = `<!--!✨!-->`;
+
+// Elements whose whitespace-only text children are never rendered.
+const tableTags = ['TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR'];
+
+// One-entry memo for Shell.get().
+let lastHtmlStrings = null, lastSvgMode = false, lastShell = null;
 
 
 // We increment the placeholder char as we go because nodes can't have the same attribute more than once.
@@ -2441,14 +2988,24 @@ class NodeGroup {
 	 * TODO: But sometimes startNode and endNode point to the same node.  Document this inconsistency. */
 	endNode;
 
-	/** @type {Path[]} */
-	paths = [];
+	/** @type {?Path[]} Null for text NodeGroups; created by setPathsFromFragment(). */
+	paths = null;
 
 	/** @type {string} Key that matches the template and the expressions. */
 	exactKey;
 
 	/** @type {string} Key that only matches the template. */
 	closeKey;
+
+	/** @type {boolean} True if any of this NodeGroup's own paths is a PathToComponent. */
+	hasComponentPaths = false;
+
+	/** @type {boolean} True if every path consumes exactly one expression and none are components. */
+	pathsSingleExpr = false;
+
+	/** @type {boolean} True until applyExprs() finishes the first time.
+	 * While true, ancestor node caches can't reference this NodeGroup's nodes, so they don't need invalidation. */
+	firstApply = true;
 
 	/**
 	 * @internal
@@ -2463,12 +3020,6 @@ class NodeGroup {
 
 	/** @type {Template} */
 	template;
-
-	/**
-	 * Root node at the top of the hierarchy.
-	 * Should be moved to RootNodeGroup
-	 * @type {HTMLElement} */
-	root;
 
 
 	/**
@@ -2493,9 +3044,11 @@ class NodeGroup {
 
 		else {
 			// Get a cached version of the parsed and instantiated html, and Paths:
-			const shell = Shell.get(template.html);
+			const shell = Shell.get(template.html, template.svgMode);
 			const shellFragment = shell.fragment.cloneNode(true);
-			const svgFragmentRoot = template.isSvgFragment && shellFragment.firstElementChild;
+
+			this.hasComponentPaths = shell.hasComponentPaths;
+			this.pathsSingleExpr = shell.pathsSingleExpr;
 
 			if (shellFragment.nodeType === 11) { // DocumentFragment
 				this.startNode = shellFragment.firstChild;
@@ -2503,127 +3056,25 @@ class NodeGroup {
 			} else
 				this.startNode = this.endNode = shellFragment;
 
-
-			// Special setup for RootNodeGroup
-			if (this instanceof RootNodeGroup) {
-
-
-				let startingPathDepth = 0;
-				this.options = options;
-				if (shellFragment instanceof Text) {
-					if (!el)
-						throw new Error('Cannot create a standalone text node');
-
-					this.root = el;
-					if (shellFragment.nodeValue.length)
-						this.root.append(shellFragment);
-				}
-
-				else {
-					if (el) {
-						this.root = el;
-
-						// Save slot
-						// 1. Globals.currentSlotChildren is set if this is called via PathToComponent.applyComponent() calls render()
-						// 2. el.childNodes is set if render() is called manually for the first time.
-						let slotChildren;
-						if (Globals$1.currentSlotChildren || el.childNodes.length) {
-							slotChildren = Globals$1.doc.createDocumentFragment();
-							slotChildren.append(...(Globals$1.currentSlotChildren || el.childNodes));
-						}
-
-						// If el should replace the root node of the fragment.
-						if (isReplaceEl(shellFragment, this.root.tagName)) {
-							this.root.append(...shellFragment.children[0].childNodes);
-
-							// Copy attributes
-							for (let attrib of shellFragment.children[0].attributes)
-								if (!this.root.hasAttribute(attrib.name))
-									this.root.setAttribute(attrib.name, attrib.value);
-
-							// Go one level deeper into all of shell's paths.
-							startingPathDepth = 1;
-						}
-
-						else {
-							let isEmpty = shellFragment.childNodes.length === 1 && shellFragment.childNodes[0].nodeType === 3 && shellFragment.childNodes[0].textContent === '';
-							if (!isEmpty)
-								this.root.append(...shellFragment.childNodes);
-						}
-
-
-						// Setup slot children (deprecated)
-						if (slotChildren) {
-							// Named slots
-							for (let slot of el.querySelectorAll('slot[name]')) {
-								let name = slot.getAttribute('name');
-								if (name) {
-									let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
-									slot.append(...slotChildren2);
-								}
-							}
-							// Unnamed slots
-							let unamedSlot = el.querySelector('slot:not([name])');
-							if (unamedSlot)
-								unamedSlot.append(slotChildren);
-							// No slots
-							else
-								el.append(slotChildren);
-						}
-					}
-
-					// Instantiate as a standalone element.
-					else {
-						let onlyChild = getSingleEl(shellFragment);
-						this.root = onlyChild || shellFragment; // We return the whole fragment when calling h() with a collection of nodes.
-						if (onlyChild)
-							startingPathDepth = 1;
-					}
-
-					// Exclude the path to ourself.  Otherwise we get infinite recursion.
-					// let paths = [...shell.paths];
-					// if (paths[0] instanceof PathToComponent)
-					// 	paths.shift();
-
-					this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
-
-					// TODO: What about child nodes?  The Path needs to be bound to them, not me.
-
-					this.activateEmbeds(this.root, shell, startingPathDepth);
-				}
-				this.startNode = this.endNode = this.root;
-
-				Globals$1.rootNodeGroups.set(this.root, this);
-			} // end if RootNodeGroup
-
-			else if (shell) {
-				if (svgFragmentRoot) {
-					if (shell.paths.length)
-						this.setPathsFromFragment(svgFragmentRoot, shell.paths, 1);
-
-					this.activateEmbeds(svgFragmentRoot, shell, 1);
-
-					if (svgFragmentRoot.firstChild) {
-						this.startNode = svgFragmentRoot.firstChild;
-						this.endNode = svgFragmentRoot.lastChild;
-						shellFragment.append(...svgFragmentRoot.childNodes);
-					}
-					else {
-						this.startNode = this.endNode = Globals$1.doc.createTextNode('');
-						shellFragment.append(this.startNode);
-					}
-				}
-				else {
-					if (shell.paths.length) {
-						this.setPathsFromFragment(shellFragment, shell.paths);
-					}
-
-					this.activateEmbeds(shellFragment, shell);
-				}
-			}
+			this.instantiate(shell, shellFragment, el, options);
 		}
 
 		
+	}
+
+	/**
+	 * Set up paths and embeds from the cloned fragment.
+	 * RootNodeGroup overrides this with its more involved setup.
+	 * @param shell {Shell}
+	 * @param shellFragment {DocumentFragment|HTMLElement|Text}
+	 * @param el {?HTMLElement} Unused here; used by RootNodeGroup.
+	 * @param options {?object} Unused here; used by RootNodeGroup. */
+	instantiate(shell, shellFragment, el, options) {
+		if (shell.paths.length)
+			this.setPathsFromFragment(shellFragment, shell.paths);
+
+		if (shell.hasEmbeds)
+			this.activateEmbeds(shellFragment, shell);
 	}
 
 
@@ -2639,6 +3090,28 @@ class NodeGroup {
 		
 
 		let paths = this.paths;
+
+		// Fast path: every path consumes exactly one expression and none are components,
+		// so skip the bookkeeping that maps expressions to paths.
+		if (this.pathsSingleExpr) {
+			if (includeNonComponents) {
+				for (let i = paths.length - 1; i >= 0; i--)
+					paths[i].applySingle(exprs[i]);
+
+				if (this.styles)
+					this.updateStyles();
+
+				// Invalidate the nodes cache because we just changed it.
+				this.nodesCache = null;
+			}
+			this.firstApply = false;
+			return;
+		}
+
+		if (!paths) { // Text NodeGroups have no paths.
+			this.firstApply = false;
+			return;
+		}
 
 		// Things to consider:
 		// 1. Paths consume a varying number of expressions.
@@ -2682,6 +3155,7 @@ class NodeGroup {
 			this.nodesCache = null;
 
 		}
+		this.firstApply = false;
 
 		
 	}
@@ -2734,11 +3208,11 @@ class NodeGroup {
 	 * @param startingPathDepth {int} */
 	setPathsFromFragment(fragment, paths, startingPathDepth=0) {
 		let pathLength = paths.length; // For faster iteration
-		this.paths.length = pathLength;
+		let result = this.paths = new Array(pathLength);
 		for (let i=0; i<pathLength; i++) {
 			let path = paths[i].clone(fragment, startingPathDepth);
 			path.parentNg = this;
-			this.paths[i] = path;
+			result[i] = path;
 		}
 	}
 
@@ -2803,7 +3277,102 @@ class NodeGroup {
 	
 }
 
+/**
+ * Has these properties not present on NodeGroup, assigned by instantiate():
+ * They're not declared as fields because subclass field initializers run after the
+ * super constructor and would overwrite the assigned values.
+ * @property {HTMLElement} root - Root node at the top of the hierarchy.
+ * @property {?object} options - RenderOptions */
+class RootNodeGroup extends NodeGroup {
 
+	// Used only by watch.js
+	exprsToRender;
+
+	/**
+	 * Special setup for the root: graft the fragment into el (or use it standalone),
+	 * handle slot children, then resolve paths and embeds against the root.
+	 * Called by the NodeGroup constructor. */
+	instantiate(shell, shellFragment, el, options) {
+		let startingPathDepth = 0;
+		this.options = options;
+		if (shellFragment instanceof Text) {
+			if (!el)
+				throw new Error('Cannot create a standalone text node');
+
+			this.root = el;
+			if (shellFragment.nodeValue.length)
+				this.root.append(shellFragment);
+		}
+
+		else {
+			if (el) {
+				this.root = el;
+
+				// Save slot
+				// 1. Globals.currentSlotChildren is set if this is called via PathToComponent.applyComponent() calls render()
+				// 2. el.childNodes is set if render() is called manually for the first time.
+				let slotChildren;
+				if (Globals$1.currentSlotChildren || el.childNodes.length) {
+					slotChildren = Globals$1.doc.createDocumentFragment();
+					slotChildren.append(...(Globals$1.currentSlotChildren || el.childNodes));
+				}
+
+				// If el should replace the root node of the fragment.
+				if (isReplaceEl(shellFragment, this.root.tagName)) {
+					this.root.append(...shellFragment.children[0].childNodes);
+
+					// Copy attributes
+					for (let attrib of shellFragment.children[0].attributes)
+						if (!this.root.hasAttribute(attrib.name))
+							this.root.setAttribute(attrib.name, attrib.value);
+
+					// Go one level deeper into all of shell's paths.
+					startingPathDepth = 1;
+				}
+
+				else {
+					let isEmpty = shellFragment.childNodes.length === 1 && shellFragment.childNodes[0].nodeType === 3 && shellFragment.childNodes[0].textContent === '';
+					if (!isEmpty)
+						this.root.append(...shellFragment.childNodes);
+				}
+
+
+				// Setup slot children (deprecated)
+				if (slotChildren) {
+					// Named slots
+					for (let slot of el.querySelectorAll('slot[name]')) {
+						let name = slot.getAttribute('name');
+						if (name) {
+							let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
+							slot.append(...slotChildren2);
+						}
+					}
+					// Unnamed slots
+					let unamedSlot = el.querySelector('slot:not([name])');
+					if (unamedSlot)
+						unamedSlot.append(slotChildren);
+					// No slots
+					else
+						el.append(slotChildren);
+				}
+			}
+
+			// Instantiate as a standalone element.
+			else {
+				let onlyChild = getSingleEl(shellFragment);
+				this.root = onlyChild || shellFragment; // We return the whole fragment when calling h() with a collection of nodes.
+				if (onlyChild)
+					startingPathDepth = 1;
+			}
+
+			this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
+			this.activateEmbeds(this.root, shell, startingPathDepth);
+		}
+		this.startNode = this.endNode = this.root;
+
+		Globals$1.rootNodeGroups.set(this.root, this);
+	}
+}
 
 
 function getSingleEl(fragment) {
@@ -2829,24 +3398,17 @@ function isReplaceEl(fragment, tagName) {
 		&& fragment.children[0].tagName.replace('-SOLARITE-PLACEHOLDER', '') === tagName;
 }
 
-class RootNodeGroup extends NodeGroup {
-
-	// Used only by watch.js
-	exprsToRender;
-
-}
-
 /**
  * The html strings and evaluated expressions from an html tagged template.
  * A unique Template is created for each item in a loop.
  * Although the reference to the html strings is shared among templates. */
 class Template {
 
-	/** @type {Expr[]} Evaulated expressions.  */
-	'exprs' = []
+	/** @type {Expr[]} Evaulated expressions.  Assigned by the constructor. */
+	'exprs' = undefined;
 
-	/** @type {string[]} */
-	'html' = [];
+	/** @type {string[]} Assigned by the constructor. */
+	'html' = undefined;
 
 	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
@@ -2855,7 +3417,9 @@ class Template {
 	exactKey;
 
 	isText;
-	isSvgFragment;
+
+	/** @type {boolean} True if created by the svg`` tag; the Shell parses the html in the SVG namespace. */
+	svgMode = false;
 
 	/**
 	 *
@@ -2915,16 +3479,24 @@ class Template {
 			el.innerHTML = ''; // Fast path for empty component.
 		else {
 
-			let oldKey = ng.exactKey;
-			let newKey = this.getExactKey();
-			ng.applyExprs(this.exprs, oldKey !== newKey);
-			ng.exactKey = newKey;
+			// The changed flag is only read by PathToComponent, so skip the expensive
+			// whole-tree hash when this NodeGroup has no component paths.
+			let changed = true;
+			if (ng.hasComponentPaths) {
+				let oldKey = ng.exactKey;
+				let newKey = this.getExactKey();
+				changed = oldKey !== newKey;
+				ng.exactKey = newKey;
+			}
+			ng.applyExprs(this.exprs, changed);
 
 			//if (firstTime)
 			//	ng.instantiateStaticComponents(ng.staticComponents);
 		}
 
-		ng.exprsToRender = new Map();
+		// Reset watch.js bookkeeping, allocating only when it was actually used.
+		if (ng.exprsToRender === undefined || ng.exprsToRender.size)
+			ng.exprsToRender = new Map();
 		return el;
 	}
 
@@ -2939,10 +3511,9 @@ class Template {
 	}
 
 	getCloseKey() {
-		//console.log(this.exprs.length)
 		if (this.closeKey===undefined) {
 			if (this.exprs.length)
-				this.closeKey = /*'@' + */this.toJSON()[0];
+				this.closeKey = getObjectId(this.html); // Same value as toJSON()[0] without allocating hashedFields.
 			else
 				this.closeKey = this.html[0];
 		}
@@ -3211,6 +3782,21 @@ let renderF = 'render';
  * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template|Function} */
+/**
+ * Like h`...` but the fragment is parsed in the SVG namespace.
+ * Required for nested SVG fragments, since they're parsed standalone without an <svg> ancestor:
+ * h`<svg>${svg`<circle r="1"/>`}</svg>`
+ * @param htmlStrings {string[]}
+ * @param exprs {*[]}
+ * @return {Template} */
+function svg(htmlStrings, ...exprs) {
+	let template = new Template(htmlStrings, exprs);
+	template.svgMode = true;
+	return template;
+}
+
+const renderTemplateKey = Symbol('solariteRender');
+
 function h(htmlStrings=undefined, ...exprs) {
 
 	// 1. Tagged template: h`<div>...</div>`
@@ -3257,16 +3843,25 @@ function h(htmlStrings=undefined, ...exprs) {
 		else {
 			let parent = arguments[0], options = arguments[1];
 
-			// Remove shadowroot if present.  TODO: This could mess up paths?
-			if (parent.shadowRoot)
-				parent.innerHTML = '';
+			// The closure is cached on the element so repeated renders don't recreate it.
+			if (options === undefined) {
+				let cached = parent[renderTemplateKey];
+				if (cached)
+					return cached;
+			}
 
 			// Return a tagged template function that applies the tagged template to parent.
 			let renderTemplate = (htmlStrings, ...exprs) => {
+				// Remove shadowroot if present.  TODO: This could mess up paths?
+				if (parent.shadowRoot)
+					parent.innerHTML = '';
+
 				Globals$1.rendered.add(parent);
 				let template = new Template(htmlStrings, exprs);
 				return template.render(parent, options);
 			};
+			if (options === undefined)
+				parent[renderTemplateKey] = renderTemplate;
 			return renderTemplate;
 		}
 	}
@@ -3309,29 +3904,6 @@ function h(htmlStrings=undefined, ...exprs) {
 
 	else
 		throw new Error('h() does not support argument of type: ' + (arguments[0] ? typeof arguments[0] : arguments[0]))
-}
-
-const wrappedHtml = new WeakMap();
-
-/** Create SVG templates, including standalone SVG child fragments. */
-function svg(htmlStrings=[''], ...exprs) {
-	if (!Array.isArray(htmlStrings))
-		htmlStrings = [htmlStrings + ''];
-
-	if (htmlStrings[0].trimStart().startsWith('<svg'))
-		return new Template(htmlStrings, exprs);
-
-	let html = wrappedHtml.get(htmlStrings);
-	if (!html) {
-		html = [...htmlStrings];
-		html[0] = '<svg>' + html[0];
-		html[html.length - 1] += '</svg>';
-		wrappedHtml.set(htmlStrings, html);
-	}
-
-	let result = new Template(html, exprs);
-	result.isSvgFragment = true;
-	return result;
 }
 
 /**
@@ -3576,6 +4148,8 @@ class Solarite extends HTMLElementAutoDefine {
 		let result = Util.attribsToObject(el);
 		for (let name in result) {
 			let val = result[name];
+
+			// We don't do eval because that seems too dangerous.
 			if (val.startsWith('${') && val.endsWith('}'))
 				result[name] = JSON.parse(val.slice(2, -1));
 		}

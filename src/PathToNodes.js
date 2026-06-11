@@ -15,28 +15,32 @@ export default class PathToNodes extends Path {
 	 * TODO: What if one Path has two .map() calls?  Maybe we just won't support that. */
 	mapCallback;
 
+	/** @type {NodeGroup[]} The NodeGroups created by this path's expression, in order. */
+	nodeGroups = [];
+
 
 
 	/**
-	 * TODO: Rename this to nodeGroupsInUse, nodeGroupsAvialableAttached and nodeGroupsAvailableDetached?
 	 * Nodes that have been used during the current render().
-	 * Used with getNodeGroup() and freeNodeGroups().
-	 * TODO: Use an array of WeakRef so the gc can collect them?
-	 * TODO: Put items back in nodeGroupsInUse after applyExpr() is called, not before.
-	 * @type {NodeGroup[]} */
-	nodeGroupsRendered = [];
+	 * Used with getNodeGroup() and freeNodeGroups() on the generic path; the positional diff
+	 * tracks in-use NodeGroups in this.nodeGroups instead.
+	 * Lazily created since most paths never use it.
+	 * @type {?NodeGroup[]} */
+	nodeGroupsRendered = null;
 
 	/**
 	 * Nodes that were added to the web component during the last render(), but are available to be used again.
 	 * Used with getNodeGroup() and freeNodeGroups().
 	 * Each NodeGroup is here twice, once under an exact key, and once under the close key.
-	 * @type {MultiValueMap<key:string, value:NodeGroup>} */
-	nodeGroupsAttachedAvailable = new MultiValueMap();
+	 * Lazily created since most paths never use it.
+	 * @type {?MultiValueMap} */
+	nodeGroupsAttachedAvailable = null;
 
 	/**
 	 * Nodes that were not added to the web component during the last render(), and available to be used again.
-	 * @type {MultiValueMap} */
-	nodeGroupsDetachedAvailable = new MultiValueMap();
+	 * Lazily created since most paths never use it.
+	 * @type {?MultiValueMap} */
+	nodeGroupsDetachedAvailable = null;
 
 	constructor(nodeBefore, nodeMarker) {
 		super(nodeBefore, nodeMarker);
@@ -45,7 +49,6 @@ export default class PathToNodes extends Path {
 	/**
 	 * Insert/replace the nodes created by a single expression.
 	 * Called by applyExprs()
-	 * This function is recursive.  It calls functions that call applyNodes().
 	 * @param exprs {Expr[]} Only the first is used.
 	 * @param freeNodeGroups {boolean}
 	 * @return {Node[]} New Nodes created. */
@@ -53,17 +56,335 @@ export default class PathToNodes extends Path {
 		//#IFDEV
 		assert(Array.isArray(exprs));
 		//#ENDIF
+		this.applySingle(exprs[0], freeNodeGroups);
+	}
 
+	/**
+	 * Make the DOM between nodeBefore and nodeMarker match the value of expr.
+	 * This is the main entry point for rendering an expression's nodes, chosen from three strategies:
+	 * 1. A primitive expr updating (or creating) a single text node is handled inline with no allocations.
+	 * 2. Otherwise expr is flattened to a list of Templates, strings, and Nodes via collectItems(),
+	 *    then applyDiff() positionally diffs them against the previous render's NodeGroups.
+	 * 3. If the items contain raw Nodes, now or on the previous render, applyGeneric() uses the older
+	 *    hash-key matching and udomdiff, since this.nodeGroups can't track raw Nodes positionally.
+	 * @param expr {Expr}
+	 * @param freeNodeGroups {boolean} Only false when called by watch.js, which pre-populates the pools. */
+	applySingle(expr, freeNodeGroups=true) {
+
+		/*#IFDEV*/this.verify();/*#ENDIF*/
+
+		// Fast path for a single primitive expression, the most common case in loops.
+		let exprType = typeof expr;
+		if ((exprType === 'string' || exprType === 'number') && !this.itemsHaveNodes) {
+			if (exprType !== 'string')
+				expr += '';
+			let ngs = this.nodeGroups;
+
+			// Update an existing single text node.
+			if (ngs.length === 1) {
+				let ng = ngs[0], tpl = ng.template;
+				if (tpl.isText === true) {
+					if (tpl.html[0] !== expr) {
+						ng.startNode.nodeValue = expr;
+						tpl.html[0] = expr; // Text templates have their own html array, so this can't affect others.
+						ng.closeKey = expr;
+						ng.exactKey = undefined;
+					}
+					return;
+				}
+			}
+
+			// Create a text node in an empty path.
+			else if (ngs.length === 0) {
+				let ng = new NodeGroup(textTemplate(expr), this);
+				if (this.wholeParent)
+					this.nodeMarker.appendChild(ng.startNode);
+				else
+					this.nodeMarker.parentNode.insertBefore(ng.startNode, this.nodeMarker);
+				ngs.push(ng);
+
+				// During a NodeGroup's first applyExprs(), no ancestor caches can reference its nodes yet.
+				if (!this.parentNg.firstApply) {
+					this.nodesCache = null;
+					if (this.parentNg.parentPath)
+						this.parentNg.parentPath.clearNodesCache();
+				}
+				return;
+			}
+		}
+
+		// 1. Flatten the expression to a list of Templates, strings and Nodes, evaluating functions along the way.
+		/** @type {(Template|string|Node)[]} */
+		let newItems = [];
+		let hasNodesNow = this.collectItems(expr, newItems, false);
+
+		// 2. Raw Nodes in the items (now or on the previous render) can't be diffed positionally
+		// because this.nodeGroups only tracks NodeGroups.  Use the generic path for those.
+		if (hasNodesNow || this.itemsHaveNodes) {
+			this.itemsHaveNodes = hasNodesNow;
+			this.applyGeneric(newItems, freeNodeGroups);
+		}
+		else
+			this.applyDiff(newItems);
+
+		/*#IFDEV*/this.verify();/*#ENDIF*/
+	}
+
+	/**
+	 * Positionally diff newItems (all Templates) against this.nodeGroups.
+	 * Unchanged NodeGroups are kept without any hashing or map lookups.
+	 * NodeGroups created from the same html are rewritten in place.
+	 * Leftover items are removed/inserted with direct DOM operations.
+	 * @param newItems {Template[]} */
+	applyDiff(newItems) {
+		let oldNgs = this.nodeGroups;
+		let oldLen = oldNgs.length, newLen = newItems.length;
+		let newNgs = new Array(newLen);
+
+		let start = 0;
+		let oldEnd = oldLen, newEnd = newLen;
+
+		// 1. Keep the matching prefix.
+		// This runs before the suffix scan so that removing one of several identical items keeps the first ones.
+		while (start < oldEnd && start < newEnd) {
+			let ng = oldNgs[start], t = newItems[start];
+			if (!itemSame(ng, t))
+				break;
+			if (ng.hasComponentPaths)
+				ng.applyExprs(t.exprs, false, false);
+			newNgs[start] = ng;
+			start++;
+		}
+
+		// 2. Keep the matching suffix.  This makes removing items from the middle cheap.
+		while (oldEnd > start && newEnd > start) {
+			let ng = oldNgs[oldEnd-1], t = newItems[newEnd-1];
+			if (!itemSame(ng, t))
+				break;
+			if (ng.hasComponentPaths)
+				ng.applyExprs(t.exprs, false, false);
+			newNgs[--newEnd] = ng;
+			oldEnd--;
+		}
+
+		// 3. Aligned middle scan: keep unchanged NodeGroups, rewrite same-shape ones in place.
+		while (start < oldEnd && start < newEnd) {
+			let ng = oldNgs[start], t = newItems[start];
+			if (itemSame(ng, t)) { // Can happen between changed rows, e.g. partial updates.
+				if (ng.hasComponentPaths)
+					ng.applyExprs(t.exprs, false, false);
+			}
+			else if (itemClose(ng, t))
+				this.rewriteNodeGroup(ng, t);
+			else
+				break; // Different html at this position.  Remove/insert the remaining window below.
+			newNgs[start] = ng;
+			start++;
+		}
+
+		let oldRemain = oldEnd - start, newRemain = newEnd - start;
+		if (oldRemain || newRemain) {
+
+			// 4. Remove leftover old NodeGroups.
+			if (oldRemain) {
+				// Materialize node caches of multi-node groups while still attached,
+				// since detaching breaks sibling links.  Single-node groups don't need it.
+				for (let i=start; i<oldEnd; i++) {
+					let ng = oldNgs[i];
+					if (ng.startNode !== ng.endNode)
+						ng.getNodes();
+				}
+
+				// Fast clear when removing everything.
+				let cleared = newLen === 0 && start === 0 && this.fastClear();
+				let pool = this.nodeGroupsDetachedAvailable ??= new MultiValueMap();
+				for (let i=start; i<oldEnd; i++) {
+					let ng = oldNgs[i];
+					if (ng.startNode !== ng.endNode)
+						Util.saveOrphans(ng.getNodes()); // Moves the nodes out of the DOM, into their own fragment.
+					else if (!cleared)
+						ng.startNode.remove();
+					if (!ng.template.isText)
+						pool.add(ng.closeKey, ng);
+				}
+			}
+
+			// 5. Insert leftover new items.
+			if (newRemain) {
+				let wholeParent = this.wholeParent;
+				let anchor = newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker);
+				let parent = wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
+				let target = parent, before = anchor;
+				let fragment = null;
+				if (newRemain > 1) { // Batch-insert through a fragment.
+					fragment = Globals.doc.createDocumentFragment();
+					target = fragment;
+					before = null;
+				}
+				for (let i=start; i<newEnd; i++) {
+					let ng = this.createOrReuse(newItems[i]);
+					newNgs[i] = ng;
+					let node = ng.startNode, end = ng.endNode;
+					while (true) {
+						let next = node.nextSibling;
+						target.insertBefore(node, before);
+						if (node === end)
+							break;
+						node = next;
+					}
+				}
+				if (fragment)
+					parent.insertBefore(fragment, anchor);
+			}
+
+			// 6. Node membership changed, so invalidate caches.
+			// During a NodeGroup's first applyExprs(), no ancestor caches can reference its nodes yet.
+			if (!this.parentNg.firstApply) {
+				this.nodesCache = null;
+				if (this.parentNg.parentPath)
+					this.parentNg.parentPath.clearNodesCache();
+			}
+		}
+
+		this.nodeGroups = newNgs;
+
+		// Keep state used by the generic path and watch.js from going stale.
+		if (this.nodeGroupsRendered)
+			this.nodeGroupsRendered = null;
+		if (this.nodeGroupsAttachedAvailable)
+			this.nodeGroupsAttachedAvailable = null;
+	}
+
+	/**
+	 * Update an existing NodeGroup, created from the same html strings, with new values.
+	 * @param ng {NodeGroup}
+	 * @param item {Template|string} */
+	rewriteNodeGroup(ng, item) {
+		if (typeof item === 'string') { // Text content.
+			ng.startNode.nodeValue = item;
+			ng.template.html[0] = item; // Text templates have their own html array, so this can't affect others.
+			ng.closeKey = item;
+			ng.exactKey = undefined;
+		}
+		else {
+			// When every path consumes exactly one expression, paths align 1:1 with exprs,
+			// so only the expressions that changed need to be applied.
+			if (ng.pathsSingleExpr) {
+				let oldExprs = ng.template.exprs, newExprs = item.exprs;
+				let paths = ng.paths;
+				for (let i = paths.length - 1; i >= 0; i--)
+					if (!exprSame(oldExprs[i], newExprs[i]))
+						paths[i].applySingle(newExprs[i]);
+
+				if (ng.styles)
+					ng.updateStyles();
+				ng.nodesCache = null;
+				ng.firstApply = false;
+			}
+			else
+				ng.applyExprs(item.exprs);
+			ng.exactKey = undefined;
+			ng.template = item;
+		}
+	}
+
+	/**
+	 * Create a NodeGroup for an item, reusing a detached one with the same html if available.
+	 * @param item {Template|string}
+	 * @return {NodeGroup} */
+	createOrReuse(item) {
+		let ng;
+		if (typeof item === 'string') {
+			item = textTemplate(item);
+			return new NodeGroup(item, this); // Text NodeGroups have no paths to apply.
+		}
+
+		let pool = this.nodeGroupsDetachedAvailable;
+		if (pool) {
+			ng = pool.deleteAny(item.getCloseKey());
+			if (ng) {
+				ng.applyExprs(item.exprs);
+				ng.exactKey = undefined;
+				ng.template = item;
+				return ng;
+			}
+		}
+
+		ng = new NodeGroup(item, this);
+		if (item.exprs.length || (ng.paths && ng.paths.length))
+			ng.applyExprs(item.exprs);
+		return ng;
+	}
+
+	/**
+	 * Recursively flatten expr into items, evaluating functions and converting primitives to text Templates.
+	 * Mirrors the behavior of exprToTemplates() but produces a flat array.
+	 * @param expr
+	 * @param items {(Template|Node)[]}
+	 * @param hasNodes {boolean}
+	 * @return {boolean} True if any raw Nodes were added to items. */
+	collectItems(expr, items, hasNodes) {
+		if (expr instanceof Template)
+			items.push(expr);
+
+		else if (Array.isArray(expr)) {
+			for (let subExpr of expr) {
+				if (subExpr instanceof Template) // Inline the most common case.
+					items.push(subExpr);
+				else
+					hasNodes = this.collectItems(subExpr, items, hasNodes);
+			}
+		}
+
+		else if (typeof expr === 'function') {
+			Globals.currentPath = this; // Used by watch()
+			this.watchFunction = expr;
+			expr = expr();
+			Globals.currentPath = null;
+			hasNodes = this.collectItems(expr, items, hasNodes);
+		}
+
+		else if (expr instanceof NodeList) {
+			for (let node of expr)
+				items.push(node);
+			hasNodes = hasNodes || expr.length > 0;
+		}
+
+		else if (expr?.nodeType) {
+			if (expr.nodeType === 11) { // DocumentFragment
+				for (let node of [...expr.childNodes])
+					items.push(node);
+			}
+			else
+				items.push(expr);
+			hasNodes = true;
+		}
+
+		// String/Number/Date/Boolean.  Pushed as a plain string to avoid allocating a Template.
+		else {
+			if (expr === undefined || expr === false || expr === null) // Util.isFalsy() inlined
+				expr = '';
+			else if (typeof expr !== 'string')
+				expr += '';
+
+			items.push(expr);
+		}
+		return hasNodes;
+	}
+
+	/**
+	 * The original hash/map based reconciliation.  Used when expressions contain raw Nodes,
+	 * since those can't be tracked by the positional diff.
+	 * @param items {(Template|Node)[]}
+	 * @param freeNodeGroups {boolean} */
+	applyGeneric(items, freeNodeGroups=true) {
 		let path = this;
-		let expr = exprs[0];
 
 		// This can be done at the beginning or the end of this function.
 		// If at the end, we may get rendering done faster.
 		// But when at the beginning, it leaves all the nodes in-use so we can do a renderWatched().
 		if (freeNodeGroups)
 			path.freeNodeGroups();
-
-		/*#IFDEV*/path.verify();/*#ENDIF*/
 
 		/** @type {(Node|NodeGroup|Expr)[]} */
 		let newNodes = [];
@@ -72,13 +393,11 @@ export default class PathToNodes extends Path {
 		let secondPass = []; // indices
 
 		path.nodeGroups = []; // Reset before applyExactNodes and the code below rebuilds it.
-		path.applyExactNodes(expr, newNodes, secondPass);
-
-		//this.existingTextNodes = null;
-
-		// TODO: Create an array of old vs Nodes and NodeGroups together.
-		// If they're all the same, skip the next steps.
-		// Or calculate it in the loop above as we go?  Have a path.lastNodeGroups property?
+		for (let item of items) {
+			if (typeof item === 'string')
+				item = textTemplate(item);
+			path.applyExactNodes(item, newNodes, secondPass);
+		}
 
 		// Second pass to find close-match NodeGroups.
 		let flatten = false;
@@ -121,7 +440,10 @@ export default class PathToNodes extends Path {
 			if (!isNowEmpty || !path.fastClear()) {
 
 				// Rearrange nodes.
-				udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker)
+				if (path.wholeParent)
+					udomdiff(path.nodeMarker, oldNodes, newNodes, null)
+				else
+					udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker)
 			}
 
 			// TODO: Put this in a remove() function of NodeGroup.
@@ -132,12 +454,7 @@ export default class PathToNodes extends Path {
 				if (!ng.startNode.parentNode)
 					Util.saveOrphans(ng.getNodes());
 		}
-
-		/*#IFDEV*/path.verify();/*#ENDIF*/
 	}
-
-
-
 
 	/**
 	 * Try to apply Nodes that are an exact match, by finding existing nodes from the last render
@@ -161,7 +478,8 @@ export default class PathToNodes extends Path {
 				// Call render() on web components even though none of their arguments have changed:
 				// Do we want it to work this way?  Yes, because even if this component hasn't changed,
 				// perhaps something in a sub-component has.
-				ng.applyExprs(expr.exprs, false, false);
+				if (ng.hasComponentPaths)
+					ng.applyExprs(expr.exprs, false, false);
 
 				this.nodeGroups.push(ng);
 				return ng;
@@ -251,9 +569,10 @@ export default class PathToNodes extends Path {
 		else {
 			let newItems = op.items.slice(replaceCount);
 
-			let insertBefore = this.nodeGroups[op.index + replaceCount]?.startNode || this.nodeMarker;
-			for (let i = 0; i < newItems.length; i++) { // We use nodeMarker if the subequent (or all) nodeGroups have been removed.
-
+			// We use the path's end (nodeMarker, or the end of the parent) if the subsequent (or all) nodeGroups have been removed.
+			let anchor = this.nodeGroups[op.index + replaceCount]?.startNode || (this.wholeParent ? null : this.nodeMarker);
+			let parent = this.wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
+			for (let i = 0; i < newItems.length; i++) {
 
 				// Try to find exact match
 				let template = this.mapCallback(newItems[i]);
@@ -265,7 +584,7 @@ export default class PathToNodes extends Path {
 
 				// Splice in the new nodes.
 				for (let node of ng.getNodes())
-					insertBefore.parentNode.insertBefore(node, insertBefore);
+					parent.insertBefore(node, anchor);
 			}
 		}
 
@@ -284,8 +603,8 @@ export default class PathToNodes extends Path {
 		let path = this;
 
 		// Clear cache parent Paths that have the same parentNode
-		let parentNode = this.nodeMarker.parentNode;
-		while (path && path.nodeMarker.parentNode === parentNode) {
+		let parentNode = this.wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
+		while (path && (path.wholeParent ? path.nodeMarker : path.nodeMarker.parentNode) === parentNode) {
 			path.nodesCache = null;
 			path = path.parentNg?.parentPath
 
@@ -298,6 +617,11 @@ export default class PathToNodes extends Path {
 	 * Attempt to remove all of this Path's nodes from the DOM, if it can be done using a special fast method.
 	 * @returns {boolean} Returns false if Nodes weren't removed, and they should instead be removed manually. */
 	fastClear() {
+		if (this.wholeParent) {
+			this.nodeMarker.textContent = '';
+			return true;
+		}
+
 		let parent = this.nodeBefore.parentNode;
 		if (this.nodeBefore === parent.firstChild && this.nodeMarker === parent.lastChild) {
 
@@ -391,15 +715,16 @@ export default class PathToNodes extends Path {
 
 		// TODO: Would it be faster to maintain a separate list of detached nodegroups?
 		if (exact) { // [below] parentElement will be null if the parent is a DocumentFragment
-			result = collection.deleteAny(template.getExactKey());
+			result = collection?.deleteAny(template.getExactKey());
 			if (!result) { // try searching detached
 				collection = this.nodeGroupsDetachedAvailable;
-				result = collection.deleteAny(template.getExactKey());
+				result = collection?.deleteAny(template.getExactKey());
 			}
 
 			if (result) {// also delete the matching close key.
 				collection.deleteSpecific(template.getCloseKey(), result);
 
+				result.template = template; // Keep current so the positional diff can compare exprs.
 				//result.applyExprs(template.exprs);
 			}
 			else
@@ -411,19 +736,20 @@ export default class PathToNodes extends Path {
 		// We can then apply the expressions to make it an exact match.
 		// If the template has no expressions, the key is the html, and we've already searched for an exact match.  There won't be an inexact match.
 		else if (template.exprs.length) {
-			result = collection.deleteAny(template.getCloseKey());
+			result = collection?.deleteAny(template.getCloseKey());
 			if (!result) { // try searching detached
 				collection = this.nodeGroupsDetachedAvailable;
-				result = collection.deleteAny(template.getCloseKey());
+				result = collection?.deleteAny(template.getCloseKey());
 			}
 
 			if (result) {
-				/*#IFDEV*/assert(result.exactKey);/*#ENDIF*/
-				collection.deleteSpecific(result.exactKey, result);
+				if (result.exactKey !== undefined)
+					collection.deleteSpecific(result.exactKey, result);
 
 				// Update this close match with the new expression values.
 				result.applyExprs(template.exprs);
 				result.exactKey = template.getExactKey();
+				result.template = template; // Keep current so the positional diff can compare exprs.
 			}
 		}
 
@@ -433,8 +759,7 @@ export default class PathToNodes extends Path {
 			result.exactKey = template.getExactKey();
 		}
 
-
-		this.nodeGroupsRendered.push(result);
+		(this.nodeGroupsRendered ??= []).push(result);
 
 		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
 		return result;
@@ -447,26 +772,34 @@ export default class PathToNodes extends Path {
 	 * TODO: this could run as needed in getNodeGroup? */
 	freeNodeGroups() {
 		// Add nodes that weren't used during render() to nodeGroupsDetached
-		let previouslyAttached = this.nodeGroupsAttachedAvailable.data;
-		let detached = this.nodeGroupsDetachedAvailable.data;
-		for (let key in previouslyAttached) {
-			let set = detached[key];
-			if (!set)
-				detached[key] = previouslyAttached[key]
-			else
-				for (let ng of previouslyAttached[key])
-					set.add(ng);
+		let previouslyAttached = this.nodeGroupsAttachedAvailable?.data;
+		if (previouslyAttached) {
+			let detached = (this.nodeGroupsDetachedAvailable ??= new MultiValueMap()).data;
+			for (let key in previouslyAttached) {
+				let src = previouslyAttached[key];
+				let from = src.head || 0; // Skip entries already consumed by deleteAny().
+				let array = detached[key];
+				if (!array)
+					detached[key] = from ? src.slice(from) : src;
+				else
+					for (let i=from; i<src.length; i++)
+						array.push(src[i]);
+			}
 		}
 
 		// Add nodes that were used during render() to nodeGroupsRendered.
+		// If the last render used the positional diff, the in-use NodeGroups are in
+		// this.nodeGroups instead of nodeGroupsRendered.
 		this.nodeGroupsAttachedAvailable = new MultiValueMap();
 		let nga = this.nodeGroupsAttachedAvailable;
-		for (let ng of this.nodeGroupsRendered) {
-			nga.add(ng.exactKey, ng);
+		let source = this.nodeGroupsRendered?.length ? this.nodeGroupsRendered : this.nodeGroups;
+		for (let ng of source) {
+			if (ng.exactKey !== undefined) // The positional diff leaves exactKey undefined.
+				nga.add(ng.exactKey, ng);
 			nga.add(ng.closeKey, ng);
 		}
 
-		this.nodeGroupsRendered = [];
+		this.nodeGroupsRendered = null;
 	}
 
 
@@ -494,9 +827,14 @@ export default class PathToNodes extends Path {
 		}
 
 		result = [];
-		let current = this.nodeBefore.nextSibling;
-		let nodeMarker = this.nodeMarker;
-		while (current && current !== nodeMarker) {
+		let current, stop = null;
+		if (this.wholeParent)
+			current = this.nodeMarker.firstChild;
+		else {
+			current = this.nodeBefore.nextSibling;
+			stop = this.nodeMarker;
+		}
+		while (current && current !== stop) {
 			result.push(current)
 			current = current.nextSibling
 		}
@@ -563,4 +901,79 @@ function walkDOM(el, callback) {
 		walkDOM(child, callback);
 		child = child.nextElementSibling;
 	}
+}
+
+/**
+ * @param text {string}
+ * @return {Template} */
+function textTemplate(text) {
+	let result = new Template([text], []);
+	result.isText = true;
+	return result;
+}
+
+/**
+ * Does the NodeGroup already have content identical to item?
+ * @param ng {NodeGroup}
+ * @param item {Template|string}
+ * @return {boolean} */
+function itemSame(ng, item) {
+	let tpl = ng.template;
+	if (typeof item === 'string')
+		return tpl.isText === true && tpl.html[0] === item;
+	return templatesSame(tpl, item);
+}
+
+/**
+ * Could ng be rewritten in place with the values of item?
+ * True when both come from the same html strings (and thus the same Shell), or both are text.
+ * @param ng {NodeGroup}
+ * @param item {Template|string}
+ * @return {boolean} */
+function itemClose(ng, item) {
+	let tpl = ng.template;
+	if (typeof item === 'string')
+		return tpl.isText === true;
+	return tpl.html === item.html && tpl.svgMode === item.svgMode;
+}
+
+/**
+ * Do two templates produce identical content?
+ * Compares expression values by identity, so no hashing or stringification is needed.
+ * @param a {Template}
+ * @param b {Template}
+ * @return {boolean} */
+function templatesSame(a, b) {
+	if (a.html === b.html && a.svgMode === b.svgMode) {
+		let ae = a.exprs, be = b.exprs;
+		for (let i=0; i<ae.length; i++)
+			if (!exprSame(ae[i], be[i]))
+				return false;
+		return true;
+	}
+
+	// Text and other single-string templates get a new html array each time, so compare by content.
+	if (a.isText === b.isText && !a.exprs.length && !b.exprs.length
+		&& a.html.length === 1 && b.html.length === 1 && a.svgMode === b.svgMode)
+		return a.html[0] === b.html[0];
+
+	return false;
+}
+
+/**
+ * @return {boolean} */
+function exprSame(a, b) {
+	if (a === b)
+		return true;
+	if (Array.isArray(a)) {
+		if (!Array.isArray(b) || a.length !== b.length)
+			return false;
+		for (let i=0; i<a.length; i++)
+			if (!exprSame(a[i], b[i]))
+				return false;
+		return true;
+	}
+	if (a instanceof Template && b instanceof Template)
+		return templatesSame(a, b);
+	return false;
 }

@@ -1,17 +1,22 @@
+/**
+ * Maps a string key to multiple values.
+ * Values are stored in arrays because pushing them is much faster than Set operations,
+ * and deleteAny() needs no iterator allocation.
+ * deleteAny() returns values first-in-first-out by advancing a head index (array.head)
+ * instead of calling shift(), which would be O(n). */
 export default class MultiValueMap {
 
-	/** @type {Record<string, Set>} */
+	/** @type {Record<string, Array>} */
 	data = {};
 
-	// Set a new value for a key
+	// Add a new value for a key
 	add(key, value) {
 		let data = this.data;
-		let set = data[key]
-		if (!set) {
-			set = new Set();
-			data[key] = set;
-		}
-		set.add(value);
+		let array = data[key]
+		if (!array)
+			data[key] = [value];
+		else
+			array.push(value);
 	}
 
 	isEmpty() {
@@ -23,9 +28,12 @@ export default class MultiValueMap {
 	/**
 	 * Get all values for a key.
 	 * @param key {string}
-	 * @returns {Set|*[]} */
+	 * @returns {Array} */
 	getAll(key) {
-		return this.data[key] || [];
+		let array = this.data[key];
+		if (!array)
+			return [];
+		return array.head ? array.slice(array.head) : array;
 	}
 
 	/**
@@ -34,71 +42,54 @@ export default class MultiValueMap {
 	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
 	 * @returns {*|undefined} The deleted item. */
 	delete(key, val=undefined) {
-		let data = this.data;
-		let result;
-		let set = data[key];
-		if (!set)
-			return undefined;
-
-		// Delete any value.
-		if (val === undefined) {
-			[result] = set; //  Get the first value from the set.
-			set.delete(result);
-		}
-
-		// Delete a specific value.
-		else {
-			set.delete(val);
-			result = val;
-		}
-
-		if (set.size === 0)
-			delete data[key];
-
-		return result;
+		if (val === undefined)
+			return this.deleteAny(key);
+		return this.deleteSpecific(key, val);
 	}
 
 	/**
-	 * Remove any one value from a key, and return it.
+	 * Remove the oldest value from a key, and return it.
 	 * @param key {string}
 	 * @returns {*|undefined} The deleted item. */
 	deleteAny(key) {
 		let data = this.data;
-		let result;
-		let set = data[key];
-		if (!set) // slower than pre-check.
+		let array = data[key];
+		if (!array) // slower than pre-check.
 			return undefined;
 
-		[result] = set; // Get the first value from the set.
-		set.delete(result);
-
-		if (set.size === 0)
+		let head = array.head || 0;
+		let result = array[head];
+		head++;
+		if (head >= array.length)
 			delete data[key];
+		else
+			array.head = head;
 
 		return result;
 	}
 
 	deleteSpecific(key, val) {
 		let data = this.data;
-		let result;
-		let set = data[key];
-		if (!set)
+		let array = data[key];
+		if (!array)
 			return undefined;
 
-		set.delete(val);
-		result = val;
+		let i = array.indexOf(val, array.head || 0);
+		if (i === -1)
+			return undefined;
+		array.splice(i, 1);
 
-		if (set.size === 0)
+		if ((array.head || 0) >= array.length)
 			delete data[key];
 
-		return result;
+		return val;
 	}
 
 	hasValue(val) {
 		let data = this.data;
 		let names = [];
 		for (let name in data)
-			if (data[name].has(val)) // TODO: iterate twice to pre-size array?
+			if (data[name].includes(val))
 				names.push(name)
 		return names;
 	}

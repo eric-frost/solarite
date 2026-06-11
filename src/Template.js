@@ -9,11 +9,11 @@ import RootNodeGroup from "./RootNodeGroup.js";
  * Although the reference to the html strings is shared among templates. */
 export default class Template {
 
-	/** @type {Expr[]} Evaulated expressions.  */
-	'exprs' = []
+	/** @type {Expr[]} Evaulated expressions.  Assigned by the constructor. */
+	'exprs' = undefined;
 
-	/** @type {string[]} */
-	'html' = [];
+	/** @type {string[]} Assigned by the constructor. */
+	'html' = undefined;
 
 	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
 	hashedFields;
@@ -93,16 +93,24 @@ export default class Template {
 			el.innerHTML = ''; // Fast path for empty component.
 		else {
 
-			let oldKey = ng.exactKey;
-			let newKey = this.getExactKey();
-			ng.applyExprs(this.exprs, oldKey !== newKey);
-			ng.exactKey = newKey;
+			// The changed flag is only read by PathToComponent, so skip the expensive
+			// whole-tree hash when this NodeGroup has no component paths.
+			let changed = true;
+			if (ng.hasComponentPaths) {
+				let oldKey = ng.exactKey;
+				let newKey = this.getExactKey();
+				changed = oldKey !== newKey;
+				ng.exactKey = newKey;
+			}
+			ng.applyExprs(this.exprs, changed);
 
 			//if (firstTime)
 			//	ng.instantiateStaticComponents(ng.staticComponents);
 		}
 
-		ng.exprsToRender = new Map();
+		// Reset watch.js bookkeeping, allocating only when it was actually used.
+		if (ng.exprsToRender === undefined || ng.exprsToRender.size)
+			ng.exprsToRender = new Map();
 		return el;
 	}
 
@@ -117,10 +125,9 @@ export default class Template {
 	}
 
 	getCloseKey() {
-		//console.log(this.exprs.length)
 		if (this.closeKey===undefined) {
 			if (this.exprs.length)
-				this.closeKey = /*'@' + */this.toJSON()[0];
+				this.closeKey = getObjectId(this.html); // Same value as toJSON()[0] without allocating hashedFields.
 			else
 				this.closeKey = this.html[0];
 		}

@@ -21,14 +21,16 @@ export default class Path {
 	 * @type {Node|HTMLElement} */
 	nodeMarker;
 
+	/**
+	 * @type {boolean} True if the expression is the only child of its parent element.
+	 * Then nodeMarker is that parent element, nodeBefore is null, and no marker comments exist. */
+	wholeParent = false;
+
 
 	// These are set after an expression is assigned:
 
 	/** @type {NodeGroup} */
 	parentNg;
-
-	/** @type {NodeGroup[]} */
-	nodeGroups = [];
 
 	// Caches to make things faster
 
@@ -79,6 +81,12 @@ export default class Path {
 	 * [expr6, expr7]            // role attribute value.
 	 * @param freeNodeGroups {boolean} Used only by watch. */
 	apply(exprs, freeNodeGroups=true) {}
+
+	/**
+	 * Fast path used by NodeGroup.applyExprs() when every path consumes exactly one expression.
+	 * Avoids allocating per-path expression arrays.
+	 * @param expr {Expr} */
+	applySingle(expr) {}
 
 	getExpressionCount() { return 1 }
 
@@ -138,6 +146,7 @@ export default class Path {
 		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
 
 		result.isComponentAttrib = this.isComponentAttrib;
+		result.wholeParent = this.wholeParent;
 
 		// TODO: Put this in PathToAttribValue.clone().
 		result.isHtmlProperty = this.isHtmlProperty;
@@ -193,7 +202,7 @@ export default class Path {
 		assert(this.nodeMarker)
 
 		// nodeMarker must be attached.
-		assert(!this.nodeMarker || this.nodeMarker.parentNode)
+		assert(!this.nodeMarker || this.nodeMarker.parentNode || this.wholeParent)
 
 		assert(this.nodeBefore !== this.nodeMarker)
 
@@ -202,7 +211,7 @@ export default class Path {
 		assert(this.parentNg?.parentPath?.parentNg?.parentPath !== this)
 		assert(this.parentNg?.parentPath?.parentNg?.parentPath?.parentNg?.parentPath !== this)
 
-		for (let ng of this.nodeGroups)
+		for (let ng of this.nodeGroups || [])
 			ng.verify();
 
 		// Make sure the nodesCache matches the nodes.

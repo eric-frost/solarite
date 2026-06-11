@@ -53,8 +53,9 @@ Testimony.test('Solarite.Shell.empty', () => {
 });
 
 Testimony.test('Solarite.Shell.paragraph', () => {
+	// A solo expression inside an element uses the element itself as its region; no marker comments.
 	let shell = new Shell(['<p>', '</p>'])
-	assert.eq(getHtml(shell, true), '<p><!--Path:0--><!--PathEnd:0--></p>')
+	assert.eq(getHtml(shell, true), '<p></p>')
 });
 
 Testimony.test('Solarite.Shell.nodeBefore', () => {
@@ -1591,7 +1592,7 @@ Testimony.test('Solarite.loop.nested5', () => {
 	]
 	a.render();
 
-	assert.eq(a.outerHTML, `<a-227><!--Path:1--><!--Path:0--><div title="F2"><!--Path:1-->A<!--PathEnd:1--></div><div title="F2"><!--Path:1-->B<!--PathEnd:1--></div><!--PathEnd:0--><!--Path:0--><div title="F2"><!--Path:1-->A<!--PathEnd:1--></div><!--PathEnd:0--><!--PathEnd:1--></a-227>`);
+	assert.eq(a.outerHTML, `<a-227><!--Path:1--><!--Path:0--><div title="F2">A</div><div title="F2">B</div><!--PathEnd:0--><!--Path:0--><div title="F2">A</div><!--PathEnd:0--><!--PathEnd:1--></a-227>`);
 
 	window.verify = false;
 	a.remove();

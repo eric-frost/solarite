@@ -37,6 +37,16 @@ export default class Shell {
 	/** @type {int[][]} Array of paths */
 	styles = [];
 
+	/** @type {boolean} True if any of this Shell's own paths is a PathToComponent. */
+	hasComponentPaths = false;
+
+	/** @type {boolean} True if every path consumes exactly one expression and none are components.
+	 * Lets NodeGroup.applyExprs() use a fast loop without allocating per-path expression arrays. */
+	pathsSingleExpr = false;
+
+	/** @type {boolean} True if this Shell has any ids, styles, or scripts. */
+	hasEmbeds = false;
+
 	/**
 	 * Create the nodes but without filling in the expressions.
 	 * This is useful because the expression-less nodes created by a template can be cached.
@@ -166,32 +176,65 @@ export default class Shell {
 				if (node?.parentNode?.closest && node?.parentNode?.closest('[contenteditable]'))
 					throw new Error(`Contenteditable can't have expressions inside them. Use <div contenteditable value="\${...}"> instead.`);
 
-				// Get or create nodeBefore.
-				let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
-				if (!nodeBefore) {
-					nodeBefore = Globals.doc.createComment('Path:'+this.paths.length);
-					node.parentNode.insertBefore(nodeBefore, node)
-				}
-				/*#IFDEV*/assert(nodeBefore);/*#ENDIF*/
+				let parent = node.parentNode;
 
-				// Get the next node.
-				let nodeMarker;
-
-				// A subsequent node is available to be a nodeMarker.
-				if (node.nextSibling && (node.nextSibling.nodeType !== 8 || node.nextSibling.textContent !== '!✨!')) {
-					nodeMarker = node.nextSibling;
-					toRemove.push(node); // Removing them here will mess up the treeWalker.
+				// Whitespace-only text nodes between table-structure tags are never rendered,
+				// so remove them to give the expression sole ownership of its parent.
+				if (parent.nodeType === 1 && tableTags.includes(parent.tagName)
+						&& (node.previousSibling || node.nextSibling)) {
+					let canTrim = true;
+					for (let sibling of parent.childNodes)
+						if (sibling !== node && (sibling.nodeType !== 3 || sibling.textContent.trim().length)) {
+							canTrim = false;
+							break;
+						}
+					if (canTrim)
+						for (let sibling of [...parent.childNodes])
+							if (sibling !== node)
+								sibling.remove();
 				}
-				// Re-use existing comment placeholder.
+
+				// The expression is the only child of an element, so the element itself
+				// can delimit the expression's nodes and no marker comments are needed.
+				// Components and slots are excluded because they move their children
+				// during instantiation, which would orphan the expression's region.
+				if (parent.nodeType === 1 && !node.previousSibling && !node.nextSibling
+					&& !parent.tagName.includes('-') && parent.tagName !== 'SLOT' && !parent.hasAttribute('is')) {
+					let path = new PathToNodes(null, parent);
+					path.wholeParent = true;
+					this.paths.push(path);
+					placeholdersUsed ++;
+					toRemove.push(node); // Removing it here would mess up the treeWalker.
+				}
+
 				else {
-					nodeMarker = node;
-					nodeMarker.textContent = 'PathEnd:'+ this.paths.length;
-				}
-				/*#IFDEV*/assert(nodeMarker);/*#ENDIF*/
+					// Get or create nodeBefore.
+					let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
+					if (!nodeBefore) {
+						nodeBefore = Globals.doc.createComment('Path:'+this.paths.length);
+						node.parentNode.insertBefore(nodeBefore, node)
+					}
+					/*#IFDEV*/assert(nodeBefore);/*#ENDIF*/
 
-				let path = new PathToNodes(nodeBefore, nodeMarker);
-				this.paths.push(path);
-				placeholdersUsed ++;
+					// Get the next node.
+					let nodeMarker;
+
+					// A subsequent node is available to be a nodeMarker.
+					if (node.nextSibling && (node.nextSibling.nodeType !== 8 || node.nextSibling.textContent !== '!✨!')) {
+						nodeMarker = node.nextSibling;
+						toRemove.push(node); // Removing them here will mess up the treeWalker.
+					}
+					// Re-use existing comment placeholder.
+					else {
+						nodeMarker = node;
+						nodeMarker.textContent = 'PathEnd:'+ this.paths.length;
+					}
+					/*#IFDEV*/assert(nodeMarker);/*#ENDIF*/
+
+					let path = new PathToNodes(nodeBefore, nodeMarker);
+					this.paths.push(path);
+					placeholdersUsed ++;
+				}
 			}
 
 			// Comments become text nodes when inside textareas.
@@ -257,6 +300,16 @@ export default class Shell {
 
 		this.findEmbeds();
 
+		this.pathsSingleExpr = true;
+		for (let path of this.paths) {
+			if (path instanceof PathToComponent) {
+				this.hasComponentPaths = true;
+				this.pathsSingleExpr = false;
+				break; // Both facts are now decided.
+			}
+			if (path.getExpressionCount() !== 1)
+				this.pathsSingleExpr = false; // Keep scanning for components.
+		}
 
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 	}
@@ -331,6 +384,8 @@ export default class Shell {
 		}
 
 		this.ids = Array.prototype.map.call(idEls, el => Path.get(el))
+
+		this.hasEmbeds = this.ids.length > 0 || this.styles.length > 0 || this.scripts.length > 0;
 	}
 
 	/**
@@ -339,6 +394,10 @@ export default class Shell {
 	 * @param svgMode {boolean} Parse the html in the SVG namespace.
 	 * @returns {Shell} */
 	static get(htmlStrings, svgMode=false) {
+		// One-entry memo, since loops request the same shell for every item.
+		if (htmlStrings === lastHtmlStrings && svgMode === lastSvgMode)
+			return lastShell;
+
 		let entry = Globals.shells.get(htmlStrings);
 		if (!entry) {
 			entry = {};
@@ -348,6 +407,10 @@ export default class Shell {
 		let result = entry[key];
 		if (!result)
 			result = entry[key] = new Shell(htmlStrings, svgMode);
+
+		lastHtmlStrings = htmlStrings;
+		lastSvgMode = svgMode;
+		lastShell = result;
 
 		/*#IFDEV*/result.verify();/*#ENDIF*/
 		return result;
@@ -366,6 +429,12 @@ export default class Shell {
 
 
 const commentPlaceholder = `<!--!✨!-->`;
+
+// Elements whose whitespace-only text children are never rendered.
+const tableTags = ['TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR'];
+
+// One-entry memo for Shell.get().
+let lastHtmlStrings = null, lastSvgMode = false, lastShell = null;
 
 
 // We increment the placeholder char as we go because nodes can't have the same attribute more than once.
