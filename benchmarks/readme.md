@@ -1,55 +1,60 @@
-These are implementations for krausest's  https://github.com/krausest/js-framework-benchmark.
+These are implementations for krausest's https://github.com/krausest/js-framework-benchmark.
 
-To use them, either copy them or symbolic link these folders into the frameworks/keyed and frameworks/non-keyed folders:
+## Folders
 
-From within the keyed folder:
-mklink /J solarite "../../../lib/solarite/benchmarks/watch"
+- `solarite/` - The non-keyed implementation. Merged upstream as `frameworks/non-keyed/solarite`.
+- `solarite-keyed/` - The keyed implementation. Same app, but the row template uses `key=${row.id}` and the title says keyed.
+- `vanilla3/` - A vanilla-js reference implementation used for local comparison.
+- `results/` - Historical local benchmark results.
 
-## Run a quick test
-http://solarite.loc/benchmarks/naive/?
+Each implementation's `Solarite.min.js` is a symlink to `../../dist/Solarite.min.js`, so run `bash build/build.bat` after changing `src/` and both entries pick up the new build.
 
+## Wiring into the local benchmark repo
 
-## How to run the js-framework-benchmark tests
+The local benchmark repo is `/home/projects/local/js-framework-benchmark`. The code lives only in this repo; the benchmark repo links to it:
 
-### To Run a test:
-Run `npm start` from the folder where you've cloned the js-framework-benchmark repository.
-in another command window:
+- `frameworks/non-keyed/solarite/main.js` is a symlink to `benchmarks/solarite/main.js` here. Its `index.html`, `package.json`, and `Solarite.min.js` are real files; make sure min.js is current before measuring.
+- `frameworks/keyed/solarite` is a whole-folder symlink to `benchmarks/solarite-keyed` here.
+- `frameworks/keyed/solarite-non-keyed` shows the non-keyed implementation in keyed comparisons. It holds per-file symlinks into `../../non-keyed/solarite/` plus its own package.json. It is local-only; never PR it upstream.
 
+Upstream PRs need real files: the krausest CI builder breaks on symlinks. Copy the files when preparing a PR.
 
-```
-cd webdriver-ts
-npm run bench non-keyed/solarite-naive keyed/solarite-naive
-cd ../webdriver-ts-results
-npm ci
-cd ../webdriver-ts
+## Quick manual test
+
+Start the server with `npm start` from the benchmark repo root, then open:
+
+- http://localhost:8080/frameworks/non-keyed/solarite/
+- http://localhost:8080/frameworks/keyed/solarite/
+
+Append `?benchmark=10` to run the built-in 10x benchmark loop (cold/warm/best reporting in the console).
+
+## Commands
+
+All from the benchmark repo root unless noted.
+
+```bash
+# Build + smoketest one implementation (also runs the keyedness check):
+npm run rebuild-ci keyed/solarite
+
+# Keyedness check alone (from webdriver-ts/):
+node dist/isKeyed.js --headless --chromeBinary /usr/bin/google-chrome keyed/solarite
+
+# CSP compliance (from webdriver-ts/, exit 0 = pass):
+node dist/isCSPCompliant.js --headless --chromeBinary /usr/bin/google-chrome keyed/solarite
+
+# Benchmark one framework (from webdriver-ts/):
+node dist/benchmarkRunner.js --runner playwright --headless true --framework keyed/solarite
+
+# Or via npm from the repo root:
+npm run bench -- --framework keyed/solarite
+
+# Rebuild the results page, then open http://localhost:8080/webdriver-ts-results/dist/index.html
 npm run results
-cd ../
-```
-Then open:
-http://localhost:8080/webdriver-ts-results/table.html
-
-### Run every test I care about:
-
-```
-npm run bench non-keyed/solarite-naive keyed/solarite-naive keyed/solarite keyed/vanillajs keyed/inferno keyed/solid keyed/svelte keyed/vue keyed/lit keyed/preact keyed/react keyed/angular keyed/ember keyed/knockout keyed/alpine non-keyed/mikado non-keyed/delorean non-keyed/vanillajs non-keyed/vanillajs-1 non-keyed/inferno non-keyed/lit non-keyed/solarite non-keyed/svelte non-keyed/vue non-keyed/react
 ```
 
-### Run a single benchmark within a test (partialUpdate below - numbers start with 01_)
-This doesn't seem to work.
-```
-cd webdriver-ts
-npm run bench -- --framework keyed/solarite --benchmark 04_
-cd ../webdriver-ts-results
-npm ci
-cd ../webdriver-ts
-npm run results
-```
+## Measuring tips
 
-### To see if it's keyed:
-npm run isKeyed keyed/solarite
-
-### Run Instance for testing
-From the keyed/solarite folder:
-`npm run build-prod`
-http://localhost:8080/frameworks/non-keyed/solarite/index.html
-
+- Always A/B old-vs-new builds back-to-back on the same machine state; never compare against results from another day.
+- Disable video wallpapers and close parallel Chrome instances (including the chrome-devtools MCP) during runs.
+- Headless playwright captures paint events correctly.
+- The local Testimony benchmarks (`cd tests && bash run.bat Benchmark`) are a faster proxy: 10x iframe runs for solarite, solarite-keyed, and vanilla3.

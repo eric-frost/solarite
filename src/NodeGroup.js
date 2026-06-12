@@ -37,6 +37,10 @@ export default class NodeGroup {
 	/** @type {string} Key that only matches the template. */
 	closeKey;
 
+	/** @type {*} List key from the template's key=${} expression; written by PathToKey,
+	 * matched by PathToNodes.applyKeyed().  Undefined for unkeyed NodeGroups. */
+	key;
+
 	/** @type {boolean} True if any of this NodeGroup's own paths is a PathToComponent. */
 	hasComponentPaths = false;
 

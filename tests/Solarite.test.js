@@ -1141,6 +1141,98 @@ Testimony.test('Solarite.loop.strings', () => {
 	a.remove();
 });
 
+Testimony.test('Solarite.memo.basic', `h.memo skips rebuilding rows with unchanged deps`, () => {
+	class A extends Solarite {
+		rows = [{id: 1, label: 'Apple'}, {id: 2, label: 'Banana'}];
+		selectedId = null;
+
+		render() {
+			h(this)`${this.rows.map(row => h.memo(row, [row.label, row.id === this.selectedId], r =>
+				h`<p class=${r.id === this.selectedId ? 'sel' : ''}>${r.label}</p>`))}`
+		}
+	}
+	customElements.define('r-900', A);
+	let a = new A();
+	document.body.append(a);
+
+	a.render();
+	assert.eq(getHtml(a), '<r-900><p class="">Apple</p><p class="">Banana</p></r-900>');
+
+	// Unchanged deps keep the same elements.
+	let apple = a.children[0], banana = a.children[1];
+	a.render();
+	assert.eq(a.children[0], apple);
+	assert.eq(a.children[1], banana);
+
+	// Selection updates only the affected rows, reusing their elements.
+	a.selectedId = 2;
+	a.render();
+	assert.eq(getHtml(a), '<r-900><p class="">Apple</p><p class="sel">Banana</p></r-900>');
+	assert.eq(a.children[0], apple);
+	assert.eq(a.children[1], banana);
+
+	a.selectedId = 1;
+	a.render();
+	assert.eq(getHtml(a), '<r-900><p class="sel">Apple</p><p class="">Banana</p></r-900>');
+
+	// Mutating a field listed in deps rebuilds that row's content.
+	a.rows[1].label = 'Cherry';
+	a.render();
+	assert.eq(getHtml(a), '<r-900><p class="sel">Apple</p><p class="">Cherry</p></r-900>');
+	assert.eq(a.children[1], banana);
+
+	a.remove();
+});
+
+Testimony.test('Solarite.memo.primitiveDeps', `deps as a single primitive value`, () => {
+	class A extends Solarite {
+		rows = [{label: 'Apple'}, {label: 'Banana'}];
+
+		render() {
+			h(this)`${this.rows.map(row => h.memo(row, row.label, r => h`<p>${r.label}</p>`))}`
+		}
+	}
+	customElements.define('r-901', A);
+	let a = new A();
+	document.body.append(a);
+
+	a.render();
+	let apple = a.children[0];
+	a.render();
+	assert.eq(a.children[0], apple);
+
+	a.rows[0].label = 'Apricot';
+	a.render();
+	assert.eq(getHtml(a), '<r-901><p>Apricot</p><p>Banana</p></r-901>');
+	a.remove();
+});
+
+Testimony.test('Solarite.memo.reorder', `Memoized templates still diff correctly when rows move`, () => {
+	class A extends Solarite {
+		rows = [{label: 'Apple'}, {label: 'Banana'}, {label: 'Cherry'}];
+
+		render() {
+			h(this)`${this.rows.map(row => h.memo(row, row.label, r => h`<p>${r.label}</p>`))}`
+		}
+	}
+	customElements.define('r-902', A);
+	let a = new A();
+	document.body.append(a);
+
+	a.render();
+	assert.eq(getHtml(a), '<r-902><p>Apple</p><p>Banana</p><p>Cherry</p></r-902>');
+
+	a.rows.reverse();
+	a.render();
+	assert.eq(getHtml(a), '<r-902><p>Cherry</p><p>Banana</p><p>Apple</p></r-902>');
+
+	// And a removal afterward.
+	a.rows.splice(1, 1);
+	a.render();
+	assert.eq(getHtml(a), '<r-902><p>Cherry</p><p>Apple</p></r-902>');
+	a.remove();
+});
+
 Testimony.test('Solarite.loop.paragraphs', () => {
 	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
@@ -1746,6 +1838,306 @@ Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 
 
 	a.remove();
+});
+
+//endregion
+
+
+
+
+/*┌─────────────────╮
+  | Keyed           |
+  └─────────────────╯*/
+//region keyed
+
+Testimony.test('Solarite.keyed.basic', `Rows with unchanged keys keep their DOM nodes.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`${rows.map(r => h`<p key=${r.id}>${r.label}</p>`)}`;
+
+	render([{id: 1, label: 'a'}, {id: 2, label: 'b'}]);
+	assert.eq(getHtml(el), '<div><p>a</p><p>b</p></div>');
+	let [a, b] = el.children;
+
+	render([{id: 1, label: 'a'}, {id: 2, label: 'b2'}]);
+	assert.eq(getHtml(el), '<div><p>a</p><p>b2</p></div>');
+	assert.eq(el.children[0], a);
+	assert.eq(el.children[1], b); // Same node, rewritten in place.
+
+	el.remove();
+});
+
+Testimony.test('Solarite.keyed.swap', `Node identity follows the key on swap.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`${rows.map(r => h`<p key=${r.id}>${r.label}</p>`)}`;
+
+	let rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}, {id: 3, label: 'c'}, {id: 4, label: 'd'}];
+	render(rows);
+	let [a, b, c, d] = el.children;
+
+	[rows[1], rows[2]] = [rows[2], rows[1]];
+	render(rows);
+	assert.eq(getHtml(el), '<div><p>a</p><p>c</p><p>b</p><p>d</p></div>');
+	assert.eq(el.children[0], a);
+	assert.eq(el.children[1], c); // Moved, not rewritten.
+	assert.eq(el.children[2], b);
+	assert.eq(el.children[3], d);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.keyed.reverse', () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`${rows.map(r => h`<p key=${r.id}>${r.label}</p>`)}`;
+
+	let rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}, {id: 3, label: 'c'}];
+	render(rows);
+	let nodes = [...el.children];
+
+	rows.reverse();
+	render(rows);
+	assert.eq(getHtml(el), '<div><p>c</p><p>b</p><p>a</p></div>');
+	assert.eq(el.children[0], nodes[2]);
+	assert.eq(el.children[1], nodes[1]);
+	assert.eq(el.children[2], nodes[0]);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.keyed.remove', `Other rows keep identity when one is removed.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`${rows.map(r => h`<p key=${r.id}>${r.label}</p>`)}`;
+
+	let rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}, {id: 3, label: 'c'}];
+	render(rows);
+	let [a, , c] = el.children;
+
+	rows.splice(1, 1);
+	render(rows);
+	assert.eq(getHtml(el), '<div><p>a</p><p>c</p></div>');
+	assert.eq(el.children[0], a);
+	assert.eq(el.children[1], c);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.keyed.insert', `Existing rows keep identity when one is inserted between them.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`${rows.map(r => h`<p key=${r.id}>${r.label}</p>`)}`;
+
+	let rows = [{id: 1, label: 'a'}, {id: 3, label: 'c'}];
+	render(rows);
+	let [a, c] = el.children;
+
+	rows.splice(1, 0, {id: 2, label: 'b'});
+	render(rows);
+	assert.eq(getHtml(el), '<div><p>a</p><p>b</p><p>c</p></div>');
+	assert.eq(el.children[0], a);
+	assert.eq(el.children[2], c);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.keyed.replaceAll', `New keys always get new nodes, per keyed semantics.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`${rows.map(r => h`<p key=${r.id}>${r.label}</p>`)}`;
+
+	render([{id: 1, label: 'a'}, {id: 2, label: 'b'}]);
+	let [a, b] = el.children;
+
+	render([{id: 3, label: 'c'}, {id: 4, label: 'd'}]);
+	assert.eq(getHtml(el), '<div><p>c</p><p>d</p></div>');
+	assert(el.children[0] !== a);
+	assert(el.children[0] !== b);
+	assert(el.children[1] !== a);
+	assert(el.children[1] !== b);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.keyed.clearAndRecreate', `Cleared keyed rows aren't pooled; recreating makes new nodes.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`${rows.map(r => h`<p key=${r.id}>${r.label}</p>`)}`;
+
+	let rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}];
+	render(rows);
+	let [a, b] = el.children;
+
+	render([]);
+	assert.eq(getHtml(el), '<div></div>');
+
+	render(rows);
+	assert.eq(getHtml(el), '<div><p>a</p><p>b</p></div>');
+	assert(el.children[0] !== a);
+	assert(el.children[1] !== b);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.keyed.inputState', `Un-rendered DOM state follows the key through a reorder.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`${rows.map(r => h`<div key=${r.id}><input placeholder=${r.label}></div>`)}`;
+
+	let rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}, {id: 3, label: 'c'}];
+	render(rows);
+	let input = el.children[1].querySelector('input');
+	input.value = 'typed by user'; // Never rendered; survives only if the node itself is kept.
+
+	rows.reverse();
+	render(rows);
+	assert.eq(el.children[1].querySelector('input'), input);
+	assert.eq(input.value, 'typed by user');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.keyed.memo', `h.memo skips unchanged keyed rows; identity still follows keys.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`${rows.map(r =>
+		h.memo(r, r.label, r => h`<p key=${r.id}>${r.label}</p>`))}`;
+
+	let rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}, {id: 3, label: 'c'}];
+	render(rows);
+	let nodes = [...el.children];
+
+	[rows[0], rows[2]] = [rows[2], rows[0]];
+	render(rows);
+	assert.eq(getHtml(el), '<div><p>c</p><p>b</p><p>a</p></div>');
+	assert.eq(el.children[0], nodes[2]);
+	assert.eq(el.children[1], nodes[1]);
+	assert.eq(el.children[2], nodes[0]);
+
+	rows[1].label = 'b2';
+	render(rows);
+	assert.eq(getHtml(el), '<div><p>c</p><p>b2</p><p>a</p></div>');
+	assert.eq(el.children[1], nodes[1]);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.keyed.multiRoot', `Keyed templates with multiple root nodes move as one range.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`${rows.map(r => h`<dt key=${r.id}>${r.id}</dt><dd>${r.label}</dd>`)}`;
+
+	let rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}, {id: 3, label: 'c'}];
+	render(rows);
+	assert.eq(getHtml(el), '<div><dt>1</dt><dd>a</dd><dt>2</dt><dd>b</dd><dt>3</dt><dd>c</dd></div>');
+	let dt2 = el.children[2], dd2 = el.children[3];
+
+	[rows[0], rows[1]] = [rows[1], rows[0]];
+	render(rows);
+	assert.eq(getHtml(el), '<div><dt>2</dt><dd>b</dd><dt>1</dt><dd>a</dd><dt>3</dt><dd>c</dd></div>');
+	assert.eq(el.children[0], dt2);
+	assert.eq(el.children[1], dd2);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.keyed.component', `Keys work on component rows and aren't passed as args.`, () => {
+	class KeyedRow extends Solarite {
+		constructor(args={}) {
+			super();
+			this.label = args.label;
+			this.gotKey = 'key' in args;
+		}
+		render() {
+			h(this)`<span>${this.label}</span>`;
+		}
+	}
+	customElements.define('keyed-row', KeyedRow);
+
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`${rows.map(r => h`<keyed-row key=${r.id} label=${r.label}></keyed-row>`)}`;
+
+	let rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}];
+	render(rows);
+	assert.eq(getHtml(el), '<div><keyed-row label="a"><span>a</span></keyed-row><keyed-row label="b"><span>b</span></keyed-row></div>');
+	assert.eq(el.children[0].gotKey, false);
+	assert(!el.children[0].hasAttribute('key'));
+	let [a, b] = el.children;
+
+	[rows[0], rows[1]] = [rows[1], rows[0]];
+	render(rows);
+	assert.eq(el.children[0], b);
+	assert.eq(el.children[1], a);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.keyed.staticKeyThrows', () => {
+	assert.throws(() => {
+		let ng = new NodeGroup(h`<p key="foo">hi</p>`);
+	}, 'The key attribute is reserved');
+});
+
+Testimony.test('Solarite.keyed.mixedKeyThrows', () => {
+	assert.throws(() => {
+		let t = h`<p key="a${1}b">hi</p>`;
+		let ng = new NodeGroup(t);
+		ng.applyExprs(t.exprs);
+	}, 'The key attribute is reserved');
+});
+
+Testimony.test('Solarite.keyed.nestedKeyThrows', () => {
+	assert.throws(() => {
+		let t = h`<div><p key=${1}>hi</p></div>`;
+		let ng = new NodeGroup(t);
+		ng.applyExprs(t.exprs);
+	}, 'top-level');
+});
+
+Testimony.test('Solarite.keyed.duplicateKeyAttribThrows', () => {
+	assert.throws(() => {
+		let t = h`<p key=${1} key=${2}>hi</p>`;
+		let ng = new NodeGroup(t);
+		ng.applyExprs(t.exprs);
+	});
+});
+
+Testimony.test('Solarite.keyed.keyedInsideUnkeyed', `A keyed list nested inside unkeyed content.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`<b>title</b><ul>${rows.map(r => h`<li key=${r.id}>${r.label}</li>`)}</ul>`;
+
+	let rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}];
+	render(rows);
+	assert.eq(getHtml(el), '<div><b>title</b><ul><li>a</li><li>b</li></ul></div>');
+	let ul = el.querySelector('ul');
+	let [a, b] = ul.children;
+
+	rows.reverse();
+	render(rows);
+	assert.eq(getHtml(el), '<div><b>title</b><ul><li>b</li><li>a</li></ul></div>');
+	assert.eq(ul.children[0], b);
+	assert.eq(ul.children[1], a);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.keyed.toUnkeyed', `Switching a list from keyed to unkeyed templates still renders.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+
+	h(el)`${[1, 2].map(id => h`<p key=${id}>k${id}</p>`)}`;
+	assert.eq(getHtml(el), '<div><p>k1</p><p>k2</p></div>');
+
+	h(el)`${['x', 'y'].map(t => h`<i>${t}</i>`)}`;
+	assert.eq(getHtml(el), '<div><i>x</i><i>y</i></div>');
+
+	h(el)`${[3, 4].map(id => h`<p key=${id}>k${id}</p>`)}`;
+	assert.eq(getHtml(el), '<div><p>k3</p><p>k4</p></div>');
+
+	el.remove();
 });
 
 //endregion

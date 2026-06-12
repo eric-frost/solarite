@@ -190,7 +190,7 @@ class JSFrameworkBenchmark extends Solarite {
 	}
 
 	render() {
-		let options = {}; //{ids: false, scripts: false, styles: false} // doesn't seem to make that much performance difference to disable these?
+		let options = {ids: false, scripts: false, styles: false};
 		h(this, options)`
 		<div class="container">
 			<div class="jumbotron">
@@ -230,16 +230,9 @@ class JSFrameworkBenchmark extends Solarite {
 			</div>
 			<table class="table table-hover table-striped test-data"><tbody>
 				${this.data.map(row =>
-					h`<tr class=${row.id === this.selectedId ? 'danger' : ''}>
-						<td class="col-md-1">${row.id}</td>
-						<td class="col-md-4">
-							<a onclick=${[this.setSelectedBench, row]}>${row.label}</a></td>
-						<td class="col-md-1">
-							<a onclick=${[this.removeBench, row.id]}>
-								<span class="glyphicon glyphicon-remove" aria-hidden="true"></span></a>
-						</td>
-						<td class="col-md-6"/>
-					</tr>`
+					h.memo(row, [row.label, row.id === this.selectedId], row =>
+					// Whitespace inside cells would become real text nodes, cloned and laid out per row.
+					h`<tr class=${row.id === this.selectedId ? 'danger' : ''}><td class="col-md-1">${row.id}</td><td class="col-md-4"><a onclick=${[this.setSelectedBench, row]}>${row.label}</a></td><td class="col-md-1"><a onclick=${[this.removeBench, row.id]}><span class="glyphicon glyphicon-remove" aria-hidden="true"></span></a></td><td class="col-md-6"></td></tr>`)
 				)}
 			</tbody></table>
 		</div>`;

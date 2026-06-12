@@ -520,6 +520,49 @@ When you update the `items` list and call `render()`, Solarite only redraws the 
 
 **Important**: Nested template literals must also have the `h` prefix, or they'll be rendered as escaped text.  Try removing the `h` from line 15 to see what happens.
 
+#### Memoized List Items
+
+For very long lists, `h.memo()` skips even building and comparing the templates of unchanged items, similar to Vue's `v-memo` or Lit's `guard()`.  Give it the loop item, the values its html depends on, and a function that builds its template:
+
+```javascript
+render() {
+	h(this)`
+	<user-table>
+		${this.rows.map(row => h.memo(row, [row.name, row.id === this.selectedId], row =>
+			h`<div class=${row.id === this.selectedId ? 'selected' : ''}>${row.name}</div>`
+		))}
+	</user-table>`
+}
+```
+
+While the deps (a primitive or shallow array, compared with `===`) stay the same, re-renders reuse the item's previous template without calling the function.  The same item object must not appear twice in one list.
+
+#### Keyed Lists
+
+By default, Solarite matches list items to existing DOM nodes by position, rewriting each changed row in place.  That's the fastest option when rows hold no state of their own.  But when rows contain form inputs, focus, animations, or components with internal state, add a `key` attribute so DOM nodes follow their data instead:
+
+```javascript
+render() {
+	h(this)`
+	<user-table>
+		${this.rows.map(row =>
+			h`<div key=${row.id}>${row.name} <input placeholder="notes"></div>`
+		)}
+	</user-table>`
+}
+```
+
+With keys, reordering the `rows` array moves the existing DOM nodes (using the fewest possible moves), removing a row removes exactly its node, and rows with new keys always get newly created nodes.  Anything the user typed into a row's `<input>` travels with the row.
+
+Rules for `key`:
+
+- It must be a single whole-value expression: `key=${expr}`.  A static value like `key="a"` or a mixed value like `key="a${x}"` throws an error.
+- It must be on a top-level element of its template, and a template can have only one.
+- Keys are compared with `===`; numbers, strings, and object references all work.  Keys must be unique within the list.
+- The key never appears in the DOM, and components never receive `key` as a constructor or render argument.  Don't name component arguments `key`.
+
+`h.memo()` and keys compose: memo skips rebuilding unchanged rows' templates, while keys control node identity and movement.
+
 ### Scoped Styles
 
 Solarite provides a powerful scoped styling system that allows components to define styles that apply only to themselves and their children.  Unlike Shadow DOM, this allows styles to be inherited from the rest of the document.

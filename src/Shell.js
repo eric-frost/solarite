@@ -8,6 +8,7 @@ import PathToAttribValue from "./PathToAttribValue.js";
 import PathToAttribs from "./PathToAttribs.js";
 import PathToNodes from "./PathToNodes.js";
 import PathToComponent from "./PathToComponent.js";
+import PathToKey from "./PathToKey.js";
 
 /**
  * A Shell is created from a tagged template expression instantiated as Nodes,
@@ -46,6 +47,9 @@ export default class Shell {
 
 	/** @type {boolean} True if this Shell has any ids, styles, or scripts. */
 	hasEmbeds = false;
+
+	/** @type {int} Index of the key=${} expression, or -1 when the template isn't keyed. */
+	keyIndex = -1;
 
 	/**
 	 * Create the nodes but without filling in the expressions.
@@ -116,6 +120,28 @@ export default class Shell {
 				const componentAttribPaths = [];
 
 				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes with placeholders as we go.
+
+					// The reserved key attribute identifies this template within a keyed list.
+					// It's consumed here and never written to the DOM or passed to components.
+					if (attr.name === 'key') {
+						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
+						if (parts.length !== 2 || parts[0] !== '' || parts[1] !== '')
+							throw new Error(`The key attribute is reserved and must be a single expression: key=\${...}`);
+						if (node.parentNode !== this.fragment)
+							throw new Error(`The key attribute must be on a top-level element of its template.`);
+						if (this.keyIndex >= 0)
+							throw new Error(`A template can have only one key attribute.`);
+						this.keyIndex = attr.value.charCodeAt(0) - attribPlaceholder;
+
+						let path = new PathToKey(null, node);
+						this.paths.push(path);
+						if (isComponent)
+							componentAttribPaths.push(path); // Keeps PathToComponent's contiguous expression slices aligned; it skips PathToKey when building args.
+
+						placeholdersUsed++;
+						node.removeAttribute('key');
+						continue;
+					}
 
 					// One or more whole attributes
 					let matches = attr.name.match(/^[\ue000-\uf8ff]$/)

@@ -1,6 +1,7 @@
 import Path from "./Path.js";
 import assert from "./assert.js";
 import NodeGroup from "./NodeGroup.js";
+import Shell from "./Shell.js";
 import Util from "./Util.js";
 import udomdiff from "./udomdiff.js";
 import Template, {templatesSame, exprSame} from "./Template.js";
@@ -145,8 +146,18 @@ export default class PathToNodes extends Path {
 			this.itemsHaveNodes = hasNodesNow;
 			this.applyGeneric(newItems);
 		}
-		else
-			this.applyDiff(newItems);
+		else {
+			// Templates with a key=${} attribute diff by key so node identity follows the data.
+			// An empty list also routes to applyKeyed when the previous render was keyed,
+			// so removed keyed NodeGroups are discarded instead of pooled.
+			let first = newItems.length !== 0 ? newItems[0] : null;
+			if (first !== null
+				? (typeof first !== 'string' && Shell.get(first.html, first.svgMode).keyIndex >= 0)
+				: (this.nodeGroups !== null && this.nodeGroups.length !== 0 && this.nodeGroups[0].key !== undefined))
+				this.applyKeyed(newItems);
+			else
+				this.applyDiff(newItems);
+		}
 
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 	}
@@ -276,6 +287,239 @@ export default class PathToNodes extends Path {
 			this.nodeGroupsRendered = null;
 		if (this.nodeGroupsAttachedAvailable)
 			this.nodeGroupsAttachedAvailable = null;
+	}
+
+	/**
+	 * Keyed reconciliation: match this.nodeGroups to newItems by their key=${} expressions,
+	 * so NodeGroup (and DOM node) identity follows the data:
+	 * 1. Prefix/suffix scans keep NodeGroups whose keys match in place, rewriting changed content.
+	 * 2. The middle windows match through a key map, and kept NodeGroups outside a longest
+	 *    increasing subsequence of old positions are moved, so the fewest node ranges move.
+	 * 3. Unmatched new items create fresh NodeGroups and unmatched old ones are discarded —
+	 *    never pooled — so replaced data always gets new nodes, as keyed semantics require.
+	 * @param newItems {(Template|string)[]} */
+	applyKeyed(newItems) {
+		let oldNgs = this.nodeGroups || emptyNodeGroups;
+		let oldLen = oldNgs.length, newLen = newItems.length;
+		let newNgs = new Array(newLen);
+
+		// Resolve an item's key, caching the html->keyIndex lookup for same-template lists.
+		let keyHtml = null, keyIndex = -1;
+		const keyOf = t => {
+			if (t.html !== keyHtml) {
+				keyHtml = t.html;
+				keyIndex = Shell.get(t.html, t.svgMode).keyIndex;
+			}
+			return keyIndex >= 0 ? t.exprs[keyIndex] : undefined;
+		};
+
+		//#IFDEV
+		{
+			let seen = new Set();
+			for (let t of newItems) {
+				let k = typeof t === 'string' ? undefined : keyOf(t);
+				if (k === undefined)
+					console.warn('Unkeyed item in a keyed list; it will be rebuilt on every render:', t);
+				else if (seen.has(k))
+					console.warn('Duplicate key in keyed list:', k);
+				else
+					seen.add(k);
+			}
+		}
+		//#ENDIF
+
+		let start = 0, oldEnd = oldLen, newEnd = newLen;
+
+		// 1. Keep the matching prefix in place, rewriting changed content.
+		while (start < oldEnd && start < newEnd) {
+			let ng = oldNgs[start], t = newItems[start];
+			// An identical Template instance (h.memo) implies an identical key, so skip key extraction.
+			if (ng.template === t) {
+				if (ng.hasComponentPaths)
+					ng.applyExprs(t.exprs, false);
+			}
+			else if (typeof t === 'string' || ng.key !== keyOf(t) || !itemClose(ng, t))
+				break;
+			else if (itemSame(ng, t)) {
+				if (ng.hasComponentPaths)
+					ng.applyExprs(t.exprs, false);
+			}
+			else
+				this.rewriteNodeGroup(ng, t);
+			newNgs[start] = ng;
+			start++;
+		}
+
+		// 2. Keep the matching suffix.
+		while (oldEnd > start && newEnd > start) {
+			let ng = oldNgs[oldEnd-1], t = newItems[newEnd-1];
+			if (ng.template === t) {
+				if (ng.hasComponentPaths)
+					ng.applyExprs(t.exprs, false);
+			}
+			else if (typeof t === 'string' || ng.key !== keyOf(t) || !itemClose(ng, t))
+				break;
+			else if (itemSame(ng, t)) {
+				if (ng.hasComponentPaths)
+					ng.applyExprs(t.exprs, false);
+			}
+			else
+				this.rewriteNodeGroup(ng, t);
+			newNgs[--newEnd] = ng;
+			oldEnd--;
+		}
+
+		let oldRemain = oldEnd - start, newRemain = newEnd - start;
+		if (oldRemain || newRemain) {
+			let wholeParent = this.wholeParent;
+			let parent = wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
+
+			// 3. Match the middle windows by key.
+			let kept = 0, moved = false;
+			let sources = null; // sources[i] = old index reused by new item start+i, or -1 to create fresh.
+			let removals = null;
+			if (oldRemain) {
+				if (newRemain) {
+					let keyToNewIndex = new Map();
+					for (let i=start; i<newEnd; i++) {
+						let t = newItems[i];
+						if (typeof t !== 'string')
+							keyToNewIndex.set(keyOf(t), i);
+					}
+					sources = new Array(newRemain).fill(-1);
+					let lastNewIndex = -1;
+					for (let i=start; i<oldEnd; i++) {
+						let ng = oldNgs[i];
+						let newIndex = ng.key === undefined ? undefined : keyToNewIndex.get(ng.key);
+						let t;
+						if (newIndex !== undefined && sources[newIndex-start] === -1 && itemClose(ng, t = newItems[newIndex])) {
+							sources[newIndex-start] = i;
+							kept++;
+							if (newIndex < lastNewIndex)
+								moved = true;
+							else
+								lastNewIndex = newIndex;
+							if (itemSame(ng, t)) {
+								if (ng.hasComponentPaths)
+									ng.applyExprs(t.exprs, false);
+							}
+							else
+								this.rewriteNodeGroup(ng, t);
+							newNgs[newIndex] = ng;
+						}
+						else
+							(removals ??= []).push(ng);
+					}
+				}
+				else {
+					removals = oldNgs.slice(start, oldEnd);
+				}
+			}
+
+			// 4. Remove unmatched old NodeGroups.  They're discarded, never pooled,
+			// so a later render with new keys always creates new nodes.
+			if (removals) {
+				// Materialize node caches of multi-node groups while attached, since detaching breaks sibling links.
+				for (let ng of removals)
+					if (ng.startNode !== ng.endNode)
+						ng.getNodes();
+
+				// Fast clear when nothing is kept anywhere; the whole region is removals.
+				let cleared = start === 0 && newEnd === newLen && kept === 0 && this.fastClear();
+				if (!cleared)
+					for (let ng of removals) {
+						if (ng.startNode !== ng.endNode)
+							Util.saveOrphans(ng.getNodes()); // Moves the nodes out of the DOM, into their own fragment.
+						else
+							ng.startNode.remove();
+					}
+			}
+
+			// 5. Insert new NodeGroups and move kept ones.
+			if (newRemain) {
+				let anchor = newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker);
+
+				// 5a. Nothing kept in the middle: batch-insert every new item through a fragment.
+				if (kept === 0) {
+					let target = parent, before = anchor;
+					let fragment = null;
+					if (newRemain > 1) {
+						fragment = Globals.doc.createDocumentFragment();
+						target = fragment;
+						before = null;
+					}
+					for (let i=start; i<newEnd; i++) {
+						let ng = this.createNew(newItems[i]);
+						newNgs[i] = ng;
+						let node = ng.startNode, end = ng.endNode;
+						if (node === end)
+							target.insertBefore(node, before);
+						else while (true) {
+							let next = node.nextSibling;
+							target.insertBefore(node, before);
+							if (node === end)
+								break;
+							node = next;
+						}
+					}
+					if (fragment)
+						parent.insertBefore(fragment, anchor);
+				}
+
+				// 5b. Mixed: iterate backwards so each item's anchor is already in place.
+				// Kept NodeGroups on a longest increasing subsequence of old positions stay still;
+				// everything else moves or is created.
+				else {
+					let lis = moved ? longestIncreasingSubsequence(sources) : null;
+					let lisPos = lis !== null ? lis.length - 1 : -1;
+					for (let i=newEnd-1; i>=start; i--) {
+						let ng = newNgs[i];
+						if (ng === undefined) { // Create and insert.
+							ng = this.createNew(newItems[i]);
+							newNgs[i] = ng;
+							insertNodesBefore(parent, ng, anchor);
+						}
+						else if (lis !== null) {
+							if (lisPos >= 0 && lis[lisPos] === i - start)
+								lisPos--; // Part of the stable subsequence; doesn't move.
+							else
+								insertNodesBefore(parent, ng, anchor);
+						}
+						anchor = ng.startNode;
+					}
+				}
+			}
+
+			// 6. Node membership or order changed, so invalidate caches.
+			// During a NodeGroup's first applyExprs(), no ancestor caches can reference its nodes yet.
+			if (!this.parentNg.firstApply) {
+				this.nodesCache = null;
+				if (this.parentNg.parentPath)
+					this.parentNg.parentPath.clearNodesCache();
+			}
+		}
+
+		this.nodeGroups = newNgs;
+
+		// Keep state used by the generic path from going stale.
+		if (this.nodeGroupsRendered)
+			this.nodeGroupsRendered = null;
+		if (this.nodeGroupsAttachedAvailable)
+			this.nodeGroupsAttachedAvailable = null;
+	}
+
+	/**
+	 * Create a NodeGroup for an item in a keyed list.  Never reuses pooled NodeGroups,
+	 * because keyed semantics require new keys to get new nodes.
+	 * @param item {Template|string}
+	 * @return {NodeGroup} */
+	createNew(item) {
+		if (typeof item === 'string')
+			return new NodeGroup(textTemplate(item), this); // Text NodeGroups have no paths to apply.
+		let ng = new NodeGroup(item, this);
+		if (item.exprs.length || (ng.paths && ng.paths.length))
+			ng.applyExprs(item.exprs);
+		return ng;
 	}
 
 	/**
@@ -679,6 +923,8 @@ function textTemplate(text) {
  * @return {boolean} */
 function itemSame(ng, item) {
 	let tpl = ng.template;
+	if (tpl === item) // h.memo() returns the same Template instance when deps are unchanged.
+		return true;
 	if (typeof item === 'string')
 		return tpl.isText === true && tpl.html[0] === item;
 	return templatesSame(tpl, item);
@@ -695,4 +941,62 @@ function itemClose(ng, item) {
 	if (typeof item === 'string')
 		return tpl.isText === true;
 	return tpl.html === item.html && tpl.svgMode === item.svgMode;
+}
+
+/**
+ * Insert all of ng's nodes before anchor within parent.
+ * @param parent {Node}
+ * @param ng {NodeGroup}
+ * @param anchor {?Node} Null appends at the end. */
+function insertNodesBefore(parent, ng, anchor) {
+	let node = ng.startNode, end = ng.endNode;
+	if (node === end) // Single-node NodeGroups are the common case in loops.
+		parent.insertBefore(node, anchor);
+	else while (true) {
+		let next = node.nextSibling;
+		parent.insertBefore(node, anchor);
+		if (node === end)
+			break;
+		node = next;
+	}
+}
+
+/**
+ * Indices into arr whose values form a longest strictly increasing subsequence, skipping -1 entries.
+ * O(n log n) patience algorithm with predecessor backtracking, as used by Vue 3's keyed diff.
+ * @param arr {int[]}
+ * @return {int[]} */
+function longestIncreasingSubsequence(arr) {
+	let result = []; // Indices of the smallest known tail for each subsequence length.
+	let prev = new Array(arr.length); // prev[i] = index that comes before i in the subsequence ending at i.
+	for (let i=0; i<arr.length; i++) {
+		let v = arr[i];
+		if (v === -1)
+			continue;
+		// Binary search for the first tail whose value >= v.
+		let lo = 0, hi = result.length;
+		while (lo < hi) {
+			let mid = (lo + hi) >> 1;
+			if (arr[result[mid]] < v)
+				lo = mid + 1;
+			else
+				hi = mid;
+		}
+		if (lo > 0)
+			prev[i] = result[lo-1];
+		if (lo === result.length)
+			result.push(i);
+		else
+			result[lo] = i;
+	}
+	// Backtrack from the last tail to recover the subsequence's indices.
+	let pos = result.length;
+	if (pos) {
+		let i = result[pos-1];
+		while (pos-- > 0) {
+			result[pos] = i;
+			i = prev[i];
+		}
+	}
+	return result;
 }

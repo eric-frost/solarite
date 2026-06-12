@@ -302,6 +302,22 @@ Testimony.testIframe(
 );
 
 Testimony.testIframe(
+	'Benchmark.solariteKeyed._jsFramework-1x',
+	'Run the internal benchmark 1 time on the keyed implementation',
+	{ timeout: 15000 },
+	'<iframe src="/benchmarks/solarite-keyed/index.html?benchmark=1" style="width: 100%; height: 500px; border: 1px solid #ccc;"></iframe>',
+	runIframeBenchmark(1)
+);
+
+Testimony.testIframe(
+	'Benchmark.solariteKeyed._jsFramework-10x',
+	'Run the internal benchmark 10 times on the keyed implementation',
+	{ timeout: 30000 },
+	'<iframe src="/benchmarks/solarite-keyed/index.html?benchmark=10" style="width: 100%; height: 500px; border: 1px solid #ccc;"></iframe>',
+	runIframeBenchmark(10)
+);
+
+Testimony.testIframe(
 	'Benchmark.vanilla._jsFramework-1x',
 	'Run the vanilla benchmark 1 time',
 	{ timeout: 15000 },

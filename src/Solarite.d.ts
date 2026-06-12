@@ -12,7 +12,12 @@ export interface RenderOptions {
 }
 
 /**
- * Tagged template literal or function for creating Templates and rendering to the DOM. */
+ * Tagged template literal or function for creating Templates and rendering to the DOM.
+ *
+ * The key attribute is reserved for keyed lists: `h`<tr key=${row.id}>...``
+ * It must be a single whole-value expression on a top-level element; DOM node identity
+ * then follows the key across re-renders (state preservation, minimal moves).
+ * Static or mixed key values throw, and components never receive key as an arg. */
 declare function h(htmlStrings: TemplateStringsArray, ...exprs: any[]): Template;
 declare function h(htmlStrings: string | string[], ...exprs: any[]): Template;
 declare function h(el: HTMLElement | DocumentFragment, options?: RenderOptions): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => HTMLElement | DocumentFragment;
@@ -20,6 +25,11 @@ declare function h(el: HTMLElement | DocumentFragment, template: Template, optio
 declare function h(tag: string, props: object, ...children: any[]): Template; // JSX
 declare function h(obj: {render: Function}): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => void; // Rebound render
 declare function h(): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => Node|DocumentFragment;
+
+declare namespace h {
+	/** Memoize a Template by object identity; fn runs only when deps (===, shallow for arrays) changed. */
+	function memo<T extends object>(obj:T, deps:any, fn:(obj:T) => Template): Template;
+}
 
 /** Tagged template literal for SVG markup and SVG child fragments. */
 declare function svg(htmlStrings: TemplateStringsArray, ...exprs: any[]): Template;

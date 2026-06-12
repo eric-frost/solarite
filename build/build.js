@@ -67,7 +67,8 @@ const terserOptions = {
 				'caller',
 				'callee',
 				'constructor',
-				'handleEvent' // Looked up by name by addEventListener(name, object).
+				'handleEvent', // Looked up by name by addEventListener(name, object).
+				'memo' // Public API: h.memo(), accessed by name in user code.
 			],
 			undeclared: true
 		}

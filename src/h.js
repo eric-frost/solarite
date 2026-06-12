@@ -164,3 +164,54 @@ export default function h(htmlStrings=noArg, ...exprs) {
 		throw new Error('h() does not support argument of type: ' + (htmlStrings ? typeof htmlStrings : htmlStrings))
 }
 
+// Memo entries live directly on the keyed object as a symbol property, which is much
+// faster than a WeakMap and invisible to JSON, for...in, and Object.keys.
+const memoKey = Symbol('solariteMemo');
+
+/**
+ * Memoize a Template by object identity, like Vue's v-memo or Lit's guard().
+ *
+ * When deps (a primitive or shallow array) is unchanged from the previous render,
+ * the SAME Template instance is returned.  The list diff recognizes the instance and
+ * skips both rebuilding and comparing that item's expressions, so re-rendering a long
+ * list where few items changed costs almost nothing per unchanged item.
+ *
+ * The same obj must not appear twice in one list.
+ *
+ * ${this.rows.map(row => h.memo(row, [row.label, row.id === this.selectedId], r =>
+ *     h`<tr class=${r.id === this.selectedId ? 'danger' : ''}><td>${r.label}</td></tr>`))}
+ *
+ * @param obj {Object} Cache key, usually the loop item.
+ * @param deps {*|Array} Values the template depends on; compared === (shallow for arrays).
+ * @param fn {function(obj:Object):Template} Called only when deps changed.
+ * @return {Template} */
+h.memo = (obj, deps, fn) => {
+	let entry = obj[memoKey];
+	if (entry !== undefined && depsSame(entry.deps, deps))
+		return entry.template;
+
+	let template = fn(obj);
+	if (entry !== undefined) {
+		entry.deps = deps;
+		entry.template = template;
+	}
+	else if (Object.isExtensible(obj))
+		obj[memoKey] = {deps, template};
+	// Frozen/sealed objects simply aren't cached.
+	return template;
+}
+
+function depsSame(a, b) {
+	if (a === b)
+		return true;
+	if (Array.isArray(a) && Array.isArray(b)) {
+		if (a.length !== b.length)
+			return false;
+		for (let i=0; i<a.length; i++)
+			if (a[i] !== b[i])
+				return false;
+		return true;
+	}
+	return false;
+}
+

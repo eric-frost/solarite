@@ -3,6 +3,7 @@ import Util from "./Util.js";
 import delve, {isDelvePath} from "./delve.js";
 import assert from "./assert.js";
 import PathToAttribValue from "./PathToAttribValue.js";
+import PathToKey from "./PathToKey.js";
 import Globals from "./Globals.js";
 import {getObjectHash} from "./Template.js";
 
@@ -44,6 +45,8 @@ export default class PathToComponent extends Path {
 		// 1. Attributes
 		let attribs = Util.attribsToObject(el, '_is');
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
+			if (attribPath instanceof PathToKey) // The list key is never a component arg.
+				continue;
 			if (attribPath instanceof PathToAttribValue) {
 				let name = Util.dashesToCamel(attribPath.attrName);
 				
