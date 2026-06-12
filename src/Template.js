@@ -274,7 +274,7 @@ const addChild = (template, html, exprs) => {
 /**
  * @typedef {Object} RenderOptions
  * @property {boolean=} styles - Replace :host in style tags to scope them locally.
- * @property {boolean=} scripts - Execute script tags.
+ * @property {boolean=} scripts - Execute script tags.  Requires a CSP that allows unsafe-eval.
  * @property {boolean=} ids - Create references to elements with id or data-id attributes.
  * @property {?boolean} render - Deprecated.
  * 	 Used only when options are given to a class super constructor inheriting from Solarite.

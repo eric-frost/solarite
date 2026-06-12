@@ -2046,9 +2046,6 @@ class PathToNodes extends Path {
 		}
 	}
 
-
-
-
 	/**
 	 * Try to apply Nodes that are an exact match, by finding existing nodes from the last render
 	 * that have the same value as created by the expr.
@@ -2729,10 +2726,10 @@ class Shell {
 	ids = [];
 
 	/** @type {int[][]} Array of paths */
-	scripts = [];
+	styles = [];
 
 	/** @type {int[][]} Array of paths */
-	styles = [];
+	scripts = [];
 
 	/** @type {boolean} True if any of this Shell's own paths is a PathToComponent. */
 	hasComponentPaths = false;
@@ -2828,7 +2825,8 @@ class Shell {
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
 
-							let path = Util.isEvent(attr.name)
+							let isEvent = Util.isEvent(attr.name);
+							let path = isEvent
 								? new PathToEvent(null, node, attr.name, nonEmptyParts)
 								: new PathToAttribValue(null, node, attr.name, nonEmptyParts);
 							path.isHtmlProperty = Util.isHtmlProp(node, attr.name);
@@ -2842,7 +2840,9 @@ class Shell {
 							// In svgMode, setting typed SVG attributes (viewBox, r, etc.) with the placeholders
 							// stripped out makes the browser log parse errors, both here and when the fragment is cloned.
 							// Remove the attribute instead; apply() recreates it with the real values.
-							if (svgMode)
+							// Event attributes bound to a single expression are removed because they bind via
+							// addEventListener; leaving an empty onclick="" attribute violates a strict CSP when the event fires.
+							if (svgMode || (isEvent && !nonEmptyParts))
 								node.removeAttribute(attr.name);
 							else try {
 								node.setAttribute(attr.name, parts.join(''));
@@ -3066,7 +3066,7 @@ class Shell {
 	 * this.ids
 	 * this.staticComponents */
 	findEmbeds() {
-		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => Path.get(el));
+		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('script'), el => Path.get(el));
 
 		// TODO: only find styles that have Paths in them?
 		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => Path.get(el));
@@ -3914,7 +3914,7 @@ const addChild = (template, html, exprs) => {
 /**
  * @typedef {Object} RenderOptions
  * @property {boolean=} styles - Replace :host in style tags to scope them locally.
- * @property {boolean=} scripts - Execute script tags.
+ * @property {boolean=} scripts - Execute script tags.  Requires a CSP that allows unsafe-eval.
  * @property {boolean=} ids - Create references to elements with id or data-id attributes.
  * @property {?boolean} render - Deprecated.
  * 	 Used only when options are given to a class super constructor inheriting from Solarite.
@@ -4224,13 +4224,9 @@ function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String) 
 		case ArgType.String:
 			return [undefined, null, false].includes(val) ? '' : (val+'');
 		case ArgType.Json:
-		case ArgType.Eval:
 			if (typeof val === 'string' && val.length)
 				try {
-					if (type === ArgType.Json)
-						return JSON.parse(val);
-					else
-						return eval(`(${val})`);
+					return JSON.parse(val);
 				} catch (e) {
 					return val;
 				}
@@ -4286,12 +4282,7 @@ var ArgType = {
 	/**
 	 * Parse the string value as JSON.
 	 * If it's not parsable, return the value as a string. */
-	Json: 'Json',
-
-	/**
-	 * Evaluate the string as JavaScript using the eval() function.
-	 * If it can't be evaluated, return the original string. */
-	Eval: 'Eval'
+	Json: 'Json'
 };
 
 /*

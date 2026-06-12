@@ -32,10 +32,10 @@ export default class Shell {
 	ids = [];
 
 	/** @type {int[][]} Array of paths */
-	scripts = [];
+	styles = [];
 
 	/** @type {int[][]} Array of paths */
-	styles = [];
+	scripts = [];
 
 	/** @type {boolean} True if any of this Shell's own paths is a PathToComponent. */
 	hasComponentPaths = false;
@@ -131,7 +131,8 @@ export default class Shell {
 						if (parts.length > 1) {
 							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
 
-							let path = Util.isEvent(attr.name)
+							let isEvent = Util.isEvent(attr.name);
+							let path = isEvent
 								? new PathToEvent(null, node, attr.name, nonEmptyParts)
 								: new PathToAttribValue(null, node, attr.name, nonEmptyParts);
 							path.isHtmlProperty = Util.isHtmlProp(node, attr.name);
@@ -145,7 +146,9 @@ export default class Shell {
 							// In svgMode, setting typed SVG attributes (viewBox, r, etc.) with the placeholders
 							// stripped out makes the browser log parse errors, both here and when the fragment is cloned.
 							// Remove the attribute instead; apply() recreates it with the real values.
-							if (svgMode)
+							// Event attributes bound to a single expression are removed because they bind via
+							// addEventListener; leaving an empty onclick="" attribute violates a strict CSP when the event fires.
+							if (svgMode || (isEvent && !nonEmptyParts))
 								node.removeAttribute(attr.name);
 							else try {
 								node.setAttribute(attr.name, parts.join(''));
@@ -369,7 +372,7 @@ export default class Shell {
 	 * this.ids
 	 * this.staticComponents */
 	findEmbeds() {
-		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('scripts'), el => Path.get(el))
+		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('script'), el => Path.get(el))
 
 		// TODO: only find styles that have Paths in them?
 		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => Path.get(el))

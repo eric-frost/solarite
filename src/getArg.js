@@ -65,13 +65,9 @@ export function getArg(el, attributeName, defaultValue=undefined, type=ArgType.S
 		case ArgType.String:
 			return [undefined, null, false].includes(val) ? '' : (val+'');
 		case ArgType.Json:
-		case ArgType.Eval:
 			if (typeof val === 'string' && val.length)
 				try {
-					if (type === ArgType.Json)
-						return JSON.parse(val);
-					else
-						return eval(`(${val})`);
+					return JSON.parse(val);
 				} catch (e) {
 					return val;
 				}
@@ -127,11 +123,6 @@ var ArgType = {
 	/**
 	 * Parse the string value as JSON.
 	 * If it's not parsable, return the value as a string. */
-	Json: 'Json',
-
-	/**
-	 * Evaluate the string as JavaScript using the eval() function.
-	 * If it can't be evaluated, return the original string. */
-	Eval: 'Eval'
+	Json: 'Json'
 }
 export {ArgType};

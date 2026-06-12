@@ -2050,13 +2050,13 @@ Testimony.test('Solarite.svg.dynamicChildren', () => {
 });
 
 Testimony.test('Solarite.embed.scriptStatic', () => {
-	window.scriptStaticCount = 1;
+	window.scriptStaticCount = 0;
 	class R340 extends Solarite {
 		render() {
 			h(this)`
 				<div>
 					<script>
-						window.scriptStaticCount = 1;
+						window.scriptStaticCount++;
 					</script>
 				</div>
 			`;
@@ -2067,7 +2067,7 @@ Testimony.test('Solarite.embed.scriptStatic', () => {
 	a.render();
 	assert.eq(window.scriptStaticCount, 1);
 
-	// Hasn't changed. Make sure it's nto re-run.
+	// Hasn't changed. Make sure it's not re-run.
 	a.render();
 	assert.eq(window.scriptStaticCount, 1);
 
@@ -2443,7 +2443,7 @@ Testimony.test('Solarite.attrib.multiple', '', () => {
 	let a = new R474();
 	a.render();
 
-	assert.eq(getHtml(a), `<r-474><button onclick="" class="primary">Hello</button></r-474>`);
+	assert.eq(getHtml(a), `<r-474><button class="primary">Hello</button></r-474>`);
 });
 
 Testimony.test('Solarite.attrib.ids1', () => {
@@ -2788,13 +2788,13 @@ Testimony.test('Solarite.toEl.standalone1', () => {
 	});
 	//document.body.append(button);
 
-	assert.eq(getHtml(button), `<button onclick="">I've been clicked 0 times.</button>`)
+	assert.eq(getHtml(button), `<button>I've been clicked 0 times.</button>`)
 
 	button.inc();
-	assert.eq(getHtml(button), `<button onclick="">I've been clicked 1 times.</button>`);
+	assert.eq(getHtml(button), `<button>I've been clicked 1 times.</button>`);
 
 	button.dispatchEvent(new MouseEvent('click'));
-	assert.eq(getHtml(button), `<button onclick="">I've been clicked 2 times.</button>`);
+	assert.eq(getHtml(button), `<button>I've been clicked 2 times.</button>`);
 
 	//button.remove();
 });
@@ -2822,20 +2822,20 @@ Testimony.test('Solarite.toEl.standalone2', () => {
 
 	//document.body.append(list);
 
-	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><hr></div>`);
+	assert.eq(getHtml(list), `<div><button>Add Item</button><hr></div>`);
 
 	// At one point, rendering a standalone component the first time would re-render everything.
 	// Here we make sure the hr element doesn't come back.
 	list.querySelector('hr').remove();
 	list.render();
 
-	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button></div>`);
+	assert.eq(getHtml(list), `<div><button>Add Item</button></div>`);
 
 	list.add();
-	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><p>Item 0</p></div>`);
+	assert.eq(getHtml(list), `<div><button>Add Item</button><p>Item 0</p></div>`);
 
 	list.querySelector('button').dispatchEvent(new MouseEvent('click'));
-	assert.eq(getHtml(list), `<div><button onclick="">Add Item</button><p>Item 0</p><p>Item 1</p></div>`);
+	assert.eq(getHtml(list), `<div><button>Add Item</button><p>Item 0</p><p>Item 1</p></div>`);
 
 	//list.remove();
 });
@@ -2897,7 +2897,7 @@ Testimony.test('Solarite.toEl.standalone3', () => {
 	list.items.push({name: 'name', qty: 2});
 	list.render();
 
-	assert.eq(getHtml(list), `<div><div><input placeholder="Name" value="name"><input type="number" value="2"><button onclick="">x</button></div></div>`);
+	assert.eq(getHtml(list), `<div><div><input placeholder="Name" value="name"><input type="number" value="2"><button>x</button></div></div>`);
 });
 
 

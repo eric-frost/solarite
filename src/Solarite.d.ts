@@ -76,7 +76,6 @@ export const ArgType: {
     Float: string;
     String: string;
     Json: string;
-    Eval: string;
 }
 
 export class Template {
