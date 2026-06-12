@@ -75,16 +75,20 @@ export default class NodeGroup {
 
 		/*#IFDEV*/assert(this.rootNg);/*#ENDIF*/
 		this.template = template;
-		this.closeKey = template.getCloseKey();
 
 		// If it's just a text node, skip a bunch of unnecessary steps.
+		// el can be an existing Text node to adopt, from PathToNodes' bare-text fast path.
 		if (template.isText) {
-			this.startNode = this.endNode = Globals.doc.createTextNode(template.html[0]);
+			this.closeKey = template.getCloseKey();
+			this.startNode = this.endNode = el || Globals.doc.createTextNode(template.html[0]);
 		}
 
 		else {
 			// Get a cached version of the parsed and instantiated html, and Paths:
 			const shell = Shell.get(template.html, template.svgMode);
+
+			// The shell caches the close key so each new template doesn't repeat the WeakMap lookup.
+			this.closeKey = shell.closeKey ??= template.getCloseKey();
 			const shellFragment = shell.fragment.cloneNode(true);
 
 			this.hasComponentPaths = shell.hasComponentPaths;
@@ -113,7 +117,7 @@ export default class NodeGroup {
 	 * @param options {?object} Unused here; used by RootNodeGroup. */
 	instantiate(shell, shellFragment, el, options) {
 		if (shell.paths.length)
-			this.setPathsFromFragment(shellFragment, shell.paths);
+			this.setPathsFromFragment(shellFragment, shell);
 
 		if (shell.hasEmbeds)
 			this.activateEmbeds(shellFragment, shell);
@@ -251,16 +255,40 @@ export default class NodeGroup {
 	/**
 	 * Copy paths in fragment to this.paths.
 	 * @param fragment {DocumentFragment|HTMLElement}
-	 * @param paths
+	 * @param shell {Shell}
 	 * @param startingPathDepth {int} */
-	setPathsFromFragment(fragment, paths, startingPathDepth=0) {
+	setPathsFromFragment(fragment, shell, startingPathDepth=0) {
+		let paths = shell.paths;
 		let pathLength = paths.length; // For faster iteration
 		let result = this.paths = new Array(pathLength);
-		for (let i=0; i<pathLength; i++) {
-			let path = paths[i].clone(fragment, startingPathDepth)
-			path.parentNg = this;
-			result[i] = path;
+
+		// Fast path: run the shell's precomputed resolve program (see Shell.buildResolveProgram).
+		// Each Path.clone() would walk childNodes from the fragment root to its target node,
+		// re-traversing the same ancestors for every path.  The program instead resolves each
+		// unique node exactly once into the slots array:  ops is flat [parentSlot, childIndex]
+		// pairs in dependency order, pair i filling slot i+1, with slot 0 being the fragment.
+		// Paths then copy themselves via cloneWithNodes() using their precomputed slot indexes.
+		// Only built for component-free shells, since PathToComponent.clone() has special
+		// attribPaths behavior; pathOffset!==0 (root grafting) also uses the fallback.
+		let ops = shell.resolveOps;
+		if (ops && startingPathDepth === 0) {
+			let slots = shell.resolveSlots;
+			slots[0] = fragment;
+			for (let i=0, s=1; i<ops.length; i+=2, s++)
+				slots[s] = slots[ops[i]].childNodes[ops[i+1]];
+			for (let i=0; i<pathLength; i++) {
+				let p = paths[i];
+				let path = p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot]);
+				path.parentNg = this;
+				result[i] = path;
+			}
 		}
+		else
+			for (let i=0; i<pathLength; i++) {
+				let path = paths[i].clone(fragment, startingPathDepth)
+				path.parentNg = this;
+				result[i] = path;
+			}
 	}
 
 	updateStyles() {

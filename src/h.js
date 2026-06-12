@@ -51,16 +51,20 @@ export function svg(htmlStrings, ...exprs) {
 
 const renderTemplateKey = Symbol('solariteRender');
 
-export default function h(htmlStrings=undefined, ...exprs) {
+// Unique default that detects h() called with no arguments.
+// Using `arguments` alongside rest params would force the engine to materialize both per call.
+const noArg = Symbol();
+
+export default function h(htmlStrings=noArg, ...exprs) {
 
 	// 1. Tagged template: h`<div>...</div>`
-	if (Array.isArray(arguments[0])) {
-		return new Template(arguments[0], exprs);
+	if (Array.isArray(htmlStrings)) {
+		return new Template(htmlStrings, exprs);
 	}
 
 	// 2. String to template, or JSX factory form h(tag, props, ...children)
-	else if (typeof arguments[0] === 'string' || arguments[0] instanceof String) {
-		let tagOrHtml = arguments[0];
+	else if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {
+		let tagOrHtml = htmlStrings;
 
 		// 2a. JSX: h("tag", {props}, ...children)
 		if (exprs.length && (typeof exprs[0] === 'object' || exprs[0] === null)) {
@@ -81,21 +85,21 @@ export default function h(htmlStrings=undefined, ...exprs) {
 		}
 	}
 
-	else if (arguments[0] instanceof HTMLElement || arguments[0] instanceof DocumentFragment) {
+	else if (htmlStrings instanceof HTMLElement || htmlStrings instanceof DocumentFragment) {
 
 		// 3. Render template to element: h(el, template)
-		if (arguments[1] instanceof Template) {
+		if (exprs[0] instanceof Template) {
 
 			/** @type Template */
-			let template = arguments[1];
-			let parent = arguments[0];
-			let options = arguments[2];
+			let template = exprs[0];
+			let parent = htmlStrings;
+			let options = exprs[1];
 			template.render(parent, options);
 		}
 
 		// 4. Render tagged template to element: h(el)`<div>...</div>`
 		else {
-			let parent = arguments[0], options = arguments[1];
+			let parent = htmlStrings, options = exprs[0];
 
 			// The closure is cached on the element so repeated renders don't recreate it.
 			if (options === undefined) {
@@ -121,7 +125,7 @@ export default function h(htmlStrings=undefined, ...exprs) {
 	}
 
 	// 5. Create a static element: h()`<div></div>`
-	else if (!arguments.length) {
+	else if (htmlStrings === noArg) {
 		return (htmlStrings, ...exprs) => {
 			let template = h(htmlStrings, ...exprs);
 			return toEl(template);
@@ -131,15 +135,15 @@ export default function h(htmlStrings=undefined, ...exprs) {
 	// 6. Help toEl() with objects: h(this)`<div>...</div>` inside an object's render()
 	// Intercepts the main h(this)`...` function call inside render().
 	// TODO: This path doesn't handle embeds like data-id="..."
-	else if (typeof arguments[0] === 'object' && Globals.objToEl.has(arguments[0])) {
-		let obj = arguments[0];
+	else if (typeof htmlStrings === 'object' && Globals.objToEl.has(htmlStrings)) {
+		let obj = htmlStrings;
 
 		if (obj.constructor.name !== 'Object')
 			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
 
 		// Jsx with h(this, <jsx>)
-		if (arguments[1] instanceof Template) {
-			let template = arguments[1];
+		if (exprs[0] instanceof Template) {
+			let template = exprs[0];
 			let el = template.render();
 			Globals.objToEl.set(obj, el);
 		}
@@ -153,10 +157,10 @@ export default function h(htmlStrings=undefined, ...exprs) {
 			}.bind(obj);
 	}
 	// TODO: Handle other primitive types?
-	else if (Util.isFalsy(arguments[0]))
+	else if (Util.isFalsy(htmlStrings))
 		return new Template();
 
 	else
-		throw new Error('h() does not support argument of type: ' + (arguments[0] ? typeof arguments[0] : arguments[0]))
+		throw new Error('h() does not support argument of type: ' + (htmlStrings ? typeof htmlStrings : htmlStrings))
 }
 

@@ -92,6 +92,12 @@ export default class Shell {
 			this.fragment = template.content;
 		}
 
+		// 1b. Remove whitespace-only text nodes inside table-structure elements.
+		// The parser foster-parents non-whitespace text out of tables, and whitespace-only
+		// text between cells/rows is never rendered, so removing it is invisible.
+		// Smaller fragments make cloning, path resolution, and insertion faster.
+		stripTableWhitespace(this.fragment);
+
 		// 2. Find placeholders
 		let node;
 		let toRemove = [];
@@ -180,22 +186,6 @@ export default class Shell {
 					throw new Error(`Contenteditable can't have expressions inside them. Use <div contenteditable value="\${...}"> instead.`);
 
 				let parent = node.parentNode;
-
-				// Whitespace-only text nodes between table-structure tags are never rendered,
-				// so remove them to give the expression sole ownership of its parent.
-				if (parent.nodeType === 1 && tableTags.includes(parent.tagName)
-						&& (node.previousSibling || node.nextSibling)) {
-					let canTrim = true;
-					for (let sibling of parent.childNodes)
-						if (sibling !== node && (sibling.nodeType !== 3 || sibling.textContent.trim().length)) {
-							canTrim = false;
-							break;
-						}
-					if (canTrim)
-						for (let sibling of [...parent.childNodes])
-							if (sibling !== node)
-								sibling.remove();
-				}
 
 				// The expression is the only child of an element, so the element itself
 				// can delimit the expression's nodes and no marker comments are needed.
@@ -302,6 +292,7 @@ export default class Shell {
 		}
 
 		this.findEmbeds();
+		this.buildResolveProgram();
 
 		this.pathsSingleExpr = true;
 		for (let path of this.paths) {
@@ -392,6 +383,48 @@ export default class Shell {
 	}
 
 	/**
+	 * Precompute a flat program that resolves every path's nodeMarker/nodeBefore in a cloned
+	 * fragment with one childNodes access per unique node, sharing ancestor lookups between paths.
+	 * Replaces per-path root-to-node walks in the hot NodeGroup creation path.
+	 * Skipped for shells with components, whose clone() has special attribPaths behavior. */
+	buildResolveProgram() {
+		let hasComponents = false;
+		for (let path of this.paths)
+			if (path instanceof PathToComponent) {
+				hasComponents = true;
+				break;
+			}
+		if (hasComponents || !this.paths.length)
+			return;
+
+		let ops = [];
+		let slotOf = new Map();
+		let frag = this.fragment;
+		let nextSlot = 1;
+		let getSlot = node => {
+			if (node === frag)
+				return 0;
+			let s = slotOf.get(node);
+			if (s === undefined) {
+				ops.push(getSlot(node.parentNode), Array.prototype.indexOf.call(node.parentNode.childNodes, node));
+				s = nextSlot++;
+				slotOf.set(node, s);
+			}
+			return s;
+		};
+		for (let path of this.paths) {
+			path.markerSlot = path.nodeMarker === frag ? 0 : getSlot(path.nodeMarker);
+			path.beforeSlot = path.nodeBefore ? getSlot(path.nodeBefore) : -1;
+		}
+
+		/** @type {?int[]} Flat [parentSlot, childIndex] pairs; pair i fills slot i+1. */
+		this.resolveOps = ops;
+
+		/** @type {Node[]} Reusable scratch array for resolved nodes; safe because resolution never re-enters. */
+		this.resolveSlots = new Array(nextSlot);
+	}
+
+	/**
 	 * Get the shell for the html strings.
 	 * @param htmlStrings {string[]} Typically comes from a Template.
 	 * @param svgMode {boolean} Parse the html in the SVG namespace.
@@ -435,6 +468,22 @@ const commentPlaceholder = `<!--!✨!-->`;
 
 // Elements whose whitespace-only text children are never rendered.
 const tableTags = ['TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR'];
+
+/**
+ * Recursively remove whitespace-only text children of table-structure elements.
+ * @param el {DocumentFragment|HTMLElement} */
+function stripTableWhitespace(el) {
+	let isTable = el.nodeType === 1 && tableTags.includes(el.tagName);
+	let child = el.firstChild;
+	while (child) {
+		let next = child.nextSibling;
+		if (child.nodeType === 1)
+			stripTableWhitespace(child);
+		else if (isTable && child.nodeType === 3 && !child.nodeValue.trim())
+			child.remove();
+		child = next;
+	}
+}
 
 // One-entry memo for Shell.get().
 let lastHtmlStrings = null, lastSvgMode = false, lastShell = null;

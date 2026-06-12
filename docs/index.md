@@ -1002,17 +1002,17 @@ document.body.append(myTasks);
 
 When you call `render()`, Solarite performs these steps:
 
-1. **Template Parsing**: The `h()` function processes the template literal, separating static HTML from dynamic expressions.
+1. **Template Parsing**: The `h()` function pairs the template literal's static html with its `${...}` expression values in a lightweight Template object.  The static html is parsed only once, no matter how many items or renders use it:  each unique template gets a cached "Shell" of expression-free DOM nodes, plus precomputed paths to where the expressions belong.  Whitespace-only text between table tags is dropped since browsers never render it.
 
-2. **Expression Hashing**: Solarite creates a hash of every `${...}` expression's value. This allows it to quickly identify which expressions have changed since the last render.
+2. **Instantiation**: New elements are created by cloning the Shell's nodes, then resolving all expression locations in the clone with a single precomputed resolve program that visits each target node once.
 
-3. **Differential Rendering**: By comparing the current hashes with those from the previous render, Solarite determines exactly which DOM elements and attributes need to be updated.
+3. **Positional Diffing**: On re-render, list items are compared positionally against the previous render's items.  Expression values are compared by identity (`===`), so unchanged items are skipped with no hashing or string building.  Items created from the same template html are rewritten in place, updating only the expressions whose values changed.
 
-4. **Minimal DOM Updates**: Only the elements and attributes with changed values are modified in the DOM, leaving everything else untouched.
+4. **Minimal DOM Updates**: A lone primitive expression renders as a bare text node and updates via `nodeValue`, with no wrapper objects.  Attributes are written only when their value changes.  Event handlers register one listener per element; re-renders just swap the function it calls.  Removed list items are pooled and reused by later renders instead of being rebuilt.
 
 ### DOM Diffing
 
-For efficient list updates, Solarite uses [WebReflection/udomdiff](https://github.com/WebReflection/udomdiff), a lightweight and fast algorithm for comparing and updating DOM nodes. This ensures that list operations (adding, removing, or reordering items) are performed with minimal DOM manipulations.
+List reconciliation uses a positional two-pointer diff: matching prefix and suffix items are kept, the aligned middle is rewritten in place, and leftovers are removed or batch-inserted with direct DOM operations.  When expressions contain raw DOM nodes, Solarite instead falls back to [WebReflection/udomdiff](https://github.com/WebReflection/udomdiff) to rearrange them with minimal DOM manipulations.
 
 ## Examples
 

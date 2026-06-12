@@ -246,6 +246,7 @@ function runIframeBenchmark(runs) {
 	return async (context) => {
 		let avgResult = null;
 		let bestResult = null;
+		let coldResult = null;
 
 		// Wait until iframe is created
 		while (!context.iframe || !context.iframe.contentWindow) {
@@ -253,9 +254,10 @@ function runIframeBenchmark(runs) {
 		}
 
 		// Expose callback on iframe's parent window (which is our window)
-		window.onBenchmarkComplete = (avg, best=avg) => {
+		window.onBenchmarkComplete = (avg, best=avg, cold=null) => {
 			avgResult = avg;
 			bestResult = best;
+			coldResult = cold;
 		};
 
 		// Poll until the benchmark completes (with a timeout)
@@ -271,14 +273,15 @@ function runIframeBenchmark(runs) {
 			throw new Error("Benchmark timed out or did not report a result.");
 		}
 
-		console.log(`Final Average Geometric Mean: ${avgResult.toFixed(2)}ms`);
+		console.log(`Final Warm Average Geometric Mean: ${avgResult.toFixed(2)}ms`);
 
 		// Adjust this threshold as we optimize!
 		if (avgResult > 150) {
 			throw new Error(`Performance regression detected! Mean is ${avgResult.toFixed(2)}ms (expected < 150ms)`);
 		}
 
-		return `avg: ${avgResult.toFixed(2)}ms, best: ${bestResult.toFixed(2)}ms`;
+		let cold = coldResult === null ? '' : `cold: ${coldResult.toFixed(2)}ms, `;
+		return `${cold}warm avg: ${avgResult.toFixed(2)}ms, best: ${bestResult.toFixed(2)}ms`;
 	};
 }
 

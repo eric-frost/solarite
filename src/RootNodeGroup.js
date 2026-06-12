@@ -86,7 +86,7 @@ export default class RootNodeGroup extends NodeGroup {
 					startingPathDepth = 1;
 			}
 
-			this.setPathsFromFragment(this.root, shell.paths, startingPathDepth);
+			this.setPathsFromFragment(this.root, shell, startingPathDepth);
 			this.activateEmbeds(this.root, shell, startingPathDepth);
 		}
 		this.startNode = this.endNode = this.root;

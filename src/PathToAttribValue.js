@@ -156,9 +156,10 @@ export default class PathToAttribValue extends Path {
 			else {
 				// Only update attributes if the value has changed.
 				// This is needed for setting input.value, .checked, option.selected, etc.
+				// A missing attribute counts as '', so empty values don't write empty attributes.
 				let oldVal = isProp
 					? node[this.attrName]
-					: node.getAttribute(this.attrName);
+					: node.getAttribute(this.attrName) ?? '';
 				if (oldVal !== expr) {
 
 					// <textarea value=${expr}></textarea>
@@ -233,14 +234,39 @@ export default class PathToAttribValue extends Path {
 		// One stable EventBinding object per node+key is registered with addEventListener
 		// and dispatches to the current func/args.  This way, assigning a new function
 		// (e.g. a fresh arrow function on each render) never needs add/removeEventListener.
+		// Most nodes have one binding, stored directly; a second key upgrades to a map.
 		let nodeEvents = node[eventBindingsKey];
-		if (!nodeEvents)
-			nodeEvents = node[eventBindingsKey] = {};
+		if (nodeEvents === undefined) {
+			let b = node[eventBindingsKey] = new EventBinding(root, node, key, func, funcAndArgs);
+			node.addEventListener(eventName, b, capture);
+			return;
+		}
 
-		let binding = nodeEvents[key];
-		if (!binding) {
-			binding = nodeEvents[key] = new EventBinding(root, node);
-			node.addEventListener(eventName, binding, capture);
+		let binding;
+
+		// The node already has a single EventBinding stored directly at node[eventBindingsKey].
+		// If it's for this same key (e.g. 'click' rebound on re-render), just update it below.
+		// Otherwise this is the node's second event key, so upgrade the slot to a
+		// {key: EventBinding} map holding both.  Nodes with one handler (the common case)
+		// never pay for that map object.
+		if (nodeEvents instanceof EventBinding) {
+			if (nodeEvents.key === key)
+				binding = nodeEvents;
+			else {
+				let map = node[eventBindingsKey] = {};
+				map[nodeEvents.key] = nodeEvents;
+				binding = map[key] = new EventBinding(root, node, key, func, funcAndArgs);
+				node.addEventListener(eventName, binding, capture);
+				return;
+			}
+		}
+		else {
+			binding = nodeEvents[key];
+			if (!binding) {
+				binding = nodeEvents[key] = new EventBinding(root, node, key, func, funcAndArgs);
+				node.addEventListener(eventName, binding, capture);
+				return;
+			}
 		}
 		binding.root = root;
 		binding.func = func;
@@ -251,13 +277,14 @@ export default class PathToAttribValue extends Path {
 const eventBindingsKey = Symbol('solariteEvents');
 
 class EventBinding {
-	constructor(root, node) {
+	constructor(root, node, key, func=null, args=null) {
 		this.root = root;
 		this.node = node;
-		this.func = null;
+		this.key = key;
+		this.func = func;
 
 		/** @type {?Array} [func, ...args] or null if func stands alone. */
-		this.args = null;
+		this.args = args;
 	}
 
 	// Called by the browser via the addEventListener(name, object) form.

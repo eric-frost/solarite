@@ -20,6 +20,21 @@ export default class MultiValueMap {
 	}
 
 	/**
+	 * Add a new value for a key, unless the key already holds max values.
+	 * Used to bound pooled NodeGroup memory.
+	 * @param key {string}
+	 * @param value
+	 * @param max {int} */
+	addCapped(key, value, max) {
+		let data = this.data;
+		let array = data[key]
+		if (!array)
+			data[key] = [value];
+		else if (array.length - (array.head || 0) < max)
+			array.push(value);
+	}
+
+	/**
 	 * Remove the oldest value from a key, and return it.
 	 * @param key {string}
 	 * @returns {*|undefined} The deleted item. */

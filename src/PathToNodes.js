@@ -9,8 +9,16 @@ import MultiValueMap from "./MultiValueMap.js";
 
 export default class PathToNodes extends Path {
 
-	/** @type {NodeGroup[]} The NodeGroups created by this path's expression, in order. */
-	nodeGroups = [];
+	/** @type {?NodeGroup[]} The NodeGroups created by this path's expression, in order.
+	 * Lazily created; null when the path has only ever rendered a primitive (see textNode). */
+	nodeGroups = null;
+
+	/** @type {?Text} When the expression is a single primitive, its text node lives here
+	 * with no Template or NodeGroup wrapper.  Mutually exclusive with nodeGroups entries. */
+	textNode = null;
+
+	/** @type {?string} The current value of textNode. */
+	textValue = null;
 
 
 
@@ -69,9 +77,43 @@ export default class PathToNodes extends Path {
 		if ((exprType === 'string' || exprType === 'number') && !this.itemsHaveNodes) {
 			if (exprType !== 'string')
 				expr += '';
-			let ngs = this.nodeGroups;
 
-			// Update an existing single text node.
+			// Update the existing text node.
+			let tn = this.textNode;
+			if (tn !== null) {
+				if (this.textValue !== expr) {
+					tn.nodeValue = expr;
+					this.textValue = expr;
+				}
+				return;
+			}
+
+			let ngs = this.nodeGroups;
+			if (ngs === null || ngs.length === 0) {
+
+				// Create a bare text node in an empty path, with no Template or NodeGroup wrapper.
+				let node;
+				if (this.wholeParent) { // One native call; the browser creates the text node.
+					this.nodeMarker.textContent = expr;
+					node = this.nodeMarker.firstChild;
+				}
+				else {
+					node = Globals.doc.createTextNode(expr);
+					this.nodeMarker.parentNode.insertBefore(node, this.nodeMarker);
+				}
+				this.textNode = node;
+				this.textValue = expr;
+
+				// During a NodeGroup's first applyExprs(), no ancestor caches can reference its nodes yet.
+				if (!this.parentNg.firstApply) {
+					this.nodesCache = null;
+					if (this.parentNg.parentPath)
+						this.parentNg.parentPath.clearNodesCache();
+				}
+				return;
+			}
+
+			// A single text NodeGroup left over from an array render.
 			if (ngs.length === 1) {
 				let ng = ngs[0], tpl = ng.template;
 				if (tpl.isText === true) {
@@ -83,24 +125,13 @@ export default class PathToNodes extends Path {
 					return;
 				}
 			}
+		}
 
-			// Create a text node in an empty path.
-			else if (ngs.length === 0) {
-				let ng = new NodeGroup(textTemplate(expr), this);
-				if (this.wholeParent)
-					this.nodeMarker.appendChild(ng.startNode);
-				else
-					this.nodeMarker.parentNode.insertBefore(ng.startNode, this.nodeMarker);
-				ngs.push(ng);
-
-				// During a NodeGroup's first applyExprs(), no ancestor caches can reference its nodes yet.
-				if (!this.parentNg.firstApply) {
-					this.nodesCache = null;
-					if (this.parentNg.parentPath)
-						this.parentNg.parentPath.clearNodesCache();
-				}
-				return;
-			}
+		// A previous primitive render stored a bare text node; wrap it in a NodeGroup so it can be diffed.
+		if (this.textNode !== null) {
+			let ng = new NodeGroup(textTemplate(this.textValue), this, this.textNode);
+			(this.nodeGroups ??= []).push(ng);
+			this.textNode = null;
 		}
 
 		// 1. Flatten the expression to a list of Templates, strings and Nodes, evaluating functions along the way.
@@ -127,7 +158,7 @@ export default class PathToNodes extends Path {
 	 * Leftover items are removed/inserted with direct DOM operations.
 	 * @param newItems {Template[]} */
 	applyDiff(newItems) {
-		let oldNgs = this.nodeGroups;
+		let oldNgs = this.nodeGroups || emptyNodeGroups;
 		let oldLen = oldNgs.length, newLen = newItems.length;
 		let newNgs = new Array(newLen);
 
@@ -195,7 +226,7 @@ export default class PathToNodes extends Path {
 					else if (!cleared)
 						ng.startNode.remove();
 					if (!ng.template.isText)
-						pool.add(ng.closeKey, ng);
+						pool.addCapped(ng.closeKey, ng, maxPooledPerKey);
 				}
 			}
 
@@ -215,7 +246,9 @@ export default class PathToNodes extends Path {
 					let ng = this.createOrReuse(newItems[i]);
 					newNgs[i] = ng;
 					let node = ng.startNode, end = ng.endNode;
-					while (true) {
+					if (node === end) // Single-node NodeGroups are the common case in loops.
+						target.insertBefore(node, before);
+					else while (true) {
 						let next = node.nextSibling;
 						target.insertBefore(node, before);
 						if (node === end)
@@ -363,7 +396,7 @@ export default class PathToNodes extends Path {
 
 		/** @type {Node[]} */
 		let newNodes = [];
-		let oldNodeGroups = path.nodeGroups;
+		let oldNodeGroups = path.nodeGroups || emptyNodeGroups;
 		/*#IFDEV*/assert(!oldNodeGroups.includes(null))/*#ENDIF*/
 
 		path.nodeGroups = [];
@@ -506,10 +539,13 @@ export default class PathToNodes extends Path {
 				let src = previouslyAttached[key];
 				let from = src.head || 0; // Skip entries already consumed by deleteAny().
 				let array = detached[key];
-				if (!array)
-					detached[key] = from ? src.slice(from) : src;
+				if (!array) {
+					array = detached[key] = from ? src.slice(from) : src;
+					if (array.length > maxPooledPerKey)
+						array.length = maxPooledPerKey;
+				}
 				else
-					for (let i=from; i<src.length; i++)
+					for (let i=from, max=maxPooledPerKey + (array.head || 0); i<src.length && array.length < max; i++)
 						array.push(src[i]);
 			}
 		}
@@ -520,8 +556,9 @@ export default class PathToNodes extends Path {
 		this.nodeGroupsAttachedAvailable = new MultiValueMap();
 		let nga = this.nodeGroupsAttachedAvailable;
 		let source = this.nodeGroupsRendered?.length ? this.nodeGroupsRendered : this.nodeGroups;
-		for (let ng of source)
-			nga.add(ng.closeKey, ng);
+		if (source)
+			for (let ng of source)
+				nga.add(ng.closeKey, ng);
 
 		this.nodeGroupsRendered = null;
 	}
@@ -617,14 +654,14 @@ export default class PathToNodes extends Path {
 }
 
 
-function walkDOM(el, callback) {
-	callback(el);
-	let child = el.firstElementChild;
-	while (child) {
-		walkDOM(child, callback);
-		child = child.nextElementSibling;
-	}
-}
+// Shared empty array for paths whose nodeGroups were never created.  Never mutated.
+const emptyNodeGroups = [];
+
+// Most detached NodeGroups kept per close key.  Bounds memory growth after very large
+// lists are cleared while keeping pooled rows for every typical re-create pattern.
+// Lowering this (e.g. to 1000) cuts retained memory ~7x after clearing a 10k-row list,
+// but makes re-creating such a list ~2x slower since most rows are built fresh.
+const maxPooledPerKey = 10000;
 
 /**
  * @param text {string}

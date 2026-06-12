@@ -39,13 +39,11 @@ export default class Path {
 	 * @type {Node[]} Cached result of getNodes() */
 	nodesCache;
 
-	/**
-	 * @type {int} Index of nodeBefore among its parentNode's children. */
-	nodeBeforeIndex;
-
-	/**
-	 * @type {int[]} Path to the node marker, in reverse for performance reasons. */
-	nodeMarkerPath;
+	// Set only on Shell paths, never on cloned instances, so they're not declared as
+	// class fields; that would cost a store per field on every clone:
+	// nodeBeforeIndex {int} Index of nodeBefore among its parentNode's children.
+	// nodeMarkerPath {int[]} Path to the node marker, in reverse for performance reasons.
+	// markerSlot/beforeSlot {int} Slot indexes into the Shell's resolve program.
 
 
 	/**
@@ -107,6 +105,20 @@ export default class Path {
 			: newRoot;
 	}
 
+
+	/**
+	 * Copy this path, pointing it at already-resolved nodes.
+	 * Used by the Shell resolve-program fast path in NodeGroup.setPathsFromFragment().
+	 * @param nodeBefore {?Node}
+	 * @param nodeMarker {Node}
+	 * @return {Path} */
+	cloneWithNodes(nodeBefore, nodeMarker) {
+		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
+		result.isComponentAttrib = this.isComponentAttrib;
+		result.wholeParent = this.wholeParent;
+		result.isHtmlProperty = this.isHtmlProperty;
+		return result;
+	}
 
 	/**
 	 * @param newRoot {HTMLElement}

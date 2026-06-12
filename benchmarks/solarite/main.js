@@ -118,14 +118,16 @@ class JSFrameworkBenchmark extends Solarite {
 
 		if (runs > 1) {
 			console.log('---');
-			let avg = results.reduce((a, b) => a + b) / results.length;
+			let cold = results[0];
+			let warm = results.slice(1);
+			let warmAvg = warm.reduce((a, b) => a + b) / warm.length;
 			let best = Math.min(...results);
-			console.log(`Min: ${best}ms`);
-			console.log(`Max: ${Math.max(...results)}ms`);
-			console.log(`Avg: ${avg}ms`);
+			console.log(`Cold: ${cold}ms`);
+			console.log(`Warm avg: ${warmAvg}ms`);
+			console.log(`Best: ${best}ms`);
 
 			if (window.parent && window.parent.onBenchmarkComplete) {
-				window.parent.onBenchmarkComplete(avg, best);
+				window.parent.onBenchmarkComplete(warmAvg, best, cold);
 			}
 		} else if (Number(runs) === 1 && results.length > 0) {
 			if (window.parent && window.parent.onBenchmarkComplete) {
