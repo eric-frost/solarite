@@ -47,9 +47,6 @@ export default class Path {
 	 * @type {int[]} Path to the node marker, in reverse for performance reasons. */
 	nodeMarkerPath;
 
-	/** @type {?function} A function called by renderWatched() to update the value of this expression. */
-	watchFunction
-
 
 	/**
 	 * @param nodeBefore {Node}
@@ -78,9 +75,8 @@ export default class Path {
 	 * []                        // arguments to first my-component constructor.
 	 * [[expr5], [expr6, expr7]] // arguments to second my-component constructor.
 	 * [expr5]                   // user attribute value.
-	 * [expr6, expr7]            // role attribute value.
-	 * @param freeNodeGroups {boolean} Used only by watch. */
-	apply(exprs, freeNodeGroups=true) {}
+	 * [expr6, expr7]            // role attribute value. */
+	apply(exprs) {}
 
 	/**
 	 * Fast path used by NodeGroup.applyExprs() when every path consumes exactly one expression.
@@ -156,11 +152,6 @@ export default class Path {
 		//#ENDIF
 
 		return result;
-	}
-
-	// Only used for watch.js
-	getNodes() {
-		return [this.nodeMarker];
 	}
 
 	/** @return {int[]} Returns indices in reverse order, because doing it that way is faster. */

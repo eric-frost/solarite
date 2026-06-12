@@ -28,7 +28,6 @@ export {default as r} from './h.js';
 export function t(html) {
 	return new Template([html], []);
 }
-//export {default as watch, renderWatched} from './watch.js'; // unfinished
 
 // Only used for tests:
 //--------------

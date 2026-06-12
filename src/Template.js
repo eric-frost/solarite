@@ -1,7 +1,22 @@
 import assert from "./assert.js";
-import {getObjectHash, getObjectId} from "./hash.js";
 import Globals from "./Globals.js";
 import RootNodeGroup from "./RootNodeGroup.js";
+
+let lastObjectId = 1;
+let objectIds = new WeakMap();
+
+/**
+ * Get a short string id unique to the given object, for use as a map key.
+ * @param obj {Object}
+ * @returns {string} */
+function getObjectId(obj) {
+	let result = objectIds.get(obj);
+	if (result === undefined) {
+		result = '~@' + (lastObjectId++); // Unique 2-byte prefix so it can't collide with html-string keys.
+		objectIds.set(obj, result);
+	}
+	return result;
+}
 
 /**
  * The html strings and evaluated expressions from an html tagged template.
@@ -15,11 +30,7 @@ export default class Template {
 	/** @type {string[]} Assigned by the constructor. */
 	'html' = undefined;
 
-	/** @type {Array} Used for toJSON() and getObjectHash().  Stores values used to quickly create a string hash of this template. */
-	hashedFields;
-
 	closeKey;
-	exactKey;
 
 	isText;
 
@@ -37,9 +48,6 @@ export default class Template {
 
 		//this.trace = new Error().stack.split(/\n/g)
 
-		// Multiple templates can share the same htmlStrings array.
-		//this.hashedFields = [getObjectId(htmlStrings), exprs]
-
 		//#IFDEV
 		assert(Array.isArray(htmlStrings))
 		assert(Array.isArray(exprs))
@@ -50,16 +58,6 @@ export default class Template {
 			}
 		})
 		//#ENDIF
-	}
-
-	/**
-	 * Called by JSON.serialize when it encounters a Template.
-	 * This prevents the hashed version from being too large. */
-	toJSON() {
-		if (this.hashedFields===undefined)
-			this.hashedFields = [getObjectId(this.html), this.exprs];
-
-		return this.hashedFields
 	}
 
 	/**
@@ -91,43 +89,16 @@ export default class Template {
 		// If we didn't just create it, we need to render it.
 		if (this.html?.length === 1 && !this.html[0]) // An empty string.
 			el.innerHTML = ''; // Fast path for empty component.
-		else {
+		else
+			ng.applyExprs(this.exprs);
 
-			// The changed flag is only read by PathToComponent, so skip the expensive
-			// whole-tree hash when this NodeGroup has no component paths.
-			let changed = true;
-			if (ng.hasComponentPaths) {
-				let oldKey = ng.exactKey;
-				let newKey = this.getExactKey();
-				changed = oldKey !== newKey;
-				ng.exactKey = newKey;
-			}
-			ng.applyExprs(this.exprs, changed);
-
-			//if (firstTime)
-			//	ng.instantiateStaticComponents(ng.staticComponents);
-		}
-
-		// Reset watch.js bookkeeping, allocating only when it was actually used.
-		if (ng.exprsToRender === undefined || ng.exprsToRender.size)
-			ng.exprsToRender = new Map();
 		return el;
-	}
-
-	getExactKey() {
-		if (this.exactKey===undefined) {
-			if (this.exprs.length)
-				this.exactKey = getObjectHash(this);// calls this.toJSON().
-			else // Don't hash plain html.
-				this.exactKey = this.html[0];
-		}
-		return this.exactKey;
 	}
 
 	getCloseKey() {
 		if (this.closeKey===undefined) {
 			if (this.exprs.length)
-				this.closeKey = getObjectId(this.html); // Same value as toJSON()[0] without allocating hashedFields.
+				this.closeKey = getObjectId(this.html);
 			else
 				this.closeKey = this.html[0];
 		}
@@ -225,6 +196,71 @@ export default class Template {
 
 
 const selfClosingTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
+
+/**
+ * Do two templates produce identical content?
+ * Compares expression values by identity, so no hashing or stringification is needed.
+ * @param a {Template}
+ * @param b {Template}
+ * @return {boolean} */
+export function templatesSame(a, b) {
+	if (a.html === b.html && a.svgMode === b.svgMode) {
+		let ae = a.exprs, be = b.exprs;
+		for (let i=0; i<ae.length; i++)
+			if (!exprSame(ae[i], be[i]))
+				return false;
+		return true;
+	}
+
+	// Text and other single-string templates get a new html array each time, so compare by content.
+	if (a.isText === b.isText && !a.exprs.length && !b.exprs.length
+		&& a.html.length === 1 && b.html.length === 1 && a.svgMode === b.svgMode)
+		return a.html[0] === b.html[0];
+
+	return false;
+}
+
+/**
+ * Get a string that changes when any value inside obj changes, including deep mutations.
+ * Used by PathToComponent to compute the `changed` argument to component render() calls.
+ * Functions, Nodes, and repeated/circular objects are represented by identity ids.
+ * @param obj {*}
+ * @returns {string} */
+export function getObjectHash(obj) {
+	const seen = new Set();
+	return JSON.stringify(obj, (key, value) => {
+		if (typeof value === 'function')
+			return getObjectId(value);
+		if (typeof value === 'object' && value !== null) {
+			if (value instanceof Node)
+				return getObjectId(value);
+			if (seen.has(value))
+				return getObjectId(value);
+			seen.add(value);
+			if (value instanceof Template)
+				return {html: getObjectId(value.html), exprs: value.exprs}; // Don't hash long html strings.
+		}
+		return value;
+	});
+}
+
+/**
+ * @return {boolean} */
+export function exprSame(a, b) {
+	if (a === b)
+		return true;
+	if (Array.isArray(a)) {
+		if (!Array.isArray(b) || a.length !== b.length)
+			return false;
+		for (let i=0; i<a.length; i++)
+			if (!exprSame(a[i], b[i]))
+				return false;
+		return true;
+	}
+	if (a instanceof Template && b instanceof Template)
+		return templatesSame(a, b);
+	return false;
+}
 
 
 /**

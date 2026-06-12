@@ -9,9 +9,6 @@ import Globals from './Globals.js';
  * @property {?object} options - RenderOptions */
 export default class RootNodeGroup extends NodeGroup {
 
-	// Used only by watch.js
-	exprsToRender;
-
 	/**
 	 * Special setup for the root: graft the fragment into el (or use it standalone),
 	 * handle slot children, then resolve paths and embeds against the root.

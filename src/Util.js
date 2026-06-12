@@ -241,22 +241,6 @@ let Util = {
 		return val;
 	},
 
-	/**
-	 * Use an array as the value of a map, appending to it when we add.
-	 * Used only by watch.js.
-	 * @param map {Map|WeakMap|Object}
-	 * @param key
-	 * @param value */
-	mapArrayAdd(map, key, value) {
-		let result = map.get(key);
-		if (!result) {
-			result = [value];
-			map.set(key, result);
-		}
-		else
-			result.push(value);
-	},
-
 	saveOrphans(nodes) {
 		let fragment = Globals.doc.createDocumentFragment();
 		fragment.append(...nodes);

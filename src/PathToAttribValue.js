@@ -1,5 +1,4 @@
 import Path from "./Path.js";
-import Globals from "./Globals.js";
 import Util from "./Util.js";
 import delve, {isDelvePath} from "./delve.js";
 import assert from "./assert.js";
@@ -133,19 +132,13 @@ export default class PathToAttribValue extends Path {
 			// Have Path.clone() copy .isHtmlProperty?
 			let isProp = this.isHtmlProperty;
 
-			Globals.currentPath = this; // Used by watch()
 			if (typeof expr === 'function') {
-				if (this.isComponentAttrib) {
-					Globals.currentPath = null;
+				if (this.isComponentAttrib)
 					return;
-				}
-
-				this.watchFunction = expr; // The function that gets the expression, used for renderWatched()
 				expr = expr();
 			}
 			else
 				expr = Util.makePrimitive(expr);
-			Globals.currentPath = null;
 
 			// Values to toggle an attribute
 			if (expr === undefined || expr === false || expr === null) { // Util.isFalsy() inlined.
@@ -214,9 +207,7 @@ export default class PathToAttribValue extends Path {
 		for (let i = 0; i < values.length; i++) {
 			result.push(values[i]);
 			if (i < values.length - 1) {
-				Globals.currentPath = this; // Used by watch()
 				let val = Util.makePrimitive(exprs[i]);
-				Globals.currentPath = null;
 				if (!Util.isFalsy(val))
 					result.push(val);
 			}

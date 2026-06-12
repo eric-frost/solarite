@@ -34,9 +34,6 @@ export default class NodeGroup {
 	/** @type {?Path[]} Null for text NodeGroups; created by setPathsFromFragment(). */
 	paths = null;
 
-	/** @type {string} Key that matches the template and the expressions. */
-	exactKey;
-
 	/** @type {string} Key that only matches the template. */
 	closeKey;
 
@@ -127,10 +124,9 @@ export default class NodeGroup {
 	 * Use the paths to insert the given expressions.
 	 * Dispatches expression handling to other functions depending on the path type.
 	 * @param exprs {(*|*[]|function|Template)[]}
-	 * @param changed {boolean} If true, the expr's have changed since the last time thsi function was called.
-	 * @param includeNonComponents {boolean}
-	 * We still need to call PathToComponent.apply() even if changed=false so the user can handle the rendering. */
-	applyExprs(exprs, changed=true, includeNonComponents=true) {
+	 * @param includeNonComponents {boolean} False to only apply component paths,
+	 * used when the non-component exprs are known to be unchanged. */
+	applyExprs(exprs, includeNonComponents=true) {
 
 		/*#IFDEV*/
 		this.verify();
@@ -182,7 +178,7 @@ export default class NodeGroup {
 			// They use expressions from the paths that provide their attributes.
 			if (path instanceof PathToComponent) {
 				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
-				path.apply(attribExprs, true, changed);
+				path.apply(attribExprs);
 			}
 			else if (includeNonComponents)
 				path.apply(pathExprs[i]);

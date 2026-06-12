@@ -1,10 +1,11 @@
 ---
 title:  Solarite JS Library
+sidebar:  true
 append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="module" src="docs/js/documentation.js"></script><link rel="stylesheet" href="docs/media/documentation.css"><link rel="stylesheet" href="docs/media/eternium.css"><link rel="icon" href="docs/media/solarite-machine.webp" type="image/webp"><script async defer src="https://buttons.github.io/buttons.js"></script>
 
 ---
 
-<!-- To convert documentation to html: (1) Open in Typora.  (2) Select the GitHub theme, or go to Settings -> Export -> Html -> Theme -> Github. (3) Then go to File -> Export -> Export as html with styles to index.html. -->
+<!-- To convert documentation to html: (1) Open in Typora.  (2) Select the GitHub theme, or go to Settings -> Export -> Html -> Theme -> Github. (3) In that same Export -> Html panel, check "Read and overwrite export settings from YAML front matters" so the sidebar/append-head values above are used. (4) Then go to File -> Export -> Export as html with styles to index.html. -->
 
 <!-- Playgrounds that don't have a lowercase language name will not have a preview. -->
 
@@ -95,7 +96,7 @@ For the best development experience, use an IDE like [WebStorm](https://www.jetb
 
 ## Performance
 
-Solarite provides near-native performance by performing targeted DOM updates. Benchmarks were run on a Ryzen 7 3700X on Windows 10.
+Solarite provides near-native performance by performing targeted DOM updates. Benchmarks were run on a Ryzen 7 3700X on Kubuntu 26.04.
 
 ![js-framework-benchmark](docs/js-framework-benchmark.png)
 

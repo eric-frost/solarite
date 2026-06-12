@@ -19,34 +19,6 @@ export default class MultiValueMap {
 			array.push(value);
 	}
 
-	isEmpty() {
-		for (let key in this.data)
-			return true;
-		return false;
-	}
-
-	/**
-	 * Get all values for a key.
-	 * @param key {string}
-	 * @returns {Array} */
-	getAll(key) {
-		let array = this.data[key];
-		if (!array)
-			return [];
-		return array.head ? array.slice(array.head) : array;
-	}
-
-	/**
-	 * Remove one value from a key, and return it.
-	 * @param key {string}
-	 * @param val If specified, make sure we delete this specific value, if a key exists more than once.
-	 * @returns {*|undefined} The deleted item. */
-	delete(key, val=undefined) {
-		if (val === undefined)
-			return this.deleteAny(key);
-		return this.deleteSpecific(key, val);
-	}
-
 	/**
 	 * Remove the oldest value from a key, and return it.
 	 * @param key {string}
@@ -66,31 +38,5 @@ export default class MultiValueMap {
 			array.head = head;
 
 		return result;
-	}
-
-	deleteSpecific(key, val) {
-		let data = this.data;
-		let array = data[key];
-		if (!array)
-			return undefined;
-
-		let i = array.indexOf(val, array.head || 0);
-		if (i === -1)
-			return undefined;
-		array.splice(i, 1);
-
-		if ((array.head || 0) >= array.length)
-			delete data[key];
-
-		return val;
-	}
-
-	hasValue(val) {
-		let data = this.data;
-		let names = [];
-		for (let name in data)
-			if (data[name].includes(val))
-				names.push(name)
-		return names;
 	}
 }

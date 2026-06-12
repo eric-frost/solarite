@@ -83,7 +83,6 @@ export class Template {
     html: string[];
     constructor(htmlStrings: string[], exprs: any[]);
     render(el?: HTMLElement | null, options?: RenderOptions): HTMLElement | DocumentFragment;
-    getExactKey(): string;
     getCloseKey(): string;
     static fromJsx(tag: string, props: Record<string, any> | null, children: any[]): Template;
 }
@@ -94,7 +93,6 @@ export function delve(obj: object, path: string[], createVal?: any): any;
  * Internal utilities and state. */
 export const Globals: {
     connected: WeakSet<HTMLElement>;
-    currentPath: any;
     currentSlotChildren: any[] | null;
     div: HTMLDivElement;
     doc: Document;

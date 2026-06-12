@@ -8,7 +8,6 @@ import h, {toEl, Solarite, Template, Globals, SolariteUtil, svg,
 //import h, {toEl, Solarite, Template, Globals, SolariteUtil,
 // HtmlParser, NodeGroup, Shell} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 
-import {watch, renderWatched} from "../src/watch.js";
 
 
 // This function is used by the various tests.
@@ -1551,10 +1550,7 @@ Testimony.test('Solarite.loop.nested4', () => {
 Testimony.test('Solarite.loop.nested5', () => {
 
 	// This test was originally created by reducing a failure in production code
-	// to the simplest version.
-	// The problem was that NodeGroupManager.findAndDeleteClose() was trying to
-	// delete the old exactKey, but it didn't exist because it had already been assigned.
-	// Commenting out the assert() fixed the problem.
+	// to the simplest version, a NodeGroup-reuse bookkeeping bug in nested loops.
 
 	// v could also be a function to trigger this same test.
 	// Since functions are new on each render().
@@ -1681,7 +1677,6 @@ Testimony.test('Solarite.loop.conditionalNested', () => {
 	a.remove();
 });
 
-//import {hashReset} from "../src/hash.js";
 
 Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
 	Globals.reset();
@@ -3714,12 +3709,57 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 
 	bRenderCount = 0
 	a.render();
-	assert.eq(bRenderCount, 1) // It still re-renders because exactKey doesn't do deep comparison of objects.
+	assert.eq(bRenderCount, 1) // render() is still called even when the changed flag is false.
 
 	a.title = 'Users2'
 	a.render();
 	assert.eq(getHtml(a), `<a-540>Users2<b-540 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-540></a-540>`)
-	assert.eq(bRenderCount, 2) // It still re-renders because exactKey doesn't do deep comparison of objects.
+	assert.eq(bRenderCount, 2) // render() is still called even when the changed flag is false.
+
+	a.remove();
+});
+
+Testimony.test('Solarite.component.changedFlag', `The changed argument to render() detects deep mutations.`, () => {
+	let lastChanged;
+
+	class B545 extends HTMLElement {
+		render(attribs=null, changed=true) {
+			lastChanged = changed;
+			h(this)`<div>${attribs?.user?.name}</div>`
+		}
+	}
+	customElements.define('b-545', B545);
+
+	class A545 extends HTMLElement {
+		user = {name: 'John'};
+		render() {
+			h(this)`<a-545><b-545 user=${this.user}></b-545></a-545>`
+		}
+	}
+	customElements.define('a-545', A545);
+
+	let a = new A545();
+	a.render();
+	document.body.append(a);
+	assert.eq(lastChanged, true); // First render.
+
+	a.render();
+	assert.eq(lastChanged, false); // Nothing changed.
+
+	a.user.name = 'Fred'; // Deep mutation of the same object.
+	a.render();
+	assert.eq(lastChanged, true);
+
+	a.render();
+	assert.eq(lastChanged, false);
+
+	a.user = {name: 'Fred'}; // New object with identical content hashes the same.
+	a.render();
+	assert.eq(lastChanged, false);
+
+	a.user = {name: 'Barry'};
+	a.render();
+	assert.eq(lastChanged, true);
 
 	a.remove();
 });
@@ -4574,492 +4614,6 @@ Testimony.test('Solarite.jsx.arrayChildren', () => {
 
 //endregion
 
-
-
-
-//region watch
-/*┌─────────────────╮
-  | Watch           |
-  └─────────────────╯*/
-Testimony.test('Solarite.watch.primitive', () => {
-
-	class W10 extends HTMLElement {
-
-		constructor() {
-			super();
-			watch(this, 'name', 'Fred');
-			this.render();
-		}
-
-		render() {
-			h(this)`<w-10>${() => this.name + '!'}</w-10>`;
-		}
-	}
-	customElements.define('w-10', W10);
-
-	let a = new W10();
-	document.body.append(a);
-	assert.eq(getHtml(a), `<w-10>Fred!</w-10>`);
-
-	a.name = 'Jim';
-	let modified = renderWatched(a, true);
-	assert.eq(modified.length, 1);
-	assert.eq(getHtml(a), `<w-10>Jim!</w-10>`);
-
-	let ng = Globals.rootNodeGroups.get(a);
-
-	// Make sure that render() clears the nodegroups to render.
-	a.name = 'Bob';
-	a.render();
-	assert.eq(ng.exprsToRender.size, 0);
-
-	a.remove();
-});
-
-Testimony.test('Solarite.watch.primitive2', `One primitive variable used twice.`, () => {
-
-	class W20 extends Solarite {
-		constructor() {
-			super();
-			this.name = 'Fred';
-			watch(this, 'name');
-			this.render();
-		}
-
-		render() {
-			h(this)`<w-20>${() => this.name + '.'}<br>${() => this.name + '!'}</w-20>`;
-		}
-	}
-
-	let a = new W20();
-	document.body.append(a);
-	assert.eq(getHtml(a), `<w-20>Fred.<br>Fred!</w-20>`);
-
-	a.name = 'Jim';
-	let modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-20>Jim.<br>Jim!</w-20>`);
-	assert.eq(2, modified.length);
-	assert.neq(modified[0], modified[1]);
-
-	a.remove();
-});
-
-Testimony.test('Solarite.watch.attrib', () => {
-
-	class W23 extends Solarite {
-		constructor() {
-			super();
-			watch(this, 'name', 'Fred');
-		}
-
-		render() {
-			h(this)`<w-23><p title=${() => this.name + '!'}></p></w-23>`;
-		}
-	}
-
-	let a = new W23();
-	document.body.append(a);
-	assert.eq(getHtml(a), `<w-23><p title="Fred!"></p></w-23>`);
-
-	a.name = 'Jim';
-	let modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-23><p title="Jim!"></p></w-23>`);
-	assert.eq(modified.length, 1);
-
-	let ng = Globals.rootNodeGroups.get(a);
-
-	// Make sure that render() clears the nodegroups to render.
-	a.name = 'Bob';
-	a.render();
-	assert.eq(ng.exprsToRender.size, 0);
-
-	a.remove();
-});
-
-Testimony.test('Solarite.watch.mutliAttrib', () => {
-
-	class W24 extends Solarite {
-		constructor() {
-			super();
-			watch(this, 'name', 'Fred');
-		}
-
-		render() {
-			h(this)`<w-24><p ${() => `title=${this.name}!`}></p></w-24>`;
-		}
-	}
-
-	let a = new W24();
-	document.body.append(a);
-	assert.eq(getHtml(a), `<w-24><p title="Fred!"></p></w-24>`);
-
-	a.name = 'Jim';
-	let modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-24><p title="Jim!"></p></w-24>`);
-	assert.eq(modified.length, 1);
-
-	let ng = Globals.rootNodeGroups.get(a);
-
-	// Make sure that render() clears the nodegroups to render.
-	a.name = 'Bob';
-	a.render();
-	assert.eq(ng.exprsToRender.size, 0);
-
-	a.remove();
-});
-
-Testimony.test('Solarite.watch._componentAttrib', () => {
-
-	// TODO: This fails b/c we disabled evaluating functions before passing them to component constructors.
-	// Because otherwise we can't pass functions as constructor args to components.
-	// And the functions get evaluated before they should be.
-
-	class W25 extends Solarite {
-		constructor() {
-			super();
-			watch(this, 'name', 'Fred');
-		}
-
-		render() {
-			h(this)`<w-25 title=${() => this.name + '!'}></w-25>`;
-		}
-	}
-
-	let a = new W25();
-	document.body.append(a);
-	assert.eq(getHtml(a), `<w-25 title="Fred!"></w-25>`);
-
-	a.name = 'Jim';
-	let modified = renderWatched(a, true);
-	assert.eq(modified.length, 1);
-	assert.eq(getHtml(a), `<w-25 title="Jim!"></w-25>`);
-
-	let ng = Globals.rootNodeGroups.get(a);
-
-	// Make sure that render() clears the nodegroups to render.
-	a.name = 'Bob';
-	a.render();
-	assert.eq(ng.exprsToRender.size, 0);
-
-	a.remove();
-});
-
-Testimony.test('Solarite.watch.object', () => {
-
-	class W30 extends HTMLElement {
-
-		user = {name: 'Fred'}
-
-		constructor() {
-			super();
-			watch(this, 'user');
-			this.render();
-		}
-
-		render() {
-			h(this)`<w-30>${() => this.user.name + '!'}</w-30>`;
-		}
-	}
-	customElements.define('w-30', W30);
-
-	let a = new W30();
-	document.body.append(a);
-	assert.eq(getHtml(a), `<w-30>Fred!</w-30>`);
-
-	a.user.name = 'Jim';
-	let modified = renderWatched(a, true);
-	//console.log(modified);
-	assert.eq(getHtml(a), `<w-30>Jim!</w-30>`);
-
-	a.user = {name: 'Bob'};
-	modified = renderWatched(a, true);
-	//console.log(modified);
-	//assert.eq(modified, a.children[1]);
-	assert.eq(getHtml(a), `<w-30>Bob!</w-30>`);
-
-	a.remove();
-});
-
-Testimony.test('Solarite.watch.arrayOfObject', () => {
-
-	class W40 extends HTMLElement {
-
-		users = [{name: 'Fred'}]
-
-		constructor() {
-			super();
-			watch(this, 'users');
-			this.render();
-		}
-
-		render() {
-			h(this)`<w-40>${() => this.users[0].name + '!'}</w-40>`;
-		}
-	}
-	customElements.define('w-40', W40);
-
-	let a = new W40();
-	document.body.append(a);
-	assert.eq(getHtml(a), `<w-40>Fred!</w-40>`);
-
-	a.users[0] = {name: 'Bob'};
-	let modified = renderWatched(a, true);
-	//console.log(modified);
-	//assert.eq(modified, a.children[1]);
-	assert.eq(getHtml(a), `<w-40>Bob!</w-40>`);
-
-	a.remove();
-});
-
-Testimony.test('Solarite.watch.loopAssign', `replace array elements`, () => {
-
-	class W50 extends HTMLElement {
-
-		items = ['apple', 'banana', 'cherry'];
-
-		constructor() {
-			super();
-			watch(this, 'items');
-			this.render();
-		}
-
-		render() {
-			h(this)`<w-50>${this.items.map(item => h`<div>${item}</div>`)}</w-50>`;
-		}
-	}
-	customElements.define('w-50', W50);
-
-	let a = new W50();
-	document.body.append(a);
-
-	a.items[1] = 'banana2';
-	let modified = renderWatched(a, true);
-	//console.log(modified);
-	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana2</div><div>cherry</div></w-50>`);
-
-	a.items[1] = 'banana3';
-	modified = renderWatched(a, true);
-	//console.log(modified);
-	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry</div></w-50>`);
-
-	a.items[2] = 'cherry2';
-	modified = renderWatched(a, true);
-	//console.log(modified);
-	assert.eq(getHtml(a), `<w-50><div>apple</div><div>banana3</div><div>cherry2</div></w-50>`);
-
-
-	a.items[0] = 'apple3';
-	a.items[2] = 'cherry3';
-	modified = renderWatched(a, true);
-	//console.log(modified);
-	assert.eq(getHtml(a), `<w-50><div>apple3</div><div>banana3</div><div>cherry3</div></w-50>`);
-	//assert.eq(modified, [a.children[0], a.children[2]]);
-
-
-	// Test replacing the whole loop.
-	a.items = ['apple4', 'banana4', 'cherry4'];
-	modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-50><div>apple4</div><div>banana4</div><div>cherry4</div></w-50>`);
-	//assert.eq(modified, [a.children[0], a.children[1], a.children[2]]);
-
-	a.remove();
-});
-
-Testimony.test('Solarite.watch.loopSwap', `swap array elements`, () => {
-
-	class W52 extends HTMLElement {
-
-		items = ['apple', 'banana', 'cherry', 'dragonfruit', 'elderberry'];
-
-		constructor() {
-			super();
-			watch(this, 'items');
-			this.render();
-		}
-
-		render() {
-			h(this)`<w-52>${this.items.map(item => h`<p>${item}</p>`)}</w-52>`;
-		}
-	}
-	customElements.define('w-52', W52);
-
-	let a = new W52();
-	document.body.append(a);
-
-	let apple = a.childNodes[1];
-	let banana = a.childNodes[2];
-	let cherry = a.childNodes[3];
-	let dragonfruit = a.childNodes[4];
-
-	let appleText = apple.childNodes[1];
-	let bananaText = banana.childNodes[1];
-	let cherryText = cherry.childNodes[1];
-	let dragonfruitText = dragonfruit.childNodes[1];
-
-	// Swap
-	let temp = a.items[1];
-	a.items[1] = a.items[3];
-	a.items[3] = temp;
-
-	let modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-52><p>apple</p><p>dragonfruit</p><p>cherry</p><p>banana</p><p>elderberry</p></w-52>`);
-	//assert.eq([...modified], [banana, dragonfruit]);
-
-	// Make sure we moved instead of recreating the text nodes.
-	// assert.eq(apple.childNodes[1], appleText);
-	// assert.eq(banana.childNodes[1], dragonfruitText);
-	// assert.eq(cherry.childNodes[1], cherryText);
-	// assert.eq(dragonfruit.childNodes[1], bananaText);
-
-	// Swap back
-	temp = a.items[1];
-	a.items[1] = a.items[3];
-	a.items[3] = temp;
-
-	modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-52><p>apple</p><p>banana</p><p>cherry</p><p>dragonfruit</p><p>elderberry</p></w-52>`);
-	//assert.eq([...modified].map(el => getHtml(el)), [`<p>banana</p>`, `<p>dragonfruit</p>`]);
-
-	a.remove();
-});
-
-Testimony.test('Solarite.watch.loopObjAssign', `update array elements and their properties`, () => {
-
-	class W55 extends HTMLElement {
-
-		items = [
-			{name: 'apple', qty: 1},
-			{name: 'banana', qty: 2}
-		];
-
-		constructor() {
-			super();
-			watch(this, 'items');
-			this.render();
-		}
-
-		render() { // TODO: It'd be really nice if there was a way to not need ()=> for lazy evaluation.
-			h(this)`<w-55>${this.items.map(item => h`<div>${()=>item.name}|${()=>item.qty}</div>`)}</w-55>`;
-		}
-	}
-	customElements.define('w-55', W55);
-
-	let a = new W55();
-	document.body.append(a);
-
-
-	a.items[0].qty = 3;
-	let modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-55><div>apple|3</div><div>banana|2</div></w-55>`);
-	assert.eq([...modified].map(n=>n.textContent), ['3']);
-
-
-	a.items[0] = {name: 'cherry', qty: 3}
-	modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-55><div>cherry|3</div><div>banana|2</div></w-55>`);
-	assert.eq([...modified].map(getHtml), [`<div>cherry|3</div>`]);
-
-	a.remove();
-});
-
-Testimony.test('Solarite.watch.loopPushPop', () => {
-
-	class W60 extends HTMLElement {
-
-		items = ['apple', 'banana'];
-
-		constructor() {
-			super();
-			watch(this, 'items');
-			this.render();
-		}
-
-		render() {
-			h(this)`<w-60>${this.items.map(item => h`<div>${item}</div>`)}</w-60>`;
-		}
-	}
-	customElements.define('w-60', W60);
-
-	let a = new W60();
-	document.body.append(a);
-
-	a.items.push('cherry');
-	let modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-60><div>apple</div><div>banana</div><div>cherry</div></w-60>`);
-	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
-	assert.eq(modified, [a.children[2]]);
-
-	let item = a.items.pop();
-	modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-60><div>apple</div><div>banana</div></w-60>`);
-	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
-	assert.eq(item, 'cherry');
-
-	item = a.items.pop();
-	modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-60><div>apple</div></w-60>`);
-	assert.eq(modified.map(el=>getHtml(el)), [`<div>banana</div>`]);
-	assert.eq(item, 'banana');
-
-	item = a.items.pop();
-	modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-60></w-60>`);
-	assert.eq(modified.map(el=>getHtml(el)), [`<div>apple</div>`]);
-	assert.eq(item, 'apple');
-
-	// Test pop on empty array.
-	item = a.items.pop();
-	modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-60></w-60>`);
-	assert.eq(modified.map(el=>getHtml(el)), []);
-	assert.eq(item, undefined);
-	assert.eq(a.items.length, 0);
-
-	// Push multipe items on empty array.
-	a.items.push('apple2', 'banana2', 'cherry2');
-	modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-60><div>apple2</div><div>banana2</div><div>cherry2</div></w-60>`);
-	assert.eq(modified.map(el=>getHtml(el)), [`<div>apple2</div>`, `<div>banana2</div>`, `<div>cherry2</div>`]);
-	assert.eq(a.items, ['apple2', 'banana2', 'cherry2']);
-
-	a.remove();
-});
-
-Testimony.test('Solarite.watch.loopDeepPushPop', () => {
-
-	class W70 extends HTMLElement {
-
-		props = {items: ['apple', 'banana']};
-
-		constructor() {
-			super();
-			watch(this, 'props');
-			this.render();
-		}
-
-		render() {
-			h(this)`<w-70>${this.props.items.map(item => h`<div>${item}</div>`)}</w-70>`;
-		}
-	}
-	customElements.define('w-70', W70);
-
-	let a = new W70();
-	document.body.append(a);
-
-	a.props.items.push('cherry');
-	let modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-70><div>apple</div><div>banana</div><div>cherry</div></w-70>`);
-	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
-	assert.eq(modified, [a.children[2]]);
-
-	let item = a.props.items.pop();
-	assert.eq(item, 'cherry');
-	modified = renderWatched(a, true);
-	assert.eq(getHtml(a), `<w-70><div>apple</div><div>banana</div></w-70>`);
-	assert.eq(modified.map(el=>getHtml(el)), [`<div>cherry</div>`]);
-
-	a.remove();
-});
 
 
 

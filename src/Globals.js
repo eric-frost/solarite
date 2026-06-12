@@ -11,12 +11,6 @@ function reset() {
 		connected: new WeakSet(),
 
 		/**
-		 * Path.applyExactNodes() sets this property when an expression is being accessed.
-		 * watch() then adds the Path to the list of Paths that should be re-rendered when the value changes.
-		 * @type {Path}*/
-		currentPath: null,
-
-		/**
 		 * Set by NodeGroup.instantiateComponent()
 		 * Used by RootNodeGroup.getSlotChildren(). */
 		currentSlotChildren: null,
@@ -52,13 +46,6 @@ function reset() {
 		 * Map from array of Html strings to the Shells created from them, one per parse mode.
 		 * @type {WeakMap<string[], {html?:Shell, svg?:Shell}>} */
 		shells: new WeakMap(),
-
-		/**
-		 * A map of individual untagged strings to their Templates.
-		 * This way we don't keep creating new Templates for the same string when re-rendering.
-		 * This is used by Path.applyExactNodes()
-		 * @type {Record<string, Template>} */
-		//stringTemplates: {},
 
 		reset
 	};

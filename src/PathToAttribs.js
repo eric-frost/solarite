@@ -1,6 +1,5 @@
 import Path from "./Path.js";
 import Util from "./Util.js";
-import Globals from "./Globals.js";
 import assert from "./assert.js";
 
 export default class PathToAttribs extends Path {
@@ -19,9 +18,8 @@ export default class PathToAttribs extends Path {
 	}
 
 	/**
-	 * @param exprs {Expr[][]} Only the first is used.
-	 * @param freeNodeGroups {boolean} Used only for watch. */
-	apply(exprs, freeNodeGroups) {
+	 * @param exprs {Expr[][]} Only the first is used. */
+	apply(exprs) {
 		//#IFDEV
 		assert(Array.isArray(exprs));
 		//#ENDIF
@@ -40,12 +38,8 @@ export default class PathToAttribs extends Path {
 		let oldNames = this.attrNames;
 		this.attrNames = new Set();
 		if (expr) {
-			if (typeof expr === 'function') {
-				Globals.currentPath = this; // Used by watch()
-				this.watchFunction = expr; // used by renderWatched()
+			if (typeof expr === 'function')
 				expr = expr();
-				Globals.currentPath = null;
-			}
 
 			// Attribute as name: value object.
 			if (typeof expr === 'object') {

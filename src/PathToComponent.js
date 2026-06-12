@@ -4,11 +4,15 @@ import delve, {isDelvePath} from "./delve.js";
 import assert from "./assert.js";
 import PathToAttribValue from "./PathToAttribValue.js";
 import Globals from "./Globals.js";
+import {getObjectHash} from "./Template.js";
 
 export default class PathToComponent extends Path {
 
 	/** @type {PathToAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
+
+	/** @type {string} Hash of the exprs from the previous apply(), used to detect changes. */
+	appliedExprsHash;
 
 	constructor(nodeBefore, nodeMarker) {
 		super(null, nodeMarker);
@@ -19,10 +23,8 @@ export default class PathToComponent extends Path {
 	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet.
 	 * @param exprs {Expr[][]} Expressions to evaluate for each attribute to pass to the constructor.
 	 * This is different than other Path.apply() functions which only receive Expr[] and not Expr[][].
-	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute.
-	 * @param freeNodeGroups {boolean} Used only by watch.js.
-	 * @param changed {boolean} True if the exprs have changed since the last time render() was called.*/
-	apply(exprs, freeNodeGroups=true, changed=true) {
+	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute. */
+	apply(exprs) {
 		//#IFDEV
 		assert(Array.isArray(exprs));
 		assert(!exprs.length || Array.isArray(exprs[0]));
@@ -31,6 +33,11 @@ export default class PathToComponent extends Path {
 		//#IFDEV
 		assert(exprs.length === this.attribPaths.length);
 		//#ENDIF
+
+		// Deep comparison via hashing, so mutating a field on the same object counts as changed.
+		let newHash = getObjectHash(exprs);
+		let changed = newHash !== this.appliedExprsHash;
+		this.appliedExprsHash = newHash;
 
 		let el = this.nodeMarker;
 
@@ -121,7 +128,7 @@ export default class PathToComponent extends Path {
 			// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
 			// Because that path renders it without the attribute expressions.
 			if (typeof newEl.render === 'function' && !Globals.rendered.has(newEl))
-				newEl.render(attribs, changed);
+				newEl.render(attribs, true);
 
 			// 2g. Update attribute paths to use the new element and re-apply them.
 			for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
@@ -171,19 +178,4 @@ export default class PathToComponent extends Path {
 	}
 
 	//#ENDIF
-}
-
-
-// TODO: Conver this to an iterator, to make it faster?
-// Especially since it's only used on the first render?
-function getNodes(startNode, endNode) {
-	let result = [];
-	let current = startNode
-	let afterLast = endNode?.nextSibling
-	while (current && current !== afterLast) {
-		result.push(current)
-		current = current.nextSibling
-	}
-
-	return result;
 }

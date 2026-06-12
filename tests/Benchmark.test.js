@@ -1,13 +1,3 @@
-/*import {
-	hashObject,
-	hashObject64,
-	memoize,
-	memoize2,
-	memoize4
-} from "../src/unused/Hashes.js";
-import {getObjectHash} from '../src/hash.js'
-
-*/
 import Testimony from "./Testimony.js";
 
 //import {h, Solarite} from "../src/Solarite.js";
@@ -251,75 +241,6 @@ Testimony.test('Benchmark.solarite._partialUpdate',  `Update ${rowCount.toLocale
 
 });
 
-/*
-
-Testimony.test('Benchmark._memoize',  () => {
-	let data = buildData(100_000)
-	let start = performance.now();
-	JSON.stringify(memoize(data));
-	console.log(performance.now() - start)
-});
-
-
-
-Testimony.test('Benchmark._hashObject',  () => {
-	let data = buildData(100_000)
-	let start = performance.now();
-	let result = hashObject(data);
-	console.log(performance.now() - start)
-
-	console.log(result.toLocaleString())
-});
-
-
-
-
-Testimony.test('Benchmark._hashObject64',  () => {
-	let data = buildData(100_000)
-	let start = performance.now();
-	let result = hashObject64(data);
-	console.log('hashObject64:' + (performance.now() - start))
-
-	console.log(result.toLocaleString())
-});
-
-
-Testimony.test('Benchmark._memoize2',  () => {
-	let data = buildData(100_000)
-	let start = performance.now();
-	memoize2(data);
-	console.log('memoize2: ' + (performance.now() - start))
-	//console.log(data)
-});
-
-
-Testimony.test('Benchmark._memoize4',  () => {
-	let data = buildData(100_000)
-	let start = performance.now();
-	memoize4(data);
-	console.log('memoize4: ' + (performance.now() - start))
-	//console.log(data)
-});
-
-
-
-Testimony.test('Benchmark._JSONstringify',  () => {
-	let data = buildData(100_000)
-	let start = performance.now();
-	JSON.stringify(data)
-	console.log('JSONstringify: ' + (performance.now() - start))
-	//console.log(data)
-});
-
-
-Testimony.test('Benchmark._getObjectHash',  () => {
-	let data = buildData(100_000)
-	let start = performance.now();
-	getObjectHash(data)
-	console.log('getObjectHash: ' + (performance.now() - start))
-	//console.log(data)
-});
-*/
 
 function runIframeBenchmark(runs) {
 	return async (context) => {
