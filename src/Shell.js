@@ -51,6 +51,15 @@ export default class Shell {
 	/** @type {int} Index of the key=${} expression, or -1 when the template isn't keyed. */
 	keyIndex = -1;
 
+	/** @type {boolean} True when the fragment holds exactly one root element and the resolve
+	 * program exists.  NodeGroups then clone that element directly, skipping a throwaway
+	 * DocumentFragment wrapper per clone.  See setPathsFromFragment(). */
+	singleRoot = false;
+
+	/** @type {boolean} True when NodeGroups can be created via NodeGroup.applyStamp()
+	 * with no per-instance Path objects.  See the stampPaths setup in the constructor. */
+	stampable = false;
+
 	/**
 	 * Create the nodes but without filling in the expressions.
 	 * This is useful because the expression-less nodes created by a template can be cached.
@@ -331,6 +340,39 @@ export default class Shell {
 				this.pathsSingleExpr = false; // Keep scanning for components.
 		}
 
+		// Stampable shells create NodeGroups without allocating any Path objects:
+		// NodeGroup.applyStamp() writes expressions through these shared stamper paths,
+		// and real paths are materialized only if a NodeGroup is later rewritten in place.
+		// Child-node paths must be wholeParent so their bare-text state can be recovered.
+		if (this.singleRoot && this.pathsSingleExpr) {
+			let nodesIdx = [];
+			let ok = true;
+			for (let i=0; i<this.paths.length; i++) {
+				let path = this.paths[i];
+				if (path instanceof PathToNodes) {
+					if (!path.wholeParent) {
+						ok = false;
+						break;
+					}
+					nodesIdx.push(i);
+				}
+				else if (!(path instanceof PathToAttribValue || path instanceof PathToKey)) {
+					ok = false; // Base Paths from commented-out expressions, etc.
+					break;
+				}
+			}
+			if (ok) {
+				this.stampable = true;
+
+				/** @type {int[]} Indexes of PathToNodes paths, checked for primitive exprs before stamping. */
+				this.nodesPathIdx = nodesIdx;
+
+				/** @type {Path[]} One shared stamper per path; nodeMarker/parentNg are set per use. */
+				this.stampPaths = this.paths.map(p => p.cloneWithNodes(null, p.nodeMarker));
+
+			}
+		}
+
 		/*#IFDEV*/this.verify();/*#ENDIF*/
 	}
 
@@ -448,6 +490,13 @@ export default class Shell {
 
 		/** @type {Node[]} Reusable scratch array for resolved nodes; safe because resolution never re-enters. */
 		this.resolveSlots = new Array(nextSlot);
+
+		// A lone root element means slot 1 is always that element (the first op pair is [0, 0]),
+		// so a NodeGroup can clone the element directly and seed slot 1 with it.
+		// Embeds are excluded because their paths are fragment-relative.
+		if (!this.hasEmbeds && frag.childNodes.length === 1 && frag.firstChild.nodeType === 1
+			&& ops.length >= 2 && ops[0] === 0 && ops[1] === 0)
+			this.singleRoot = true;
 	}
 
 	/**

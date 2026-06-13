@@ -896,6 +896,16 @@ class PathToAttribValue extends Path {
 		if (typeof func !== 'function')
 			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
 
+		// With the eventDelegation render option, bubbling events skip addEventListener
+		// entirely; one document-level dispatcher per event type finds bindings by walking
+		// up from the event target.  Capture bindings and non-bubbling events stay direct.
+		let delegate = false;
+		if (capture === false) {
+			let opt = this.parentNg.rootNg.options?.eventDelegation;
+			if (opt !== undefined && opt !== false && delegatableEvents.has(eventName))
+				delegate = opt === true || opt.includes(eventName);
+		}
+
 		// One stable EventBinding object per node+key is registered with addEventListener
 		// and dispatches to the current func/args.  This way, assigning a new function
 		// (e.g. a fresh arrow function on each render) never needs add/removeEventListener.
@@ -903,7 +913,7 @@ class PathToAttribValue extends Path {
 		let nodeEvents = node[eventBindingsKey];
 		if (nodeEvents === undefined) {
 			let b = node[eventBindingsKey] = new EventBinding(root, node, key, func, funcAndArgs);
-			node.addEventListener(eventName, b, capture);
+			registerBinding(b, node, eventName, capture, delegate);
 			return;
 		}
 
@@ -921,7 +931,7 @@ class PathToAttribValue extends Path {
 				let map = node[eventBindingsKey] = {};
 				map[nodeEvents.key] = nodeEvents;
 				binding = map[key] = new EventBinding(root, node, key, func, funcAndArgs);
-				node.addEventListener(eventName, binding, capture);
+				registerBinding(binding, node, eventName, capture, delegate);
 				return;
 			}
 		}
@@ -929,7 +939,7 @@ class PathToAttribValue extends Path {
 			binding = nodeEvents[key];
 			if (!binding) {
 				binding = nodeEvents[key] = new EventBinding(root, node, key, func, funcAndArgs);
-				node.addEventListener(eventName, binding, capture);
+				registerBinding(binding, node, eventName, capture, delegate);
 				return;
 			}
 		}
@@ -940,6 +950,52 @@ class PathToAttribValue extends Path {
 }
 
 const eventBindingsKey = Symbol('solariteEvents');
+
+/**
+ * Attach a new EventBinding either directly or through the shared delegated dispatcher. */
+function registerBinding(binding, node, eventName, capture, delegate) {
+	if (delegate) {
+		binding.delegated = true;
+		if (!delegatedListeners.has(eventName)) {
+			delegatedListeners.add(eventName);
+			node.ownerDocument.addEventListener(eventName, delegatedDispatcher);
+		}
+	}
+	else
+		node.addEventListener(eventName, binding, capture);
+}
+
+// Bubbling events that one document-level listener can dispatch.  Same set Solid.js delegates.
+const delegatableEvents = new Set(['beforeinput', 'click', 'contextmenu', 'dblclick', 'focusin', 'focusout',
+	'input', 'keydown', 'keyup', 'mousedown', 'mousemove', 'mouseout', 'mouseover', 'mouseup',
+	'pointerdown', 'pointermove', 'pointerout', 'pointerover', 'pointerup', 'touchend', 'touchmove', 'touchstart']);
+
+// Event names that already have a document-level dispatcher registered.
+const delegatedListeners = new Set();
+
+/**
+ * The one document-level listener for each delegated event type.  Walks from the event
+ * target upward, invoking delegated EventBindings stored on the nodes along the way.
+ * event.currentTarget is patched to the node whose binding is running, and restored after.
+ * stopPropagation() inside a handler ends the walk, mirroring native bubbling. */
+function delegatedDispatcher(ev) {
+	let type = ev.type;
+	let current = ev.target;
+	Object.defineProperty(ev, 'currentTarget', {configurable: true, get() { return current }});
+	while (current) {
+		let b = current[eventBindingsKey];
+		if (b !== undefined) {
+			let binding = b instanceof EventBinding ? b : b[type];
+			if (binding !== undefined && binding.delegated === true && binding.key === type) {
+				binding.handleEvent(ev);
+				if (ev.cancelBubble)
+					break;
+			}
+		}
+		current = current.parentNode;
+	}
+	delete ev.currentTarget; // Restore the native getter from the prototype.
+}
 
 class EventBinding {
 	constructor(root, node, key, func=null, args=null) {
@@ -1426,7 +1482,19 @@ class PathToNodes extends Path {
 
 				// Create a bare text node in an empty path, with no Template or NodeGroup wrapper.
 				let node;
-				if (this.wholeParent) { // One native call; the browser creates the text node.
+				if (this.wholeParent) {
+					// A NodeGroup re-applied through a shared stamper (NodeGroup.applyStamp/rewriteStamp)
+					// can already hold a lone text child; update it in place.  Node identity is
+					// unchanged then, so no caches need invalidation.
+					let fc = this.nodeMarker.firstChild;
+					if (fc !== null && fc.nodeType === 3 && fc === this.nodeMarker.lastChild) {
+						if (fc.nodeValue !== expr)
+							fc.nodeValue = expr;
+						this.textNode = fc;
+						this.textValue = expr;
+						return;
+					}
+					// One native call; the browser creates the text node.
 					this.nodeMarker.textContent = expr;
 					node = this.nodeMarker.firstChild;
 				}
@@ -1855,11 +1923,15 @@ class PathToNodes extends Path {
 			// When every path consumes exactly one expression, paths align 1:1 with exprs,
 			// so only the expressions that changed need to be applied.
 			if (ng.pathsSingleExpr) {
-				let oldExprs = ng.template.exprs, newExprs = item.exprs;
-				let paths = ng.paths;
-				for (let i = paths.length - 1; i >= 0; i--)
-					if (!exprSame(oldExprs[i], newExprs[i]))
-						paths[i].applySingle(newExprs[i]);
+				// Stamped groups (paths === null) rewrite through the shared stampers and stay
+				// path-less, unless a child-node expression stopped being primitive.
+				if (ng.paths !== null || !ng.rewriteStamp(item)) {
+					let oldExprs = ng.template.exprs, newExprs = item.exprs;
+					let paths = ng.paths ?? ng.materializePaths();
+					for (let i = paths.length - 1; i >= 0; i--)
+						if (!exprSame(oldExprs[i], newExprs[i]))
+							paths[i].applySingle(newExprs[i]);
+				}
 
 				if (ng.styles)
 					ng.updateStyles();
@@ -1887,8 +1959,9 @@ class PathToNodes extends Path {
 		if (pool) {
 			ng = pool.deleteAny(item.getCloseKey());
 			if (ng) {
-				ng.applyExprs(item.exprs);
-				ng.template = item;
+				// rewriteNodeGroup compares expressions and writes only what changed,
+				// keeping stamped groups path-less.  It also assigns ng.template.
+				this.rewriteNodeGroup(ng, item);
 				return ng;
 			}
 		}
@@ -2489,6 +2562,15 @@ class Shell {
 	/** @type {int} Index of the key=${} expression, or -1 when the template isn't keyed. */
 	keyIndex = -1;
 
+	/** @type {boolean} True when the fragment holds exactly one root element and the resolve
+	 * program exists.  NodeGroups then clone that element directly, skipping a throwaway
+	 * DocumentFragment wrapper per clone.  See setPathsFromFragment(). */
+	singleRoot = false;
+
+	/** @type {boolean} True when NodeGroups can be created via NodeGroup.applyStamp()
+	 * with no per-instance Path objects.  See the stampPaths setup in the constructor. */
+	stampable = false;
+
 	/**
 	 * Create the nodes but without filling in the expressions.
 	 * This is useful because the expression-less nodes created by a template can be cached.
@@ -2767,6 +2849,39 @@ class Shell {
 				this.pathsSingleExpr = false; // Keep scanning for components.
 		}
 
+		// Stampable shells create NodeGroups without allocating any Path objects:
+		// NodeGroup.applyStamp() writes expressions through these shared stamper paths,
+		// and real paths are materialized only if a NodeGroup is later rewritten in place.
+		// Child-node paths must be wholeParent so their bare-text state can be recovered.
+		if (this.singleRoot && this.pathsSingleExpr) {
+			let nodesIdx = [];
+			let ok = true;
+			for (let i=0; i<this.paths.length; i++) {
+				let path = this.paths[i];
+				if (path instanceof PathToNodes) {
+					if (!path.wholeParent) {
+						ok = false;
+						break;
+					}
+					nodesIdx.push(i);
+				}
+				else if (!(path instanceof PathToAttribValue || path instanceof PathToKey)) {
+					ok = false; // Base Paths from commented-out expressions, etc.
+					break;
+				}
+			}
+			if (ok) {
+				this.stampable = true;
+
+				/** @type {int[]} Indexes of PathToNodes paths, checked for primitive exprs before stamping. */
+				this.nodesPathIdx = nodesIdx;
+
+				/** @type {Path[]} One shared stamper per path; nodeMarker/parentNg are set per use. */
+				this.stampPaths = this.paths.map(p => p.cloneWithNodes(null, p.nodeMarker));
+
+			}
+		}
+
 		
 	}
 
@@ -2884,6 +2999,13 @@ class Shell {
 
 		/** @type {Node[]} Reusable scratch array for resolved nodes; safe because resolution never re-enters. */
 		this.resolveSlots = new Array(nextSlot);
+
+		// A lone root element means slot 1 is always that element (the first op pair is [0, 0]),
+		// so a NodeGroup can clone the element directly and seed slot 1 with it.
+		// Embeds are excluded because their paths are fragment-relative.
+		if (!this.hasEmbeds && frag.childNodes.length === 1 && frag.firstChild.nodeType === 1
+			&& ops.length >= 2 && ops[0] === 0 && ops[1] === 0)
+			this.singleRoot = true;
 	}
 
 	/**
@@ -3033,18 +3155,32 @@ class NodeGroup {
 
 			// The shell caches the close key so each new template doesn't repeat the WeakMap lookup.
 			this.closeKey = shell.closeKey ??= template.getCloseKey();
-			const shellFragment = shell.fragment.cloneNode(true);
 
 			this.hasComponentPaths = shell.hasComponentPaths;
 			this.pathsSingleExpr = shell.pathsSingleExpr;
 
-			if (shellFragment.nodeType === 11) { // DocumentFragment
-				this.startNode = shellFragment.firstChild;
-				this.endNode = shellFragment.lastChild;
-			} else
-				this.startNode = this.endNode = shellFragment;
+			// A lone root element is cloned directly, skipping a throwaway fragment wrapper.
+			// Only for child NodeGroups; RootNodeGroup's grafting expects a fragment.
+			if (shell.singleRoot && parentPath !== null) {
+				const clone = shell.fragment.firstChild.cloneNode(true);
+				this.startNode = this.endNode = clone;
 
-			this.instantiate(shell, shellFragment, el, options);
+				// Stampable shells skip path creation entirely; the first applyExprs() routes
+				// to applyStamp(), and paths are materialized only if the group is rewritten.
+				if (shell.stampable !== true)
+					this.setPathsFromFragment(clone, shell, 0, true);
+			}
+			else {
+				const shellFragment = shell.fragment.cloneNode(true);
+
+				if (shellFragment.nodeType === 11) { // DocumentFragment
+					this.startNode = shellFragment.firstChild;
+					this.endNode = shellFragment.lastChild;
+				} else
+					this.startNode = this.endNode = shellFragment;
+
+				this.instantiate(shell, shellFragment, el, options);
+			}
 		}
 
 		
@@ -3082,6 +3218,10 @@ class NodeGroup {
 		// so skip the bookkeeping that maps expressions to paths.
 		if (this.pathsSingleExpr) {
 			if (includeNonComponents) {
+				if (paths === null) { // Created from a stampable shell; no paths yet.
+					this.applyStamp(exprs);
+					return;
+				}
 				for (let i = paths.length - 1; i >= 0; i--)
 					paths[i].applySingle(exprs[i]);
 
@@ -3147,9 +3287,140 @@ class NodeGroup {
 		
 	}
 
-	// TODO: Give it a better name.
-	applyExprs2(exprs) {
+	/**
+	 * Write expressions into a freshly stamped (or pooled path-less) NodeGroup through the
+	 * shell's shared stamper paths, allocating no per-instance Path objects.
+	 * Child-node expressions must be primitives (one text write each); anything else
+	 * falls back to materializing real paths and applying normally.
+	 * @param exprs {Expr[]} */
+	applyStamp(exprs) {
+		let template = this.template;
+		let shell = Shell.get(template.html, template.svgMode);
 
+		// 1. Bail to real paths when any child-node expression isn't a primitive.
+		let nodesIdx = shell.nodesPathIdx;
+		for (let i=0; i<nodesIdx.length; i++) {
+			let t = typeof exprs[nodesIdx[i]];
+			if (t !== 'string' && t !== 'number') {
+				let paths = this.materializePaths(shell);
+				for (let i = paths.length - 1; i >= 0; i--)
+					paths[i].applySingle(exprs[i]);
+				this.nodesCache = null;
+				this.firstApply = false;
+				return;
+			}
+		}
+
+		// 2. Resolve target nodes, then write each expression through the shared stampers.
+		let slots = this.resolveStampSlots(shell);
+		let paths = shell.paths, stampers = shell.stampPaths;
+		for (let i = paths.length - 1; i >= 0; i--) {
+			let stamper = stampers[i];
+			stamper.nodeMarker = slots[paths[i].markerSlot];
+			stamper.parentNg = this;
+			stamper.applySingle(exprs[i]);
+		}
+
+		// 3. Clear per-row state the child-node stampers accumulated, so they're clean for the next row.
+		for (let i=0; i<nodesIdx.length; i++) {
+			let s = stampers[nodesIdx[i]];
+			s.textNode = null;
+			s.textValue = null;
+			s.nodesCache = null;
+		}
+
+		this.nodesCache = null;
+		this.firstApply = false;
+	}
+
+	/**
+	 * In-place rewrite of a stamped (path-less) NodeGroup through the shared stampers,
+	 * comparing expressions and writing only the changed ones.  The group stays path-less.
+	 * @param template {Template} The new template; the caller assigns it to this.template.
+	 * @return {boolean} False when a child-node expression isn't primitive; the caller
+	 * must then materialize paths and apply normally. */
+	rewriteStamp(template) {
+		let shell = Shell.get(template.html, template.svgMode);
+		let newExprs = template.exprs;
+		let nodesIdx = shell.nodesPathIdx;
+		for (let i=0; i<nodesIdx.length; i++) {
+			let t = typeof newExprs[nodesIdx[i]];
+			if (t !== 'string' && t !== 'number')
+				return false;
+		}
+
+		let oldExprs = this.template.exprs;
+		let paths = shell.paths, stampers = shell.stampPaths;
+		let slots = null; // Nodes are resolved only if something actually changed.
+		for (let i = paths.length - 1; i >= 0; i--) {
+			if (!exprSame(oldExprs[i], newExprs[i])) {
+				if (slots === null)
+					slots = this.resolveStampSlots(shell);
+				let stamper = stampers[i];
+				stamper.nodeMarker = slots[paths[i].markerSlot];
+				stamper.parentNg = this;
+				stamper.applySingle(newExprs[i]);
+			}
+		}
+
+		if (slots !== null)
+			for (let i=0; i<nodesIdx.length; i++) {
+				let s = stampers[nodesIdx[i]];
+				s.textNode = null;
+				s.textValue = null;
+				s.nodesCache = null;
+			}
+		return true;
+	}
+
+	/**
+	 * Run the shell's resolve program from this NodeGroup's root element.
+	 * Only valid for singleRoot shells, whose ops always start with the root's own pair.
+	 * @param shell {Shell}
+	 * @return {Node[]} The shell's shared scratch slots array. */
+	resolveStampSlots(shell) {
+		let slots = shell.resolveSlots;
+		slots[1] = this.startNode;
+		let ops = shell.resolveOps;
+		// firstChild/nextSibling pointer walk; see setPathsFromFragment for why not childNodes[i].
+		for (let i=2, s=2; i<ops.length; i+=2, s++) {
+			let node = slots[ops[i]].firstChild;
+			for (let k=ops[i+1]; k>0; k--)
+				node = node.nextSibling;
+			slots[s] = node;
+		}
+		return slots;
+	}
+
+	/**
+	 * Create the real Path objects for a NodeGroup that was created by applyStamp().
+	 * Called lazily, the first time the group is rewritten in place.
+	 * Recovers the bare-text state of child-node paths that stamped a primitive.
+	 * @param shell {?Shell}
+	 * @return {Path[]} */
+	materializePaths(shell=null) {
+		shell ??= Shell.get(this.template.html, this.template.svgMode);
+		let slots = this.resolveStampSlots(shell);
+		let paths = shell.paths;
+		let pathLength = paths.length;
+		let result = this.paths = new Array(pathLength);
+		for (let i=0; i<pathLength; i++) {
+			let p = paths[i];
+			let path = p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot]);
+			path.parentNg = this;
+			result[i] = path;
+		}
+
+		// A wholeParent child-node path that stamped a primitive left exactly one Text child.
+		for (let idx of shell.nodesPathIdx) {
+			let path = result[idx];
+			let tn = path.nodeMarker.firstChild;
+			if (tn !== null && tn.nodeType === 3 && tn === path.nodeMarker.lastChild) {
+				path.textNode = tn;
+				path.textValue = tn.nodeValue;
+			}
+		}
+		return result;
 	}
 
 	/**
@@ -3192,8 +3463,10 @@ class NodeGroup {
 	 * Copy paths in fragment to this.paths.
 	 * @param fragment {DocumentFragment|HTMLElement}
 	 * @param shell {Shell}
-	 * @param startingPathDepth {int} */
-	setPathsFromFragment(fragment, shell, startingPathDepth=0) {
+	 * @param startingPathDepth {int}
+	 * @param isRootClone {boolean} True when fragment is a direct clone of a singleRoot
+	 * shell's root element: it fills slot 1 itself and the first op pair is skipped. */
+	setPathsFromFragment(fragment, shell, startingPathDepth=0, isRootClone=false) {
 		let paths = shell.paths;
 		let pathLength = paths.length; // For faster iteration
 		let result = this.paths = new Array(pathLength);
@@ -3209,9 +3482,23 @@ class NodeGroup {
 		let ops = shell.resolveOps;
 		if (ops && startingPathDepth === 0) {
 			let slots = shell.resolveSlots;
-			slots[0] = fragment;
-			for (let i=0, s=1; i<ops.length; i+=2, s++)
-				slots[s] = slots[ops[i]].childNodes[ops[i+1]];
+			let i = 0, s = 1;
+			if (isRootClone) { // Slot 1 is the root element itself; skip its op pair.
+				slots[1] = fragment;
+				i = 2;
+				s = 2;
+			}
+			else
+				slots[0] = fragment;
+			// Resolve each node via firstChild/nextSibling pointer walks instead of
+			// childNodes[index]; the live NodeList indexing is markedly slower, and indices
+			// are small (markers are elements, often the first child after whitespace stripping).
+			for (; i<ops.length; i+=2, s++) {
+				let node = slots[ops[i]].firstChild;
+				for (let k=ops[i+1]; k>0; k--)
+					node = node.nextSibling;
+				slots[s] = node;
+			}
 			for (let i=0; i<pathLength; i++) {
 				let p = paths[i];
 				let path = p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot]);

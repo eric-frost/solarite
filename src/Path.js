@@ -204,8 +204,9 @@ export default class Path {
 		// Need either nodeMarker or parentNode
 		assert(this.nodeMarker)
 
-		// nodeMarker must be attached.
-		assert(!this.nodeMarker || this.nodeMarker.parentNode || this.wholeParent)
+		// nodeMarker must be attached, unless it's an element that is itself the top of a
+		// singleRoot shell clone (no fragment wrapper exists above it).
+		assert(!this.nodeMarker || this.nodeMarker.parentNode || this.wholeParent || this.nodeMarker.nodeType === 1)
 
 		assert(this.nodeBefore !== this.nodeMarker)
 

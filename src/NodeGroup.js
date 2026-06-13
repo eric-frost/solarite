@@ -1,5 +1,6 @@
 import assert from "./assert.js";
 import Util, {flattenAndIndent, nodeToArrayTree, setIndent} from "./Util.js";
+import {exprSame} from "./Template.js";
 import Shell from "./Shell.js";
 import Path from "./Path.js";
 import Globals from './Globals.js';
@@ -93,18 +94,32 @@ export default class NodeGroup {
 
 			// The shell caches the close key so each new template doesn't repeat the WeakMap lookup.
 			this.closeKey = shell.closeKey ??= template.getCloseKey();
-			const shellFragment = shell.fragment.cloneNode(true);
 
 			this.hasComponentPaths = shell.hasComponentPaths;
 			this.pathsSingleExpr = shell.pathsSingleExpr;
 
-			if (shellFragment.nodeType === 11) { // DocumentFragment
-				this.startNode = shellFragment.firstChild;
-				this.endNode = shellFragment.lastChild;
-			} else
-				this.startNode = this.endNode = shellFragment;
+			// A lone root element is cloned directly, skipping a throwaway fragment wrapper.
+			// Only for child NodeGroups; RootNodeGroup's grafting expects a fragment.
+			if (shell.singleRoot && parentPath !== null) {
+				const clone = shell.fragment.firstChild.cloneNode(true);
+				this.startNode = this.endNode = clone;
 
-			this.instantiate(shell, shellFragment, el, options);
+				// Stampable shells skip path creation entirely; the first applyExprs() routes
+				// to applyStamp(), and paths are materialized only if the group is rewritten.
+				if (shell.stampable !== true)
+					this.setPathsFromFragment(clone, shell, 0, true);
+			}
+			else {
+				const shellFragment = shell.fragment.cloneNode(true);
+
+				if (shellFragment.nodeType === 11) { // DocumentFragment
+					this.startNode = shellFragment.firstChild;
+					this.endNode = shellFragment.lastChild;
+				} else
+					this.startNode = this.endNode = shellFragment;
+
+				this.instantiate(shell, shellFragment, el, options);
+			}
 		}
 
 		//#IFDEV
@@ -146,6 +161,10 @@ export default class NodeGroup {
 		// so skip the bookkeeping that maps expressions to paths.
 		if (this.pathsSingleExpr) {
 			if (includeNonComponents) {
+				if (paths === null) { // Created from a stampable shell; no paths yet.
+					this.applyStamp(exprs);
+					return;
+				}
 				for (let i = paths.length - 1; i >= 0; i--)
 					paths[i].applySingle(exprs[i]);
 
@@ -215,9 +234,140 @@ export default class NodeGroup {
 		/*#ENDIF*/
 	}
 
-	// TODO: Give it a better name.
-	applyExprs2(exprs) {
+	/**
+	 * Write expressions into a freshly stamped (or pooled path-less) NodeGroup through the
+	 * shell's shared stamper paths, allocating no per-instance Path objects.
+	 * Child-node expressions must be primitives (one text write each); anything else
+	 * falls back to materializing real paths and applying normally.
+	 * @param exprs {Expr[]} */
+	applyStamp(exprs) {
+		let template = this.template;
+		let shell = Shell.get(template.html, template.svgMode);
 
+		// 1. Bail to real paths when any child-node expression isn't a primitive.
+		let nodesIdx = shell.nodesPathIdx;
+		for (let i=0; i<nodesIdx.length; i++) {
+			let t = typeof exprs[nodesIdx[i]];
+			if (t !== 'string' && t !== 'number') {
+				let paths = this.materializePaths(shell);
+				for (let i = paths.length - 1; i >= 0; i--)
+					paths[i].applySingle(exprs[i]);
+				this.nodesCache = null;
+				this.firstApply = false;
+				return;
+			}
+		}
+
+		// 2. Resolve target nodes, then write each expression through the shared stampers.
+		let slots = this.resolveStampSlots(shell);
+		let paths = shell.paths, stampers = shell.stampPaths;
+		for (let i = paths.length - 1; i >= 0; i--) {
+			let stamper = stampers[i];
+			stamper.nodeMarker = slots[paths[i].markerSlot];
+			stamper.parentNg = this;
+			stamper.applySingle(exprs[i]);
+		}
+
+		// 3. Clear per-row state the child-node stampers accumulated, so they're clean for the next row.
+		for (let i=0; i<nodesIdx.length; i++) {
+			let s = stampers[nodesIdx[i]];
+			s.textNode = null;
+			s.textValue = null;
+			s.nodesCache = null;
+		}
+
+		this.nodesCache = null;
+		this.firstApply = false;
+	}
+
+	/**
+	 * In-place rewrite of a stamped (path-less) NodeGroup through the shared stampers,
+	 * comparing expressions and writing only the changed ones.  The group stays path-less.
+	 * @param template {Template} The new template; the caller assigns it to this.template.
+	 * @return {boolean} False when a child-node expression isn't primitive; the caller
+	 * must then materialize paths and apply normally. */
+	rewriteStamp(template) {
+		let shell = Shell.get(template.html, template.svgMode);
+		let newExprs = template.exprs;
+		let nodesIdx = shell.nodesPathIdx;
+		for (let i=0; i<nodesIdx.length; i++) {
+			let t = typeof newExprs[nodesIdx[i]];
+			if (t !== 'string' && t !== 'number')
+				return false;
+		}
+
+		let oldExprs = this.template.exprs;
+		let paths = shell.paths, stampers = shell.stampPaths;
+		let slots = null; // Nodes are resolved only if something actually changed.
+		for (let i = paths.length - 1; i >= 0; i--) {
+			if (!exprSame(oldExprs[i], newExprs[i])) {
+				if (slots === null)
+					slots = this.resolveStampSlots(shell);
+				let stamper = stampers[i];
+				stamper.nodeMarker = slots[paths[i].markerSlot];
+				stamper.parentNg = this;
+				stamper.applySingle(newExprs[i]);
+			}
+		}
+
+		if (slots !== null)
+			for (let i=0; i<nodesIdx.length; i++) {
+				let s = stampers[nodesIdx[i]];
+				s.textNode = null;
+				s.textValue = null;
+				s.nodesCache = null;
+			}
+		return true;
+	}
+
+	/**
+	 * Run the shell's resolve program from this NodeGroup's root element.
+	 * Only valid for singleRoot shells, whose ops always start with the root's own pair.
+	 * @param shell {Shell}
+	 * @return {Node[]} The shell's shared scratch slots array. */
+	resolveStampSlots(shell) {
+		let slots = shell.resolveSlots;
+		slots[1] = this.startNode;
+		let ops = shell.resolveOps;
+		// firstChild/nextSibling pointer walk; see setPathsFromFragment for why not childNodes[i].
+		for (let i=2, s=2; i<ops.length; i+=2, s++) {
+			let node = slots[ops[i]].firstChild;
+			for (let k=ops[i+1]; k>0; k--)
+				node = node.nextSibling;
+			slots[s] = node;
+		}
+		return slots;
+	}
+
+	/**
+	 * Create the real Path objects for a NodeGroup that was created by applyStamp().
+	 * Called lazily, the first time the group is rewritten in place.
+	 * Recovers the bare-text state of child-node paths that stamped a primitive.
+	 * @param shell {?Shell}
+	 * @return {Path[]} */
+	materializePaths(shell=null) {
+		shell ??= Shell.get(this.template.html, this.template.svgMode);
+		let slots = this.resolveStampSlots(shell);
+		let paths = shell.paths;
+		let pathLength = paths.length;
+		let result = this.paths = new Array(pathLength);
+		for (let i=0; i<pathLength; i++) {
+			let p = paths[i];
+			let path = p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot]);
+			path.parentNg = this;
+			result[i] = path;
+		}
+
+		// A wholeParent child-node path that stamped a primitive left exactly one Text child.
+		for (let idx of shell.nodesPathIdx) {
+			let path = result[idx];
+			let tn = path.nodeMarker.firstChild;
+			if (tn !== null && tn.nodeType === 3 && tn === path.nodeMarker.lastChild) {
+				path.textNode = tn;
+				path.textValue = tn.nodeValue;
+			}
+		}
+		return result;
 	}
 
 	/**
@@ -260,8 +410,10 @@ export default class NodeGroup {
 	 * Copy paths in fragment to this.paths.
 	 * @param fragment {DocumentFragment|HTMLElement}
 	 * @param shell {Shell}
-	 * @param startingPathDepth {int} */
-	setPathsFromFragment(fragment, shell, startingPathDepth=0) {
+	 * @param startingPathDepth {int}
+	 * @param isRootClone {boolean} True when fragment is a direct clone of a singleRoot
+	 * shell's root element: it fills slot 1 itself and the first op pair is skipped. */
+	setPathsFromFragment(fragment, shell, startingPathDepth=0, isRootClone=false) {
 		let paths = shell.paths;
 		let pathLength = paths.length; // For faster iteration
 		let result = this.paths = new Array(pathLength);
@@ -277,9 +429,23 @@ export default class NodeGroup {
 		let ops = shell.resolveOps;
 		if (ops && startingPathDepth === 0) {
 			let slots = shell.resolveSlots;
-			slots[0] = fragment;
-			for (let i=0, s=1; i<ops.length; i+=2, s++)
-				slots[s] = slots[ops[i]].childNodes[ops[i+1]];
+			let i = 0, s = 1;
+			if (isRootClone) { // Slot 1 is the root element itself; skip its op pair.
+				slots[1] = fragment;
+				i = 2;
+				s = 2;
+			}
+			else
+				slots[0] = fragment;
+			// Resolve each node via firstChild/nextSibling pointer walks instead of
+			// childNodes[index]; the live NodeList indexing is markedly slower, and indices
+			// are small (markers are elements, often the first child after whitespace stripping).
+			for (; i<ops.length; i+=2, s++) {
+				let node = slots[ops[i]].firstChild;
+				for (let k=ops[i+1]; k>0; k--)
+					node = node.nextSibling;
+				slots[s] = node;
+			}
 			for (let i=0; i<pathLength; i++) {
 				let p = paths[i];
 				let path = p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot]);

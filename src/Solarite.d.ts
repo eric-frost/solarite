@@ -9,6 +9,14 @@ export interface RenderOptions {
     scripts?: boolean;
     ids?: boolean;
     render?: boolean;
+
+    /** True to dispatch bubbling events (click, input, etc.) from one document-level
+     * listener instead of addEventListener per element - much faster creation and teardown
+     * of large lists.  An array delegates only the listed event names.  Non-bubbling events
+     * always bind directly.  Note: delegated handlers run when the event reaches the
+     * document, so manual stopPropagation() on an ancestor suppresses them, and manually
+     * added ancestor listeners fire first. */
+    eventDelegation?: boolean | string[];
 }
 
 /**

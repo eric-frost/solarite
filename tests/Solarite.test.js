@@ -2145,6 +2145,250 @@ Testimony.test('Solarite.keyed.toUnkeyed', `Switching a list from keyed to unkey
 
 
 
+/*┌─────────────────╮
+  | Stamp           |
+  └─────────────────╯*/
+//region stamp
+// "Stamping" is the allocation-free creation fast path (see Shell.stampable and
+// NodeGroup.applyStamp).  Qualifying templates (one root element, no components, every
+// path one expression) create NodeGroups with NO per-instance Path objects: expressions
+// are written through shared per-shell "stamper" paths, and in-place rewrites compare
+// and write through them too (NodeGroup.rewriteStamp).  Real Path objects are
+// materialized lazily, only when a child expression stops being a primitive
+// (NodeGroup.materializePaths).  These tests pin the transitions between those states.
+
+Testimony.test('Solarite.stamp.primitiveToTemplate', `A stamped row's child expr can become a Template.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = items => h(el)`${items.map(i => h`<p class=${'c' + i.id}><span>${i.content}</span></p>`)}`;
+
+	let items = [{id: 1, content: 'plain'}];
+	render(items);
+	assert.eq(getHtml(el), '<div><p class="c1"><span>plain</span></p></div>');
+
+	items[0].content = h`<b>bold</b>`;
+	render(items);
+	assert.eq(getHtml(el), '<div><p class="c1"><span><b>bold</b></span></p></div>');
+
+	items[0].content = 'back';
+	render(items);
+	assert.eq(getHtml(el), '<div><p class="c1"><span>back</span></p></div>');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.stamp.templateAtCreate', `Rows created with Template child exprs (stamp bail) render and rewrite.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = items => h(el)`${items.map(i => h`<p class=${'c' + i.id}><span>${i.content}</span></p>`)}`;
+
+	let items = [{id: 1, content: h`<i>it</i>`}, {id: 2, content: 'txt'}];
+	render(items);
+	assert.eq(getHtml(el), '<div><p class="c1"><span><i>it</i></span></p><p class="c2"><span>txt</span></p></div>');
+
+	items[0].content = 'now plain';
+	items[1].content = h`<u>u</u>`;
+	render(items);
+	assert.eq(getHtml(el), '<div><p class="c1"><span>now plain</span></p><p class="c2"><span><u>u</u></span></p></div>');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.stamp.poolReuse', `Cleared stamped rows reused from the pool render correctly.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = items => h(el)`${items.map(i => h`<p title=${i.t}>${i.x}</p>`)}`;
+
+	render([{t: 'a', x: 1}, {t: 'b', x: 2}]);
+	let a = el.children[0];
+	render([]);
+	assert.eq(getHtml(el), '<div></div>');
+
+	render([{t: 'c', x: 3}, {t: 'd', x: 4}]);
+	assert.eq(getHtml(el), '<div><p title="c">3</p><p title="d">4</p></div>');
+	assert.eq(el.children[0], a); // Non-keyed pool reuses the same node.
+
+	el.remove();
+});
+
+Testimony.test('Solarite.stamp.keyedRewrite', `Stamped keyed rows rewrite in place without losing node state.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = rows => h(el)`${rows.map(r => h`<div key=${r.id} class=${r.cls}><input placeholder=${r.label}></div>`)}`;
+
+	let rows = [{id: 1, cls: 'x', label: 'a'}, {id: 2, cls: 'y', label: 'b'}];
+	render(rows);
+	let input = el.children[0].querySelector('input');
+	input.value = 'typed';
+
+	rows[0].cls = 'x2';
+	rows[0].label = 'a2';
+	render(rows);
+	assert.eq(el.children[0].className, 'x2');
+	assert.eq(input.placeholder, 'a2');
+	assert.eq(input.value, 'typed');
+	assert.eq(el.children[0].querySelector('input'), input);
+
+	el.remove();
+});
+
+//endregion
+
+
+
+
+/*┌─────────────────╮
+  | Delegation      |
+  └─────────────────╯*/
+//region delegation
+// Tests for the eventDelegation render option: bubbling events dispatch from one
+// document-level listener per event type instead of addEventListener per element.
+// See the delegatedDispatcher in PathToAttribValue.js.
+
+Testimony.test('Solarite.delegation.click', `eventDelegation option dispatches through one document listener.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let count = 0, gotEl = null, gotThis = null;
+	h(el, {eventDelegation: true})`<button onclick=${function(e, btn) { count++; gotEl = btn; gotThis = this; }}>hi</button>`;
+
+	let btn = el.firstChild;
+	btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(count, 1);
+	assert.eq(gotEl, btn);
+	assert.eq(gotThis, el);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.args', `Array-form handlers receive args through delegation.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let got = null;
+	let rows = ['a', 'b'];
+	h(el, {eventDelegation: true})`${rows.map(r => h`<p onclick=${[(arg, e, p) => got = [arg, p], r]}>${r}</p>`)}`;
+
+	el.children[1].dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(got[0], 'b');
+	assert.eq(got[1], el.children[1]);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.currentTarget', `currentTarget is the bound element, not the document.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let got = null;
+	h(el, {eventDelegation: true})`<div onclick=${e => got = e.currentTarget}><span>inner</span></div>`;
+
+	let span = el.querySelector('span');
+	span.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(got, el.firstChild);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.bubbling', `Inner and outer delegated handlers both fire, inner first; stopPropagation halts.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let order = [];
+	let stop = false;
+	h(el, {eventDelegation: true})`
+		<div onclick=${() => order.push('outer')}>
+			<button onclick=${e => { order.push('inner'); if (stop) e.stopPropagation(); }}>hi</button>
+		</div>`;
+
+	let btn = el.querySelector('button');
+	btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(order.join(','), 'inner,outer');
+
+	order = [];
+	stop = true;
+	btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(order.join(','), 'inner');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.rebind', `Re-renders swap the handler without double-firing.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let counts = [0, 0];
+	let render = which => h(el, {eventDelegation: true})`<button onclick=${() => counts[which]++}>hi</button>`;
+
+	render(0);
+	let btn = el.firstChild;
+	btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(counts.join(','), '1,0');
+
+	render(1);
+	btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(counts.join(','), '1,1');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.array', `An event-name array delegates only the listed events; others bind directly.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let clicks = 0, inputs = 0;
+	h(el, {eventDelegation: ['click']})`<input onclick=${() => clicks++} oninput=${() => inputs++}>`;
+
+	let input = el.firstChild;
+	input.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	input.dispatchEvent(new Event('input', {bubbles: true}));
+	assert.eq(clicks, 1);
+	assert.eq(inputs, 1);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.nonBubbling', `Non-bubbling events still work with the option on.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let scrolls = 0;
+	h(el, {eventDelegation: true})`<div style="overflow:auto; height: 10px;" onscroll=${() => scrolls++}><div style="height: 100px;"></div></div>`;
+
+	el.firstChild.dispatchEvent(new Event('scroll')); // scroll doesn't bubble.
+	assert.eq(scrolls, 1);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.keyedMove', `Delegated handlers follow keyed rows when they move.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let got = null;
+	let render = rows => h(el, {eventDelegation: true})`${rows.map(r =>
+		h`<p key=${r.id} onclick=${[id => got = id, r.id]}>${r.label}</p>`)}`;
+
+	let rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}];
+	render(rows);
+	rows.reverse();
+	render(rows);
+
+	el.children[0].dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(got, 2);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.off', `Without the option, no delegated dispatch happens for direct bindings.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let count = 0;
+	h(el)`<button onclick=${() => count++}>hi</button>`;
+
+	el.firstChild.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(count, 1); // Fires exactly once via the direct listener.
+
+	el.remove();
+});
+
+//endregion
+
+
+
+
 //region embed
 /*┌─────────────────╮
   | Embed           |
@@ -5336,4 +5580,4 @@ Testimony.test('Solarite.full._misc', () => {
 });
 
 
-//</editor-fold desc="full">
+//endregion

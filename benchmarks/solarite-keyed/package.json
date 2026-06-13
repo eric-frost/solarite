@@ -4,7 +4,8 @@
   "description": "Solarite demo",
   "main": "index.js",
   "js-framework-benchmark": {
-    "frameworkVersion": "0.5.0",
+    "frameworkVersion": "0.6.0",
+    "language": "JavaScript",
     "frameworkHomeURL": "https://vorticode.github.io/solarite"
   },
   "scripts": {

@@ -68,7 +68,13 @@ const terserOptions = {
 				'callee',
 				'constructor',
 				'handleEvent', // Looked up by name by addEventListener(name, object).
-				'memo' // Public API: h.memo(), accessed by name in user code.
+				'memo', // Public API: h.memo(), accessed by name in user code.
+				// RenderOptions properties come from user-code object literals:
+				'eventDelegation',
+				'ids',
+				'scripts',
+				'styles',
+				'render'
 			],
 			undeclared: true
 		}

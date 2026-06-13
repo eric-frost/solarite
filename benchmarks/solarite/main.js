@@ -190,7 +190,7 @@ class JSFrameworkBenchmark extends Solarite {
 	}
 
 	render() {
-		let options = {ids: false, scripts: false, styles: false};
+		let options = {ids: false, scripts: false, styles: false, eventDelegation: true};
 		h(this, options)`
 		<div class="container">
 			<div class="jumbotron">

@@ -11,7 +11,7 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite
 
-Solarite is a small (9KB min+gzip), fast, compilation-free JavaScript library for enhancing web components with minimal DOM updates on re-render.
+Solarite is a small (13KB min+gzip), fast, compilation-free JavaScript library for enhancing web components with minimal DOM updates on re-render.
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -46,7 +46,7 @@ class ShoppingList extends Solarite { // Solarite extends HTMLElement
 
             ${this.items.map(item => h`
                 <div>  <!-- 2-way binding -->
-                    <input placeholder="Item"value=${[item, 'name']}
+                    <input placeholder="Item" value=${[item, 'name']}
                         oninput=${this.render}>
                     <input type="number" value=${[item, 'qty']}
                         oninput=${this.render}>
@@ -69,6 +69,7 @@ document.body.append(new ShoppingList()); // add <shopping-list> and call render
 - **Minimal Rendering:**  Only changed DOM elements are updated.
 - **Simple State Management**:  No signals and no special state setup required. Use regular JavaScript variables and data structures of arbitrary depth.
 - **Two-Way Binding**:  Built-in shorthand for connecting data to form elements.
+- **Keyed Lists**:  An optional `key` attribute makes DOM nodes follow their data when lists reorder.
 - **Scoped CSS**:  Native styles that apply only to your component while still inheriting parent styles--without Shadow DOM.
 - **Automatic Element References**:  Elements with `id` or `data-id` automatically become class properties.
 
@@ -82,7 +83,7 @@ document.body.append(new ShoppingList()); // add <shopping-list> and call render
 
 Import the module directly from a CDN:
 
-- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) (9KB minified+gzipped)
+- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) (13KB minified+gzipped)
 
 Or install via NPM:
 
@@ -100,7 +101,7 @@ Solarite provides near-native performance by performing targeted DOM updates. Be
 
 ![js-framework-benchmark](docs/js-framework-benchmark.png)
 
-Note that the JS Framework Benchmark separates keyed and non-keyed frameworks.  Solarite is non-keyed according to the criteria of this benchmark but in this chart it's placed next to keyed frameworks since otherwise we can't compare it with the most popular frameworks.
+Note that the JS Framework Benchmark separates keyed and non-keyed frameworks.  Solarite renders non-keyed by default and becomes keyed when list items use the `key` attribute (see [Keyed Lists](#keyed-lists)), passing the benchmark's keyedness checks.  The chart places it next to the most popular frameworks, which are all keyed.
 
 ## Core Concepts
 
@@ -121,7 +122,7 @@ class MyComponent extends Solarite {
 	render() {
         // This is how we'd create a web component using vanilla JavaScript
         // without Solarite.  But this recreates all children on every render!
-        //this.innerHTML = `Hello <b>${this.name}!<b>`;
+        //this.innerHTML = `Hello <b>${this.name}!</b>`;
 
         // Using Solarite's h() function performs minimal updates on render.
 		h(this)`<my-component>Hello <b>${this.name}!</b></my-component>`
@@ -145,11 +146,11 @@ We can alternatively instantiate the element directly from html:
 <my-component></my-component>
 ```
 
-Note that we call `.define()` to register the `<my-component>` tag name with the browser.  Internally, this calls the Broser's `customElements.define()` function.  Browsers can only use web components that have been defined.
+Note that we call `.define()` to register the `<my-component>` tag name with the browser.  Internally, this calls the browser's `customElements.define()` function.  Browsers can only use web components that have been defined.
 
-However, if you don't call `.define()` and create an instance of your element via `new`  it will be defined automatically using the ClassName converted to kebob-case as the tag name.  However this will NOT work if the first encounter with the element is when it's instantiated from html via its tag name.
+However, if you don't call `.define()` and create an instance of your element via `new`  it will be defined automatically using the ClassName converted to kebab-case as the tag name.  However this will NOT work if the first encounter with the element is when it's instantiated from html via its tag name.
 
-Since these are just regular web components, they can define the [connectedCallback()](https://developer.salesforce.com/docs/platform/lwc/guide/create-lifecycle-hooks-dom.html#connectedcallback) and [disconnectedCallback()](https://developer.salesforce.com/docs/platform/lwc/guide/create-lifecycle-hooks-dom.html#disconnectedcallback) methods that will be called when they're added and removed from the DOM, respectively.
+Since these are just regular web components, they can define the [connectedCallback() and disconnectedCallback()](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements#custom_element_lifecycle_callbacks) methods that will be called when they're added and removed from the DOM, respectively.
 
 ### Rendering
 
@@ -179,10 +180,10 @@ class MyComponent extends Solarite {
 	name = 'Solarite';
 	render() { 
 		// With optional element tags:
-		// h(this)`<my-component class="big">Hello <b>${this.name}!<b></my-component>`
+		// h(this)`<my-component class="big">Hello <b>${this.name}!</b></my-component>`
 
 		// Without optional element tags:
-		h(this)`Hello <b>${this.name}!<b>`;
+		h(this)`Hello <b>${this.name}!</b>`;
         this.setAttribute('class', 'big');
 	}
 }
@@ -257,7 +258,7 @@ let button = toEl({
 document.body.append(button);
 ```
 
-These types of objects can be returned by in expressions with `h` tagged template literals:
+These types of values can be used in expressions within `h` tagged template literals:
 
 1. strings and numbers.
 2. boolean true, which will be rendered as 'true'
@@ -391,6 +392,29 @@ document.body.append(new EventDemo());
 Event binding with an array containing a function and its arguments is slightly faster, since the function isn't recreated when `render()` is called, and it doesn't need to be unbound and rebound.  But the performance difference is usually negligible.
 
 Make sure to put your events inside `${...}` expressions, because classic events can't reference variables in the current scope.
+
+#### Event Delegation
+
+For components that render many event handlers, like a data grid with buttons on every row, pass `eventDelegation: true` as a render option:
+
+```javascript
+render() {
+	h(this, {eventDelegation: true})`
+	<log-viewer>
+		${this.rows.map(row => h`
+			<div key=${row.id}>
+				${row.text}
+				<button onclick=${[this.deleteRow, row]}>x</button>
+			</div>`)}
+	</log-viewer>`
+}
+```
+
+Your templates don't change at all.  Internally, instead of calling `addEventListener` on every element, Solarite listens once per event type at the document level and finds handlers by walking up from the event target.  Creating 10,000 rows with two handlers each then costs zero listener registrations, which makes large lists noticeably faster to create and clear, especially on phones.
+
+Only events that bubble are delegated (click, input, keydown, and the like); focus, blur, scroll and other non-bubbling events automatically keep regular listeners.  Pass an array like `eventDelegation: ['click', 'input']` to delegate only specific events.
+
+Two caveats, both rare in practice: delegated handlers run when the event reaches the document, so a manually added `addEventListener` on an ancestor element fires before them rather than after, and `stopPropagation()` called from such a manual listener prevents delegated handlers from running.  Handlers see the correct `event.currentTarget` either way.
 
 ### Two-Way Binding
 
@@ -621,7 +645,7 @@ class FancyText extends HTMLElement {
         h(this)`
         <fancy-text>
             <style global>
-                :host { display: block; color: blue; margin: 10ps; background: #345 } 
+                :host { display: block; color: blue; margin: 10px; background: #345 } 
             </style>
             <p>We all share the same style tag in the document &lt;head&gt;.</p>
         </fancy-text>`
@@ -770,7 +794,7 @@ class NotesList extends Solarite {
 		h(this)`
 		<notes-list>
 			${this.items.map((item, i) => // Pass item object to NotesItem constructor:
-				h`<notes-item item=${item} font-size=${15+i}</notes-item>`
+				h`<notes-item item=${item} font-size=${15+i}></notes-item>`
 			)}
 			<button onclick=${this.add}>Add Item</button>
 			<pre>items = ${JSON.stringify(this.items, null, 4)}</pre>
@@ -868,12 +892,12 @@ HTML has strict rules about which elements can be children of certain container 
 
 If you want to create a custom component to use in these restricted contexts (like a custom `<tr>` element), you can extend the appropriate native HTML element instead of the generic `HTMLElement`.
 
-To do this, pass the native element constructor as the third argument to `customElements.define`.  This is standard, vanilla JavaScript and is not specific to Solarite.
+To do this, pass `{extends: 'tr'}` as the third argument to `customElements.define`.  This is standard, vanilla JavaScript and is not specific to Solarite.
 
 ```javascript
 import h from './dist/Solarite.min.js';
 
-class LineItem extends HTMLElement {
+class LineItem extends HTMLTableRowElement {
 	constructor(user) {
 		super();
 		this.user = user;
@@ -882,12 +906,12 @@ class LineItem extends HTMLElement {
 
 	render() { 
 		h(this)`			   
-            <th>${this.user.name}</td>
+            <td>${this.user.name}</td>
             <td>${this.user.email}</td>`
 	}
 }
 
-customElements.define('line-item', LineItem, HTMLTableRowElement);
+customElements.define('line-item', LineItem, {extends: 'tr'});
 
 let table = document.createElement('table')
 for (let i=0; i<10; i++) {
@@ -932,7 +956,7 @@ let list = toEl({
 document.body.append(list);
 
 // Set attributes not created by expressions.  This is allowed. 
-list.setAttribute('title', 'DOM manipuulation demo');
+list.setAttribute('title', 'DOM manipulation demo');
 list.querySelector('button').setAttribute('title', 'Click me');
 
 // Remove the <hr> element.
@@ -961,7 +985,7 @@ list.render();
 The `toEl()` function (discussed above) can also be given an object with a `render()` method to `toEl()`. Properties and methods of the object become bound to the resulting element.
 
 ```javascript
-import h, {toEl} from './src/Solarite.js';
+import h, {toEl} from './dist/Solarite.min.js';
 
 let button = toEl({
     count: 0,
@@ -1063,20 +1087,20 @@ This is the time example from Lit.js implemented with Solarite:
 
 ```html
 <script type="module">
-import h, {getArg, ArgType} from './dist/Solarite.min.js';
+import h, {Solarite, svg} from './dist/Solarite.min.js';
 
-const replay = h`<svg enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><title>Replay</title><g><rect fill="none" height="24" width="24"/><rect fill="none" height="24" width="24"/><rect fill="none" height="24" width="24"/></g><g><g/><path d="M12,5V1L7,6l5,5V7c3.31,0,6,2.69,6,6s-2.69,6-6,6s-6-2.69-6-6H4c0,4.42,3.58,8,8,8s8-3.58,8-8S16.42,5,12,5z"/></g></svg>`;
-const pause = h`<svg height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><title>Pause</title><path d="M0 0h24v24H0V0z" fill="none"/><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
-const play = h`<svg height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><title>Play</title><path d="M0 0h24v24H0V0z" fill="none"/><path d="M10 8.64L15.27 12 10 15.36V8.64M8 5v14l11-7L8 5z"/></svg>`;
+const replay = svg`<svg enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><title>Replay</title><g><rect fill="none" height="24" width="24"/><rect fill="none" height="24" width="24"/><rect fill="none" height="24" width="24"/></g><g><g/><path d="M12,5V1L7,6l5,5V7c3.31,0,6,2.69,6,6s-2.69,6-6,6s-6-2.69-6-6H4c0,4.42,3.58,8,8,8s8-3.58,8-8S16.42,5,12,5z"/></g></svg>`;
+const pause = svg`<svg height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><title>Pause</title><path d="M0 0h24v24H0V0z" fill="none"/><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
+const play = svg`<svg height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><title>Play</title><path d="M0 0h24v24H0V0z" fill="none"/><path d="M10 8.64L15.27 12 10 15.36V8.64M8 5v14l11-7L8 5z"/></svg>`;
 
-class MyTimer extends HTMLElement {
+class MyTimer extends Solarite {
 
-    constructor({duration}={}) {
-        super();
-
-        // getArg() gets the duration value from the html attributes when the
-        // element is instatiated in regular html and not inside a tagged template.
-        this.duration = getArg(this, 'duration', duration, ArgType.Float);
+    constructor(attribs={}) {
+        // super() fills the empty attribs object from the html attributes
+        // when the element is instantiated from regular html
+        // rather than inside a tagged template.
+        super(attribs);
+        this.duration = parseFloat(attribs.duration) || 60;
         this.end = null;
         this.remaining = this.duration * 1000;
         this.render();

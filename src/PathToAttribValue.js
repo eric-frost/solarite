@@ -231,6 +231,16 @@ export default class PathToAttribValue extends Path {
 		if (typeof func !== 'function')
 			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
 
+		// With the eventDelegation render option, bubbling events skip addEventListener
+		// entirely; one document-level dispatcher per event type finds bindings by walking
+		// up from the event target.  Capture bindings and non-bubbling events stay direct.
+		let delegate = false;
+		if (capture === false) {
+			let opt = this.parentNg.rootNg.options?.eventDelegation;
+			if (opt !== undefined && opt !== false && delegatableEvents.has(eventName))
+				delegate = opt === true || opt.includes(eventName);
+		}
+
 		// One stable EventBinding object per node+key is registered with addEventListener
 		// and dispatches to the current func/args.  This way, assigning a new function
 		// (e.g. a fresh arrow function on each render) never needs add/removeEventListener.
@@ -238,7 +248,7 @@ export default class PathToAttribValue extends Path {
 		let nodeEvents = node[eventBindingsKey];
 		if (nodeEvents === undefined) {
 			let b = node[eventBindingsKey] = new EventBinding(root, node, key, func, funcAndArgs);
-			node.addEventListener(eventName, b, capture);
+			registerBinding(b, node, eventName, capture, delegate);
 			return;
 		}
 
@@ -256,7 +266,7 @@ export default class PathToAttribValue extends Path {
 				let map = node[eventBindingsKey] = {};
 				map[nodeEvents.key] = nodeEvents;
 				binding = map[key] = new EventBinding(root, node, key, func, funcAndArgs);
-				node.addEventListener(eventName, binding, capture);
+				registerBinding(binding, node, eventName, capture, delegate);
 				return;
 			}
 		}
@@ -264,7 +274,7 @@ export default class PathToAttribValue extends Path {
 			binding = nodeEvents[key];
 			if (!binding) {
 				binding = nodeEvents[key] = new EventBinding(root, node, key, func, funcAndArgs);
-				node.addEventListener(eventName, binding, capture);
+				registerBinding(binding, node, eventName, capture, delegate);
 				return;
 			}
 		}
@@ -275,6 +285,52 @@ export default class PathToAttribValue extends Path {
 }
 
 const eventBindingsKey = Symbol('solariteEvents');
+
+/**
+ * Attach a new EventBinding either directly or through the shared delegated dispatcher. */
+function registerBinding(binding, node, eventName, capture, delegate) {
+	if (delegate) {
+		binding.delegated = true;
+		if (!delegatedListeners.has(eventName)) {
+			delegatedListeners.add(eventName);
+			node.ownerDocument.addEventListener(eventName, delegatedDispatcher);
+		}
+	}
+	else
+		node.addEventListener(eventName, binding, capture);
+}
+
+// Bubbling events that one document-level listener can dispatch.  Same set Solid.js delegates.
+const delegatableEvents = new Set(['beforeinput', 'click', 'contextmenu', 'dblclick', 'focusin', 'focusout',
+	'input', 'keydown', 'keyup', 'mousedown', 'mousemove', 'mouseout', 'mouseover', 'mouseup',
+	'pointerdown', 'pointermove', 'pointerout', 'pointerover', 'pointerup', 'touchend', 'touchmove', 'touchstart']);
+
+// Event names that already have a document-level dispatcher registered.
+const delegatedListeners = new Set();
+
+/**
+ * The one document-level listener for each delegated event type.  Walks from the event
+ * target upward, invoking delegated EventBindings stored on the nodes along the way.
+ * event.currentTarget is patched to the node whose binding is running, and restored after.
+ * stopPropagation() inside a handler ends the walk, mirroring native bubbling. */
+function delegatedDispatcher(ev) {
+	let type = ev.type;
+	let current = ev.target;
+	Object.defineProperty(ev, 'currentTarget', {configurable: true, get() { return current }});
+	while (current) {
+		let b = current[eventBindingsKey];
+		if (b !== undefined) {
+			let binding = b instanceof EventBinding ? b : b[type];
+			if (binding !== undefined && binding.delegated === true && binding.key === type) {
+				binding.handleEvent(ev);
+				if (ev.cancelBubble)
+					break;
+			}
+		}
+		current = current.parentNode;
+	}
+	delete ev.currentTarget; // Restore the native getter from the prototype.
+}
 
 class EventBinding {
 	constructor(root, node, key, func=null, args=null) {

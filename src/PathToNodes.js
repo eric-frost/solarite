@@ -94,7 +94,19 @@ export default class PathToNodes extends Path {
 
 				// Create a bare text node in an empty path, with no Template or NodeGroup wrapper.
 				let node;
-				if (this.wholeParent) { // One native call; the browser creates the text node.
+				if (this.wholeParent) {
+					// A NodeGroup re-applied through a shared stamper (NodeGroup.applyStamp/rewriteStamp)
+					// can already hold a lone text child; update it in place.  Node identity is
+					// unchanged then, so no caches need invalidation.
+					let fc = this.nodeMarker.firstChild;
+					if (fc !== null && fc.nodeType === 3 && fc === this.nodeMarker.lastChild) {
+						if (fc.nodeValue !== expr)
+							fc.nodeValue = expr;
+						this.textNode = fc;
+						this.textValue = expr;
+						return;
+					}
+					// One native call; the browser creates the text node.
 					this.nodeMarker.textContent = expr;
 					node = this.nodeMarker.firstChild;
 				}
@@ -536,11 +548,15 @@ export default class PathToNodes extends Path {
 			// When every path consumes exactly one expression, paths align 1:1 with exprs,
 			// so only the expressions that changed need to be applied.
 			if (ng.pathsSingleExpr) {
-				let oldExprs = ng.template.exprs, newExprs = item.exprs;
-				let paths = ng.paths;
-				for (let i = paths.length - 1; i >= 0; i--)
-					if (!exprSame(oldExprs[i], newExprs[i]))
-						paths[i].applySingle(newExprs[i]);
+				// Stamped groups (paths === null) rewrite through the shared stampers and stay
+				// path-less, unless a child-node expression stopped being primitive.
+				if (ng.paths !== null || !ng.rewriteStamp(item)) {
+					let oldExprs = ng.template.exprs, newExprs = item.exprs;
+					let paths = ng.paths ?? ng.materializePaths();
+					for (let i = paths.length - 1; i >= 0; i--)
+						if (!exprSame(oldExprs[i], newExprs[i]))
+							paths[i].applySingle(newExprs[i]);
+				}
 
 				if (ng.styles)
 					ng.updateStyles();
@@ -568,8 +584,9 @@ export default class PathToNodes extends Path {
 		if (pool) {
 			ng = pool.deleteAny(item.getCloseKey());
 			if (ng) {
-				ng.applyExprs(item.exprs);
-				ng.template = item;
+				// rewriteNodeGroup compares expressions and writes only what changed,
+				// keeping stamped groups path-less.  It also assigns ng.template.
+				this.rewriteNodeGroup(ng, item);
 				return ng;
 			}
 		}
