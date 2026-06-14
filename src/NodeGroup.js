@@ -513,7 +513,9 @@ export default class NodeGroup {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
 					let script = Path.resolve(root, path);
-					eval(script.textContent)
+					// Indirect eval runs in global scope (correct for a <script> tag) and, unlike a direct
+					// eval, doesn't force terser to keep every top-level name in the bundle unmangled.
+					(0, eval)(script.textContent)
 				}
 			}
 		}
@@ -573,7 +575,7 @@ export default class NodeGroup {
 			assert(path.parentNg === this)
 
 			// Fails for detached NodeGroups.
-			// NodeGroups get detached when their nodes are removed by udomdiff()
+			// NodeGroups get detached when their nodes are removed by reconcileNodes()
 			let parentNode = this.getParentNode();
 			if (parentNode)
 				assert(this.getParentNode().contains(path.getParentNode()))

@@ -12,7 +12,6 @@ export {default as delve} from './delve.js';
 export {default as Template} from './Template.js';
 export {default as toEl} from './toEl.js';
 export {svg} from './h.js';
-import Template from './Template.js';
 
 // Experimental:
 //--------------
@@ -22,20 +21,8 @@ export {default as SolariteUtil} from './Util.js';
 // Deprecated:
 //--------------
 export {default as h} from './h.js'; // Named exports for h() are deprecated.
-export {getArg, ArgType} from './getArg.js';
-export {setArgs} from './getArg.js';
-export {default as r} from './h.js';
-export function t(html) {
-	return new Template([html], []);
-}
 
-// Only used for tests:
-//--------------
-export {default as HtmlParser} from './HtmlParser.js';
-export {default as NodeGroup} from './NodeGroup.js';
-export {default as Shell} from './Shell.js';
-
-
+// HtmlParser, NodeGroup, and Shell are internal; tests import them directly from their modules.
 
 
 

@@ -11,7 +11,7 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite
 
-Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed.  It's tiny (13KB min+gzip) and runs straight in the browser as a standard ES module.
+Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed.  It's tiny (12KB min+gzip) and runs straight in the browser as a standard ES module.
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -83,7 +83,7 @@ document.body.append(new ShoppingList()); // add <shopping-list> and call render
 
 Import the module directly from a CDN:
 
-- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) (13KB minified+gzipped)
+- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) (12KB minified+gzipped)
 
 Or install via NPM:
 
@@ -97,7 +97,7 @@ For the best development experience, use an IDE like [WebStorm](https://www.jetb
 
 ## Performance
 
-Solarite is the **fastest non-compiled framework** in the world and is faster than most compiled frameworks, according to the js-framework-benchmark.  It scores 1.12, indicating that it's 12% slower than vanilla js (hand-coding everything).  Benchmarks were run on a Ryzen 7 3700X  with 16GB ram on Kubuntu 26.04.
+Solarite is the **fastest non-compiled framework** in the world and is faster than most compiled frameworks, according to the js-framework-benchmark.  It scores 1.10, indicating that it's 10% slower than vanilla js (hand-coding everything).  Benchmarks were run on a Ryzen 7 3700X  with 16GB ram on Kubuntu 26.04.
 
 <div class="bench-wide"><img src="docs/js-framework-benchmark.png" alt="js-framework-benchmark"></div>
 <style>

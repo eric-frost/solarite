@@ -3,7 +3,6 @@ import assert from "./assert.js";
 import NodeGroup from "./NodeGroup.js";
 import Shell from "./Shell.js";
 import Util from "./Util.js";
-import udomdiff from "./udomdiff.js";
 import Template, {templatesSame, exprSame} from "./Template.js";
 import Globals from "./Globals.js";
 import MultiValueMap from "./MultiValueMap.js";
@@ -67,7 +66,7 @@ export default class PathToNodes extends Path {
 	 * 2. Otherwise expr is flattened to a list of Templates, strings, and Nodes via collectItems(),
 	 *    then applyDiff() positionally diffs them against the previous render's NodeGroups.
 	 * 3. If the items contain raw Nodes, now or on the previous render, applyGeneric() uses pooled
-	 *    close-key matching and udomdiff, since this.nodeGroups can't track raw Nodes positionally.
+	 *    close-key matching and reconcileNodes(), since this.nodeGroups can't track raw Nodes positionally.
 	 * @param expr {Expr} */
 	applySingle(expr) {
 
@@ -648,8 +647,8 @@ export default class PathToNodes extends Path {
 	}
 
 	/**
-	 * Pool-based reconciliation using close keys and udomdiff.  Used when expressions contain
-	 * raw Nodes, since those can't be tracked by the positional diff.
+	 * Pool-based reconciliation using close keys and reconcileNodes().  Used when expressions
+	 * contain raw Nodes, since those can't be tracked by the positional diff.
 	 * @param items {(Template|string|Node)[]} */
 	applyGeneric(items) {
 		let path = this;
@@ -690,9 +689,9 @@ export default class PathToNodes extends Path {
 
 				// Rearrange nodes.
 				if (path.wholeParent)
-					udomdiff(path.nodeMarker, oldNodes, newNodes, null)
+					reconcileNodes(path.nodeMarker, oldNodes, newNodes, null)
 				else
-					udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker)
+					reconcileNodes(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker)
 			}
 
 			// TODO: Put this in a remove() function of NodeGroup.
@@ -1016,4 +1015,35 @@ function longestIncreasingSubsequence(arr) {
 		}
 	}
 	return result;
+}
+
+
+/**
+ * Reconcile the children of parentNode so they become newNodes, in order, ending just before
+ * `before` (or at the end when before is null).  Reuses existing nodes by identity and skips
+ * nodes already in their target position.  Only the raw-Node fallback (applyGeneric) uses this;
+ * the keyed/positional diffs never do.
+ * @param parentNode {Node}
+ * @param oldNodes {Node[]}
+ * @param newNodes {Node[]}
+ * @param before {?Node} */
+function reconcileNodes(parentNode, oldNodes, newNodes, before) {
+	// 1. Remove old nodes that aren't in the new list.
+	if (oldNodes.length) {
+		let keep = new Set(newNodes);
+		for (let node of oldNodes)
+			if (!keep.has(node) && node.parentNode === parentNode)
+				parentNode.removeChild(node);
+	}
+
+	// 2. Place new nodes in order, walking back to front so `next` is always the already-placed
+	// node that should follow.  insertBefore moves a node already in the DOM, so nodes already in
+	// the right spot are skipped to avoid needless mutation.
+	let next = before;
+	for (let i=newNodes.length; i--; ) {
+		let node = newNodes[i];
+		if (node.nextSibling !== next || node.parentNode !== parentNode)
+			parentNode.insertBefore(node, next);
+		next = node;
+	}
 }
