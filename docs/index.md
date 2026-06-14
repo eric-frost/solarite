@@ -97,11 +97,14 @@ For the best development experience, use an IDE like [WebStorm](https://www.jetb
 
 ## Performance
 
-Solarite provides near-native performance by performing targeted DOM updates. Benchmarks were run on a Ryzen 7 3700X on Kubuntu 26.04.
+Solarite is the **fastest non-compiled framework** in the world and is faster than most compiled frameworks, according to the js-framework-benchmark.  It scores 1.12, indicating that it's 12% slower than vanilla js (hand-coding everything).  Benchmarks were run on a Ryzen 7 3700X  with 16GB ram on Kubuntu 26.04.
 
-![js-framework-benchmark](docs/js-framework-benchmark.png)
-
-Note that the JS Framework Benchmark separates keyed and non-keyed frameworks.  Solarite renders non-keyed by default and becomes keyed when list items use the `key` attribute (see [Keyed Lists](#keyed-lists)), passing the benchmark's keyedness checks.  The chart places it next to the most popular frameworks, which are all keyed.
+<div class="bench-wide"><img src="docs/js-framework-benchmark.png" alt="js-framework-benchmark"></div>
+<style>
+.bench-wide { position:relative; left:50%; width:100vw; margin-left:-50vw; overflow-x:auto; -webkit-overflow-scrolling:touch; box-sizing:border-box; padding:0 16px; }
+.bench-wide img { display:block; margin:0 auto; width:auto; max-width:none; height:min(60vh, 560px); }
+@media screen and (width >= 1085px) { .bench-wide { left:0; margin-left:-30px; width:calc(100vw - 200px); } }
+</style>
 
 ## Core Concepts
 
