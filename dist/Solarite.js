@@ -413,7 +413,7 @@ class Path {
 
 	/**
 	 * @type {Node} Node that occurs before this Path's first Node.
-	 * This is necessary because udomdiff() can steal nodes from another Path.
+	 * This is necessary because reconcileNodes() can steal nodes from another Path.
 	 * If we had a pointer to our own startNode then that node could be moved somewhere else w/o us knowing it.
 	 * Used only for type='content'
 	 * Will be null if Path has no Nodes. */
@@ -1173,181 +1173,6 @@ class PathToAttribs extends Path {
 }
 
 /**
- * ISC License
- *
- * Copyright (c) 2020, Andrea Giammarchi, @WebReflection
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
- * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
- * AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
- * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
- * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
- * OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
- * PERFORMANCE OF THIS SOFTWARE.
- */
-
-/**
- * @param {Node} parentNode The container where children live
- * @param {Node[]} a The list of current/live children
- * @param {Node[]} b The list of future children
- * @param {(entry: Node, action: number) => Node} get
- * The callback invoked per each entry related DOM operation.
- * @param {Node} [before] The optional node used as anchor to insert before.
- * @returns {Node[]} The same list of future children.
- */
-const udomdiff = (parentNode, a, b, before) => {
-	const bLength = b.length;
-	let aEnd = a.length;
-	let bEnd = bLength;
-	let aStart = 0;
-	let bStart = 0;
-	let map = null;
-	while (aStart < aEnd || bStart < bEnd) {
-		// append head, tail, or nodes in between: fast path
-		if (aEnd === aStart) {
-			// we could be in a situation where the rest of nodes that
-			// need to be added are not at the end, and in such case
-			// the node to `insertBefore`, if the index is more than 0
-			// must be retrieved, otherwise it's gonna be the first item.
-			const node = bEnd < bLength
-				? (bStart
-					? (b[bStart - 1].nextSibling)
-					: b[bEnd - bStart])
-				: before;
-			while (bStart < bEnd) {
-				let bNode = b[bStart++];
-				parentNode.insertBefore(bNode, node);
-			}
-		}
-		// remove head or tail: fast path
-		else if (bEnd === bStart) {
-			while (aStart < aEnd) {
-				// remove the node only if it's unknown or not live
-				let aNode = a[aStart];
-				if (!map || !map.has(aNode)) {
-					parentNode.removeChild(aNode);
-				}
-				aStart++;
-			}
-		}
-		// same node: fast path
-		else if (a[aStart] === b[bStart]) {
-			aStart++;
-			bStart++;
-		}
-		// same tail: fast path
-		else if (a[aEnd - 1] === b[bEnd - 1]) {
-			aEnd--;
-			bEnd--;
-		}
-			// The once here single last swap "fast path" has been removed in v1.1.0
-			// https://github.com/WebReflection/udomdiff/blob/single-final-swap/esm/index.js#L69-L85
-		// reverse swap: also fast path
-		else if (
-			a[aStart] === b[bEnd - 1] &&
-			b[bStart] === a[aEnd - 1]
-		) {
-			// this is a "shrink" operation that could happen in these cases:
-			// [1, 2, 3, 4, 5]
-			// [1, 4, 3, 2, 5]
-			// or asymmetric too
-			// [1, 2, 3, 4, 5]
-			// [1, 2, 3, 5, 6, 4]
-			const node = a[--aEnd].nextSibling;
-
-
-			let a2 = b[bStart++];
-			let b2 = a[aStart++];
-			parentNode.insertBefore(
-				a2,
-				b2.nextSibling
-			);
-
-			let bNode = b[--bEnd];
-			parentNode.insertBefore(bNode, node);
-
-			// mark the future index as identical (yeah, it's dirty, but cheap 👍)
-			// The main reason to do this, is that when a[aEnd] will be reached,
-			// the loop will likely be on the fast path, as identical to b[bEnd].
-			// In the best case scenario, the next loop will skip the tail,
-			// but in the worst one, this node will be considered as already
-			// processed, bailing out pretty quickly from the map index check
-			a[aEnd] = b[bEnd];
-		}
-		// map based fallback, "slow" path
-		else {
-			// the map requires an O(bEnd - bStart) operation once
-			// to store all future nodes indexes for later purposes.
-			// In the worst case scenario, this is a full O(N) cost,
-			// and such scenario happens at least when all nodes are different,
-			// but also if both first and last items of the lists are different
-			if (!map) {
-				map = new Map;
-				let i = bStart;
-				while (i < bEnd)
-					map.set(b[i], i++);
-			}
-			// if it's a future node, hence it needs some handling
-			if (map.has(a[aStart])) {
-				// grab the index of such node, 'cause it might have been processed
-				const index = map.get(a[aStart]);
-				// if it's not already processed, look on demand for the next LCS
-				if (bStart < index && index < bEnd) {
-					let i = aStart;
-					// counts the amount of nodes that are the same in the future
-					let sequence = 1;
-					while (++i < aEnd && i < bEnd && map.get(a[i]) === (index + sequence))
-						sequence++;
-					// effort decision here: if the sequence is longer than replaces
-					// needed to reach such sequence, which would brings again this loop
-					// to the fast path, prepend the difference before a sequence,
-					// and move only the future list index forward, so that aStart
-					// and bStart will be aligned again, hence on the fast path.
-					// An example considering aStart and bStart are both 0:
-					// a: [1, 2, 3, 4]
-					// b: [7, 1, 2, 3, 6]
-					// this would place 7 before 1 and, from that time on, 1, 2, and 3
-					// will be processed at zero cost
-					if (sequence > (index - bStart)) {
-						const node = a[aStart];
-						while (bStart < index) {
-							let bNode = b[bStart++];
-							parentNode.insertBefore(bNode, node);
-						}
-					}
-						// if the effort wasn't good enough, fallback to a replace,
-						// moving both source and target indexes forward, hoping that some
-					// similar node will be found later on, to go back to the fast path
-					else {
-						let aNode = a[aStart++];
-						let bNode = b[bStart++];
-						parentNode.replaceChild(
-							bNode,
-							aNode
-						);
-					}
-				}
-				// otherwise move the source forward, 'cause there's nothing to do
-				else
-					aStart++;
-			}
-				// this node has no meaning in the future list, so it's more than safe
-				// to remove it, and check the next live node out instead, meaning
-			// that only the live list index should be forwarded
-			else {
-				let aNode = a[aStart++];
-				parentNode.removeChild(aNode);
-			}
-		}
-	}
-	return b;
-};
-
-/**
  * Maps a string key to multiple values.
  * Values are stored in arrays because pushing them is much faster than Set operations,
  * and deleteAny() needs no iterator allocation.
@@ -1462,7 +1287,7 @@ class PathToNodes extends Path {
 	 * 2. Otherwise expr is flattened to a list of Templates, strings, and Nodes via collectItems(),
 	 *    then applyDiff() positionally diffs them against the previous render's NodeGroups.
 	 * 3. If the items contain raw Nodes, now or on the previous render, applyGeneric() uses pooled
-	 *    close-key matching and udomdiff, since this.nodeGroups can't track raw Nodes positionally.
+	 *    close-key matching and reconcileNodes(), since this.nodeGroups can't track raw Nodes positionally.
 	 * @param expr {Expr} */
 	applySingle(expr) {
 
@@ -2030,8 +1855,8 @@ class PathToNodes extends Path {
 	}
 
 	/**
-	 * Pool-based reconciliation using close keys and udomdiff.  Used when expressions contain
-	 * raw Nodes, since those can't be tracked by the positional diff.
+	 * Pool-based reconciliation using close keys and reconcileNodes().  Used when expressions
+	 * contain raw Nodes, since those can't be tracked by the positional diff.
 	 * @param items {(Template|string|Node)[]} */
 	applyGeneric(items) {
 		let path = this;
@@ -2072,9 +1897,9 @@ class PathToNodes extends Path {
 
 				// Rearrange nodes.
 				if (path.wholeParent)
-					udomdiff(path.nodeMarker, oldNodes, newNodes, null);
+					reconcileNodes(path.nodeMarker, oldNodes, newNodes, null);
 				else
-					udomdiff(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker);
+					reconcileNodes(path.nodeMarker.parentNode, oldNodes, newNodes, path.nodeMarker);
 			}
 
 			// TODO: Put this in a remove() function of NodeGroup.
@@ -2349,6 +2174,37 @@ function longestIncreasingSubsequence(arr) {
 		}
 	}
 	return result;
+}
+
+
+/**
+ * Reconcile the children of parentNode so they become newNodes, in order, ending just before
+ * `before` (or at the end when before is null).  Reuses existing nodes by identity and skips
+ * nodes already in their target position.  Only the raw-Node fallback (applyGeneric) uses this;
+ * the keyed/positional diffs never do.
+ * @param parentNode {Node}
+ * @param oldNodes {Node[]}
+ * @param newNodes {Node[]}
+ * @param before {?Node} */
+function reconcileNodes(parentNode, oldNodes, newNodes, before) {
+	// 1. Remove old nodes that aren't in the new list.
+	if (oldNodes.length) {
+		let keep = new Set(newNodes);
+		for (let node of oldNodes)
+			if (!keep.has(node) && node.parentNode === parentNode)
+				parentNode.removeChild(node);
+	}
+
+	// 2. Place new nodes in order, walking back to front so `next` is always the already-placed
+	// node that should follow.  insertBefore moves a node already in the DOM, so nodes already in
+	// the right spot are skipped to avoid needless mutation.
+	let next = before;
+	for (let i=newNodes.length; i--; ) {
+		let node = newNodes[i];
+		if (node.nextSibling !== next || node.parentNode !== parentNode)
+			parentNode.insertBefore(node, next);
+		next = node;
+	}
 }
 
 /**
@@ -3573,7 +3429,9 @@ class NodeGroup {
 					if (pathOffset)
 						path = path.slice(0, -pathOffset);
 					let script = Path.resolve(root, path);
-					eval(script.textContent);
+					// Indirect eval runs in global scope (correct for a <script> tag) and, unlike a direct
+					// eval, doesn't force terser to keep every top-level name in the bundle unmangled.
+					(0, eval)(script.textContent);
 				}
 			}
 		}
@@ -4295,131 +4153,6 @@ function depsSame(a, b) {
 	return false;
 }
 
-/**
- * @deprecated Inherit from Solarite and pass arribs to super() instead.
- * There are three ways to create an instance of a Solarite Component:
- * 1.  new ComponentName(3);                                               // direct class instantiation
- * 2.  h(this)`<div><component-name user-id=${3}></component-name></div>;  // as a child of another Component.
- * 3.  <body><component-name user-id="3"></component-name></body>          // in the Document html.
- *
- * When created via #3, Solarite has no way to pass attributes as arguments to the constructor.  So to make
- * sure we get the correct value via all three paths, we write our constructors according to the following
- * example.  Note that constructor args are embedded in an object, and must be all lower-case because
- * Browsers make all html attribute names lowercase.
- *
- * @example
- * constructor({name, userId=1}={}) {
- *     super();
- *
- *     // Get value from "name" attriute if persent, otherwise from name constructor arg.
- *     this.name = getArg(this, 'name', name);
- *
- *     // Optionally convert the value to an integer.
- *     this.userId = getArg(this, 'user-id', userId, ArgType.Int);
- * }
- *
- * @param el {HTMLElement}
- * @param attributeName {string} Attribute name.  Not case-sensitive.
- * @param defaultValue {*} Default value to use if attribute doesn't exist.  Typically the argument from the constructor.
- * @param type {ArgType|function|Class|*[]}
- *     If an array, use the value if it's in the array, otherwise return undefined.
- *     If it's a function, pass the value to the function and return the result.
- * @return {*} Undefined if attribute isn't set and there's no defaultValue, or if the value couldn't be parsed as the type.  */
-function getArg(el, attributeName, defaultValue=undefined, type=ArgType.String) {
-	let val = defaultValue;
-	let attrVal = el.getAttribute(attributeName) || el.getAttribute(Util.camelToDashes(attributeName));
-	if (attrVal !== null) // If attribute doesn't exist.
-		val = attrVal;
-
-	if (Array.isArray(type))
-		return type.includes(val) ? val : undefined;
-
-	if (typeof type === 'function') {
-		return type.constructor
-			? new type(val) // arg type is custom Class
-			: type(val); // arg type is custom function
-	}
-
-	// If bool, it's true as long as it exists and its value isn't falsey.
-	if (type===ArgType.Bool) {
-		let lAttrVal = typeof val === 'string' ? val.toLowerCase() : val;
-		if (['false', '0', false, 0, null, undefined, NaN].includes(lAttrVal))
-			return false;
-		if (['true', true].includes(lAttrVal) || parseFloat(lAttrVal) !== 0)
-			return true;
-		return undefined;
-	}
-
-	// Attribute doesn't exist
-	switch (type) {
-		case ArgType.Int:
-			return parseInt(val);
-		case ArgType.Float:
-			return parseFloat(val);
-		case ArgType.String:
-			return [undefined, null, false].includes(val) ? '' : (val+'');
-		case ArgType.Json:
-			if (typeof val === 'string' && val.length)
-				try {
-					return JSON.parse(val);
-				} catch (e) {
-					return val;
-				}
-			else return val;
-
-		// type not provided
-		default:
-			return val;
-	}
-}
-
-
-/**
- * @deprecated for Solarite.getAttribs()
- * Experimental.  Set multiple arguments/attributes all at once.
- * @param el {HTMLElement}
- * @param args {Record<string, any>}
- * @param types {Record<string, ArgType|function|Class>}
- *
- * @example
- * constructor({user, path}={}) {
- *     setArgs(this, arguments[0], {user: User, path: ArgType.String});
- *
- *     // Equivalent to:
- *     this.user = getArg(this, user, 'user', User); // or new User(user);
- *     this.path = getArg(this, path, 'path', ArgType.String);
- * }
- */
-function setArgs(el, args, types) {
-	for (let name in args)
-		this[name] = getArg(el, name, args[name], types[name] || ArgType.String);
-}
-
-
-/**
- * @deprecated
- * @enum */
-var ArgType = {
-
-	/**
-	 * false, 0, null, undefined, '0', and 'false' (case-insensitive) become false.
-	 * Anything else, including empty string becomes true.
-	 * Empty string is true because attributes with no value should be evaulated as true. */
-	Bool: 'Bool',
-
-	Int: 'Int',
-	Float: 'Float',
-	String: 'String',
-
-	/** @deprecated for Json */
-	JSON: 'Json',
-
-	/**
-	 * Parse the string value as JSON.
-	 * If it's not parsable, return the value as a string. */
-	Json: 'Json'
-};
-
 /*
 ┏┓  ┓    •
 ┗┓┏┓┃┏┓┏┓┓╋▗▖
@@ -4428,9 +4161,6 @@ JavasCript UI library
 @license MIT
 @copyright Vorticode LLC
 https://vorticode.github.io/solarite/ */
-function t(html) {
-	return new Template([html], []);
-}
 
 /**
  * Intercept the construct call to auto-define the class before the constructor is called. */
@@ -4715,4 +4445,4 @@ function assignFields(dest, src, cast={}) {
 }
 
 export default h;
-export { ArgType, Globals$1 as Globals, HtmlParser, NodeGroup, Shell, Solarite, Util as SolariteUtil, Template, assignFields, delve, getArg, h, h as r, setArgs, svg, t, toEl };
+export { Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, assignFields, delve, h, svg, toEl };

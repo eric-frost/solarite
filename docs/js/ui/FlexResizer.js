@@ -1,4 +1,4 @@
-import {Solarite, r, getArg} from "../../../src/Solarite.js";
+import {Solarite, h as r} from "../../../src/Solarite.js";
 import Draggable2 from "../util/Draggable2.js";
 import Util from "../util/Util.js";
 
@@ -15,8 +15,9 @@ export default class FlexResizer extends Solarite {
 	 * @param thickness {int} Width of the resize drag area.*/
 	constructor({unit='px', thickness=10}={}) {
 		super();
-		this.thickness = parseFloat(getArg(this, 'thickness', thickness));
-		this.unit =  getArg(this, 'unit', unit, ['px', '%']) || 'px';
+		this.thickness = parseFloat(this.getAttribute('thickness') ?? thickness);
+		let u = this.getAttribute('unit') ?? unit;
+		this.unit = ['px', '%'].includes(u) ? u : 'px';
 
 		let prevEl, startSize, isVertical;
 		let iframePointerEvents = new WeakMap(); // Store values of iframe pointer events.

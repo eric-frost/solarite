@@ -45,7 +45,6 @@ declare function svg(htmlStrings: string | string[], ...exprs: any[]): Template;
 
 export default h;
 export {h, svg};
-export {h as r}; // deprecated
 
 /**
  * Solarite provides more features if your web component extends Solarite instead of HTMLElement. */
@@ -75,26 +74,6 @@ export function toEl(arg: string | Template | {render: () => void}): Node | HTML
  * If `cast` is omitted and the source is a string, it is automatically cast to boolean,
  * number, or Date if the destination field already contains a value of that type. */
 export function assignFields(dest: object, src: object|null, cast?: Record<string, string|Function|boolean|string[]|Function[]>): void;
-
-/**
- * @deprecated
- * Retrieve and cast an attribute value from an HTMLElement. */
-export function getArg(el: HTMLElement, attributeName: string, defaultValue?: any,
-    type?: typeof ArgType[keyof typeof ArgType] | Function | any[]): any;
-
-/**
- * @deprecated
- * Update attributes on an element from an object. */
-export function setArgs(el: HTMLElement, args: object): void;
-
-/** @deprecated */
-export const ArgType: {
-    Bool: string;
-    Int: string;
-    Float: string;
-    String: string;
-    Json: string;
-}
 
 export class Template {
     exprs: any[];

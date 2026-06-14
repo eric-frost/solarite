@@ -8,7 +8,7 @@ export default class Path {
 
 	/**
 	 * @type {Node} Node that occurs before this Path's first Node.
-	 * This is necessary because udomdiff() can steal nodes from another Path.
+	 * This is necessary because reconcileNodes() can steal nodes from another Path.
 	 * If we had a pointer to our own startNode then that node could be moved somewhere else w/o us knowing it.
 	 * Used only for type='content'
 	 * Will be null if Path has no Nodes. */

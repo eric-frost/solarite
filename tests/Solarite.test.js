@@ -2,8 +2,10 @@
 
 import Testimony, {assert} from './Testimony.js';
 
-import h, {toEl, Solarite, Template, Globals, SolariteUtil, svg,
-	HtmlParser, NodeGroup, Shell} from '../src/Solarite.js';
+import h, {toEl, Solarite, Template, Globals, SolariteUtil, svg} from '../src/Solarite.js';
+import HtmlParser from '../src/HtmlParser.js';
+import NodeGroup from '../src/NodeGroup.js';
+import Shell from '../src/Shell.js';
 
 //import h, {toEl, Solarite, Template, Globals, SolariteUtil,
 // HtmlParser, NodeGroup, Shell} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
@@ -206,6 +208,67 @@ Testimony.test('Solarite.NodeGroup.arrayReverse', () => {
 	list.reverse();
 	ng.applyExprs([list])
 	assert(getHtml(ng), '<div>ba</div')
+});
+
+// Exercises the raw-Node fallback (PathToNodes.applyGeneric -> reconcileNodes).
+// Raw DOM nodes in an expression array can't be tracked positionally, so they go through the
+// identity-based reconciler.  These assert correct order AND that node identity is preserved
+// (the same DOM objects are reused, never recreated) across insert/remove/swap/reverse/move.
+Testimony.test('Solarite.NodeGroup.rawNodeReconcile', () => {
+	let make = t => { let p = document.createElement('p'); p.textContent = t; return p; };
+	let n1 = make('1'), n2 = make('2'), n3 = make('3'), n4 = make('4'), n5 = make('5');
+
+	let template = new Template(['<div>', '</div>'], [[n1, n2, n3, n4]]);
+	let ng = new NodeGroup(template);
+	ng.applyExprs(template.exprs);
+	assert.eq(getHtml(ng), '<div><p>1</p><p>2</p><p>3</p><p>4</p></div>');
+
+	// Reverse - identity preserved.
+	ng.applyExprs([[n4, n3, n2, n1]]);
+	assert.eq(getHtml(ng), '<div><p>4</p><p>3</p><p>2</p><p>1</p></div>');
+	assert.eq(n1.parentNode, n4.parentNode); // still the same live parent
+	assert.eq(n1.textContent, '1'); // not recreated
+
+	// Remove from the middle.
+	ng.applyExprs([[n4, n1]]);
+	assert.eq(getHtml(ng), '<div><p>4</p><p>1</p></div>');
+	assert.eq(n2.parentNode, null); // removed from DOM
+	assert.eq(n3.parentNode, null);
+
+	// Insert new nodes among kept ones.
+	ng.applyExprs([[n4, n2, n5, n1]]);
+	assert.eq(getHtml(ng), '<div><p>4</p><p>2</p><p>5</p><p>1</p></div>');
+
+	// Swap the two ends.
+	ng.applyExprs([[n1, n2, n5, n4]]);
+	assert.eq(getHtml(ng), '<div><p>1</p><p>2</p><p>5</p><p>4</p></div>');
+
+	// Clear all, then repopulate.
+	ng.applyExprs([[]]);
+	assert.eq(getHtml(ng), '<div></div>');
+	ng.applyExprs([[n3, n2, n1]]);
+	assert.eq(getHtml(ng), '<div><p>3</p><p>2</p><p>1</p></div>');
+});
+
+// Same reconciler, but the nodes are the only child of their parent (wholeParent Path: no marker
+// comment, parent element delimits the region).  Mix raw Nodes with text so both branches run.
+Testimony.test('Solarite.NodeGroup.rawNodeWholeParent', () => {
+	let make = t => { let p = document.createElement('p'); p.textContent = t; return p; };
+	let a = make('a'), b = make('b'), c = make('c');
+
+	let template = new Template(['<div>', '</div>'], [[a, b, c]]);
+	let ng = new NodeGroup(template);
+	ng.applyExprs(template.exprs);
+	assert.eq(getHtml(ng), '<div><p>a</p><p>b</p><p>c</p></div>');
+
+	ng.applyExprs([[c, a, b]]); // rotate
+	assert.eq(getHtml(ng), '<div><p>c</p><p>a</p><p>b</p></div>');
+	assert.eq(a.textContent, 'a'); // reused
+
+	ng.applyExprs([[b]]); // shrink to one
+	assert.eq(getHtml(ng), '<div><p>b</p></div>');
+	assert.eq(a.parentNode, null);
+	assert.eq(c.parentNode, null);
 });
 //endregion
 

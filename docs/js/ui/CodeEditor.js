@@ -51,7 +51,7 @@ import {
 	undoDepth
 } from '../codemirror/codemirror6.js';
 import themeSolarIce from "../codemirror/themeSolarIce.js";
-import {r, Solarite, getArg, ArgType} from "../../../src/Solarite.js";
+import {h as r, Solarite} from "../../../src/Solarite.js";
 import Icons from "../util/Icons.js";
 import Util from "../util/Util.js";
 
@@ -141,7 +141,7 @@ export default class CodeEditor extends Solarite {
 	constructor({value='', language=null, languageconfig=null, toolbar='', options={}}={}) {
 		super();
 		
-		value = getArg(this, 'value', value, ArgType.String);
+		value = String(this.getAttribute('value') ?? value ?? '');
 		this.language = (language||'php').toLowerCase();
 		this.languageConfig = languageconfig || {};
 		this.wordWrap = options.wordWrap || false;
