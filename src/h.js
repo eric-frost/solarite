@@ -79,7 +79,7 @@ export default function h(htmlStrings=noArg, ...exprs) {
 		else {
 			let html = tagOrHtml;
 			// If it starts with whitespace and then a tag, trim it.
-			if (html.match(/^\s^</))
+			if (/^\s+</.test(html))
 				html = html.trim();
 			return new Template([html], []);
 		}

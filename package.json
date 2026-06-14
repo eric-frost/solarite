@@ -1,7 +1,7 @@
 {
   "name": "solarite",
   "version": "0.6.0",
-  "description": "Solarite is a small (9KB min+gzip), fast, compilation-free JavaScript library for adding reactivity to native web components, so that updates require minimal re-rendering.",
+  "description": "Solarite is a small (13KB min+gzip), fast, compilation-free JavaScript library that makes native web components fast to update, patching only the DOM that actually changed when you call render().",
   "type": "module",
   "main": "dist/Solarite.js",
   "module": "dist/Solarite.js",

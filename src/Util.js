@@ -37,10 +37,17 @@ let Util = {
 		let id = el.getAttribute('data-id') || el.getAttribute('id');
 		if (id) { // If something hasn't removed the id.
 
-			// Don't allow overwriting existing class properties if they already have a non-Node value.
-			if (root[id] && !(root[id]?.nodeType))
-				throw new Error(`${root.constructor.name}.${id} already has a value.  ` +
-					`Can't set it as a reference to <${el.tagName.toLowerCase()} id="${id}">`);
+			// Don't clobber a non-element value.  For a simple (non-nested) id this covers two cases:
+			// an inherited/built-in property like `title` or `style`, or an own property that already
+			// holds a non-Node value.  A previously-bound element (a Node) is fine to re-assign.
+			if (!id.includes('.')) {
+				let existing = root[id];
+				let isInherited = (id in root) && !Object.hasOwn(root, id);
+				if (!existing?.nodeType && (existing != null || isInherited))
+					throw new Error(`${root.constructor.name}.${id} can't be a reference to ` +
+						`<${el.tagName.toLowerCase()} id="${id}"> because it would clobber an existing ` +
+						`${isInherited ? 'built-in ' : ''}property.  Rename the id or the property.`);
+			}
 
 			delve(root, id.split(/\./g), el);
 		}

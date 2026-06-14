@@ -3121,6 +3121,25 @@ Testimony.test('Solarite.attrib.idsDelve', () => {
 	assert(a.path.to.p.tagName === 'P')
 });
 
+Testimony.test('Solarite.attrib.idsClobberBuiltin', "data-id matching a built-in property throws", () => {
+	class R521 extends Solarite {
+		render() {
+			h(this)`<div data-id="title"></div>`; // title is a built-in HTMLElement property.
+		}
+	}
+	assert.throws(() => new R521().render());
+});
+
+Testimony.test('Solarite.attrib.idsClobberMethod', "data-id matching a class method throws", () => {
+	class R522 extends Solarite {
+		render() {
+			h(this)`<div data-id="save"></div>`;
+		}
+		save() {}
+	}
+	assert.throws(() => new R522().render());
+});
+
 Testimony.test('Solarite.attrib.property', () => {
 	class R530 extends Solarite {
 		enabled;

@@ -1,10 +1,10 @@
 # Solarite
 
-Solarite is a small, fast, compilation-free JavaScript library for performing minimal DOM updates on web components when your data changes.  It follows modern web standards and is easy to use with vanilla JavaScript.
+Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed.  It's tiny (13KB min+gzip) and runs straight in the browser as a standard ES module.
 
 For documentation and examples, see the **[Official Solarite Page](https://vorticode.github.io/solarite/)**.
 
-Download [Solarite.js](https://vorticode.github.io/solarite/dist/Solarite.js) (117KB, 9KB min+gzip)
+Download [Solarite.js](https://vorticode.github.io/solarite/dist/Solarite.js) (156KB, 13KB min+gzip)
 
 Or:
 

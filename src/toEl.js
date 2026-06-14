@@ -15,16 +15,11 @@ import Util from "./Util.js";
 export default function toEl(arg) {
 
 	if (typeof arg === 'string') {
-		let html = arg;
-
-		// If it's an element with whitespace before or after it, trim both ends.
-		if (html.match(/^\s^<\S+/) || html.match(/\S+>\s+$/))
-			html = html.trim();
 
 		// We create a new one each time because otherwise
 		// the returned fragment will have its content replaced by a subsequent call.
 		let templateEl = Globals.doc.createElement('template');
-		templateEl.innerHTML = html;
+		templateEl.innerHTML = arg;
 
 		// 1+2. Return Node if there's one child.
 		let relevantNodes = Util.trimEmptyNodes(templateEl.content.childNodes);

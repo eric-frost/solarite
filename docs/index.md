@@ -11,7 +11,7 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite
 
-Solarite is a small (13KB min+gzip), fast, compilation-free JavaScript library for enhancing web components with minimal DOM updates on re-render.
+Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed.  It's tiny (13KB min+gzip) and runs straight in the browser as a standard ES module.
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -148,7 +148,7 @@ We can alternatively instantiate the element directly from html:
 
 Note that we call `.define()` to register the `<my-component>` tag name with the browser.  Internally, this calls the browser's `customElements.define()` function.  Browsers can only use web components that have been defined.
 
-However, if you don't call `.define()` and create an instance of your element via `new`  it will be defined automatically using the ClassName converted to kebab-case as the tag name.  However this will NOT work if the first encounter with the element is when it's instantiated from html via its tag name.
+If you don't call `.define()` and instead create an instance via `new`, the tag is defined automatically using the class name converted to kebab-case.  But this auto-define can't happen if the browser first meets the element as a tag name in html, so in that case you must call `.define()` yourself.
 
 Since these are just regular web components, they can define the [connectedCallback() and disconnectedCallback()](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements#custom_element_lifecycle_callbacks) methods that will be called when they're added and removed from the DOM, respectively.
 
@@ -362,7 +362,7 @@ raceTeam.car.style.border = '1px solid green';
 // We don't need to call render() because we're editing the DOM Directly.
 ```
 
-Id's that have values matching built-in HTMLElement attribute names such as `title` or `disabled` are not allowed.
+Don't use an `id` that collides with a built-in `HTMLElement` property (like `title` or `style`), a class method, or a field that already holds a non-element value.  Solarite throws rather than silently clobbering it.
 
 ### Events
 
@@ -514,35 +514,36 @@ The most common way to render lists is with JavaScript's [Array.map()](https://d
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
 
-class TodoList extends Solarite {
-	items = [0, 1, 2, 3];
-    
-    addItem() {
-        this.items.push(this.items.length);
-        this.render();      
+class EmojiGarden extends Solarite {
+    plants = ['🌱'];
+
+    grow() {
+        let seeds = ['🌷', '🌻', '🌵', '🍄', '🌿', '🌳'];
+        this.plants.push(seeds[Math.floor(Math.random() * seeds.length)]);
+        this.render();
     }
-    
-	render() {
-		h(this)`
-        <todo-list>
-            ${this.items.map(item => 
-                h`${item}<br>`
-            )}
-            <button onclick=${this.addItem}>
-                Add Item
-            </button>
-        </todo-list>`
-	}
+
+    render() {
+        h(this)`
+        <emoji-garden>
+            <div style="font-size: 2rem">
+                ${this.plants.map(plant =>
+                    h`<span title="plant">${plant}</span>`
+                )}
+            </div>
+            <button onclick=${this.grow}>Grow 🌧️</button>
+        </emoji-garden>`
+    }
 }
 
-document.body.append(new TodoList());
+document.body.append(new EmojiGarden());
 ```
 
 #### Efficient List Updates
 
-When you update the `items` list and call `render()`, Solarite only redraws the changed elements.
+When you push a new plant and call `render()`, Solarite appends a single `<span>` instead of rebuilding the whole row.  Only the changed elements are touched.
 
-**Important**: Nested template literals must also have the `h` prefix, or they'll be rendered as escaped text.  Try removing the `h` from line 15 to see what happens.
+**Important**: Nested template literals must also have the `h` prefix, or they'll be rendered as escaped text.  Try removing the `h` before `` `<span ...>` `` to see what happens.
 
 #### Memoized List Items
 
@@ -595,8 +596,8 @@ When you include a `<style>` element in your component template, Solarite automa
 
 Internally, scoped styles become:
 
-1. A unique `data-style` attribute to the root element with an incrementing `data-style` attribute for each component instance
-2.  `:host` selectors are replaced with the web component tag name and unique identifier:  `fancy-text[data-style="1"]`)
+1. A `data-style` attribute on the root element, with a number that increments for each instance of the component.
+2.  `:host` selectors rewritten to the tag name plus that identifier:  `fancy-text[data-style="1"]`.
 
 ```javascript
 import h from './dist/Solarite.min.js';
