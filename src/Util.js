@@ -159,8 +159,10 @@ let Util = {
 	 * @return {string|string[]|number|[]|File[]|Date|boolean} */
 	getInputValue(node) {
 		// .type is a built-in DOM property
-		if (node.type === 'checkbox' || node.type === 'radio')
+		if (node.type === 'checkbox')
 			return node.checked; // Boolean
+		if (node.type === 'radio')
+			return node.value; // String value of the selected radio in the group
 		if (node.type === 'file')
 			return [...node.files]; // FileList
 		if (node.type === 'number' || node.type === 'range')

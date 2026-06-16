@@ -4939,6 +4939,41 @@ Testimony.test('Solarite.binding.checkbox', () => {
 	b.remove();
 });
 
+Testimony.test('Solarite.binding.radio', () => {
+
+	class B16 extends Solarite {
+		color = 'green'
+
+		render() {
+			h(this)`
+				<input data-id="red"   type="radio" name="b16color" value="red"   checked=${[this, 'color']}>
+				<input data-id="green" type="radio" name="b16color" value="green" checked=${[this, 'color']}>
+				<input data-id="blue"  type="radio" name="b16color" value="blue"  checked=${[this, 'color']}>`
+		}
+	}
+
+	let b = new B16();
+	document.body.append(b);
+
+	// Model value selects the matching radio.
+	assert.eq(b.green.checked, true)
+	assert.eq(b.red.checked, false)
+	assert.eq(b.blue.checked, false)
+
+	// Re-render moves the selection.
+	b.color = 'blue'
+	b.render()
+	assert.eq(b.blue.checked, true)
+	assert.eq(b.green.checked, false)
+
+	// Clicking a radio writes its value back to the model.
+	b.red.click();
+	assert.eq(b.red.checked, true)
+	assert.eq(b.color, 'red')
+
+	b.remove();
+});
+
 Testimony.test('Solarite.binding.textarea', () => {
 
 	class B20 extends Solarite {

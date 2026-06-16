@@ -92,6 +92,11 @@ export default class PathToAttribValue extends Path {
 				for (let option of node.options)
 					option.selected = strValues.includes(option.value)
 			}
+
+			// Radio group: this radio is checked when its value matches the bound model value.
+			else if (node.type === 'radio')
+				node.checked = node.value === (value + '');
+
 			else {
 				// TODO: should we remove isFalsy, since these are always props?
 				const strValue = Util.isFalsy(value) ? '' : value;
@@ -114,7 +119,7 @@ export default class PathToAttribValue extends Path {
 			// TODO: We need to remove any old listeners, like in bindEventAttribute.
 			// Does bindEvent() now handle that?
 			let func = () => {
-				let value = (this.attrName === 'value')
+				let value = (this.attrName === 'value' || node.type === 'radio')
 					? Util.getInputValue(node)
 					: node[this.attrName];
 				delve(obj, path, value);
