@@ -7,8 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
 	document.body.append(dt);
 
 
-	// Convert all code blocks to use Playground.js
-	for (let pre of document.querySelectorAll('pre.ty-contain-cm')) {
+	// Convert code blocks to Playground.js, but only once each scrolls near the viewport.
+	function upgrade(pre) {
 		let lines = [];
 		for (let preLine of pre.querySelectorAll('pre.CodeMirror-line > span'))
 			lines.push(preLine.textContent.replace(/\xa0/g, ' ').replace(/\n$/g, '').replace(/    /g, '\t'))
@@ -27,4 +27,15 @@ document.addEventListener('DOMContentLoaded', () => {
 			pre.replaceWith(pg);
 		})
 	}
+
+	let observer = new IntersectionObserver((entries, obs) => {
+		for (let entry of entries)
+			if (entry.isIntersecting) {
+				obs.unobserve(entry.target);
+				upgrade(entry.target);
+			}
+	}, {rootMargin: '600px'});
+
+	for (let pre of document.querySelectorAll('pre.ty-contain-cm'))
+		observer.observe(pre);
 })

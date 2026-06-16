@@ -97,7 +97,7 @@ For the best development experience, use an IDE like [WebStorm](https://www.jetb
 
 ## Performance
 
-Solarite is the **fastest non-compiled framework** in the world and is faster than most compiled frameworks, according to the js-framework-benchmark.  It scores 1.10, indicating that it's 10% slower than vanilla js (hand-coding everything).  Benchmarks were run on a Ryzen 7 3700X  with 16GB ram on Kubuntu 26.04.
+Solarite is the **faster than almost every well known framework**, according to the [js-framework-benchmar](https://krausest.github.io/js-framework-benchmark/current.html)k.  It's score of 1.10 indicates being 10% slower than vanilla js (hand-coding everything).  Benchmarks were run on a Ryzen 7 3700X  with 16GB ram on Kubuntu 26.04.
 
 <div class="bench-wide"><img src="docs/js-framework-benchmark.png" alt="js-framework-benchmark"></div>
 <style>
@@ -401,16 +401,33 @@ Make sure to put your events inside `${...}` expressions, because classic events
 For components that render many event handlers, like a data grid with buttons on every row, pass `eventDelegation: true` as a render option:
 
 ```javascript
-render() {
-	h(this, {eventDelegation: true})`
-	<log-viewer>
-		${this.rows.map(row => h`
-			<div key=${row.id}>
-				${row.text}
-				<button onclick=${[this.deleteRow, row]}>x</button>
-			</div>`)}
-	</log-viewer>`
+import h, {Solarite} from './dist/Solarite.min.js';
+
+class LogViewer extends Solarite {
+	rows = [
+		{id: 1, text: 'First message'},
+		{id: 2, text: 'Second message'},
+		{id: 3, text: 'Third message'},
+	];
+
+	deleteRow(row) {
+		this.rows = this.rows.filter(r => r !== row);
+		this.render();
+	}
+
+	render() {
+		h(this, {eventDelegation: true})`
+		<log-viewer>
+			${this.rows.map(row => h`
+				<div key=${row.id}>
+					${row.text}
+					<button onclick=${[this.deleteRow, row]}>x</button>
+				</div>`)}
+		</log-viewer>`
+	}
 }
+
+document.body.append(new LogViewer());
 ```
 
 Your templates don't change at all.  Internally, instead of calling `addEventListener` on every element, Solarite listens once per event type at the document level and finds handlers by walking up from the event target.  Creating 10,000 rows with two handlers each then costs zero listener registrations, which makes large lists noticeably faster to create and clear, especially on phones.
@@ -510,6 +527,71 @@ class BindingDemo extends Solarite {
 document.body.append(new BindingDemo());
 ```
 
+#### Form Element Types
+
+When a bound value is read back from an element, Solarite converts it to the most appropriate JavaScript type.  Bind to the `value` attribute for most elements, and to the `checked` attribute for checkboxes and radio buttons.
+
+| Element                                     | Bind to   | Property type read back                          |
+|---------------------------------------------|-----------|--------------------------------------------------|
+| `<input>` (text, password, email, etc.)     | `value`   | String                                           |
+| `<input type="checkbox">`                   | `checked` | Boolean                                          |
+| `<input type="radio">`                      | `checked` | String (the selected radio's `value`)            |
+| `<input type="number">`, `type="range"`     | `value`   | Number (`NaN` when empty)                        |
+| `<input type="date">`, `time`, `datetime-local` | `value` | Date object (`null` when empty)                |
+| `<input type="file">`                       | `value`   | Array of [File](https://developer.mozilla.org/en-US/docs/Web/API/File) objects |
+| `<select>`                                   | `value`   | String                                           |
+| `<select multiple>`                          | `value`   | Array of Strings                                 |
+| `<textarea>`                                 | `value`   | String                                           |
+| `contenteditable` element                   | `value`   | String (the element's `innerHTML`)               |
+| Custom component with a `value` property     | `value`   | Whatever type the component's `value` holds      |
+
+For a **radio group**, put the same `checked=${[this, 'prop']}` binding on every radio in the group.  Each radio is checked when its `value` matches the bound property.  Clicking a radio writes its `value` back to the property:
+
+```javascript
+import h, {Solarite} from './dist/Solarite.min.js';
+
+class ColorPicker extends Solarite {
+    color = 'green';
+
+    render() {
+        h(this)`
+        <color-picker>
+            <label><input type="radio" name="color" value="red"
+                checked=${[this, 'color']} oninput=${this.render}> Red</label>
+            <label><input type="radio" name="color" value="green"
+                checked=${[this, 'color']} oninput=${this.render}> Green</label>
+            <label><input type="radio" name="color" value="blue"
+                checked=${[this, 'color']} oninput=${this.render}> Blue</label>
+            <pre>color is ${this.color}</pre>
+        </color-picker>`
+    }
+}
+document.body.append(new ColorPicker());
+```
+
+For a **`<select multiple>`**, bind an array.  Each option whose `value` is in the array is selected, and the selected options' values are written back as an array of strings:
+
+```javascript
+import h, {Solarite} from './dist/Solarite.min.js';
+
+class Toppings extends Solarite {
+    picked = ['cheese'];
+
+    render() {
+        h(this)`
+        <toppings-list>
+            <select multiple value=${[this, 'picked']} oninput=${this.render}>
+                <option value="cheese">Cheese</option>
+                <option value="olives">Olives</option>
+                <option value="onions">Onions</option>
+            </select>
+            <pre>picked is ${JSON.stringify(this.picked)}</pre>
+        </toppings-list>`
+    }
+}
+document.body.append(new Toppings());
+```
+
 ### Loops
 
 The most common way to render lists is with JavaScript's [Array.map()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map) function:
@@ -550,34 +632,65 @@ When you push a new plant and call `render()`, Solarite appends a single `<span>
 
 #### Memoized List Items
 
-For very long lists, `h.memo()` skips even building and comparing the templates of unchanged items, similar to Vue's `v-memo` or Lit's `guard()`.  Give it the loop item, the values its html depends on, and a function that builds its template:
+Normally each list item runs its `.map()` callback to build a template, and then Solarite compares that template against the live DOM to find what changed.  For very long lists, `h.memo()` skips both steps for items that haven't changed, similar to Vue's `v-memo` or Lit's `guard()`.  Give it the loop item, the values its html depends on, and a function that builds its template:
 
 ```javascript
-render() {
-	h(this)`
-	<user-table>
-		${this.rows.map(row => h.memo(row, [row.name, row.id === this.selectedId], row =>
-			h`<div class=${row.id === this.selectedId ? 'selected' : ''}>${row.name}</div>`
-		))}
-	</user-table>`
+import h, {Solarite} from './dist/Solarite.min.js';
+
+class UserTable extends Solarite {
+	rows = [{id: 1, name: 'Alice'}, {id: 2, name: 'Bob'}, {id: 3, name: 'Carol'}];
+	selectedId = 1;
+
+	selectNext() {
+		let ids = this.rows.map(row => row.id);
+		this.selectedId = ids[(ids.indexOf(this.selectedId) + 1) % ids.length];
+		this.render();
+	}
+
+	render() {
+		h(this)`
+		<user-table>
+			<style>:host .selected { background: #fde68a }</style>
+			${this.rows.map(row => h.memo(row, [row.name, row.id === this.selectedId], row =>
+				h`<div class=${row.id === this.selectedId ? 'selected' : ''}>${row.name}</div>`
+			))}
+			<button onclick=${this.selectNext}>Select next</button>
+		</user-table>`
+	}
 }
+
+document.body.append(new UserTable());
 ```
 
-While the deps (a primitive or shallow array, compared with `===`) stay the same, re-renders reuse the item's previous template without calling the function.  The same item object must not appear twice in one list.
+The second argument is the list of values the item's html depends on.  Pass one value, or an array of them.  `h.memo()` compares these values against the previous render with `===` (and shallowly, if it's an array).  As long as they all stay the same, `h.memo()` returns the item's previous template without calling your build function, and the list diff reuses that item's DOM untouched.  As soon as one of those values changes, your build function runs again and the item re-renders normally.  The same item object must not appear twice in one list.
 
 #### Keyed Lists
 
 By default, Solarite matches list items to existing DOM nodes by position, rewriting each changed row in place.  That's the fastest option when rows hold no state of their own.  But when rows contain form inputs, focus, animations, or components with internal state, add a `key` attribute so DOM nodes follow their data instead:
 
 ```javascript
-render() {
-	h(this)`
-	<user-table>
-		${this.rows.map(row =>
-			h`<div key=${row.id}>${row.name} <input placeholder="notes"></div>`
-		)}
-	</user-table>`
+import h, {Solarite} from './dist/Solarite.min.js';
+
+class UserTable extends Solarite {
+	rows = [{id: 1, name: 'Alice'}, {id: 2, name: 'Bob'}, {id: 3, name: 'Carol'}];
+
+	reverse() {
+		this.rows.reverse();
+		this.render();
+	}
+
+	render() {
+		h(this)`
+		<user-table>
+			${this.rows.map(row =>
+				h`<div key=${row.id}>${row.name} <input placeholder="notes"></div>`
+			)}
+			<button onclick=${this.reverse}>Reverse</button>
+		</user-table>`
+	}
 }
+
+document.body.append(new UserTable());
 ```
 
 With keys, reordering the `rows` array moves the existing DOM nodes (using the fewest possible moves), removing a row removes exactly its node, and rows with new keys always get newly created nodes.  Anything the user typed into a row's `<input>` travels with the row.
