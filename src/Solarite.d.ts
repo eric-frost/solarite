@@ -62,6 +62,23 @@ export class Solarite extends HTMLElement {
  * Convert a template, string, or object into a DOM Node or Element. */
 export function toEl(arg: string | Template | {render: () => void}): Node | HTMLElement | DocumentFragment;
 
+/** An event binding registered by a two-way or event attribute, dispatchable via handleEvent(). */
+export interface EventBinding {
+	handleEvent(event: Event): any;
+}
+
+/** Get the EventBinding registered for a node+key, or undefined. */
+export function getEventBinding(node: Node, key: string): EventBinding | undefined;
+
+/** Cast targets for assignFields().  Each value equals its own string literal. */
+export const Cast: {
+	readonly int: 'int';
+	readonly float: 'float';
+	readonly number: 'number';
+	readonly boolean: 'boolean';
+	readonly string: 'string';
+};
+
 /**
  * Assign fields from `src` to `dest` if they exist in `dest`.
  *
@@ -71,9 +88,13 @@ export function toEl(arg: string | Template | {render: () => void}): Node | HTML
  * - Class Casting: Pass a class constructor or its string name to instantiate the field.
  * - Array Casting: Use `[Class]` or `'Class[]'`. The source must be an array.
  *
- * If `cast` is omitted and the source is a string, it is automatically cast to boolean,
- * number, or Date if the destination field already contains a value of that type. */
-export function assignFields(dest: object, src: object|null, cast?: Record<string, string|Function|boolean|string[]|Function[]>): void;
+ * Auto-casting only applies to string sources: when a field has no `cast` entry and its
+ * source value is a string, the string is cast to the destination field's current type
+ * (number, boolean, or Date).  Non-string sources are assigned as-is unless an explicit
+ * `cast` is given, and `null`/`undefined` are never coerced.
+ *
+ * If `strict` is true, throw when a `src` field is neither in `dest` nor ignored via `cast`. */
+export function assignFields(dest: object, src: object|null, cast?: Record<string, string|Function|boolean|string[]|Function[]>, strict?: boolean): void;
 
 export class Template {
     exprs: any[];

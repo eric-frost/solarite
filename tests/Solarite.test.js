@@ -2,7 +2,7 @@
 
 import Testimony, {assert} from './Testimony.js';
 
-import h, {toEl, Solarite, Template, Globals, SolariteUtil, svg} from '../src/Solarite.js';
+import h, {toEl, Solarite, Template, Globals, SolariteUtil, svg, getEventBinding} from '../src/Solarite.js';
 import HtmlParser from '../src/HtmlParser.js';
 import NodeGroup from '../src/NodeGroup.js';
 import Shell from '../src/Shell.js';
@@ -4884,6 +4884,33 @@ Testimony.test('Solarite.binding.input', () => {
 		cancelable: true,
 	}));
 	assert.eq(b.count, '3')
+
+	b.remove();
+});
+
+Testimony.test('Solarite.binding.getEventBinding', () => {
+
+	class B11 extends Solarite {
+		count = 1
+
+		render() {
+			h(this)`<input data-id="input" value=${[this, 'count']}><span data-id="bare"></span>`
+		}
+	}
+
+	let b = new B11();
+	document.body.append(b);
+
+	// 1. The two-way 'value' binding is reachable and flushes the model synchronously.
+	b.input.value = '5';
+	let binding = getEventBinding(b.input, 'value');
+	assert(binding);
+	binding.handleEvent(new Event('input'));
+	assert.eq(b.count, '5');
+
+	// 2. Unknown key on a bound node, and any key on an unbound node, return undefined.
+	assert.eq(getEventBinding(b.input, 'click'), undefined);
+	assert.eq(getEventBinding(b.bare, 'value'), undefined);
 
 	b.remove();
 });

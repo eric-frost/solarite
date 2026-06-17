@@ -11,7 +11,9 @@ export default h;
 export {default as delve} from './delve.js';
 export {default as Template} from './Template.js';
 export {default as toEl} from './toEl.js';
+export {assignFields, Cast} from './assignFields.js';
 export {svg} from './h.js';
+export {getEventBinding} from './PathToAttribValue.js';
 
 // Experimental:
 //--------------
@@ -237,78 +239,4 @@ export class Solarite extends HTMLElementAutoDefine {
 		return null;
 	}
 	*/
-}
-
-
-/**
- * Assign fields from `src` to `dest` if they exist in `dest`.
- *
- * `cast` is an optional record where the key is the field name.
- * - Ignore fields: Use `false` as the value.
- * - Basic Casting: Use `'int'`, `'float'`, `'number'`, `'boolean'`, `'string'`.
- * - Class Casting: Pass a class constructor or its string name to instantiate the field.
- * - Array Casting: Use `[Class]` or `'Class[]'`. The source must be an array.
- *
- * If `cast` is omitted and the source is a string, it is automatically cast to boolean,
- * number, or Date if the destination field already contains a value of that type.
- * @param {object} dest
- * @param {?object} src
- * @param {Record<string, string|Function|boolean>} [cast={}] */
-export function assignFields(dest, src, cast={}) {
-	for (let name in src || {}) {
-		let castVal = name in cast
-			? cast[name]
-			: typeof dest[name];
-
-		// Ignore fields
-		if (castVal === false || !(name in dest))
-			continue;
-
-		// Skip properties that are not writable and don't have a setter
-		const desc = Object.getOwnPropertyDescriptor(dest, name)
-			|| Object.getOwnPropertyDescriptor(Object.getPrototypeOf(dest), name);
-		if (desc && !desc.writable && !desc.set)
-			continue;
-
-		// Array Casting: [Class] or 'Class[]'
-		let arrayCast = castVal && (Array.isArray(castVal) && castVal.length === 1
-			? castVal[0]
-			: (typeof castVal === 'string' && castVal.endsWith('[]')
-				? castVal.slice(0, -2)
-				: null
-			));
-
-		const getConstructor = (c) =>
-			typeof c === 'function' ? c : (window[c] || customElements.get(c));
-
-		let srcVal = src[name];
-		if (arrayCast) {
-			if (!Array.isArray(srcVal))
-				throw new Error(`Field ${name} must be an array.`);
-			let constructor = getConstructor(arrayCast);
-			dest[name] = srcVal.map(v => (constructor && !(v instanceof constructor)) ? new constructor(v) : v);
-			continue;
-		}
-
-		// Basic Type Casting
-		if (castVal === 'int')
-			srcVal = parseInt(srcVal);
-		else if (castVal === 'float' || castVal === 'number')
-			srcVal = Number(srcVal);
-		else if (castVal === 'boolean')
-			srcVal = ![false, 'false', 0, '0'].includes(srcVal);
-		else if (castVal === 'string')
-			srcVal = String(srcVal);
-
-		// Class or Date Casting
-		else if (srcVal != null) {
-			let constructor = getConstructor(castVal);
-			if (constructor && !(srcVal instanceof constructor))
-				srcVal = new constructor(srcVal);
-			else if (dest[name] instanceof Date && !(srcVal instanceof Date))
-				srcVal = new Date(srcVal);
-		}
-
-		dest[name] = srcVal;
-	}
 }

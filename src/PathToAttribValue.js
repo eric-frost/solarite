@@ -292,6 +292,20 @@ export default class PathToAttribValue extends Path {
 const eventBindingsKey = Symbol('solariteEvents');
 
 /**
+ * Get the EventBinding registered for a node+key, or undefined.
+ * Lets a component invoke its own two-way binding (e.g. flush a bound value before
+ * dispatching a change event) without exposing the private storage Symbol.
+ * @param node {Node}
+ * @param key {string}
+ * @return {EventBinding|undefined} */
+export function getEventBinding(node, key) {
+	let b = node[eventBindingsKey];
+	if (b === undefined)
+		return undefined;
+	return b instanceof EventBinding ? (b.key === key ? b : undefined) : b[key];
+}
+
+/**
  * Attach a new EventBinding either directly or through the shared delegated dispatcher. */
 function registerBinding(binding, node, eventName, capture, delegate) {
 	if (delegate) {
