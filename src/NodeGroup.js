@@ -135,8 +135,13 @@ export default class NodeGroup {
 	 * @param el {?HTMLElement} Unused here; used by RootNodeGroup.
 	 * @param options {?object} Unused here; used by RootNodeGroup. */
 	instantiate(shell, shellFragment, el, options) {
+		// A non-stampable group must keep a non-null paths array; null is the stamped/text
+		// sentinel, and reuse would otherwise route a path-less group through rewriteStamp(),
+		// which only exists for stampable shells.  Zero-expression shells have no paths to build.
 		if (shell.paths.length)
 			this.setPathsFromFragment(shellFragment, shell);
+		else
+			this.paths = [];
 
 		if (shell.hasEmbeds)
 			this.activateEmbeds(shellFragment, shell);
