@@ -1458,6 +1458,36 @@ Testimony.test('Solarite.loop.continuity2', `Identical items`, () => {
 	a.remove();
 });
 
+Testimony.test('Solarite.loop.zeroExprReuse', `A pooled zero-expression, multi-root item (no paths, not stampable) must rewrite without crashing when reused.`, () => {
+
+	class A extends Solarite {
+		loading = true;
+		items = ['a', 'b'];
+
+		render() {
+			h(this)`<div>${this.loading
+				? h`<b>Loading…</b><i>wait</i>`
+				: this.items.map(t => h`<span>${t}</span>`)}</div>`
+		}
+	}
+	customElements.define('r-zero-expr-reuse', A);
+	let a = new A();
+	a.render();
+	assert.eq(getHtml(a), '<r-zero-expr-reuse><div><b>Loading…</b><i>wait</i></div></r-zero-expr-reuse>');
+
+	// Switch away so the zero-expression group is detached to the reuse pool.
+	a.loading = false;
+	a.render();
+	assert.eq(getHtml(a), '<r-zero-expr-reuse><div><span>a</span><span>b</span></div></r-zero-expr-reuse>');
+
+	// Switch back: the pooled group is reused and rewritten in place.
+	a.loading = true;
+	a.render();
+	assert.eq(getHtml(a), '<r-zero-expr-reuse><div><b>Loading…</b><i>wait</i></div></r-zero-expr-reuse>');
+
+	a.remove();
+});
+
 Testimony.test('Solarite.loop.eventBindings', () => {
 	let callCount = 0;
 
