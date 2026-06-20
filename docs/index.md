@@ -398,7 +398,7 @@ Make sure to put your events inside `${...}` expressions, because classic events
 
 #### Event Delegation
 
-For components that render many event handlers, like a data grid with buttons on every row, pass `eventDelegation: true` as a render option:
+Solarite delegates bubbling events by default.  Instead of calling `addEventListener` on every element, it listens once per event type at the document level and finds handlers by walking up from the event target.  So a data grid with buttons on every row costs zero listener registrations, which makes large lists noticeably faster to create and clear, especially on phones.  Your templates don't change:
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -416,7 +416,7 @@ class LogViewer extends Solarite {
 	}
 
 	render() {
-		h(this, {eventDelegation: true})`
+		h(this)`
 		<log-viewer>
 			${this.rows.map(row => h`
 				<div key=${row.id}>
@@ -430,11 +430,9 @@ class LogViewer extends Solarite {
 document.body.append(new LogViewer());
 ```
 
-Your templates don't change at all.  Internally, instead of calling `addEventListener` on every element, Solarite listens once per event type at the document level and finds handlers by walking up from the event target.  Creating 10,000 rows with two handlers each then costs zero listener registrations, which makes large lists noticeably faster to create and clear, especially on phones.
+Only events that bubble are delegated (click, input, keydown, and the like); focus, blur, scroll and other non-bubbling events automatically keep regular listeners.  Pass `eventDelegation: ['click', 'input']` as a render option to delegate only specific events, or `eventDelegation: false` to bind every event directly with `addEventListener`.
 
-Only events that bubble are delegated (click, input, keydown, and the like); focus, blur, scroll and other non-bubbling events automatically keep regular listeners.  Pass an array like `eventDelegation: ['click', 'input']` to delegate only specific events.
-
-Two caveats, both rare in practice: delegated handlers run when the event reaches the document, so a manually added `addEventListener` on an ancestor element fires before them rather than after, and `stopPropagation()` called from such a manual listener prevents delegated handlers from running.  Handlers see the correct `event.currentTarget` either way.
+A few caveats, all rare in practice: delegated handlers run when the event reaches the document, so a manually added `addEventListener` on an ancestor element fires before them rather than after, and `stopPropagation()` called from such a manual listener prevents delegated handlers from running.  A non-bubbling event dispatched programmatically (`dispatchEvent` without `bubbles: true`) won't reach delegated handlers either.  Handlers see the correct `event.currentTarget` in every case.  Use `eventDelegation: false` if any of these matter.
 
 ### Two-Way Binding
 
