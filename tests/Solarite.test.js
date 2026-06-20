@@ -1507,11 +1507,11 @@ Testimony.test('Solarite.loop.eventBindings', () => {
 
 	let a = new R215();
 	document.body.append(a);
-	a.firstElementChild.dispatchEvent(new MouseEvent('click'))
+	a.firstElementChild.dispatchEvent(new MouseEvent('click', {bubbles: true}))
 
 	a.fruits.shift();
 	a.render();
-	a.firstElementChild.dispatchEvent(new MouseEvent('click'))
+	a.firstElementChild.dispatchEvent(new MouseEvent('click', {bubbles: true}))
 
 	a.remove();
 });
@@ -2334,11 +2334,11 @@ Testimony.test('Solarite.stamp.keyedRewrite', `Stamped keyed rows rewrite in pla
   | Delegation      |
   └─────────────────╯*/
 //region delegation
-// Tests for the eventDelegation render option: bubbling events dispatch from one
-// document-level listener per event type instead of addEventListener per element.
-// See the delegatedDispatcher in PathToAttribValue.js.
+// Tests for event delegation, which is on by default: bubbling events dispatch from one
+// listener per event type on the component root instead of addEventListener per element.
+// Pass eventDelegation:false to opt out.  See the delegatedDispatcher in PathToAttribValue.js.
 
-Testimony.test('Solarite.delegation.click', `eventDelegation option dispatches through one document listener.`, () => {
+Testimony.test('Solarite.delegation.click', `eventDelegation option dispatches through one root listener.`, () => {
 	let el = document.createElement('div');
 	document.body.append(el);
 	let count = 0, gotEl = null, gotThis = null;
@@ -2465,16 +2465,76 @@ Testimony.test('Solarite.delegation.keyedMove', `Delegated handlers follow keyed
 	el.remove();
 });
 
-Testimony.test('Solarite.delegation.off', `Without the option, no delegated dispatch happens for direct bindings.`, () => {
+Testimony.test('Solarite.delegation.defaultOn', `Delegation is on by default without passing the option.`, () => {
 	let el = document.createElement('div');
 	document.body.append(el);
 	let count = 0;
-	h(el)`<button onclick=${() => count++}>hi</button>`;
+	h(el)`<div><button onclick=${() => count++}>hi</button></div>`;
 
-	el.firstChild.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-	assert.eq(count, 1); // Fires exactly once via the direct listener.
+	let btn = el.querySelector('button');
+	btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(count, 1); // The delegated root listener caught the bubbling click.
+
+	// A non-bubbling event never reaches the root listener, so it doesn't fire.
+	btn.dispatchEvent(new MouseEvent('click'));
+	assert.eq(count, 1);
 
 	el.remove();
+});
+
+Testimony.test('Solarite.delegation.off', `eventDelegation:false binds every event directly.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let count = 0;
+	h(el, {eventDelegation: false})`<div><button onclick=${() => count++}>hi</button></div>`;
+
+	// Direct binding fires even for a non-bubbling event dispatched on the button itself.
+	el.querySelector('button').dispatchEvent(new MouseEvent('click'));
+	assert.eq(count, 1);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.detached', `Delegated handlers work while the component is detached from the document.`, () => {
+	class D80 extends Solarite {
+		count = 0;
+		render() {
+			h(this)`<d-80><button onclick=${() => this.count++}>hi</button></d-80>`;
+		}
+	}
+	D80.define();
+
+	let a = new D80(); // Never appended to the document.
+	a.render();
+	a.querySelector('button').dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(a.count, 1);
+});
+
+Testimony.test('Solarite.delegation.nested', `Nested components each delegate without double-firing.`, () => {
+	let outer = 0, inner = 0;
+
+	class D90Inner extends Solarite {
+		render() {
+			h(this)`<d-90-inner><button onclick=${() => inner++}>inner</button></d-90-inner>`;
+		}
+	}
+	D90Inner.define();
+
+	class D90Outer extends Solarite {
+		render() {
+			h(this)`<d-90-outer onclick=${() => outer++}><d-90-inner></d-90-inner></d-90-outer>`;
+		}
+	}
+	D90Outer.define();
+
+	let a = new D90Outer();
+	document.body.append(a);
+
+	a.querySelector('button').dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(inner, 1); // Inner handler fires exactly once, not twice.
+	assert.eq(outer, 1); // Outer handler also fires once as the click bubbles up.
+
+	a.remove();
 });
 
 //endregion
@@ -3577,7 +3637,7 @@ Testimony.test('Solarite.toEl.standalone2', () => {
 	list.add();
 	assert.eq(getHtml(list), `<div><button>Add Item</button><p>Item 0</p></div>`);
 
-	list.querySelector('button').dispatchEvent(new MouseEvent('click'));
+	list.querySelector('button').dispatchEvent(new MouseEvent('click', {bubbles: true}));
 	assert.eq(getHtml(list), `<div><button>Add Item</button><p>Item 0</p><p>Item 1</p></div>`);
 
 	//list.remove();
@@ -4769,11 +4829,11 @@ Testimony.test('Solarite.events.rebind', 'Ensure function is unbound/rebound on 
 	let a = new Ev20();
 	a.render();
 	assert.eq(assignCalls, 0);
-	a.firstChild.dispatchEvent(new Event('input'));
+	a.firstChild.dispatchEvent(new Event('input', {bubbles: true}));
 	assert.eq(assignCalls, 1);
 
 	a.render();
-	a.firstChild.dispatchEvent(new Event('input'));
+	a.firstChild.dispatchEvent(new Event('input', {bubbles: true}));
 	assert.eq(assignCalls, 2);
 });
 
@@ -4794,11 +4854,11 @@ Testimony.test('Solarite.events.args', 'Ensure event function args are received'
 
 	let a = new Ev30();
 	a.render();
-	a.firstChild.dispatchEvent(new Event('input'));
+	a.firstChild.dispatchEvent(new Event('input', {bubbles: true}));
 	assert.eq(a.count, '1');
 
 	a.firstChild.value = '2';
-	a.firstChild.dispatchEvent(new Event('input'));
+	a.firstChild.dispatchEvent(new Event('input', {bubbles: true}));
 	assert.eq(a.count, '2');
 });
 
@@ -4851,7 +4911,7 @@ Testimony.test('Solarite.events.onChild', () => {
 	customElements.define('e-50', E50);
 
 	let e = new E50();
-	e.querySelector('button').dispatchEvent(new MouseEvent('click'));
+	e.querySelector('button').dispatchEvent(new MouseEvent('click', {bubbles: true}));
 	assert.eq(e.items.length, 1);
 });
 
@@ -4879,7 +4939,7 @@ Testimony.test('Solarite.events.onExprChild', () => {
 	customElements.define('e-60', E60);
 
 	let e = new E60();
-	e.querySelector('button').dispatchEvent(new MouseEvent('click'));
+	e.querySelector('button').dispatchEvent(new MouseEvent('click', {bubbles: true}));
 	assert.eq(e.items.length, 1);
 });
 //endregion

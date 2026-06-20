@@ -1019,13 +1019,14 @@ class PathToAttribValue extends Path {
 		if (typeof func !== 'function')
 			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
 
-		// With the eventDelegation render option, bubbling events skip addEventListener
-		// entirely; one document-level dispatcher per event type finds bindings by walking
-		// up from the event target.  Capture bindings and non-bubbling events stay direct.
+		// Bubbling events are delegated by default: they skip addEventListener entirely, and
+		// one document-level dispatcher per event type finds bindings by walking up from the
+		// event target.  Pass eventDelegation:false to opt out, or an array to delegate only
+		// the named events.  Capture bindings and non-bubbling events always stay direct.
 		let delegate = false;
 		if (capture === false) {
-			let opt = this.parentNg.rootNg.options?.eventDelegation;
-			if (opt !== undefined && opt !== false && delegatableEvents.has(eventName))
+			let opt = this.parentNg.rootNg.options?.eventDelegation ?? true;
+			if (opt !== false && delegatableEvents.has(eventName))
 				delegate = opt === true || opt.includes(eventName);
 		}
 
@@ -1036,7 +1037,7 @@ class PathToAttribValue extends Path {
 		let nodeEvents = node[eventBindingsKey];
 		if (nodeEvents === undefined) {
 			let b = node[eventBindingsKey] = new EventBinding(root, node, key, func, funcAndArgs);
-			registerBinding(b, node, eventName, capture, delegate);
+			registerBinding(b, node, eventName, capture, delegate, root);
 			return;
 		}
 
@@ -1054,7 +1055,7 @@ class PathToAttribValue extends Path {
 				let map = node[eventBindingsKey] = {};
 				map[nodeEvents.key] = nodeEvents;
 				binding = map[key] = new EventBinding(root, node, key, func, funcAndArgs);
-				registerBinding(binding, node, eventName, capture, delegate);
+				registerBinding(binding, node, eventName, capture, delegate, root);
 				return;
 			}
 		}
@@ -1062,7 +1063,7 @@ class PathToAttribValue extends Path {
 			binding = nodeEvents[key];
 			if (!binding) {
 				binding = nodeEvents[key] = new EventBinding(root, node, key, func, funcAndArgs);
-				registerBinding(binding, node, eventName, capture, delegate);
+				registerBinding(binding, node, eventName, capture, delegate, root);
 				return;
 			}
 		}
@@ -1075,33 +1076,63 @@ class PathToAttribValue extends Path {
 const eventBindingsKey = Symbol('solariteEvents');
 
 /**
- * Attach a new EventBinding either directly or through the shared delegated dispatcher. */
-function registerBinding(binding, node, eventName, capture, delegate) {
+ * Get the EventBinding registered for a node+key, or undefined.
+ * Lets a component invoke its own two-way binding (e.g. flush a bound value before
+ * dispatching a change event) without exposing the private storage Symbol.
+ * @param node {Node}
+ * @param key {string}
+ * @return {EventBinding|undefined} */
+function getEventBinding(node, key) {
+	let b = node[eventBindingsKey];
+	if (b === undefined)
+		return undefined;
+	return b instanceof EventBinding ? (b.key === key ? b : undefined) : b[key];
+}
+
+/**
+ * Attach a new EventBinding either directly or through the root component's delegated
+ * dispatcher.  The dispatcher lives on the root element (not the document) so a component
+ * still receives delegated events while detached from the document, and events stay scoped
+ * to the component that rendered them. */
+function registerBinding(binding, node, eventName, capture, delegate, root) {
 	if (delegate) {
 		binding.delegated = true;
-		if (!delegatedListeners.has(eventName)) {
-			delegatedListeners.add(eventName);
-			node.ownerDocument.addEventListener(eventName, delegatedDispatcher);
+		let types = root[delegatedTypesKey];
+		if (types === undefined)
+			types = root[delegatedTypesKey] = new Set();
+		if (!types.has(eventName)) {
+			types.add(eventName);
+			root.addEventListener(eventName, delegatedDispatcher);
 		}
 	}
 	else
 		node.addEventListener(eventName, binding, capture);
 }
 
-// Bubbling events that one document-level listener can dispatch.  Same set Solid.js delegates.
+// Bubbling events that one root-level listener can dispatch.  Same set Solid.js delegates.
 const delegatableEvents = new Set(['beforeinput', 'click', 'contextmenu', 'dblclick', 'focusin', 'focusout',
 	'input', 'keydown', 'keyup', 'mousedown', 'mousemove', 'mouseout', 'mouseover', 'mouseup',
 	'pointerdown', 'pointermove', 'pointerout', 'pointerover', 'pointerup', 'touchend', 'touchmove', 'touchstart']);
 
-// Event names that already have a document-level dispatcher registered.
-const delegatedListeners = new Set();
+// Per-root-element Set of event types that already have a delegated dispatcher registered.
+const delegatedTypesKey = Symbol('solariteDelegatedTypes');
+
+// Marks an event the innermost root dispatcher has already walked, so an outer root's
+// listener (when components are nested) skips it instead of dispatching the bindings again.
+const delegatedDoneKey = Symbol('solariteDelegated');
 
 /**
- * The one document-level listener for each delegated event type.  Walks from the event
- * target upward, invoking delegated EventBindings stored on the nodes along the way.
- * event.currentTarget is patched to the node whose binding is running, and restored after.
- * stopPropagation() inside a handler ends the walk, mirroring native bubbling. */
+ * The per-root listener for each delegated event type.  The first (innermost) root the
+ * bubbling event reaches walks from the event target upward, invoking delegated
+ * EventBindings stored on the nodes along the way; outer roots then see the done-marker and
+ * skip.  Each binding carries its own root, so handlers in an outer component still run with
+ * the correct `this`.  event.currentTarget is patched to the node whose binding is running,
+ * and restored after.  stopPropagation() inside a handler ends the walk, mirroring native
+ * bubbling. */
 function delegatedDispatcher(ev) {
+	if (ev[delegatedDoneKey])
+		return;
+	ev[delegatedDoneKey] = true;
 	let type = ev.type;
 	let current = ev.target;
 	Object.defineProperty(ev, 'currentTarget', {configurable: true, get() { return current }});
@@ -3252,8 +3283,13 @@ class NodeGroup {
 	 * @param el {?HTMLElement} Unused here; used by RootNodeGroup.
 	 * @param options {?object} Unused here; used by RootNodeGroup. */
 	instantiate(shell, shellFragment, el, options) {
+		// A non-stampable group must keep a non-null paths array; null is the stamped/text
+		// sentinel, and reuse would otherwise route a path-less group through rewriteStamp(),
+		// which only exists for stampable shells.  Zero-expression shells have no paths to build.
 		if (shell.paths.length)
 			this.setPathsFromFragment(shellFragment, shell);
+		else
+			this.paths = [];
 
 		if (shell.hasEmbeds)
 			this.activateEmbeds(shellFragment, shell);
@@ -4430,6 +4466,117 @@ function depsSame(a, b) {
 ┏┓  ┓    •
 ┗┓┏┓┃┏┓┏┓┓╋▗▖
 ┗┛┗┛┗┗┻╹ ╹╹┗
+JavaScript UI library
+@license MIT
+@copyright Vorticode LLC
+https://vorticode.github.io/solarite/ */
+
+/**
+ * Cast targets for assignFields().  Each value is also a valid string literal,
+ * so `Cast.int` is interchangeable with `'int'`. */
+const Cast = Object.freeze({
+	int: 'int',
+	float: 'float',
+	number: 'number',
+	boolean: 'boolean',
+	string: 'string',
+});
+
+const getConstructor = c =>
+	typeof c === 'function' ? c : (window[c] || customElements.get(c));
+
+/**
+ * Assign fields from `src` to `dest`, but only for fields that already exist on `dest`.
+ * Typically used in constructors that accept an object of arguments.
+ *
+ * `cast` is an optional record keyed by field name:
+ * - Ignore a field: use `false`.
+ * - Basic casting: use a `Cast` value (`Cast.int`, `Cast.float`, `Cast.number`, `Cast.boolean`, `Cast.string`).
+ * - Class casting: pass a class constructor or its string name to instantiate the field.
+ * - Array casting: use `[Class]` or `'Class[]'`; the source must be an array.
+ *
+ * Auto-casting only applies to string sources: when a field has no `cast` entry and its
+ * source value is a string, the string is cast to the destination field's current type
+ * (number, boolean, or Date).  This is meant for values parsed from HTML attributes, which
+ * always arrive as strings.  Non-string sources are assigned as-is unless an explicit `cast`
+ * is given, and `null`/`undefined` are never coerced (e.g. `String(null) === 'null'`).
+ *
+ * If `strict` is true, throw when a `src` field is neither in `dest` nor ignored via `cast`.
+ * @param {object} dest
+ * @param {?object} src
+ * @param {Record<string, string|Function|boolean>} [cast={}]
+ * @param {boolean} [strict=false] */
+function assignFields(dest, src, cast={}, strict=false) {
+	for (let name in src || {}) {
+
+		// Ignore fields disabled via cast, or not present on dest.
+		if (cast[name] === false)
+			continue;
+		if (!(name in dest)) {
+			if (strict)
+				throw new Error(`assignFields: unknown field '${name}'.`);
+			continue;
+		}
+
+		// Skip properties that aren't writable and have no setter.
+		const desc = Object.getOwnPropertyDescriptor(dest, name)
+			|| Object.getOwnPropertyDescriptor(Object.getPrototypeOf(dest), name);
+		if (desc && !desc.writable && !desc.set)
+			continue;
+
+		let srcVal = src[name];
+
+		// Explicit cast from `cast`, else auto-derive from the destination's type — but
+		// auto-casting only applies to string sources (e.g. parsed HTML attributes).
+		let castVal = name in cast
+			? cast[name]
+			: (typeof srcVal === 'string' ? typeof dest[name] : null);
+
+		// Never coerce null/undefined.
+		if (castVal != null && srcVal != null) {
+
+			// Array Casting: [Class] or 'Class[]'
+			let arrayCast = Array.isArray(castVal) && castVal.length === 1
+				? castVal[0]
+				: (typeof castVal === 'string' && castVal.endsWith('[]')
+					? castVal.slice(0, -2)
+					: null);
+
+			if (arrayCast) {
+				if (!Array.isArray(srcVal))
+					throw new Error(`Field ${name} must be an array.`);
+				let constructor = getConstructor(arrayCast);
+				srcVal = srcVal.map(v => (constructor && !(v instanceof constructor)) ? new constructor(v) : v);
+			}
+
+			// Basic Type Casting
+			else if (castVal === Cast.int)
+				srcVal = parseInt(srcVal);
+			else if (castVal === Cast.float || castVal === Cast.number)
+				srcVal = Number(srcVal);
+			else if (castVal === Cast.boolean)
+				srcVal = ![false, 'false', 0, '0'].includes(srcVal);
+			else if (castVal === Cast.string)
+				srcVal = String(srcVal);
+
+			// Class or Date Casting
+			else {
+				let constructor = getConstructor(castVal);
+				if (constructor && !(srcVal instanceof constructor))
+					srcVal = new constructor(srcVal);
+				else if (dest[name] instanceof Date && !(srcVal instanceof Date))
+					srcVal = new Date(srcVal);
+			}
+		}
+
+		dest[name] = srcVal;
+	}
+}
+
+/*
+┏┓  ┓    •
+┗┓┏┓┃┏┓┏┓┓╋▗▖
+┗┛┗┛┗┗┻╹ ╹╹┗
 JavasCript UI library
 @license MIT
 @copyright Vorticode LLC
@@ -4643,79 +4790,5 @@ class Solarite extends HTMLElementAutoDefine {
 	*/
 }
 
-
-/**
- * Assign fields from `src` to `dest` if they exist in `dest`.
- *
- * `cast` is an optional record where the key is the field name.
- * - Ignore fields: Use `false` as the value.
- * - Basic Casting: Use `'int'`, `'float'`, `'number'`, `'boolean'`, `'string'`.
- * - Class Casting: Pass a class constructor or its string name to instantiate the field.
- * - Array Casting: Use `[Class]` or `'Class[]'`. The source must be an array.
- *
- * If `cast` is omitted and the source is a string, it is automatically cast to boolean,
- * number, or Date if the destination field already contains a value of that type.
- * @param {object} dest
- * @param {?object} src
- * @param {Record<string, string|Function|boolean>} [cast={}] */
-function assignFields(dest, src, cast={}) {
-	for (let name in src || {}) {
-		let castVal = name in cast
-			? cast[name]
-			: typeof dest[name];
-
-		// Ignore fields
-		if (castVal === false || !(name in dest))
-			continue;
-
-		// Skip properties that are not writable and don't have a setter
-		const desc = Object.getOwnPropertyDescriptor(dest, name)
-			|| Object.getOwnPropertyDescriptor(Object.getPrototypeOf(dest), name);
-		if (desc && !desc.writable && !desc.set)
-			continue;
-
-		// Array Casting: [Class] or 'Class[]'
-		let arrayCast = castVal && (Array.isArray(castVal) && castVal.length === 1
-			? castVal[0]
-			: (typeof castVal === 'string' && castVal.endsWith('[]')
-				? castVal.slice(0, -2)
-				: null
-			));
-
-		const getConstructor = (c) =>
-			typeof c === 'function' ? c : (window[c] || customElements.get(c));
-
-		let srcVal = src[name];
-		if (arrayCast) {
-			if (!Array.isArray(srcVal))
-				throw new Error(`Field ${name} must be an array.`);
-			let constructor = getConstructor(arrayCast);
-			dest[name] = srcVal.map(v => (constructor && !(v instanceof constructor)) ? new constructor(v) : v);
-			continue;
-		}
-
-		// Basic Type Casting
-		if (castVal === 'int')
-			srcVal = parseInt(srcVal);
-		else if (castVal === 'float' || castVal === 'number')
-			srcVal = Number(srcVal);
-		else if (castVal === 'boolean')
-			srcVal = ![false, 'false', 0, '0'].includes(srcVal);
-		else if (castVal === 'string')
-			srcVal = String(srcVal);
-
-		// Class or Date Casting
-		else if (srcVal != null) {
-			let constructor = getConstructor(castVal);
-			if (constructor && !(srcVal instanceof constructor))
-				srcVal = new constructor(srcVal);
-			else if (dest[name] instanceof Date && !(srcVal instanceof Date))
-				srcVal = new Date(srcVal);
-		}
-
-		dest[name] = srcVal;
-	}
-}
-
 export default h;
-export { Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, assignFields, delve, h, svg, toEl };
+export { Cast, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, assignFields, delve, getEventBinding, h, svg, toEl };

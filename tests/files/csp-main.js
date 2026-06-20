@@ -42,8 +42,8 @@ customElements.define('csp-test', CspTest);
 let app = new CspTest();
 document.body.append(app);
 
-app.addButton.dispatchEvent(new MouseEvent('click'));
-app.querySelector('a').dispatchEvent(new MouseEvent('click'));
+app.addButton.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+app.querySelector('a').dispatchEvent(new MouseEvent('click', {bubbles: true}));
 
 // Let any async securitypolicyviolation events arrive.
 await new Promise(resolve => setTimeout(resolve, 50));

@@ -24,17 +24,17 @@ Testimony.test('Dist.events.click', `Real clicks must work in the minified build
 	let a = new DistClickTest();
 	document.body.append(a);
 
-	a.children[0].dispatchEvent(new MouseEvent('click'));
+	a.children[0].dispatchEvent(new MouseEvent('click', {bubbles: true}));
 	assert.eq(clicked, 1);
 	assert.eq(clickedArg, 3);
 
-	a.children[1].dispatchEvent(new MouseEvent('click'));
+	a.children[1].dispatchEvent(new MouseEvent('click', {bubbles: true}));
 	assert.eq(clicked, 2);
 	assert.eq(clickedArg, 4);
 
 	// Rebind with a new arrow function on re-render, then click again.
 	a.render();
-	a.children[1].dispatchEvent(new MouseEvent('click'));
+	a.children[1].dispatchEvent(new MouseEvent('click', {bubbles: true}));
 	assert.eq(clicked, 3);
 
 	a.remove();
