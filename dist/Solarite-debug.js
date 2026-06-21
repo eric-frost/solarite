@@ -3416,22 +3416,27 @@ class NodeGroup {
 			}
 		}
 
-		// 2. Resolve target nodes, then write each expression through the shared stampers.
+		// 2. Resolve target nodes, then write each expression.
 		let slots = this.resolveStampSlots(shell);
 		let paths = shell.paths, stampers = shell.stampPaths;
 		for (let i = paths.length - 1; i >= 0; i--) {
 			let stamper = stampers[i];
-			stamper.nodeMarker = slots[paths[i].markerSlot];
+			let marker = slots[paths[i].markerSlot];
+
+			// A wholeParent text path's marker is the (freshly cloned, empty) only-child slot:
+			// write its text directly, skipping applySingle's branching and the shared-stamper
+			// bookkeeping.  Child exprs are primitive here (step 1 bailed otherwise).
+			if (stamper.wholeParent) {
+				let v = exprs[i];
+				if (typeof v === 'number')
+					v += '';
+				marker.textContent = v;
+				continue;
+			}
+
+			stamper.nodeMarker = marker;
 			stamper.parentNg = this;
 			stamper.applySingle(exprs[i]);
-		}
-
-		// 3. Clear per-row state the child-node stampers accumulated, so they're clean for the next row.
-		for (let i=0; i<nodesIdx.length; i++) {
-			let s = stampers[nodesIdx[i]];
-			s.textNode = null;
-			s.textValue = null;
-			s.nodesCache = null;
 		}
 
 		this.nodesCache = null;
