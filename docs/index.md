@@ -628,31 +628,28 @@ When you push a new plant and call `render()`, Solarite appends a single `<span>
 
 **Important**: Nested template literals must also have the `h` prefix, or they'll be rendered as escaped text.  Try removing the `h` before `` `<span ...>` `` to see what happens.
 
-#### Memoized List Items
+#### Efficient List Items
 
-Normally each list item runs its `.map()` callback to build a template, and then Solarite compares that template against the live DOM to find what changed.  For very long lists, `h.memo()` skips both steps for items that haven't changed, similar to Vue's `v-memo` or Lit's `guard()`.  Give it the loop item, the values its html depends on, and a function that builds its template:
+Normally each list item runs its `.map()` callback to build a template, and then Solarite compares that template against the live DOM to find what changed.  For very long lists, `h.map()` skips both steps for items that haven't changed: it reuses a row's DOM for as long as the row is the **same object**, using the object's identity as the dependency.  To change a row you replace it with a new object instead of mutating it in place.  This is the same contract Solid's `<For>` and React's keyed lists use, and it keeps the call site a plain list with no caching code:
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class UserTable extends Solarite {
 	rows = [{id: 1, name: 'Alice'}, {id: 2, name: 'Bob'}, {id: 3, name: 'Carol'}];
-	selectedId = 1;
 
-	selectNext() {
-		let ids = this.rows.map(row => row.id);
-		this.selectedId = ids[(ids.indexOf(this.selectedId) + 1) % ids.length];
+	rename(row) {
+		// Replace the row, don't mutate it, so h.map re-renders just this one.
+		this.rows = this.rows.map(r => r === row ? {...r, name: r.name + '!'} : r);
 		this.render();
 	}
 
 	render() {
 		h(this)`
 		<user-table>
-			<style>:host .selected { background: #fde68a }</style>
-			${this.rows.map(row => h.memo(row, [row.name, row.id === this.selectedId], row =>
-				h`<div class=${row.id === this.selectedId ? 'selected' : ''}>${row.name}</div>`
-			))}
-			<button onclick=${this.selectNext}>Select next</button>
+			${h.map(this.rows, row =>
+				h`<div key=${row.id}>${row.name} <button onclick=${() => this.rename(row)}>!</button></div>`
+			)}
 		</user-table>`
 	}
 }
@@ -660,7 +657,14 @@ class UserTable extends Solarite {
 document.body.append(new UserTable());
 ```
 
-The second argument is the list of values the item's html depends on.  Pass one value, or an array of them.  `h.memo()` compares these values against the previous render with `===` (and shallowly, if it's an array).  As long as they all stay the same, `h.memo()` returns the item's previous template without calling your build function, and the list diff reuses that item's DOM untouched.  As soon as one of those values changes, your build function runs again and the item re-renders normally.  The same item object must not appear twice in one list.
+`h.immutableMap()` is the exact same function under a longer name.  Use whichever reads better: `h.map()` for brevity, or `h.immutableMap()` when you want the call site to remind everyone that the items are treated as immutable.
+
+When to use which:
+
+- Plain `.map()` rebuilds and re-diffs every row each render.  Use it when you mutate rows in place, or when lists are short enough that it doesn't matter.
+- `h.map()` / `h.immutableMap()` reuse a row's DOM while its object is unchanged.  Use it for long lists.  Mutating a row in place won't show, because its identity didn't change; replace the object instead.
+
+Each item passed to `h.map()` must be a distinct object, and an object should appear in only one list.  Non-object items (strings, numbers) are never cached and rebuild every render.
 
 #### Keyed Lists
 
@@ -700,7 +704,7 @@ Rules for `key`:
 - Keys are compared with `===`; numbers, strings, and object references all work.  Keys must be unique within the list.
 - The key never appears in the DOM, and components never receive `key` as a constructor or render argument.  Don't name component arguments `key`.
 
-`h.memo()` and keys compose: memo skips rebuilding unchanged rows' templates, while keys control node identity and movement.
+`h.map()` and keys compose: `h.map()` skips rebuilding unchanged rows' templates, while keys control node identity and movement.
 
 ### Scoped Styles
 

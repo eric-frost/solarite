@@ -1590,7 +1590,7 @@ class PathToNodes extends Path {
 		// 1. Keep the matching prefix in place, rewriting changed content.
 		while (start < oldEnd && start < newEnd) {
 			let ng = oldNgs[start], t = newItems[start];
-			// An identical Template instance (h.memo) implies an identical key, so skip key extraction.
+			// An identical Template instance (h.map) implies an identical key, so skip key extraction.
 			if (ng.template === t) {
 				if (ng.hasComponentPaths)
 					ng.applyExprs(t.exprs, false);
@@ -2136,7 +2136,7 @@ function textTemplate(text) {
  * @return {boolean} */
 function itemSame(ng, item) {
 	let tpl = ng.template;
-	if (tpl === item) // h.memo() returns the same Template instance when deps are unchanged.
+	if (tpl === item) // h.map() returns the same Template instance for an unchanged item.
 		return true;
 	if (typeof item === 'string')
 		return tpl.isText === true && tpl.html[0] === item;
@@ -4145,56 +4145,52 @@ function h(htmlStrings=noArg, ...exprs) {
 		throw new Error('h() does not support argument of type: ' + (htmlStrings ? typeof htmlStrings : htmlStrings))
 }
 
-// Memo entries live directly on the keyed object as a symbol property, which is much
-// faster than a WeakMap and invisible to JSON, for...in, and Object.keys.
-const memoKey = Symbol('solariteMemo');
+// h.map caches each item's Template keyed by the item's identity, so a re-render returns
+// the SAME Template instance for any item whose reference is unchanged.  The reconciler's
+// `ng.template === item` fast path (PathToNodes.applyKeyed/applyDiff) then skips rebuilding
+// and comparing that row.  A WeakMap is used instead of a symbol property so the idiomatic
+// immutable update `{...item, x}` yields a fresh object that ISN'T in the cache and re-renders;
+// a symbol property would be copied by spread and silently reuse the stale Template.
+const mapCache = new WeakMap();
 
 /**
- * Memoize a Template by object identity, like Vue's v-memo or Lit's guard().
+ * Render a list, reusing each item's DOM for as long as the item is the SAME object.
  *
- * When deps (a primitive or shallow array) is unchanged from the previous render,
- * the SAME Template instance is returned.  The list diff recognizes the instance and
- * skips both rebuilding and comparing that item's expressions, so re-rendering a long
- * list where few items changed costs almost nothing per unchanged item.
+ * Treat items as immutable: to change a row, replace it with a new object rather than
+ * mutating it in place, so its identity changes and it re-renders.  This is the contract
+ * Solid's <For> and React's keyed lists use.  It takes no deps — the object identity IS
+ * the dependency — so the call site stays a plain list with no caching code.
  *
- * The same obj must not appear twice in one list.
+ * Each item must be a distinct object, and an object must appear in only one h.map.
+ * Non-object items (strings, numbers) are never cached and rebuild every render.
  *
- * ${this.rows.map(row => h.memo(row, [row.label, row.id === this.selectedId], r =>
- *     h`<tr class=${r.id === this.selectedId ? 'danger' : ''}><td>${r.label}</td></tr>`))}
+ * h.immutableMap is the same function under a longer, self-documenting name; use whichever
+ * reads better: h.map for brevity, h.immutableMap to flag the immutability contract.
  *
- * @param obj {Object} Cache key, usually the loop item.
- * @param deps {*|Array} Values the template depends on; compared === (shallow for arrays).
- * @param fn {function(obj:Object):Template} Called only when deps changed.
- * @return {Template} */
-h.memo = (obj, deps, fn) => {
-	let entry = obj[memoKey];
-	if (entry !== undefined && depsSame(entry.deps, deps))
-		return entry.template;
-
-	let template = fn(obj);
-	if (entry !== undefined) {
-		entry.deps = deps;
-		entry.template = template;
+ * ${h.map(this.rows, row => h`<tr key=${row.id}>${row.label}</tr>`)}
+ *
+ * @param items {Array} The list to render.
+ * @param fn {function(item:*):Template} Builds an item's Template; called only for new items.
+ * @return {Template[]} */
+h.map = (items, fn) => {
+	let result = new Array(items.length);
+	for (let i=0; i<items.length; i++) {
+		let item = items[i];
+		if (item !== null && typeof item === 'object') {
+			let template = mapCache.get(item);
+			if (template === undefined) {
+				template = fn(item);
+				mapCache.set(item, template);
+			}
+			result[i] = template;
+		}
+		else
+			result[i] = fn(item);
 	}
-	else if (Object.isExtensible(obj))
-		obj[memoKey] = {deps, template};
-	// Frozen/sealed objects simply aren't cached.
-	return template;
+	return result;
 };
 
-function depsSame(a, b) {
-	if (a === b)
-		return true;
-	if (Array.isArray(a) && Array.isArray(b)) {
-		if (a.length !== b.length)
-			return false;
-		for (let i=0; i<a.length; i++)
-			if (a[i] !== b[i])
-				return false;
-		return true;
-	}
-	return false;
-}
+h.immutableMap = h.map;
 
 /*
 ┏┓  ┓    •

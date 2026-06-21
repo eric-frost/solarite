@@ -36,8 +36,12 @@ declare function h(obj: {render: Function}): (htmlStrings: TemplateStringsArray,
 declare function h(): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => Node|DocumentFragment;
 
 declare namespace h {
-	/** Memoize a Template by object identity; fn runs only when deps (===, shallow for arrays) changed. */
-	function memo<T extends object>(obj:T, deps:any, fn:(obj:T) => Template): Template;
+	/** Render a list, reusing each item's DOM while the item is the SAME object; replace an item
+	 *  (don't mutate it) to re-render it.  fn runs only for new items.  No deps: identity is the dep. */
+	function map<T>(items:T[], fn:(item:T) => Template): Template[];
+
+	/** Alias of h.map with a name that flags the immutability contract at the call site. */
+	function immutableMap<T>(items:T[], fn:(item:T) => Template): Template[];
 }
 
 /** Tagged template literal for SVG markup and SVG child fragments. */

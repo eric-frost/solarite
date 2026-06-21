@@ -68,7 +68,8 @@ const terserOptions = {
 				'callee',
 				'constructor',
 				'handleEvent', // Looked up by name by addEventListener(name, object).
-				'memo', // Public API: h.memo(), accessed by name in user code.
+				'map', // Public API: h.map(), accessed by name in user code.
+				'immutableMap', // Public API: h.immutableMap(), alias of h.map().
 				// RenderOptions properties come from user-code object literals:
 				'eventDelegation',
 				'ids',

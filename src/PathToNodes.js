@@ -344,7 +344,7 @@ export default class PathToNodes extends Path {
 		// 1. Keep the matching prefix in place, rewriting changed content.
 		while (start < oldEnd && start < newEnd) {
 			let ng = oldNgs[start], t = newItems[start];
-			// An identical Template instance (h.memo) implies an identical key, so skip key extraction.
+			// An identical Template instance (h.map) implies an identical key, so skip key extraction.
 			if (ng.template === t) {
 				if (ng.hasComponentPaths)
 					ng.applyExprs(t.exprs, false);
@@ -939,7 +939,7 @@ function textTemplate(text) {
  * @return {boolean} */
 function itemSame(ng, item) {
 	let tpl = ng.template;
-	if (tpl === item) // h.memo() returns the same Template instance when deps are unchanged.
+	if (tpl === item) // h.map() returns the same Template instance for an unchanged item.
 		return true;
 	if (typeof item === 'string')
 		return tpl.isText === true && tpl.html[0] === item;
