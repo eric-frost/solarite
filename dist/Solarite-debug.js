@@ -1030,13 +1030,18 @@ class PathToAttribValue extends Path {
 				delegate = opt === true || opt.includes(eventName);
 		}
 
+		// Store the callable as a single [func, ...args] array.  Array-form bindings
+		// (onclick=${[fn, arg]}, the hot per-row case) pass it through with no allocation;
+		// a plain function allocates a one-element array, which is rare (buttons, two-way).
+		let args = funcAndArgs || [func];
+
 		// One stable EventBinding object per node+key is registered with addEventListener
-		// and dispatches to the current func/args.  This way, assigning a new function
+		// and dispatches to the current args.  This way, assigning a new function
 		// (e.g. a fresh arrow function on each render) never needs add/removeEventListener.
 		// Most nodes have one binding, stored directly; a second key upgrades to a map.
 		let nodeEvents = node[eventBindingsKey];
 		if (nodeEvents === undefined) {
-			let b = node[eventBindingsKey] = new EventBinding(root, node, key, func, funcAndArgs);
+			let b = node[eventBindingsKey] = new EventBinding(root, node, key, args);
 			registerBinding(b, node, eventName, capture, delegate, root);
 			return;
 		}
@@ -1054,7 +1059,7 @@ class PathToAttribValue extends Path {
 			else {
 				let map = node[eventBindingsKey] = {};
 				map[nodeEvents.key] = nodeEvents;
-				binding = map[key] = new EventBinding(root, node, key, func, funcAndArgs);
+				binding = map[key] = new EventBinding(root, node, key, args);
 				registerBinding(binding, node, eventName, capture, delegate, root);
 				return;
 			}
@@ -1062,14 +1067,13 @@ class PathToAttribValue extends Path {
 		else {
 			binding = nodeEvents[key];
 			if (!binding) {
-				binding = nodeEvents[key] = new EventBinding(root, node, key, func, funcAndArgs);
+				binding = nodeEvents[key] = new EventBinding(root, node, key, args);
 				registerBinding(binding, node, eventName, capture, delegate, root);
 				return;
 			}
 		}
 		binding.root = root;
-		binding.func = func;
-		binding.args = funcAndArgs;
+		binding.args = args;
 	}
 }
 
@@ -1152,13 +1156,12 @@ function delegatedDispatcher(ev) {
 }
 
 class EventBinding {
-	constructor(root, node, key, func=null, args=null) {
+	constructor(root, node, key, args) {
 		this.root = root;
 		this.node = node;
 		this.key = key;
-		this.func = func;
 
-		/** @type {?Array} [func, ...args] or null if func stands alone. */
+		/** @type {Array} [func, ...args]; always at least [func]. */
 		this.args = args;
 	}
 
@@ -1167,15 +1170,12 @@ class EventBinding {
 	// Quoted so the minifier's property mangling doesn't rename it, since the browser looks it up by name.
 	'handleEvent'(event) {
 		let a = this.args;
-		if (a) {
-			switch (a.length) {
-				case 1: return a[0].call(this.root, event, this.node);
-				case 2: return a[0].call(this.root, a[1], event, this.node);
-				case 3: return a[0].call(this.root, a[1], a[2], event, this.node);
-			}
-			return a[0].call(this.root, ...a.slice(1), event, this.node);
+		switch (a.length) {
+			case 1: return a[0].call(this.root, event, this.node);
+			case 2: return a[0].call(this.root, a[1], event, this.node);
+			case 3: return a[0].call(this.root, a[1], a[2], event, this.node);
 		}
-		return this.func.call(this.root, event, this.node);
+		return a[0].call(this.root, ...a.slice(1), event, this.node);
 	}
 }
 
