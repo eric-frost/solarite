@@ -309,7 +309,23 @@ export default class NodeGroup {
 				if (slots === null)
 					slots = this.resolveStampSlots(shell);
 				let stamper = stampers[i];
-				stamper.nodeMarker = slots[paths[i].markerSlot];
+				let marker = slots[paths[i].markerSlot];
+
+				// Fast path for a wholeParent text path whose child already exists (the common
+				// rewrite case): set its value directly, skipping applySingle's branching and
+				// textNode bookkeeping.  exprSame above already proved it changed.  The empty/
+				// absent-child case falls through to the stamper.
+				if (stamper.wholeParent) {
+					let v = newExprs[i], tn = marker.firstChild;
+					if (typeof v === 'number')
+						v += '';
+					if (tn !== null && tn.nodeType === 3 && tn === marker.lastChild) {
+						tn.nodeValue = v;
+						continue;
+					}
+				}
+
+				stamper.nodeMarker = marker;
 				stamper.parentNg = this;
 				stamper.applySingle(newExprs[i]);
 			}
