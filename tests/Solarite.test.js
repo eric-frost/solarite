@@ -1204,95 +1204,104 @@ Testimony.test('Solarite.loop.strings', () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.memo.basic', `h.memo skips rebuilding rows with unchanged deps`, () => {
+Testimony.test('Solarite.map.basic', `h.map reuses a row's DOM while the object is unchanged`, () => {
 	class A extends Solarite {
 		rows = [{id: 1, label: 'Apple'}, {id: 2, label: 'Banana'}];
-		selectedId = null;
 
 		render() {
-			h(this)`${this.rows.map(row => h.memo(row, [row.label, row.id === this.selectedId], r =>
-				h`<p class=${r.id === this.selectedId ? 'sel' : ''}>${r.label}</p>`))}`
+			h(this)`${h.map(this.rows, row => h`<p key=${row.id}>${row.label}</p>`)}`
 		}
 	}
-	customElements.define('r-900', A);
+	customElements.define('r-910', A);
 	let a = new A();
 	document.body.append(a);
 
 	a.render();
-	assert.eq(getHtml(a), '<r-900><p class="">Apple</p><p class="">Banana</p></r-900>');
+	assert.eq(getHtml(a), '<r-910><p>Apple</p><p>Banana</p></r-910>');
 
-	// Unchanged deps keep the same elements.
+	// Same object references keep the same elements.
 	let apple = a.children[0], banana = a.children[1];
 	a.render();
 	assert.eq(a.children[0], apple);
 	assert.eq(a.children[1], banana);
 
-	// Selection updates only the affected rows, reusing their elements.
-	a.selectedId = 2;
+	// Replacing a row with a new object (immutable update) re-renders just that row.
+	a.rows = [a.rows[0], {...a.rows[1], label: 'Cherry'}];
 	a.render();
-	assert.eq(getHtml(a), '<r-900><p class="">Apple</p><p class="sel">Banana</p></r-900>');
-	assert.eq(a.children[0], apple);
-	assert.eq(a.children[1], banana);
-
-	a.selectedId = 1;
-	a.render();
-	assert.eq(getHtml(a), '<r-900><p class="sel">Apple</p><p class="">Banana</p></r-900>');
-
-	// Mutating a field listed in deps rebuilds that row's content.
-	a.rows[1].label = 'Cherry';
-	a.render();
-	assert.eq(getHtml(a), '<r-900><p class="sel">Apple</p><p class="">Cherry</p></r-900>');
-	assert.eq(a.children[1], banana);
+	assert.eq(getHtml(a), '<r-910><p>Apple</p><p>Cherry</p></r-910>');
+	assert.eq(a.children[0], apple); // Unchanged row kept its element.
 
 	a.remove();
 });
 
-Testimony.test('Solarite.memo.primitiveDeps', `deps as a single primitive value`, () => {
+Testimony.test('Solarite.map.mutationIgnored', `Mutating a row in place does NOT re-render it (immutability contract)`, () => {
 	class A extends Solarite {
-		rows = [{label: 'Apple'}, {label: 'Banana'}];
+		rows = [{id: 1, label: 'Apple'}];
 
 		render() {
-			h(this)`${this.rows.map(row => h.memo(row, row.label, r => h`<p>${r.label}</p>`))}`
+			h(this)`${h.map(this.rows, row => h`<p key=${row.id}>${row.label}</p>`)}`
 		}
 	}
-	customElements.define('r-901', A);
+	customElements.define('r-911', A);
 	let a = new A();
 	document.body.append(a);
 
 	a.render();
-	let apple = a.children[0];
-	a.render();
-	assert.eq(a.children[0], apple);
-
+	// Mutate in place: same reference, so h.map keeps the cached Template and the row is NOT updated.
 	a.rows[0].label = 'Apricot';
 	a.render();
-	assert.eq(getHtml(a), '<r-901><p>Apricot</p><p>Banana</p></r-901>');
+	assert.eq(getHtml(a), '<r-911><p>Apple</p></r-911>'); // Stale, as documented.
+
+	// Replacing the object DOES update it.
+	a.rows = [{...a.rows[0]}];
+	a.render();
+	assert.eq(getHtml(a), '<r-911><p>Apricot</p></r-911>');
 	a.remove();
 });
 
-Testimony.test('Solarite.memo.reorder', `Memoized templates still diff correctly when rows move`, () => {
+Testimony.test('Solarite.map.reorder', `Reordering the same objects moves their DOM without rebuilding`, () => {
 	class A extends Solarite {
-		rows = [{label: 'Apple'}, {label: 'Banana'}, {label: 'Cherry'}];
+		rows = [{id: 1, label: 'Apple'}, {id: 2, label: 'Banana'}, {id: 3, label: 'Cherry'}];
 
 		render() {
-			h(this)`${this.rows.map(row => h.memo(row, row.label, r => h`<p>${r.label}</p>`))}`
+			h(this)`${h.map(this.rows, row => h`<p key=${row.id}>${row.label}</p>`)}`
 		}
 	}
-	customElements.define('r-902', A);
+	customElements.define('r-912', A);
 	let a = new A();
 	document.body.append(a);
 
 	a.render();
-	assert.eq(getHtml(a), '<r-902><p>Apple</p><p>Banana</p><p>Cherry</p></r-902>');
+	let cherry = a.children[2];
 
-	a.rows.reverse();
+	// Swap first and last: same object references, just reordered.
+	let temp = a.rows[0];
+	a.rows[0] = a.rows[2];
+	a.rows[2] = temp;
 	a.render();
-	assert.eq(getHtml(a), '<r-902><p>Cherry</p><p>Banana</p><p>Apple</p></r-902>');
+	assert.eq(getHtml(a), '<r-912><p>Cherry</p><p>Banana</p><p>Apple</p></r-912>');
+	assert.eq(a.children[0], cherry); // Moved, not rebuilt.
 
-	// And a removal afterward.
 	a.rows.splice(1, 1);
 	a.render();
-	assert.eq(getHtml(a), '<r-902><p>Cherry</p><p>Apple</p></r-902>');
+	assert.eq(getHtml(a), '<r-912><p>Cherry</p><p>Apple</p></r-912>');
+	a.remove();
+});
+
+Testimony.test('Solarite.map.immutableMapAlias', `h.immutableMap is the same function as h.map`, () => {
+	assert.eq(h.immutableMap, h.map);
+
+	class A extends Solarite {
+		rows = [{id: 1, label: 'Apple'}];
+		render() {
+			h(this)`${h.immutableMap(this.rows, row => h`<p key=${row.id}>${row.label}</p>`)}`
+		}
+	}
+	customElements.define('r-913', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	assert.eq(getHtml(a), '<r-913><p>Apple</p></r-913>');
 	a.remove();
 });
 
@@ -2087,31 +2096,6 @@ Testimony.test('Solarite.keyed.inputState', `Un-rendered DOM state follows the k
 	render(rows);
 	assert.eq(el.children[1].querySelector('input'), input);
 	assert.eq(input.value, 'typed by user');
-
-	el.remove();
-});
-
-Testimony.test('Solarite.keyed.memo', `h.memo skips unchanged keyed rows; identity still follows keys.`, () => {
-	let el = document.createElement('div');
-	document.body.append(el);
-	let render = rows => h(el)`${rows.map(r =>
-		h.memo(r, r.label, r => h`<p key=${r.id}>${r.label}</p>`))}`;
-
-	let rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}, {id: 3, label: 'c'}];
-	render(rows);
-	let nodes = [...el.children];
-
-	[rows[0], rows[2]] = [rows[2], rows[0]];
-	render(rows);
-	assert.eq(getHtml(el), '<div><p>c</p><p>b</p><p>a</p></div>');
-	assert.eq(el.children[0], nodes[2]);
-	assert.eq(el.children[1], nodes[1]);
-	assert.eq(el.children[2], nodes[0]);
-
-	rows[1].label = 'b2';
-	render(rows);
-	assert.eq(getHtml(el), '<div><p>c</p><p>b2</p><p>a</p></div>');
-	assert.eq(el.children[1], nodes[1]);
 
 	el.remove();
 });
