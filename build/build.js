@@ -43,6 +43,9 @@ const terserOptions = {
 		passes: 5, // 3 gives the same result as 5.
 		//hoist_funs: true, // Increases size
 		//hoist_vars: true, // Increases size
+		module: true, // Output is an ES module (always strict): enables extra optimizations.
+		toplevel: true, // Drop unused top-level functions/vars.
+		keep_fargs: false, // Drop unused trailing function arguments.
 		pure_getters: true,
 		unsafe: true,
 		unsafe_arrows: true,
