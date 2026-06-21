@@ -236,16 +236,10 @@ export default class PathToAttribValue extends Path {
 		if (typeof func !== 'function')
 			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
 
-		// Bubbling events are delegated by default: they skip addEventListener entirely, and
-		// one document-level dispatcher per event type finds bindings by walking up from the
-		// event target.  Pass eventDelegation:false to opt out, or an array to delegate only
-		// the named events.  Capture bindings and non-bubbling events always stay direct.
-		let delegate = false;
-		if (capture === false) {
-			let opt = this.parentNg.rootNg.options?.eventDelegation ?? true;
-			if (opt !== false && delegatableEvents.has(eventName))
-				delegate = opt === true || opt.includes(eventName);
-		}
+		// Whether to delegate is decided in registerBinding(), which only runs for a NEW binding.
+		// Re-renders rebind existing rows (just updating binding.args below), so they skip the
+		// options lookup + delegatableEvents check entirely.
+		let options = this.parentNg.rootNg.options;
 
 		// Store the callable as a single [func, ...args] array.  Array-form bindings
 		// (onclick=${[fn, arg]}, the hot per-row case) pass it through with no allocation;
@@ -259,7 +253,7 @@ export default class PathToAttribValue extends Path {
 		let nodeEvents = node[eventBindingsKey];
 		if (nodeEvents === undefined) {
 			let b = node[eventBindingsKey] = new EventBinding(root, node, key, args);
-			registerBinding(b, node, eventName, capture, delegate, root);
+			registerBinding(b, node, eventName, capture, options, root);
 			return;
 		}
 
@@ -277,7 +271,7 @@ export default class PathToAttribValue extends Path {
 				let map = node[eventBindingsKey] = {};
 				map[nodeEvents.key] = nodeEvents;
 				binding = map[key] = new EventBinding(root, node, key, args);
-				registerBinding(binding, node, eventName, capture, delegate, root);
+				registerBinding(binding, node, eventName, capture, options, root);
 				return;
 			}
 		}
@@ -285,7 +279,7 @@ export default class PathToAttribValue extends Path {
 			binding = nodeEvents[key];
 			if (!binding) {
 				binding = nodeEvents[key] = new EventBinding(root, node, key, args);
-				registerBinding(binding, node, eventName, capture, delegate, root);
+				registerBinding(binding, node, eventName, capture, options, root);
 				return;
 			}
 		}
@@ -315,7 +309,18 @@ export function getEventBinding(node, key) {
  * dispatcher.  The dispatcher lives on the root element (not the document) so a component
  * still receives delegated events while detached from the document, and events stay scoped
  * to the component that rendered them. */
-function registerBinding(binding, node, eventName, capture, delegate, root) {
+function registerBinding(binding, node, eventName, capture, options, root) {
+	// Bubbling events are delegated by default: they skip addEventListener entirely, and one
+	// root-level dispatcher per event type finds bindings by walking up from the event target.
+	// eventDelegation:false opts out; an array delegates only the named events.  Capture
+	// bindings and non-bubbling events always stay direct.
+	let delegate = false;
+	if (capture === false) {
+		let opt = options?.eventDelegation ?? true;
+		if (opt !== false && delegatableEvents.has(eventName))
+			delegate = opt === true || opt.includes(eventName);
+	}
+
 	if (delegate) {
 		binding.delegated = true;
 		let types = root[delegatedTypesKey];
