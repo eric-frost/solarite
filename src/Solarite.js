@@ -11,7 +11,7 @@ export default h;
 export {default as delve} from './delve.js';
 export {default as Template} from './Template.js';
 export {default as toEl} from './toEl.js';
-export {assignFields, Cast} from './assignFields.js';
+export {assignAttributes} from './assignAttributes.js';
 export {svg} from './h.js';
 export {getEventBinding} from './PathToAttribValue.js';
 
