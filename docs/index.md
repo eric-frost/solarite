@@ -932,6 +932,58 @@ document.body.append(list);
 
 Since HTML attributes are case-insensitive, Solarite automatically converts dash-case (kebab-case) attribute names to camelCase when passing them to component constructors. For example, the `font-size` attribute becomes the `fontSize` property of  the first argument passed to the constructor and to the `render()` function.
 
+#### assignAttributes()
+
+A component can be created three ways, and its values arrive differently each time.
+
+When you create it with `new MyTimer({duration: 7})`, or embed it inside a tagged template with bindings like ``h`<my-timer duration=${7}>` ``, the values keep their original types and arrive in the constructor's `fields` argument.  Here `duration` is the number `7`, so you assign `fields` directly.  These two ways are really the same: both hand the constructor a typed object.
+
+But when you write plain html like `<my-timer duration="7">`, there is no `fields` argument.  The values live in the element's html attribute, and html attributes are always strings, so `duration` is the string `"7"`.  `assignAttributes()` reads those attributes onto your component, casting each string to the type you name.  It only writes to fields that already exist on the component.
+
+```javascript
+import h, {Solarite, assignAttributes} from './dist/Solarite.min.js';
+
+class MyTimer extends Solarite {
+
+    duration = 60;
+    autoStart = false;
+
+    constructor(fields={}) {
+        super();
+
+        // From new or from a tagged template, fields already holds typed values.
+        Object.assign(this, fields);
+
+        // From plain html, read the attributes and cast the strings.
+        assignAttributes(this, {duration: Number, autoStart: Boolean});
+
+        this.render();
+    }
+
+    render() {
+        h(this)`<my-timer>${this.duration}s, autoStart=${this.autoStart}</my-timer>`;
+    }
+}
+customElements.define('my-timer', MyTimer);
+```
+
+Now all three produce the same result, a `duration` of `7` (a number) and an `autoStart` of `true` (a boolean):
+
+```javascript
+// With new.  Values keep their types and are assigned from fields.
+let timer = new MyTimer({duration: 7, autoStart: true});
+
+// From a tagged template.  Same path: values arrive typed in fields.
+let timer2 = h`<my-timer duration=${7} auto-start=${true}></my-timer>`;
+
+// From plain html.  Attributes are strings, which assignAttributes() casts.
+document.body.innerHTML = `<my-timer duration="7" auto-start></my-timer>`;
+```
+
+The two sources never collide.  A `new` call or a tagged template passes its values in `fields` and sets no attributes when the constructor runs, while plain html sets attributes and passes no `fields`.
+
+Each `types` entry maps a field name to a converter.  `Number`, `Boolean`, `String`, and `Date` are built in, or you can pass any function that takes the string and returns a value.  A `Boolean` attribute is true whenever it's present, even when bare like `auto-start` above, and false only for `"false"` or `"0"`.  An attribute you don't name in `types` is assigned as its raw string.  An attribute written like `${...}` is JSON-parsed back to its original type.  To skip an attribute, pass its field name in the third argument: `assignAttributes(this, types, ['duration'])`.
+
 #### Component Rendering Hierarchy
 
 When a parent component renders:

@@ -14,7 +14,7 @@
     "build-prod": "echo 0"
   },
   "keywords": [],
-  "author": "Eric Poggel",
+  "author": "Eric Frost",
   "license": "MIT",
   "homepage": "https://github.com/krausest/js-framework-benchmark",
   "repository": {

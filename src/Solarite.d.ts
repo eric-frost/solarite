@@ -75,31 +75,18 @@ export interface EventBinding {
 /** Get the EventBinding registered for a node+key, or undefined. */
 export function getEventBinding(node: Node, key: string): EventBinding | undefined;
 
-/** Cast targets for assignFields().  Each value equals its own string literal. */
-export const Cast: {
-	readonly int: 'int';
-	readonly float: 'float';
-	readonly number: 'number';
-	readonly boolean: 'boolean';
-	readonly string: 'string';
-};
-
 /**
- * Assign fields from `src` to `dest` if they exist in `dest`.
+ * Read an element's html attributes onto fields that already exist on the element, to
+ * support plain-html instantiation like `<my-timer duration="7" auto-start>`.
  *
- * `cast` is an optional record where the key is the field name.
- * - Ignore fields: Use `false` as the value.
- * - Basic Casting: Use `'int'`, `'float'`, `'number'`, `'boolean'`, `'string'`.
- * - Class Casting: Pass a class constructor or its string name to instantiate the field.
- * - Array Casting: Use `[Class]` or `'Class[]'`. The source must be an array.
+ * Attribute names convert from kebab-case to camelCase.  A `${...}` attribute is JSON-parsed
+ * back to its original type.  Every other attribute value is a string: if its field is named
+ * in `types`, the string is cast with that converter, otherwise it's assigned as a string.
  *
- * Auto-casting only applies to string sources: when a field has no `cast` entry and its
- * source value is a string, the string is cast to the destination field's current type
- * (number, boolean, or Date).  Non-string sources are assigned as-is unless an explicit
- * `cast` is given, and `null`/`undefined` are never coerced.
- *
- * If `strict` is true, throw when a `src` field is neither in `dest` nor ignored via `cast`. */
-export function assignFields(dest: object, src: object|null, cast?: Record<string, string|Function|boolean|string[]|Function[]>, strict?: boolean): void;
+ * `types` maps a field name to a converter: Number, Boolean, String, Date, or any function
+ * taking the string and returning a value.  Boolean is true for any string except 'false'
+ * and '0', so a bare attribute reads as true.  Field names in `ignore` are skipped. */
+export function assignAttributes(dest: HTMLElement, types?: Record<string, Function>, ignore?: string[]): void;
 
 export class Template {
     exprs: any[];
