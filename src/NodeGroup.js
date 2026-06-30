@@ -81,6 +81,11 @@ export default class NodeGroup {
 		/*#IFDEV*/assert(this.rootNg);/*#ENDIF*/
 		this.template = template;
 
+		// JSX templates carry their list key on the Template (tagged templates instead set it via
+		// a PathToKey during applyExprs).  Adopt it so the keyed reconciler sees ng.key uniformly.
+		if (template.key !== undefined)
+			this.key = template.key;
+
 		// If it's just a text node, skip a bunch of unnecessary steps.
 		// el can be an existing Text node to adopt, from PathToNodes' bare-text fast path.
 		if (template.isText) {

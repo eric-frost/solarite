@@ -14,6 +14,7 @@ export {default as toEl} from './toEl.js';
 export {assignAttributes} from './assignAttributes.js';
 export {svg} from './h.js';
 export {getEventBinding} from './PathToAttribValue.js';
+export {Fragment} from './jsx.js';
 
 // Experimental:
 //--------------

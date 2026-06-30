@@ -1,0 +1,44 @@
+{
+  "name": "babel-plugin-solarite",
+  "version": "0.7.0",
+  "description": "Babel plugin that compiles JSX/TSX to Solarite precompile output (jsxTemplate/jsxAttr/jsxEscape), giving JSX the same runtime speed as h tagged templates. Also the shared engine behind vite-plugin-solarite and esbuild-plugin-solarite.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Eric Frost",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "bin": {
+    "solarite-jsx": "./cli.js"
+  },
+  "files": [
+    "index.js",
+    "babel-plugin.js",
+    "transform.js",
+    "cli.js",
+    "readme.md"
+  ],
+  "keywords": [
+    "solarite",
+    "jsx",
+    "tsx",
+    "babel",
+    "babel-plugin",
+    "precompile"
+  ],
+  "dependencies": {
+    "@babel/core": "^8.0.1",
+    "@babel/plugin-syntax-jsx": "^8.0.1",
+    "@babel/preset-typescript": "^8.0.1"
+  },
+  "peerDependencies": {
+    "solarite": "^0.7.0"
+  },
+  "peerDependenciesMeta": {
+    "solarite": { "optional": true }
+  },
+  "scripts": {
+    "test": "node test.js"
+  }
+}

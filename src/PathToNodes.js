@@ -163,7 +163,7 @@ export default class PathToNodes extends Path {
 			// so removed keyed NodeGroups are discarded instead of pooled.
 			let first = newItems.length !== 0 ? newItems[0] : null;
 			if (first !== null
-				? (typeof first !== 'string' && Shell.get(first.html, first.svgMode).keyIndex >= 0)
+				? (typeof first !== 'string' && (first.key !== undefined || Shell.get(first.html, first.svgMode).keyIndex >= 0))
 				: (this.nodeGroups !== null && this.nodeGroups.length !== 0 && this.nodeGroups[0].key !== undefined))
 				this.applyKeyed(newItems);
 			else
@@ -317,6 +317,8 @@ export default class PathToNodes extends Path {
 		// Resolve an item's key, caching the html->keyIndex lookup for same-template lists.
 		let keyHtml = null, keyIndex = -1;
 		const keyOf = t => {
+			if (t.key !== undefined) // JSX templates carry the key directly.
+				return t.key;
 			if (t.html !== keyHtml) {
 				keyHtml = t.html;
 				keyIndex = Shell.get(t.html, t.svgMode).keyIndex;
@@ -565,6 +567,8 @@ export default class PathToNodes extends Path {
 			else
 				ng.applyExprs(item.exprs);
 			ng.template = item;
+			if (item.key !== undefined) // JSX keyed item; keep ng.key in sync with the new template.
+				ng.key = item.key;
 		}
 	}
 

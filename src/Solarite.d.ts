@@ -31,7 +31,7 @@ declare function h(htmlStrings: TemplateStringsArray, ...exprs: any[]): Template
 declare function h(htmlStrings: string | string[], ...exprs: any[]): Template;
 declare function h(el: HTMLElement | DocumentFragment, options?: RenderOptions): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => HTMLElement | DocumentFragment;
 declare function h(el: HTMLElement | DocumentFragment, template: Template, options?: RenderOptions): void;
-declare function h(tag: string, props: object, ...children: any[]): Template; // JSX
+declare function h(tag: string | Function | symbol, props: object | null, ...children: any[]): Template; // JSX classic factory
 declare function h(obj: {render: Function}): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => void; // Rebound render
 declare function h(): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => Node|DocumentFragment;
 
@@ -91,11 +91,15 @@ export function assignAttributes(dest: HTMLElement, types?: Record<string, Funct
 export class Template {
     exprs: any[];
     html: string[];
+    /** List key for keyed diffing, set by the JSX runtime from a `key` prop. */
+    key?: any;
     constructor(htmlStrings: string[], exprs: any[]);
     render(el?: HTMLElement | null, options?: RenderOptions): HTMLElement | DocumentFragment;
     getCloseKey(): string;
-    static fromJsx(tag: string, props: Record<string, any> | null, children: any[]): Template;
 }
+
+/** JSX fragment marker for the classic/automatic factories: `<>...</>`. */
+export const Fragment: unique symbol;
 
 export function delve(obj: object, path: string[], createVal?: any): any;
 

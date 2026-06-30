@@ -1,6 +1,9 @@
 import Path from "./Path.js";
 import Util from "./Util.js";
 import assert from "./assert.js";
+import PathToAttribValue from "./PathToAttribValue.js";
+import PathToEvent from "./PathToEvent.js";
+import {JsxAttr, styleToCss} from "./jsx.js";
 
 export default class PathToAttribs extends Path {
 
@@ -30,6 +33,10 @@ export default class PathToAttribs extends Path {
 	 * @param expr {Expr} */
 	applySingle(expr) {
 		let node = this.nodeMarker;
+
+		// JSX Tier 1 whole-attribute hole: `<a ` + jsxAttr("href", v) + `>`.
+		if (expr instanceof JsxAttr)
+			return this.applyJsxAttr(expr);
 
 		if (Array.isArray(expr))
 			expr = expr.flat().join(' ');  // flat and join so we can accept arrays of arrays of strings.
@@ -66,6 +73,39 @@ export default class PathToAttribs extends Path {
 		for (let oldName of oldNames)
 			if (!this.attrNames.has(oldName))
 				node.removeAttribute(oldName);
+	}
+
+
+	/**
+	 * Apply a single JSX jsxAttr(name, value) pair.  We delegate to a cached PathToEvent or
+	 * PathToAttribValue sub-path so events, html properties, two-way binding, booleans, and
+	 * contenteditable all behave exactly as `name=${value}` in a tagged template.  The attr name
+	 * at a given hole is a compile-time literal, so the sub-path is stable across renders.
+	 * @param attr {JsxAttr} */
+	applyJsxAttr(attr) {
+		let name = attr.name;
+		if (name === 'key') // Lifted onto template.key by jsxTemplate(); never rendered as an attribute.
+			return;
+		let value = attr.value;
+
+		let sub = this.jsxSub;
+		if (sub === undefined || this.jsxSubName !== name) {
+			let node = this.nodeMarker;
+			if (Util.isEvent(name))
+				sub = new PathToEvent(null, node, name, null);
+			else {
+				sub = new PathToAttribValue(null, node, name, null);
+				sub.isHtmlProperty = Util.isHtmlProp(node, name);
+			}
+			sub.isComponentAttrib = this.isComponentAttrib;
+			this.jsxSub = sub;
+			this.jsxSubName = name;
+		}
+		sub.nodeMarker = this.nodeMarker;
+		sub.parentNg = this.parentNg;
+		if (name === 'style')
+			value = styleToCss(value);
+		sub.applySingle(value);
 	}
 
 

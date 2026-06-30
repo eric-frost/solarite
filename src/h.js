@@ -2,6 +2,7 @@ import Template from "./Template.js";
 import Globals from "./Globals.js";
 import toEl from "./toEl.js";
 import Util from "./Util.js";
+import {jsxToTemplate, Fragment} from "./jsx.js";
 
 /**
  * Convert strings to HTMLNodes.
@@ -66,13 +67,13 @@ export default function h(htmlStrings=noArg, ...exprs) {
 	else if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {
 		let tagOrHtml = htmlStrings;
 
-		// 2a. JSX: h("tag", {props}, ...children)
+		// 2a. JSX classic factory: h("tag", {props}, ...children)
 		if (exprs.length && (typeof exprs[0] === 'object' || exprs[0] === null)) {
 			let tag = tagOrHtml + '';
 			let props = exprs[0] || {};
 			let children = exprs.slice(1);
 
-			return Template.fromJsx(tag, props, children);
+			return jsxToTemplate(tag, props, children);
 		}
 
 		// 2b. Plain html string => template: h('<div>...</div>')
@@ -83,6 +84,12 @@ export default function h(htmlStrings=noArg, ...exprs) {
 				html = html.trim();
 			return new Template([html], []);
 		}
+	}
+
+	// 2c. JSX classic factory for a component or Fragment: h(Component, {props}, ...children)
+	// The transform passes the class/function (or the Fragment symbol) as the first argument.
+	else if (typeof htmlStrings === 'function' || htmlStrings === Fragment) {
+		return jsxToTemplate(htmlStrings, exprs[0] || {}, exprs.slice(1));
 	}
 
 	else if (htmlStrings instanceof HTMLElement || htmlStrings instanceof DocumentFragment) {

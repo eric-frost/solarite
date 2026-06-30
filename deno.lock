@@ -864,5 +864,32 @@
     "https://esm.sh/string_decoder@1.1.1?target=denonext": "092c97b62b99368a40fa044c402188472658bc71529415f73c16f66c05aaf6bf",
     "https://esm.sh/util-deprecate@1.0.2/denonext/util-deprecate.mjs": "083639894972cb68837eef26346c43bdd01357977149e0a4493f76192a4008b8",
     "https://esm.sh/util-deprecate@1.0.2?target=denonext": "859f4df8ba771a4c33143185d3db6a7edb824fab1ed4f9a4b96ac0e6bc3ef1a4"
+  },
+  "workspace": {
+    "members": {
+      "packages/babel-plugin-solarite": {
+        "packageJson": {
+          "dependencies": [
+            "npm:@babel/core@^8.0.1",
+            "npm:@babel/plugin-syntax-jsx@^8.0.1",
+            "npm:@babel/preset-typescript@^8.0.1"
+          ]
+        }
+      },
+      "packages/esbuild-plugin-solarite": {
+        "packageJson": {
+          "dependencies": [
+            "npm:babel-plugin-solarite@0.7"
+          ]
+        }
+      },
+      "packages/vite-plugin-solarite": {
+        "packageJson": {
+          "dependencies": [
+            "npm:babel-plugin-solarite@0.7"
+          ]
+        }
+      }
+    }
   }
 }
