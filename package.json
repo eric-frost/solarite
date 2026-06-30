@@ -1,6 +1,6 @@
 {
   "name": "solarite",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Solarite is a small (12KB min+gzip), fast, compilation-free JavaScript library that makes native web components fast to update, patching only the DOM that actually changed when you call render().",
   "type": "module",
   "main": "dist/Solarite.js",
@@ -11,12 +11,25 @@
       "types": "./src/Solarite.d.ts",
       "import": "./dist/Solarite.js",
       "default": "./dist/Solarite.js"
+    },
+    "./jsx-runtime": {
+      "types": "./src/jsx-runtime.d.ts",
+      "import": "./src/jsx-runtime.js",
+      "default": "./src/jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./src/jsx-dev-runtime.d.ts",
+      "import": "./src/jsx-dev-runtime.js",
+      "default": "./src/jsx-dev-runtime.js"
     }
   },
   "files": [
     "readme.md",
     "dist",
     "src"
+  ],
+  "workspaces": [
+    "packages/*"
   ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

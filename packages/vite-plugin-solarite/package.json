@@ -1,0 +1,33 @@
+{
+  "name": "vite-plugin-solarite",
+  "version": "0.7.0",
+  "description": "Vite plugin that compiles JSX/TSX to Solarite precompile output, giving JSX the same runtime speed as h tagged templates.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Eric Frost",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "readme.md"
+  ],
+  "keywords": [
+    "solarite",
+    "jsx",
+    "tsx",
+    "vite",
+    "vite-plugin",
+    "precompile"
+  ],
+  "dependencies": {
+    "babel-plugin-solarite": "^0.7.0"
+  },
+  "peerDependencies": {
+    "solarite": "^0.7.0"
+  },
+  "peerDependenciesMeta": {
+    "solarite": { "optional": true }
+  }
+}

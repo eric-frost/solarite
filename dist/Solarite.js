@@ -1146,6 +1146,198 @@ class PathToEvent extends PathToAttribValue {
 
 }
 
+/**
+ * JSX support for Solarite.  Two tiers share this one module:
+ *
+ * Tier 1 (precompile): a build step (Deno's `jsx:"precompile"` or a Solarite build plugin) hoists
+ *   each element's static HTML into a module-level array and emits
+ *   `jsxTemplate(statics, jsxAttr(name, value), jsxEscape(child), ...)`.  Stable array identity maps
+ *   straight onto Template => Shell cache, closeKey, and NodeGroup reuse all work; perf equals tagged
+ *   templates.  jsxTemplate/jsxAttr/jsxEscape live in jsx-runtime.js; the JsxAttr class below is the
+ *   whole-attribute hole they produce.
+ *
+ * Tier 2 (classic/automatic factory): tsc/esbuild/Vite emit `h(tag, props, ...children)` or
+ *   `jsx(tag, props, key)` with no hoisting.  jsxToTemplate() interns the static HTML per
+ *   (tag, prop-names, child-count) shape so identity is stable per call site even though a new
+ *   Template is built each render.  Every prop value and child is an expression hole, never diffed
+ *   as static. */
+
+// Fragment for <>...</> in the classic/automatic factories.  Tier 1 fragments need no import.
+const Fragment = Symbol('Fragment');
+
+/**
+ * A whole-attribute hole from Tier 1, e.g. `<a ` + jsxAttr("href", v) + `>`.  It lands at a
+ * PathToAttribs hole (a bare ${} between attributes); PathToAttribs detects this class and routes
+ * the value through the normal attribute/event/property application. */
+class JsxAttr {
+	constructor(name, value) {
+		this.name = name;
+		this.value = value;
+	}
+}
+
+const selfClosingTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
+
+// Tier 2 shape cache: `tag\0name1\0name2\0#childCount` => htmlStrings array (stable identity).
+const shapeCache = new Map();
+
+/**
+ * Serialize a style object to css text.  {color:'red', fontSize:'1px'} => 'color:red;font-size:1px'.
+ * A string passes through unchanged.
+ * @param value {Object|string}
+ * @return {string} */
+function styleToCss(value) {
+	if (value === null || typeof value !== 'object')
+		return value;
+	let css = '';
+	for (let k in value) {
+		let v = value[k];
+		if (v === null || v === undefined || v === false)
+			continue;
+		css += (css ? ';' : '') + Util.camelToDashes(k) + ':' + v;
+	}
+	return css;
+}
+
+/** Escape a static attribute value for inlining into the html string. */
+function escapeAttr(value) {
+	return ('' + value).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Build the interned htmlStrings for a Tier 2 element shape, matching how a tagged template would
+ * split `<tag openStatic name1=${} name2=${}>${child0}${child1}</tag>`.
+ * @param tag {string}
+ * @param openStatic {string} Static attributes inlined into the opening tag (e.g. ` id="x"`).
+ * @param names {string[]} Dynamic attribute names in order.
+ * @param childCount {int}
+ * @param isVoid {boolean}
+ * @return {string[]} */
+function buildShapeHtml(tag, openStatic, names, childCount, isVoid) {
+	let strings = [];
+	let cur = '<' + tag + openStatic;
+	for (let name of names) {
+		strings.push(cur + ' ' + name + '=');
+		cur = '';
+	}
+	cur += '>';
+	if (isVoid) {
+		strings.push(cur);
+		return strings;
+	}
+	if (childCount === 0)
+		strings.push(cur + '</' + tag + '>');
+	else {
+		strings.push(cur);
+		for (let i = 1; i < childCount; i++)
+			strings.push('');
+		strings.push('</' + tag + '>');
+	}
+	return strings;
+}
+
+/**
+ * Build a Template for a Tier 2 (classic/automatic) JSX element.
+ * @param tag {string|Function|symbol} Intrinsic tag name, component class/function, or Fragment.
+ * @param props {?Object} Attributes/props (children and key are pulled out by the caller for the
+ *     automatic runtime; for the classic factory they may still be present and are stripped here).
+ * @param children {any[]} One hole per child.
+ * @param key {*} Optional list key (automatic runtime passes it separately).
+ * @return {Template} */
+function jsxToTemplate(tag, props, children=[], key=undefined) {
+	props = props || {};
+
+	// 1. Fragment: only child holes, no element wrapper.
+	if (tag === Fragment) {
+		let html = [''];
+		for (let i = 0; i < children.length; i++)
+			html.push('');
+		return new Template(html, children);
+	}
+
+	// 2. Component (class or function).
+	if (typeof tag === 'function') {
+
+		// 2a. Custom element class => emit <tag-name ...props>children</tag-name>; PathToComponent
+		// instantiates it exactly like a tagged-template component.
+		if (tag.prototype instanceof HTMLElement) {
+			Util.defineClass(tag);
+			let tagName = customElements.getName ? customElements.getName(tag) : Util.camelToDashes(tag.name);
+			if (tagName && !tagName.includes('-'))
+				tagName += '-element';
+			return buildIntrinsic(tagName, props, children, key);
+		}
+
+		// 2b. Plain function component: call it with props (+ children) and expect a Template back.
+		let p = {};
+		for (let name in props)
+			if (name !== 'key')
+				p[name] = name === 'style' ? styleToCss(props[name]) : props[name];
+		if (!('children' in p) && children.length)
+			p.children = children.length === 1 ? children[0] : children;
+		let t = tag(p);
+		if (key === undefined)
+			key = props.key;
+		if (key !== undefined && t instanceof Template)
+			t.key = key;
+		return t;
+	}
+
+	// 3. Intrinsic element.
+	return buildIntrinsic(tag, props, children, key);
+}
+
+/**
+ * @param tag {string}
+ * @param props {Object}
+ * @param children {any[]}
+ * @param key {*}
+ * @return {Template} */
+function buildIntrinsic(tag, props, children, key) {
+	let isVoid = selfClosingTags.has(tag.toLowerCase());
+	let names = [];
+	let values = [];
+	let openStatic = ''; // Static id/data-id inlined so their embeds (this.x references) resolve.
+
+	for (let name in props) {
+		if (name === 'children') // The automatic runtime stashes children here; they're passed separately.
+			continue;
+		if (name === 'key') {
+			if (key === undefined)
+				key = props[name];
+			continue;
+		}
+		let value = props[name];
+
+		// id/data-id reference embeds only work when the attribute is static in the html, so inline
+		// string-valued ones (the usual case) instead of making them holes.  Tier 1 transforms
+		// already inline static attributes; this keeps the Tier 2 classic factory on par.
+		if ((name === 'id' || name === 'data-id') && typeof value === 'string') {
+			openStatic += ` ${name}="${escapeAttr(value)}"`;
+			continue;
+		}
+
+		if (name === 'style')
+			value = styleToCss(value);
+		names.push(name);
+		values.push(value);
+	}
+
+	let childCount = isVoid ? 0 : children.length;
+	let shapeKey = tag + openStatic + '\0' + names.join('\0') + '\0#' + childCount;
+	let html = shapeCache.get(shapeKey);
+	if (!html) {
+		html = buildShapeHtml(tag, openStatic, names, childCount, isVoid);
+		shapeCache.set(shapeKey, html);
+	}
+
+	let exprs = isVoid ? values : values.concat(children);
+	let t = new Template(html, exprs);
+	if (key !== undefined)
+		t.key = key;
+	return t;
+}
+
 class PathToAttribs extends Path {
 
 	/**
@@ -1172,6 +1364,10 @@ class PathToAttribs extends Path {
 	 * @param expr {Expr} */
 	applySingle(expr) {
 		let node = this.nodeMarker;
+
+		// JSX Tier 1 whole-attribute hole: `<a ` + jsxAttr("href", v) + `>`.
+		if (expr instanceof JsxAttr)
+			return this.applyJsxAttr(expr);
 
 		if (Array.isArray(expr))
 			expr = expr.flat().join(' ');  // flat and join so we can accept arrays of arrays of strings.
@@ -1208,6 +1404,39 @@ class PathToAttribs extends Path {
 		for (let oldName of oldNames)
 			if (!this.attrNames.has(oldName))
 				node.removeAttribute(oldName);
+	}
+
+
+	/**
+	 * Apply a single JSX jsxAttr(name, value) pair.  We delegate to a cached PathToEvent or
+	 * PathToAttribValue sub-path so events, html properties, two-way binding, booleans, and
+	 * contenteditable all behave exactly as `name=${value}` in a tagged template.  The attr name
+	 * at a given hole is a compile-time literal, so the sub-path is stable across renders.
+	 * @param attr {JsxAttr} */
+	applyJsxAttr(attr) {
+		let name = attr.name;
+		if (name === 'key') // Lifted onto template.key by jsxTemplate(); never rendered as an attribute.
+			return;
+		let value = attr.value;
+
+		let sub = this.jsxSub;
+		if (sub === undefined || this.jsxSubName !== name) {
+			let node = this.nodeMarker;
+			if (Util.isEvent(name))
+				sub = new PathToEvent(null, node, name, null);
+			else {
+				sub = new PathToAttribValue(null, node, name, null);
+				sub.isHtmlProperty = Util.isHtmlProp(node, name);
+			}
+			sub.isComponentAttrib = this.isComponentAttrib;
+			this.jsxSub = sub;
+			this.jsxSubName = name;
+		}
+		sub.nodeMarker = this.nodeMarker;
+		sub.parentNg = this.parentNg;
+		if (name === 'style')
+			value = styleToCss(value);
+		sub.applySingle(value);
 	}
 
 
@@ -1427,7 +1656,7 @@ class PathToNodes extends Path {
 			// so removed keyed NodeGroups are discarded instead of pooled.
 			let first = newItems.length !== 0 ? newItems[0] : null;
 			if (first !== null
-				? (typeof first !== 'string' && Shell.get(first.html, first.svgMode).keyIndex >= 0)
+				? (typeof first !== 'string' && (first.key !== undefined || Shell.get(first.html, first.svgMode).keyIndex >= 0))
 				: (this.nodeGroups !== null && this.nodeGroups.length !== 0 && this.nodeGroups[0].key !== undefined))
 				this.applyKeyed(newItems);
 			else
@@ -1581,6 +1810,8 @@ class PathToNodes extends Path {
 		// Resolve an item's key, caching the html->keyIndex lookup for same-template lists.
 		let keyHtml = null, keyIndex = -1;
 		const keyOf = t => {
+			if (t.key !== undefined) // JSX templates carry the key directly.
+				return t.key;
 			if (t.html !== keyHtml) {
 				keyHtml = t.html;
 				keyIndex = Shell.get(t.html, t.svgMode).keyIndex;
@@ -1816,6 +2047,8 @@ class PathToNodes extends Path {
 			else
 				ng.applyExprs(item.exprs);
 			ng.template = item;
+			if (item.key !== undefined) // JSX keyed item; keep ng.key in sync with the new template.
+				ng.key = item.key;
 		}
 	}
 
@@ -3048,6 +3281,11 @@ class NodeGroup {
 		
 		this.template = template;
 
+		// JSX templates carry their list key on the Template (tagged templates instead set it via
+		// a PathToKey during applyExprs).  Adopt it so the keyed reconciler sees ng.key uniformly.
+		if (template.key !== undefined)
+			this.key = template.key;
+
 		// If it's just a text node, skip a bunch of unnecessary steps.
 		// el can be an existing Text node to adopt, from PathToNodes' bare-text fast path.
 		if (template.isText) {
@@ -3660,6 +3898,11 @@ class Template {
 
 	isText;
 
+	/** @type {*} List key for keyed diffing, set by JSX jsxTemplate()/jsxToTemplate() from a
+	 * `key` prop.  Tagged templates instead carry their key as an expr at Shell.keyIndex; the
+	 * keyed reconciler (PathToNodes) reads whichever is present. */
+	key;
+
 	/** @type {boolean} True if created by the svg`` tag; the Shell parses the html in the SVG namespace. */
 	svgMode = false;
 
@@ -3725,94 +3968,8 @@ class Template {
 		return this.closeKey;
 	}
 
-	/**
-	 * @param tag {string}
-	 * @param props {?Record<string, any>}
-	 * @param children
-	 * @returns {Template} */
-	static fromJsx(tag, props, children) {
-
-		// HTML void elements that must not have closing tags
-		const isVoid = selfClosingTags.has(tag.toLowerCase());
-
-		// Build htmlStrings/exprs so Shell can place placeholders in attribute values and child content.
-		let htmlStrings = [];
-		let templateExprs = [];
-
-		// Opening tag
-		let open = `<${tag}`;
-
-		// Attributes
-		if (props && typeof props === 'object') {
-			for (let name in props) {
-				let value = props[name];
-
-				// id and data-id are static in templates — never expressions
-				if (name === 'id' || name === 'data-id') {
-					// Write directly into the opening string with quotes
-					open += ` ${name}="${value}"`;
-					continue;
-				}
-
-				// Dynamic attribute value: functions are unquoted (e.g., onclick=${fn}), others quoted
-				if (typeof value === 'function') {
-					open += ` ${name}=`;
-					htmlStrings.push(open);
-					templateExprs.push(value);
-					// reset so subsequent attributes start fresh (e.g., ' title=')
-					open = ``;
-				}
-				else {
-					open += ` ${name}=`;
-					htmlStrings.push(open);
-					templateExprs.push(value);
-					// reset so subsequent attributes start fresh (e.g., ' title=')
-					open = ``;
-				}
-			}
-		}
-
-		// Finalize opening tag precisely to match tagged template splitting
-		if (!isVoid) {
-			const pushedAny = htmlStrings.length > 0;
-			// If nothing pushed yet (no dynamic attrs), push the entire open + '>'
-			if (!pushedAny)
-				htmlStrings.push(open + '>');
-			else {
-				// If we were in a quoted attr (open === '"'), then the string after expr is '">' ;
-				// Otherwise (function-valued attr), the string after expr is just '>'
-				htmlStrings.push(open === '"' ? '">' : '>');
-			}
-
-			for (let child of children)
-				addChild(child, htmlStrings, templateExprs);
-		}
-
-		// Closing tag (not for void tags)
-		if (!isVoid) {
-			// If we never emitted the '>' for the open tag (no children were added),
-			// then it was appended above before children. Now just add the closing tag to the last html segment.
-			let lastIdx = htmlStrings.length - 1;
-			htmlStrings[lastIdx] += `</${tag}>`;
-		}
-		else {
-			// Void element: ensure we emitted a trailing '>' segment
-			const pushedAny = htmlStrings.length > 0;
-			if (!pushedAny)
-				htmlStrings.push(open + '>');
-			else
-				htmlStrings.push('>');
-		}
-
-		// Ensure invariant
-		//assert(htmlStrings.length === templateExprs.length + 1);
-		//console.log([htmlStrings, templateExprs])
-		return new Template(htmlStrings, templateExprs);
-	}
 }
 
-
-const selfClosingTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
 
 /**
  * Do two templates produce identical content?
@@ -3878,50 +4035,6 @@ function exprSame(a, b) {
 		return templatesSame(a, b);
 	return false;
 }
-
-
-/**
- * Add child Templates that were already created via h() and Template.fromJsx()
- * @param template {Template}
- * @param html {string[]}
- * @param exprs {any[]} */
-const addChild = (template, html, exprs) => {
-
-	if (Array.isArray(template)) {
-		for (let c of template)
-			addChild(c, html, exprs);
-	}
-	else {
-		let flatten = false;
-		if (template instanceof Template) {
-			// Heuristic to match tagged-template splitting:
-			// - Flatten if the child has expressions (so JSX can inline attribute/value placeholders like tagged literals would).
-			// - Also flatten void elements (e.g., <img>) so they inline like literals.
-			// - Otherwise, keep as a dynamic child placeholder to match cases where the tagged template used an expression child.
-			const childHasExprs = template.exprs.length > 0;
-			if (childHasExprs)
-				flatten = true;
-			else {
-				const m = (template.html[0] || '').match(/^<([a-zA-Z][\w:-]*)/);
-				const childTag = m ? m[1].toLowerCase() : '';
-				flatten = selfClosingTags.has(childTag);
-			}
-		}
-
-		if (flatten) {
-			// Flatten/interleave into current segment to match tagged template splitting
-			html[html.length - 1] += template.html[0];
-			for (let i = 0; i < template.exprs.length; i++) {
-				exprs.push(template.exprs[i]);
-				html.push(template.html[i + 1] ?? '');
-			}
-		} else {
-			// Keep as dynamic child
-			exprs.push(template);
-			html.push('');
-		}
-	}
-};
 
 
 /**
@@ -4074,13 +4187,13 @@ function h(htmlStrings=noArg, ...exprs) {
 	else if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {
 		let tagOrHtml = htmlStrings;
 
-		// 2a. JSX: h("tag", {props}, ...children)
+		// 2a. JSX classic factory: h("tag", {props}, ...children)
 		if (exprs.length && (typeof exprs[0] === 'object' || exprs[0] === null)) {
 			let tag = tagOrHtml + '';
 			let props = exprs[0] || {};
 			let children = exprs.slice(1);
 
-			return Template.fromJsx(tag, props, children);
+			return jsxToTemplate(tag, props, children);
 		}
 
 		// 2b. Plain html string => template: h('<div>...</div>')
@@ -4091,6 +4204,12 @@ function h(htmlStrings=noArg, ...exprs) {
 				html = html.trim();
 			return new Template([html], []);
 		}
+	}
+
+	// 2c. JSX classic factory for a component or Fragment: h(Component, {props}, ...children)
+	// The transform passes the class/function (or the Fragment symbol) as the first argument.
+	else if (typeof htmlStrings === 'function' || htmlStrings === Fragment) {
+		return jsxToTemplate(htmlStrings, exprs[0] || {}, exprs.slice(1));
 	}
 
 	else if (htmlStrings instanceof HTMLElement || htmlStrings instanceof DocumentFragment) {
@@ -4229,104 +4348,53 @@ JavaScript UI library
 https://vorticode.github.io/solarite/ */
 
 /**
- * Cast targets for assignFields().  Each value is also a valid string literal,
- * so `Cast.int` is interchangeable with `'int'`. */
-const Cast = Object.freeze({
-	int: 'int',
-	float: 'float',
-	number: 'number',
-	boolean: 'boolean',
-	string: 'string',
-});
-
-const getConstructor = c =>
-	typeof c === 'function' ? c : (window[c] || customElements.get(c));
-
-/**
- * Assign fields from `src` to `dest`, but only for fields that already exist on `dest`.
- * Typically used in constructors that accept an object of arguments.
+ * Read an element's html attributes onto fields that already exist on the element.
+ * Typically called from a web component constructor to support plain-html instantiation
+ * like `<my-timer duration="7" auto-start>`.  Tagged-template values are already typed and
+ * arrive in the constructor's argument instead, so assign those directly.
  *
- * `cast` is an optional record keyed by field name:
- * - Ignore a field: use `false`.
- * - Basic casting: use a `Cast` value (`Cast.int`, `Cast.float`, `Cast.number`, `Cast.boolean`, `Cast.string`).
- * - Class casting: pass a class constructor or its string name to instantiate the field.
- * - Array casting: use `[Class]` or `'Class[]'`; the source must be an array.
+ * Attribute names convert from kebab-case to camelCase, so `auto-start` becomes `autoStart`.
+ * An attribute written like `${...}` is JSON-parsed back to its original type and assigned
+ * as-is.  Every other attribute value is a string: if its field is named in `types`, the
+ * string is cast with that converter, otherwise it's assigned as a string.
  *
- * Auto-casting only applies to string sources: when a field has no `cast` entry and its
- * source value is a string, the string is cast to the destination field's current type
- * (number, boolean, or Date).  This is meant for values parsed from HTML attributes, which
- * always arrive as strings.  Non-string sources are assigned as-is unless an explicit `cast`
- * is given, and `null`/`undefined` are never coerced (e.g. `String(null) === 'null'`).
+ * `types` maps a field name to a converter: Number, Boolean, String, Date, or any function
+ * taking the string and returning a value.  Boolean is true for any string except 'false'
+ * and '0', so a bare attribute like `<my-timer auto-start>` reads as true.  Date uses
+ * new Date(value).  No type is inferred from the field's existing value.
  *
- * If `strict` is true, throw when a `src` field is neither in `dest` nor ignored via `cast`.
- * @param {object} dest
- * @param {?object} src
- * @param {Record<string, string|Function|boolean>} [cast={}]
- * @param {boolean} [strict=false] */
-function assignFields(dest, src, cast={}, strict=false) {
-	for (let name in src || {}) {
-
-		// Ignore fields disabled via cast, or not present on dest.
-		if (cast[name] === false)
-			continue;
-		if (!(name in dest)) {
-			if (strict)
-				throw new Error(`assignFields: unknown field '${name}'.`);
-			continue;
-		}
-
-		// Skip properties that aren't writable and have no setter.
-		const desc = Object.getOwnPropertyDescriptor(dest, name)
-			|| Object.getOwnPropertyDescriptor(Object.getPrototypeOf(dest), name);
-		if (desc && !desc.writable && !desc.set)
+ * Field names listed in `ignore` are skipped.
+ * @param dest {HTMLElement}
+ * @param types {Object<string, Function>}
+ * @param ignore {string[]} */
+function assignAttributes(dest, types={}, ignore=[]) {
+	for (let attrib of dest.attributes) {
+		let name = Util.dashesToCamel(attrib.name);
+		if (!(name in dest) || ignore.includes(name))
 			continue;
 
-		let srcVal = src[name];
+		let value = attrib.value;
+		let type = types[name];
 
-		// Explicit cast from `cast`, else auto-derive from the destination's type — but
-		// auto-casting only applies to string sources (e.g. parsed HTML attributes).
-		let castVal = name in cast
-			? cast[name]
-			: (typeof srcVal === 'string' ? typeof dest[name] : null);
+		// 1. A `${...}` attribute holds an already-typed JSON value.
+		if (value.startsWith('${') && value.endsWith('}'))
+			dest[name] = JSON.parse(value.slice(2, -1));
 
-		// Never coerce null/undefined.
-		if (castVal != null && srcVal != null) {
+		// 2. Cast the string with the converter named in `types`, if any.
+		else if (type === Date)
+			dest[name] = new Date(value);
+		else if (type === Boolean)
+			dest[name] = !['false', '0'].includes(value);
+		else if (type === Number)
+			dest[name] = Number(value);
+		else if (type === String)
+			dest[name] = String(value);
+		else if (type) // custom string=>value function
+			dest[name] = type(value);
 
-			// Array Casting: [Class] or 'Class[]'
-			let arrayCast = Array.isArray(castVal) && castVal.length === 1
-				? castVal[0]
-				: (typeof castVal === 'string' && castVal.endsWith('[]')
-					? castVal.slice(0, -2)
-					: null);
-
-			if (arrayCast) {
-				if (!Array.isArray(srcVal))
-					throw new Error(`Field ${name} must be an array.`);
-				let constructor = getConstructor(arrayCast);
-				srcVal = srcVal.map(v => (constructor && !(v instanceof constructor)) ? new constructor(v) : v);
-			}
-
-			// Basic Type Casting
-			else if (castVal === Cast.int)
-				srcVal = parseInt(srcVal);
-			else if (castVal === Cast.float || castVal === Cast.number)
-				srcVal = Number(srcVal);
-			else if (castVal === Cast.boolean)
-				srcVal = ![false, 'false', 0, '0'].includes(srcVal);
-			else if (castVal === Cast.string)
-				srcVal = String(srcVal);
-
-			// Class or Date Casting
-			else {
-				let constructor = getConstructor(castVal);
-				if (constructor && !(srcVal instanceof constructor))
-					srcVal = new constructor(srcVal);
-				else if (dest[name] instanceof Date && !(srcVal instanceof Date))
-					srcVal = new Date(srcVal);
-			}
-		}
-
-		dest[name] = srcVal;
+		// 3. No converter named: assign the raw string.
+		else
+			dest[name] = value;
 	}
 }
 
@@ -4548,4 +4616,4 @@ class Solarite extends HTMLElementAutoDefine {
 }
 
 export default h;
-export { Cast, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, assignFields, delve, getEventBinding, h, svg, toEl };
+export { Fragment, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, assignAttributes, delve, getEventBinding, h, svg, toEl };

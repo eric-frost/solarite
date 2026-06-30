@@ -1198,6 +1198,90 @@ document.body.append(createButton('tickles'));
 
 This is an experimental feature and is likely to change in the future.
 
+## JSX
+
+Solarite components are normally written with `h` tagged templates, which need no build step. But Solarite also supports JSX. Your code is identical regardless of what tool compiles the JSX:
+
+```jsx
+import h from 'solarite';
+
+class MyButton extends HTMLElement {
+	count = 0;
+	render() {
+		h(this, <button onclick={() => { this.count++; this.render(); }}>
+			{this.count} times
+		</button>);
+	}
+}
+customElements.define('my-button', MyButton);
+```
+
+A piece of JSX produces a Solarite `Template` — the same render-ready value an `h` tagged template returns, which you hand to `h(this, ...)` to render. So everything else in Solarite — `render()`, lists, events, two-way binding, child components — works exactly the same way.
+
+A few rules:
+
+- Use plain HTML attribute names: `class`, `onclick`, `for` — not React's `className` or `onClick`.
+- `style={{color: 'red'}}` takes an object and turns it into a CSS string for you.
+- `key={item.id}` optionally tells Solarite which list item is which, so when the list is reordered it reuses the matching DOM element instead of rebuilding it. It is never rendered as an attribute.
+- A literal (non-expression) `id="..."` or `data-id="..."` still makes the element available as `this.x` inside the component, the same as in `h` tagged templates.
+
+### Setup
+
+JSX has to be converted to JavaScript by a build tool. Your JSX code is always the same; only the build tool's configuration changes. The choice of tool also affects speed — see [Speed](#speed) below.
+
+**Deno** — nothing to install, and full runtime speed (Deno precompiles JSX itself). Just add this to `deno.json`:
+
+```jsonc
+{
+	"compilerOptions": { "jsx": "precompile", "jsxImportSource": "solarite" }
+}
+```
+
+**Vite, esbuild, or Babel** — these tools don't precompile JSX on their own, so add the matching build-time plugin for the same full runtime speed as Deno. Each plugin only runs while your project is being built; it is never sent to the browser, so it adds nothing to your bundle.
+
+```js
+// vite.config.js   —   npm install --save-dev vite-plugin-solarite
+import solarite from 'vite-plugin-solarite';
+export default { plugins: [solarite()] };
+```
+
+```js
+// esbuild build script   —   npm install --save-dev esbuild-plugin-solarite
+import solarite from 'esbuild-plugin-solarite';
+await esbuild.build({
+	entryPoints: ['app.tsx'], bundle: true, outfile: 'app.js',
+	plugins: [solarite()]
+});
+```
+
+```jsonc
+// babel.config.json   —   npm install --save-dev babel-plugin-solarite   (add @babel/preset-typescript for .tsx)
+{ "plugins": ["babel-plugin-solarite"] }
+```
+
+**Any tool, nothing extra to install** — just point the tool's built-in JSX setting at Solarite. This works with TypeScript, esbuild, Vite, and similar tools, but runs a little slower (see below).
+
+```jsonc
+// tsconfig.json
+{ "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "solarite" } }
+```
+
+### Speed
+
+How fast your JSX runs depends on which setup above you picked:
+
+- **Deno's `precompile`, or the Vite, esbuild, or Babel plugin will be just as performant as using non-JSX tagged templates.** During the build, the unchanging parts of your HTML are figured out ahead of time, so there's no extra work left to do while your app runs.
+- **The "nothing extra to install" setup — a little slower.** Here Solarite has to figure out the unchanging parts every time it renders, which adds some JavaScript work (the DOM and painting are identical either way). In our [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/) runs this came to roughly 10–15% slower overall, and up to about 30% slower on actions that build or replace many elements at once (such as creating or replacing all the rows of a large table). Because the extra cost is on the JavaScript side, it's larger on slower devices or in CPU-heavy code. For everyday updates — changing a few items, toggling a class — the difference is too small to notice.
+
+If you can use Deno or the plugin, do. Otherwise the no-setup option is perfectly fine for most apps.
+
+### Components
+
+You can use your own components as JSX tags:
+
+- A class that extends `HTMLElement` (for example `<MyButton/>`) renders as its custom-element tag, just like any other Solarite child component.
+- A plain function is called with its props — its children arrive as `props.children` — and should return a `Template`.
+
 ## How Solarite Works
 
 Understanding how Solarite works internally can help you write more efficient components and debug issues more effectively.

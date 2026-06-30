@@ -2,7 +2,8 @@
 
 import Testimony, {assert} from './Testimony.js';
 
-import h, {toEl, Solarite, Template, Globals, SolariteUtil, svg, getEventBinding} from '../src/Solarite.js';
+import h, {toEl, Solarite, Template, Globals, SolariteUtil, svg, getEventBinding, Fragment} from '../src/Solarite.js';
+import {jsxTemplate, jsxAttr, jsxEscape, jsx, jsxs} from '../src/jsx-runtime.js';
 import HtmlParser from '../src/HtmlParser.js';
 import NodeGroup from '../src/NodeGroup.js';
 import Shell from '../src/Shell.js';
@@ -5316,26 +5317,26 @@ Testimony.test('Solarite.jsx.full', () => {
 	</div>
 	 */
 
-	const jsxTemplate =
+	// Children are NOT flattened into the parent statics (unlike the old fromJsx experiment):
+	// each nested element is its own Template hole.  Assert real rendered output instead of
+	// the internal html/exprs split.
+	const el =
 		h("div", null,
 			h("p", {"data-id": "label", class: 'big'},
 				h("small", null, "sum", ":"), " ", value),
 			h("button", { onclick: increment }, "Increment")
-		);
+		).render();
 
-	const template = new Template(
-		['<div><p data-id="label" class=', '><small>', '', '</small>', '', '</p><button onclick=', '>', '</button></div>'],
-		['big', 'sum', ':', ' ', 1, increment, 'Increment']
-	);
-
-	// console.log(template.html);
-	// console.log(jsxTemplate.html);
-	// console.log(template.exprs);
-	// console.log(jsxTemplate.exprs);
-
-	assert.eqJson(jsxTemplate.html, template.html);
-	assert.eqJson(jsxTemplate.exprs, template.exprs);
-
+	let p = el.querySelector('p');
+	assert.eq(p.getAttribute('data-id'), 'label');   // static id/data-id stays in the statics
+	assert.eq(p.className, 'big');
+	assert.eq(el.querySelector('small').textContent, 'sum:');
+	assert.eq(p.textContent, 'sum: 1');
+	let button = el.querySelector('button');
+	assert.eq(button.textContent, 'Increment');
+	assert.eq(button.hasAttribute('onclick'), false); // bound via addEventListener, not an attribute
+	button.dispatchEvent(new Event('click', {bubbles: true})); // click is delegated at the root
+	assert.eq(value, 2);
 });
 
 
@@ -5365,18 +5366,11 @@ Testimony.test('Solarite.jsx.attributes', () => {
 Testimony.test('Solarite.jsx.children.mix', () => {
 
     const num = 42;
-    // <div>Hello {num}<span>!</span></div>
-    const jsx = h('div', null, 'Hello', num, h('span', null, '!'));
+    // <div>Hello {num}<span>!</span></div> — the nested <span> stays its own child hole.
+    const el = h('div', null, 'Hello', num, h('span', null, '!')).render();
 
-    const template = new Template([
-        '<div>',
-        '',
-        '<span>',
-        '</span></div>'
-    ], ['Hello', 42, '!']);
-
-    assert.eqJson(jsx.html, template.html);
-    assert.eqJson(jsx.exprs, template.exprs);
+    assert.eq(el.textContent, 'Hello42!');
+    assert.eq(el.querySelector('span').textContent, '!');
 });
 
 Testimony.test('Solarite.jsx.void', () => {
@@ -5401,22 +5395,141 @@ Testimony.test('Solarite.jsx.nullishChildren', () => {
 });
 
 Testimony.test('Solarite.jsx.arrayChildren', () => {
-    // <ul>{[<li>A</li>, <li>B</li>]}</ul>
-    const jsx = h('ul', null, [h('li', null, 'A'), h('li', null, 'B')]);
+    // <ul>{[<li>A</li>, <li>B</li>]}</ul> — the array is one child hole; PathToNodes renders each.
+    const el = h('ul', null, [h('li', null, 'A'), h('li', null, 'B')]).render();
 
-    const template = new Template([
-        '<ul><li>',
-        '</li><li>',
-        '</li></ul>'
-    ], ['A', 'B']);
-
-    assert.eqJson(jsx.html, template.html);
-    assert.eqJson(jsx.exprs, template.exprs);
+    let lis = el.querySelectorAll('li');
+    assert.eq(lis.length, 2);
+    assert.eq(lis[0].textContent, 'A');
+    assert.eq(lis[1].textContent, 'B');
 });
 
 //endregion
 
 
+//region jsx runtime (Tier 1 precompile + Tier 2 automatic)
+/*┌─────────────────╮
+  | JSX Runtime     |
+  └─────────────────╯*/
+
+// These tests feed the runtime the exact contract a build step (Deno precompile / a Solarite build
+// plugin) emits, so no build step is needed to run them.  Hoisted statics are module-level consts
+// with stable identity, exactly as the transform emits them.
+
+// const x = <div class="greeting"><a href={link}>Hello <b>{name}!</b></a></div>;
+const T_GREETING = ['<div class="greeting"><a ', '>Hello <b>', '!</b></a></div>'];
+
+Testimony.test('Solarite.jsxrt.tier1.basic', () => {
+	let link = 'http://x', name = 'Bob';
+	let el = jsxTemplate(T_GREETING, jsxAttr('href', link), jsxEscape(name)).render();
+	assert.eq(el.tagName, 'DIV');
+	assert.eq(el.querySelector('a').getAttribute('href'), 'http://x');
+	assert.eq(el.querySelector('a').textContent, 'Hello Bob!');
+});
+
+Testimony.test('Solarite.jsxrt.tier1.stableShell', () => {
+	// Re-rendering with the same hoisted statics must reuse the Shell (parse once) and the DOM nodes.
+	let el = toEl({ name: 'a', render(){ h(this, jsxTemplate(T_GREETING, jsxAttr('href', '#'), jsxEscape(this.name))); } });
+	let a1 = el.querySelector('a'), b1 = el.querySelector('b');
+	let shellsBefore = Globals.shells.get(T_GREETING);
+	el.name = 'b'; el.render();
+	assert.eq(el.querySelector('a'), a1);                 // same node reused
+	assert.eq(el.querySelector('b'), b1);
+	assert.eq(el.querySelector('a').textContent, 'Hello b!');
+	assert(Globals.shells.get(T_GREETING) === shellsBefore); // same cached Shell
+});
+
+Testimony.test('Solarite.jsxrt.tier1.event', () => {
+	const T = ['<button ', '>', '</button>'];
+	let clicks = 0;
+	let el = jsxTemplate(T, jsxAttr('onclick', () => clicks++), jsxEscape('go')).render();
+	assert.eq(el.hasAttribute('onclick'), false);         // bound, not an attribute
+	el.dispatchEvent(new Event('click', {bubbles:true}));
+	assert.eq(clicks, 1);
+});
+
+Testimony.test('Solarite.jsxrt.tier1.booleanAttr', () => {
+	const T = ['<button ', '>x</button>'];
+	// Deno emits a bare string at the attribute hole for booleans; '' must add no attribute.
+	let on = jsxTemplate(T, 'disabled').render();
+	let off = jsxTemplate(T, '').render();
+	assert.eq(on.hasAttribute('disabled'), true);
+	assert.eq(off.hasAttribute('disabled'), false);
+});
+
+Testimony.test('Solarite.jsxrt.tier1.styleObject', () => {
+	const T = ['<div ', '></div>'];
+	let el = jsxTemplate(T, jsxAttr('style', {color: 'red', fontSize: '2px'})).render();
+	assert.eq(el.getAttribute('style'), 'color:red;font-size:2px');
+});
+
+Testimony.test('Solarite.jsxrt.tier1.htmlProperty', () => {
+	const T = ['<input ', '>'];
+	let el = toEl({ v: 'a', render(){ h(this, jsxTemplate(T, jsxAttr('value', this.v))); } });
+	assert.eq(el.value, 'a');     // set as a property, not just the attribute
+	el.v = 'bb'; el.render();
+	assert.eq(el.value, 'bb');
+});
+
+Testimony.test('Solarite.jsxrt.tier1.fragment', () => {
+	const T = ['', '', ''];   // <>{a}{b}</>
+	let frag = jsxTemplate(T, jsxEscape('x'), jsxEscape('y'));
+	let host = toEl({ render(){ h(this, h`<div>${frag}</div>`); } });
+	assert.eq(host.textContent, 'xy');
+});
+
+Testimony.test('Solarite.jsxrt.tier1.keyedReuse', () => {
+	const UL = ['<ul>', '</ul>'];
+	const LI = ['<li ', '>', '</li>'];
+	const list = items => jsxTemplate(UL, jsxEscape(items.map(i =>
+		jsxTemplate(LI, jsxAttr('key', i.id), jsxEscape(i.t)))));
+
+	let el = toEl({ items: [{id:1,t:'a'},{id:2,t:'b'},{id:3,t:'c'}], render(){ h(this, list(this.items)); } });
+	let lis = [...el.querySelectorAll('li')];
+	lis.forEach((n,i) => n.__m = i);
+
+	el.items = [el.items[2], el.items[0], el.items[1]]; // shuffle [c,a,b]
+	el.render();
+	let after = [...el.querySelectorAll('li')];
+	assert.eq(after.map(n => n.textContent), ['c','a','b']);
+	assert.eq(after.map(n => n.__m), [2,0,1]);            // nodes followed their key
+});
+
+Testimony.test('Solarite.jsxrt.tier2.automatic', () => {
+	// jsxs('div', {children: [ jsx('span',{children:'hi'}), jsx('input',{value:'v'}) ]})
+	let t = jsxs('div', { class: 'a', children: [
+		jsx('span', { children: 'hi' }),
+		jsx('input', { value: 'v' }),
+	]});
+	let el = t.render();
+	assert.eq(el.className, 'a');
+	assert.eq(el.querySelector('span').textContent, 'hi');
+	assert.eq(el.querySelector('input').value, 'v');
+});
+
+Testimony.test('Solarite.jsxrt.tier2.functionComponent', () => {
+	function Greet(props) { return h('p', null, 'Hi ', props.name); }
+	let el = jsx(Greet, { name: 'Sam' }).render();
+	assert.eq(el.tagName, 'P');
+	assert.eq(el.textContent, 'Hi Sam');
+});
+
+Testimony.test('Solarite.jsxrt.tier2.shapeIntern', () => {
+	// Same (tag, prop-names, child-count) shape => identical interned html array => Shell reused.
+	let a = h('div', { class: 'x' }, 'one');
+	let b = h('div', { class: 'y' }, 'two');
+	assert(a.html === b.html);                   // interned, stable identity
+	let c = h('div', { id: 'z' }, 'three');
+	assert(a.html !== c.html);                   // different prop set => different shape
+});
+
+Testimony.test('Solarite.jsxrt.classic.fragment', () => {
+	let el = toEl(h('div', null, h(Fragment, null, h('b', null, 'x'), h('i', null, 'y'))));
+	assert.eq(el.querySelector('b').textContent, 'x');
+	assert.eq(el.querySelector('i').textContent, 'y');
+});
+
+//endregion
 
 
 //region full

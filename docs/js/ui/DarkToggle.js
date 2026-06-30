@@ -14,8 +14,12 @@ class DarkToggle extends HTMLElement {
 			h.toggleAttribute('dark', isDark);
 			localStorage.setItem('dark', h.hasAttribute('dark')+'');
 			
+			// Guard each frame: contentWindow can be null and cross-origin frames
+			// (e.g. those injected by the Dark Reader extension) throw on access.
 			for (let iframe of this.ownerDocument.body.querySelectorAll('iframe'))
-				iframe.contentWindow.document.documentElement.toggleAttribute('dark', isDark);
+				try {
+					iframe.contentWindow?.document.documentElement.toggleAttribute('dark', isDark);
+				} catch (e) {}
 		})
 	}
 	
