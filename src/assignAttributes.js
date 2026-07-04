@@ -54,8 +54,10 @@ export function assignAttributes(dest, types={}, ignore=[]) {
 		else if (type) // custom string=>value function
 			dest[name] = type(value);
 
-		// 3. No converter named: assign the raw string.
-		else
+		// 3. No converter named: assign the raw string.  But an empty value over a function/object
+		// field is just the serialization residue of a template expression (functions render as
+		// attribute="") — skip it, or it clobbers the real value the expression already assigned.
+		else if (value !== '' || !(typeof dest[name] === 'function' || (typeof dest[name] === 'object' && dest[name] !== null)))
 			dest[name] = value;
 	}
 }

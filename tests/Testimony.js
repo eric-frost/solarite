@@ -517,7 +517,7 @@ class TestComponent extends HTMLElement {
 				
 				<!-- Name -->
 				<span>
- 				${enc(this.test.getShortName())}${this.test.externalUrl ? `<a 
+ 				${enc(this.test.getShortName())}${this.test.slow ? `<span style="opacity: .5" title="Skipped in fast mode"> [slow]</span>` : ''}${this.test.externalUrl ? `<a
 						href="${enc(this.test.externalUrl)}" target="_blank" style="line-height: 1" title="Open external test url in new tab">🡵</a>` : ''}
 					<span data-id="countContainer" style="opacity: .5"></span>
 					${descIsHtml ? this.test.desc : `<span style="opacity: .5">${this.test.desc}</span>`}
@@ -556,6 +556,29 @@ export const TestStatus = {
 };
 
 /**
+ * Bounds the number of leaf tests executing at once, so a full run doesn't fire hundreds of
+ * simultaneous HTTP requests and oversubscribe a small php-fpm pool. */
+class Semaphore {
+	constructor(max) {
+		this.max = max;
+		this.active = 0;
+		this.peakActive = 0; // High-water mark, for verifying the cap holds.
+		this.queue = [];
+	}
+	async acquire() {
+		if (this.active >= this.max)
+			await new Promise(resolve => this.queue.push(resolve));
+		this.active++;
+		if (this.active > this.peakActive)
+			this.peakActive = this.active;
+	}
+	release() {
+		this.active--;
+		this.queue.shift()?.();
+	}
+}
+
+/**
  * The data for a test. */
 class Test {
 
@@ -580,6 +603,14 @@ class Test {
 	sequential = false;
 	isIframe = false;
 	isShadowDom = false;
+
+	/** @type {boolean} Slow test (live network, benchmark).  Skipped when the url has fast=1,
+	 * unless selected by exact name. */
+	slow = false;
+
+	/** @type {boolean} Member of a batchExternal() file.  Doesn't hold a semaphore slot while
+	 * awaiting the shared batch fetch; the coordinator holds one slot for the whole file. */
+	batched = false;
 
 	iframeTestArgs = []; // arguments given to iframe function
 	iframeContextProps = null; // object properties merged onto TestimonyContext for iframe tests
@@ -632,15 +663,16 @@ class Test {
 
 	getEnabledFromUrl() {
 		let url = new URL(window.location);
+		let fast = url.searchParams.has('fast');
 
 		// Used by Deno.
 		if (url.searchParams.has('allTests'))
-			return !this.getShortName().startsWith('_');
+			return !this.getShortName().startsWith('_') && !(fast && this.slow);
 
 		else {
 			let r = url.searchParams.getAll('r');
 
-			// Check even underscored names if they're selected (and not just a parent)
+			// Check even underscored and slow names if they're selected (and not just a parent)
 			if (r.includes(this.name))
 				return true;
 
@@ -648,7 +680,7 @@ class Test {
 			do {
 				// Enable test if a parent is enabled and the name doesn't start with _.
 				if (r.includes(parent)) {
-					return !this.getShortName().startsWith('_');
+					return !this.getShortName().startsWith('_') && !(fast && this.slow);
 				}
 				parent = parent.split('.').slice(0, -1).join('.')
 			} while (parent);
@@ -884,8 +916,11 @@ class Test {
 		if (this.element)
 			this.element.renderStatus();
 
-		// Wrap doIt with timeout
-		let timeoutMs = this.timeout ?? Testimony.defaultTimeout;
+		// Wrap doIt with timeout.  Batched tests get no per-test timer: they await a shared
+		// fetch whose queue wait (for the coordinator's semaphore slot) would otherwise be
+		// charged against every member.  The coordinator applies its own timeout to the fetch,
+		// counted from when the request actually fires.
+		let timeoutMs = this.batched ? 0 : (this.timeout ?? Testimony.defaultTimeout);
 		let doItWithTimeout = async (setupResponse) => {
 			if (!timeoutMs)
 				return await doIt(setupResponse);
@@ -899,6 +934,14 @@ class Test {
 				clearTimeout(timer);
 			}
 		};
+
+		// Only leaf tests acquire a slot.  Group nodes go through runChildren() and never hold a slot
+		// while awaiting children, so a held slot never waits on another slot -> no deadlock.
+		// Batched tests skip the slot: N of them await ONE shared fetch, and the batch coordinator
+		// holds a single slot for that fetch instead.
+		let sem = Testimony._getSemaphore();
+		if (!this.batched)
+			await sem.acquire();
 
 		let pass = false;
 		try {
@@ -932,6 +975,8 @@ class Test {
 				this.parent.updateStatusFromChildren();
 
 			Testimony.currentTest = null;
+			if (!this.batched)
+				sem.release();
 		}
 	}
 
@@ -939,10 +984,14 @@ class Test {
 		let sequential = [];
 		let concurrent = [];
 
+		// Groups (files/folders) run concurrently with each other, just like leaves — the
+		// semaphore already bounds actual request fan-out, so this doesn't oversubscribe the
+		// server; it just removes the file-after-file serialization that made a suite take the
+		// SUM of its files' times instead of roughly the max.
 		for (let child of Object.values(this.children || {})) {
 			if (!child.hasEnabledTests())
 				continue;
-			if (child.sequential || child.children)
+			if (child.sequential)
 				sequential.push(child);
 			else
 				concurrent.push(child);
@@ -1094,6 +1143,26 @@ var Testimony = {
 	defaultSize: [500, 300], // Default [width, height] for iframe/shadow DOM tests.
 	testFileRootPath: '',
 
+	/** @type {int} Max leaf tests executing at once.  Caps HTTP fan-out onto the php-fpm
+	 * pool so a full run doesn't produce spurious timeouts.  Override per-run with ?concurrency=N.
+	 * Sized to match the dev pm.max_children of 16 (see /home/projects/computer/setup.yml);
+	 * exceeding the pool just queues requests and measures SLOWER. */
+	maxConcurrency: 16,
+
+	/** @type {int} Retry attempts for testExternal when fetch rejects (connection reset) or returns
+	 * 503.  Never retries a response that returned a body, so it can't mask a real failure. */
+	externalRetries: 2,
+
+	/** @type {int} Base backoff in ms between testExternal retries; grows linearly per attempt. */
+	externalRetryBackoff: 250,
+
+	/** @type {int} Timeout in ms for a batchExternal request (a whole file's methods in one
+	 * request), counted from when the request fires — queue wait is never charged. */
+	batchTimeout: 120000,
+
+	/** @type {?Semaphore} Shared limiter, created lazily from maxConcurrency on first leaf run. */
+	_semaphore: null,
+
 	rootTest: new Test(),
 	passedTests: [],
 
@@ -1113,6 +1182,12 @@ var Testimony = {
 			if (callerUrlStr) {
 				if (callerUrlStr.includes('?forTestimony=1')) return '';
 				callerUrlStr = callerUrlStr.replace(/:\d+(:\d+)?$/, '');
+
+				// Strip the query string.  When test() is called from the test page's own inline
+				// script (e.g. safeImport registering a failed-to-load placeholder), the caller
+				// url is the page itself; its ?r=... params would otherwise become the "filename"
+				// and mangle the test name.
+				callerUrlStr = callerUrlStr.replace(/[?#].*$/, '');
 
 				// Extract filename from URL
 				let filename = callerUrlStr.split('/').pop().replace(/\.test\.(js|ts)$/, '');
@@ -1148,18 +1223,25 @@ var Testimony = {
 	},
 
 	/**
+	 * Get a test by its full dotted name.
+	 * @param name {string}
+	 * @returns {?Test} */
+	getTest(name) {
+		let test = this.rootTest;
+		for (let item of name.split(/\./g).filter(part => part.trim().length)) {
+			test = test.children?.[item];
+			if (!test)
+				return null;
+		}
+		return test;
+	},
+
+	/**
 	 * Check if a test with the given name exists.
 	 * @param name {string}
 	 * @returns {boolean} */
 	testExists(name) {
-		let path = name.split(/\./g).filter(part => part.trim().length);
-		let test = this.rootTest;
-		for (let item of path) {
-			if (!test.children || !test.children[item])
-				return false;
-			test = test.children[item];
-		}
-		return true;
+		return this.getTest(name) !== null;
 	},
 
 	/**
@@ -1265,15 +1347,24 @@ var Testimony = {
 		// Verify that all tests requested via 'r=' exist.
 		if (globalThis.window?.location) {
 			let url = new URL(window.location);
+
+			// Per-run concurrency override.
+			let concurrency = parseInt(url.searchParams.get('concurrency'), 10);
+			if (concurrency > 0)
+				this.maxConcurrency = concurrency;
+
 			let requested = url.searchParams.getAll('r');
 			for (let name of requested) {
 				if (!this.testExists(name)) {
-					//this.failedTests.push([name, `Test does not exist.`]);
-
 					// Doing it this way puts a red x on its parent:
-					Testimony.test(name, () => {
-					 	throw new Error(`Test "${name}" does not exist.`);
-					});
+					try {
+						Testimony.test(name, () => {
+							throw new Error(`Test "${name}" does not exist.`);
+						});
+					} catch (e) {
+						// Never let a registration error (e.g. a name collision) kill the run.
+						this.failedTests.push([name, e.message]);
+					}
 				}
 			}
 		}
@@ -1282,13 +1373,17 @@ var Testimony = {
 		// Attribute to the currently running test, or report as unattributed.
 		window.addEventListener('unhandledrejection', this._onUnhandledRejection);
 
-		await this.rootTest.run();
+		try {
+			await this.rootTest.run();
 
-		// Drain: wait briefly to catch late async rejections (e.g. in-flight requests
-		// that fail after teardown drops the test database).
-		await new Promise(r => setTimeout(r, 500));
-
-		this.finished = true;
+			// Drain: wait briefly to catch late async rejections (e.g. in-flight requests
+			// that fail after teardown drops the test database).
+			await new Promise(r => setTimeout(r, 500));
+		} finally {
+			// Always set finished, even if the run throws — the CLI and browser UI both poll it;
+			// leaving it false makes the page look completely dead.
+			this.finished = true;
+		}
 	},
 
 	/** @param e {PromiseRejectionEvent} */
@@ -1399,6 +1494,10 @@ var Testimony = {
 							test.sequential = arg.sequential;
 						if (arg.timeout !== undefined)
 							test.timeout = arg.timeout;
+						if (arg.slow !== undefined)
+							test.slow = arg.slow;
+						if (arg.batched !== undefined)
+							test.batched = arg.batched;
 	               if (arg.size)
 	                   test.size = arg.size;
 					}
@@ -1409,6 +1508,10 @@ var Testimony = {
 					else
 						throw new Error('Unsupported arg: ' + arg + ' of type ' + typeof arg);
 				}
+
+				// The constructor computed enabled before the slow option was parsed above.
+				if (test.slow && globalThis.window?.location)
+					test.enabled = test.getEnabledFromUrl();
 
 				parent.children[item] = test;
 				return test;
@@ -1488,7 +1591,7 @@ var Testimony = {
 		}
 
 		let test = Testimony.test(name, options, async () => {
-			let resp = await fetch(url);
+			let resp = await Testimony._fetchWithRetry(url);
 			let responseText = await resp.text();
 			if (!responseText.includes(passText)) {
 				// test.status = new Error(responseText); // Mark as failed even if we don't catch it.
@@ -1503,6 +1606,101 @@ var Testimony = {
 		test.externalUrl = url;
 
 		return test;
+	},
+
+	/**
+	 * Coordinate a #[BatchExternal] PHP test file: ONE http request runs all enabled methods
+	 * server-side on one instance, so an expensive constructor (usually a createTestingDB clone)
+	 * runs once per file instead of once per method.  Each method still registers as its own
+	 * test whose fn awaits its entry via result(), so failures, output and the UI stay per-method.
+	 * If the response frame is missing (a method die()'d or hard-fataled mid-batch), falls back
+	 * to running every method as its own request, exactly like testExternal.
+	 * @param url {string} e.g. 'php-admin/util/AuthTest.php'
+	 * @param methods {string[]} All test method names in the file.
+	 * @returns {{result: function(string):Promise<*>}} */
+	batchExternal(url, methods) {
+		// Derive the test-name prefix from the url the same way the PHP side does.
+		let prefix = url.replace(/\.php$/, '').replace(/\//g, '.');
+		let fetchPromise = null;
+		let entries = null; // Map method -> {pass, seconds, output?, error?, result?}
+		let fallback = false; // Frame missing: re-run methods individually.
+
+		const fetchBatch = async () => {
+			let enabled = methods.filter(m => Testimony.getTest(`${prefix}.${m}`)?.enabled);
+			let token = Math.random().toString(36).slice(2);
+			let sem = Testimony._getSemaphore();
+			await sem.acquire(); // One slot for the whole file; member tests hold none.
+			let text;
+			try {
+				// Timeout counted from here (after the slot), so queue wait isn't charged.
+				let abort = new AbortController();
+				let timer = setTimeout(() => abort.abort(new Error(`Batch request for ${url} timed out after ${Testimony.batchTimeout}ms`)), Testimony.batchTimeout);
+				try {
+					let resp = await fetch(`${url}?methods=${enabled.join(',')}&batch=${token}`, {signal: abort.signal});
+					text = await resp.text();
+				} finally {
+					clearTimeout(timer);
+				}
+			} finally {
+				sem.release();
+			}
+			let parts = text.split(`--TESTIMONY-${token}--`);
+			if (parts.length < 3) {
+				fallback = true;
+				console.error(`Batch request for ${url} returned no result frame; running its methods `
+					+ `individually.  Response tail:\n${text.slice(-500)}`);
+				return;
+			}
+			entries = new Map(JSON.parse(parts[parts.length - 2]).map(e => [e.method, e]));
+		};
+
+		const individual = async method => {
+			let sem = Testimony._getSemaphore();
+			await sem.acquire(); // Batched tests skip the per-test slot, so take one here.
+			try {
+				let abort = new AbortController();
+				let timer = setTimeout(() => abort.abort(new Error(`${url}?${method} timed out after ${Testimony.batchTimeout}ms`)), Testimony.batchTimeout);
+				let text;
+				try {
+					let resp = await fetch(`${url}?${method}`, {signal: abort.signal});
+					text = await resp.text();
+				} finally {
+					clearTimeout(timer);
+				}
+				if (!text.includes('test passed'))
+					throw new Error(text);
+				return text.slice(text.indexOf('test passed') + 'test passed'.length)
+					.replace(/^ in [\d.]+ seconds\.\s*/, '').trim() || undefined;
+			} finally {
+				sem.release();
+			}
+		};
+
+		return {
+			async result(method) {
+				fetchPromise ??= fetchBatch();
+				try {
+					await fetchPromise;
+				} catch (e) {
+					// Batch fetch itself failed (timeout, connection reset): run methods
+					// individually so each reports its own real result.
+					if (!fallback) {
+						fallback = true;
+						console.error(`Batch request for ${url} failed (${e.message}); running its methods individually.`);
+					}
+				}
+				if (fallback)
+					return individual(method);
+				let e = entries.get(method);
+				if (!e)
+					throw new Error(`Batch response for ${url} has no result for ${method}.`);
+				if (!e.pass)
+					throw new Error((e.error || 'Failed.') + (e.output ? '\n' + e.output : ''));
+				if (e.output)
+					console.log(`${prefix}.${method} output:\n${e.output}`);
+				return e.result;
+			}
+		};
 	},
 
 	/** Used for external tests. */
@@ -1540,6 +1738,40 @@ var Testimony = {
 	},
 
 	// Internal functions:
+
+	/**
+	 * @returns {Semaphore} The shared leaf-execution limiter, created lazily so a maxConcurrency
+	 *    override (e.g. ?concurrency=N) set before the run takes effect. */
+	_getSemaphore() {
+		if (!this._semaphore)
+			this._semaphore = new Semaphore(this.maxConcurrency);
+		return this._semaphore;
+	},
+
+	/**
+	 * fetch() that retries only connection-level failures and 503s, so transient pool blips don't
+	 * surface as spurious test failures.  A response with any other status is returned as-is and
+	 * never retried, so a real 200/500 body can't be masked.
+	 * @param url {string}
+	 * @returns {Promise<Response>} */
+	async _fetchWithRetry(url) {
+		for (let attempt = 0; ; attempt++) {
+			try {
+				let resp = await fetch(url);
+				if (resp.status === 503 && attempt < this.externalRetries) {
+					await new Promise(r => setTimeout(r, this.externalRetryBackoff * (attempt + 1)));
+					continue;
+				}
+				return resp;
+			} catch (e) {
+				if (attempt < this.externalRetries) {
+					await new Promise(r => setTimeout(r, this.externalRetryBackoff * (attempt + 1)));
+					continue;
+				}
+				throw e;
+			}
+		}
+	},
 
 	/**
 	 * @param error {Error}
@@ -1587,8 +1819,9 @@ var Testimony = {
  * @param tests {?string[]}
  * @param headless {boolean}
  * @param port {int} Used only if webserer is null.  Defaults to 8004 to not conflict with commonly used development ports like 8000 or 8080.
+ * @param extraUrlArgs {string[]} Extra query params, e.g. 'fast=1' or 'concurrency=8'.
  * @returns {Promise<void>} */
-async function runPage(path, webServer=null, webRoot=null, tests=null, headless=false, port=8004) {
+async function runPage(path, webServer=null, webRoot=null, tests=null, headless=false, port=8004, extraUrlArgs=[]) {
 
 	/*
 	import puppeteer from 'https://esm.sh/puppeteer@13.0.0';
@@ -1657,7 +1890,7 @@ async function runPage(path, webServer=null, webRoot=null, tests=null, headless=
 
 
 	// Set tests
-	let urlArgs = [];
+	let urlArgs = [...extraUrlArgs];
 	if (!tests)
 		urlArgs.push('allTests=1');
 	else
@@ -1756,6 +1989,16 @@ async function runPage(path, webServer=null, webRoot=null, tests=null, headless=
 
 	const failedTests = await page.evaluate(() => window.Testimony?.failedTests);
 	const passedTests = await page.evaluate(() => window.Testimony?.passedTests);
+
+	// Zero tests ran means a bad selector (or everything filtered out), never success.
+	// Without this, a typo'd test name prints "All tests passed" — fatal for a commit hook.
+	if (!passedTests.length && !failedTests.length) {
+		console.error(`\x1b[31mNo tests ran.${tests ? ' Nothing matched: ' + tests.join(', ') : ''}\x1b[0m`);
+		await browser.close();
+		if (server) stopServer(server);
+		Deno.exit(1);
+	}
+
 	CommandLineUtil.printTestResult(passedTests, failedTests);
 
 	await browser.close();
@@ -1921,6 +2164,7 @@ if (import.meta.main) {
 	let webserver = null;
 	let webroot = null;
 	let headless = false;
+	let extraUrlArgs = [];
 	for (let arg of Deno.args) {
 
 		if (arg.startsWith('--page=')) {
@@ -1946,6 +2190,13 @@ if (import.meta.main) {
 		else if (arg == '--headless')
 			headless = true;
 
+		// Skip tests marked slow (live network calls, benchmarks).
+		else if (arg == '--fast')
+			extraUrlArgs.push('fast=1');
+
+		else if (arg.startsWith('--concurrency='))
+			extraUrlArgs.push('concurrency=' + parseInt(arg.slice('--concurrency='.length), 10));
+
 		else if (arg.startsWith('--')) {
 			console.error(`Unsupported arg ${arg}`);
 			Deno.exit(1);
@@ -1964,6 +2215,6 @@ if (import.meta.main) {
 
 	if (pages) {
 		for (let page of pages)
-			runPage(page, webserver, webroot, tests, headless);
+			runPage(page, webserver, webroot, tests, headless, 8004, extraUrlArgs);
 	}
 }
