@@ -83,7 +83,7 @@ document.body.append(new ShoppingList()); // add <shopping-list> and call render
 
 Import the module directly from a CDN:
 
-- [Solarite.min.js](https://cdn.jsdelivr.net/gh/Vorticode/Solarite/dist/Solarite.min.js) (12KB minified+gzipped)
+- [Solarite.min.js](https://cdn.jsdelivr.net/npm/solarite@0.7.0/dist/Solarite.min.js) (12KB minified+gzipped)
 
 Or install via NPM:
 
@@ -97,7 +97,7 @@ For the best development experience, use an IDE like [WebStorm](https://www.jetb
 
 ## Performance
 
-Solarite is the **faster than almost every well known framework**, according to the [js-framework-benchmar](https://krausest.github.io/js-framework-benchmark/current.html)k.  It's score of 1.10 indicates being 10% slower than vanilla js (hand-coding everything).  Benchmarks were run on a Ryzen 7 3700X  with 16GB ram on Kubuntu 26.04.
+Solarite is **faster than almost every well-known framework**, according to the [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/current.html).  Its score of 1.08 means it's about 8% slower than hand-written vanilla JavaScript.  Benchmarks were run on a Ryzen 7 3700X with 16GB RAM on Kubuntu 26.04.
 
 <div class="bench-wide"><img src="docs/js-framework-benchmark.png" alt="js-framework-benchmark"></div>
 <style>
