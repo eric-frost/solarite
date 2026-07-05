@@ -1,6 +1,6 @@
 {
   "name": "solarite",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Solarite is a small (12KB min+gzip), fast, compilation-free JavaScript library that makes native web components fast to update, patching only the DOM that actually changed when you call render().",
   "type": "module",
   "main": "dist/Solarite.js",
@@ -36,7 +36,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Vorticode/solarite.git"
+    "url": "git+https://github.com/eric-frost/solarite.git"
   },
   "keywords": [
     "JavaScript",
@@ -51,7 +51,7 @@
   "author": "Eric Frost",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/Vorticode/solarite/issues"
+    "url": "https://github.com/eric-frost/solarite/issues"
   },
-  "homepage": "https://vorticode.github.io/solarite/"
+  "homepage": "https://eric-frost.github.io/solarite/"
 }
