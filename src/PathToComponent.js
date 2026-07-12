@@ -78,8 +78,27 @@ export default class PathToComponent extends Path {
 			// 2a. Instantiate component
 			let tagName = (isAttrib || el.tagName.slice(0, -21)).toLowerCase(); // Remove -SOLARITE-PLACEHOLDER
 			let Constructor = customElements.get(tagName);
-			if (!Constructor)
-				throw new Error(`Must call customElements.define('${tagName}', Class) before using it.`);
+
+			// Not defined yet (e.g. the module is being lazily imported): keep the placeholder
+			// and instantiate when the definition lands, like a native custom-element upgrade.
+			// deferredExprs always holds the LATEST exprs so re-renders while undefined win.
+			if (!Constructor) {
+				this.deferredExprs = exprs;
+				if (!this.whenDefinedPending) {
+					this.whenDefinedPending = true;
+					console.warn(`Solarite: <${tagName}> is not defined; deferring until customElements.define('${tagName}', ...).`);
+					customElements.whenDefined(tagName).then(() => {
+						this.whenDefinedPending = false;
+						let deferred = this.deferredExprs;
+						this.deferredExprs = null;
+						// Skip if a newer render already instantiated or replaced the placeholder.
+						if (deferred && this.nodeMarker === el && el.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
+							this.apply(deferred);
+					});
+				}
+				Globals.currentSlotChildren = null;
+				return;
+			}
 
 			Globals.currentSlotChildren = [...el.childNodes]; // TODO: Does this need to be a stack?
 			let newEl = new Constructor(attribs);
