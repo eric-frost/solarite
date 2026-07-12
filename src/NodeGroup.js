@@ -45,6 +45,10 @@ export default class NodeGroup {
 	/** @type {boolean} True if any of this NodeGroup's own paths is a PathToComponent. */
 	hasComponentPaths = false;
 
+	/** @type {boolean} True if any path binds a live HTML property (checked/value/selected) —
+	 * see Shell.hasLivePropPaths. */
+	hasLivePropPaths = false;
+
 	/** @type {boolean} True if every path consumes exactly one expression and none are components. */
 	pathsSingleExpr = false;
 
@@ -101,6 +105,7 @@ export default class NodeGroup {
 			this.closeKey = shell.closeKey ??= template.getCloseKey();
 
 			this.hasComponentPaths = shell.hasComponentPaths;
+			this.hasLivePropPaths = shell.hasLivePropPaths;
 			this.pathsSingleExpr = shell.pathsSingleExpr;
 
 			// A lone root element is cloned directly, skipping a throwaway fragment wrapper.
@@ -315,7 +320,11 @@ export default class NodeGroup {
 		let paths = shell.paths, stampers = shell.stampPaths;
 		let slots = null; // Nodes are resolved only if something actually changed.
 		for (let i = paths.length - 1; i >= 0; i--) {
-			if (!exprSame(oldExprs[i], newExprs[i])) {
+			// Live HTML properties (checked etc., boolean-valued) are exempt from the
+			// unchanged-value skip: a user's click flips the DOM property underneath the cached
+			// expression, and applySingle() compares against the live node before writing.
+			if (!exprSame(oldExprs[i], newExprs[i])
+				|| (stampers[i].isHtmlProperty && typeof newExprs[i] === 'boolean')) {
 				if (slots === null)
 					slots = this.resolveStampSlots(shell);
 				let stamper = stampers[i];

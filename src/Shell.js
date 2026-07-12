@@ -41,6 +41,11 @@ export default class Shell {
 	/** @type {boolean} True if any of this Shell's own paths is a PathToComponent. */
 	hasComponentPaths = false;
 
+	/** @type {boolean} True if any path binds an attribute that's a live HTML property
+	 * (checked, value, selected — Util.isHtmlProp).  Users flip those underneath the template,
+	 * so "expression unchanged" doesn't mean "DOM unchanged" and the skip shortcuts exempt them. */
+	hasLivePropPaths = false;
+
 	/** @type {boolean} True if every path consumes exactly one expression and none are components.
 	 * Lets NodeGroup.applyExprs() use a fast loop without allocating per-path expression arrays. */
 	pathsSingleExpr = false;
@@ -334,10 +339,11 @@ export default class Shell {
 			if (path instanceof PathToComponent) {
 				this.hasComponentPaths = true;
 				this.pathsSingleExpr = false;
-				break; // Both facts are now decided.
 			}
-			if (path.getExpressionCount() !== 1)
-				this.pathsSingleExpr = false; // Keep scanning for components.
+			else if (path.getExpressionCount() !== 1)
+				this.pathsSingleExpr = false;
+			if (path.isHtmlProperty) // needs the full scan — no early break
+				this.hasLivePropPaths = true;
 		}
 
 		// Stampable shells create NodeGroups without allocating any Path objects:

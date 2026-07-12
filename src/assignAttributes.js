@@ -1,12 +1,3 @@
-/*
-┏┓  ┓    •
-┗┓┏┓┃┏┓┏┓┓╋▗▖
-┗┛┗┛┗┗┻╹ ╹╹┗
-JavaScript UI library
-@license MIT
-@copyright Vorticode LLC
-https://vorticode.github.io/solarite/ */
-
 import Util from "./Util.js";
 
 /**

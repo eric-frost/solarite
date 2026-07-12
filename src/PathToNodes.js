@@ -193,8 +193,7 @@ export default class PathToNodes extends Path {
 			let ng = oldNgs[start], t = newItems[start];
 			if (!itemSame(ng, t))
 				break;
-			if (ng.hasComponentPaths)
-				ng.applyExprs(t.exprs, false);
+			this.refreshSameItem(ng, t);
 			newNgs[start] = ng;
 			start++;
 		}
@@ -204,8 +203,7 @@ export default class PathToNodes extends Path {
 			let ng = oldNgs[oldEnd-1], t = newItems[newEnd-1];
 			if (!itemSame(ng, t))
 				break;
-			if (ng.hasComponentPaths)
-				ng.applyExprs(t.exprs, false);
+			this.refreshSameItem(ng, t);
 			newNgs[--newEnd] = ng;
 			oldEnd--;
 		}
@@ -213,10 +211,8 @@ export default class PathToNodes extends Path {
 		// 3. Aligned middle scan: keep unchanged NodeGroups, rewrite same-shape ones in place.
 		while (start < oldEnd && start < newEnd) {
 			let ng = oldNgs[start], t = newItems[start];
-			if (itemSame(ng, t)) { // Can happen between changed rows, e.g. partial updates.
-				if (ng.hasComponentPaths)
-					ng.applyExprs(t.exprs, false);
-			}
+			if (itemSame(ng, t)) // Can happen between changed rows, e.g. partial updates.
+				this.refreshSameItem(ng, t);
 			else if (itemClose(ng, t))
 				this.rewriteNodeGroup(ng, t);
 			else
@@ -347,16 +343,12 @@ export default class PathToNodes extends Path {
 		while (start < oldEnd && start < newEnd) {
 			let ng = oldNgs[start], t = newItems[start];
 			// An identical Template instance (h.map) implies an identical key, so skip key extraction.
-			if (ng.template === t) {
-				if (ng.hasComponentPaths)
-					ng.applyExprs(t.exprs, false);
-			}
+			if (ng.template === t)
+				this.refreshSameItem(ng, t);
 			else if (typeof t === 'string' || ng.key !== keyOf(t) || !itemClose(ng, t))
 				break;
-			else if (itemSame(ng, t)) {
-				if (ng.hasComponentPaths)
-					ng.applyExprs(t.exprs, false);
-			}
+			else if (itemSame(ng, t))
+				this.refreshSameItem(ng, t);
 			else
 				this.rewriteNodeGroup(ng, t);
 			newNgs[start] = ng;
@@ -366,16 +358,12 @@ export default class PathToNodes extends Path {
 		// 2. Keep the matching suffix.
 		while (oldEnd > start && newEnd > start) {
 			let ng = oldNgs[oldEnd-1], t = newItems[newEnd-1];
-			if (ng.template === t) {
-				if (ng.hasComponentPaths)
-					ng.applyExprs(t.exprs, false);
-			}
+			if (ng.template === t)
+				this.refreshSameItem(ng, t);
 			else if (typeof t === 'string' || ng.key !== keyOf(t) || !itemClose(ng, t))
 				break;
-			else if (itemSame(ng, t)) {
-				if (ng.hasComponentPaths)
-					ng.applyExprs(t.exprs, false);
-			}
+			else if (itemSame(ng, t))
+				this.refreshSameItem(ng, t);
 			else
 				this.rewriteNodeGroup(ng, t);
 			newNgs[--newEnd] = ng;
@@ -412,10 +400,8 @@ export default class PathToNodes extends Path {
 								moved = true;
 							else
 								lastNewIndex = newIndex;
-							if (itemSame(ng, t)) {
-								if (ng.hasComponentPaths)
-									ng.applyExprs(t.exprs, false);
-							}
+							if (itemSame(ng, t))
+								this.refreshSameItem(ng, t);
 							else
 								this.rewriteNodeGroup(ng, t);
 							newNgs[newIndex] = ng;
@@ -536,6 +522,22 @@ export default class PathToNodes extends Path {
 	}
 
 	/**
+	 * Refresh a NodeGroup whose new template has the SAME values as its current one.
+	 * Components still render so changes deeper in the tree can surface, and groups holding
+	 * live-HTML-property bindings (checked/value/selected) rewrite in place — a user's click
+	 * flips those DOM properties underneath the cached expression, so same values ≠ same DOM.
+	 * rewriteNodeGroup's per-path skip exempts exactly those paths; everything else is
+	 * compared and skipped as before, so this stays cheap.
+	 * @param ng {NodeGroup}
+	 * @param t {Template|string} */
+	refreshSameItem(ng, t) {
+		if (ng.hasComponentPaths)
+			ng.applyExprs(t.exprs, false);
+		else if (ng.hasLivePropPaths && ng.pathsSingleExpr && typeof t !== 'string')
+			this.rewriteNodeGroup(ng, t);
+	}
+
+	/**
 	 * Update an existing NodeGroup, created from the same html strings, with new values.
 	 * @param ng {NodeGroup}
 	 * @param item {Template|string} */
@@ -555,7 +557,11 @@ export default class PathToNodes extends Path {
 					let oldExprs = ng.template.exprs, newExprs = item.exprs;
 					let paths = ng.paths ?? ng.materializePaths();
 					for (let i = paths.length - 1; i >= 0; i--)
-						if (!exprSame(oldExprs[i], newExprs[i]))
+						// Boolean live-HTML-property bindings are exempt from the unchanged-value
+						// skip — a click flips the property underneath the cached expression;
+						// applySingle() compares against the live node before writing.
+						if (!exprSame(oldExprs[i], newExprs[i])
+							|| (paths[i].isHtmlProperty && typeof newExprs[i] === 'boolean'))
 							paths[i].applySingle(newExprs[i]);
 				}
 
@@ -769,11 +775,8 @@ export default class PathToNodes extends Path {
 			|| this.nodeGroupsDetachedAvailable?.deleteAny(closeKey);
 
 		if (result) {
-			if (templatesSame(result.template, template)) {
-				// Components still render so changes deeper in the tree can surface.
-				if (result.hasComponentPaths)
-					result.applyExprs(template.exprs, false);
-			}
+			if (templatesSame(result.template, template))
+				this.refreshSameItem(result, template);
 			else
 				result.applyExprs(template.exprs);
 			result.template = template;
