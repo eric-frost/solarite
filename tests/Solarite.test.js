@@ -2443,6 +2443,74 @@ Testimony.test('Solarite.delegation.detached', `Delegated handlers work while th
 	assert.eq(a.count, 1);
 });
 
+Testimony.test('Solarite.delegation.documentOption', `eventDelegation:'document' keeps handlers firing on nodes re-parented outside their component.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let count = 0;
+	h(el, {eventDelegation: 'document'})`<div><button onclick=${() => count++}>hi</button></div>`;
+
+	let btn = el.querySelector('button');
+
+	// Inside the component: the root dispatcher handles it; the document dispatcher
+	// sees the done-marker and must not double-fire.
+	btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(count, 1);
+
+	// Re-parented outside the component (the dock-parked-toolbar case): the click
+	// bubbles past el entirely, and only the document dispatcher can reach the handler.
+	let elsewhere = document.createElement('div');
+	document.body.append(elsewhere);
+	elsewhere.append(btn);
+	btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(count, 2);
+
+	el.remove();
+	elsewhere.remove();
+});
+
+Testimony.test('Solarite.delegation.documentOptionOffByDefault', `Without 'document', a re-parented node's delegated handler goes quiet.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let count = 0;
+	// mousedown, not click: another test's 'document' option leaves a click dispatcher on the
+	// shared document for the rest of the suite, which would falsely catch this handler.
+	h(el)`<div><button onmousedown=${() => count++}>hi</button></div>`;
+
+	let btn = el.querySelector('button');
+	let elsewhere = document.createElement('div');
+	document.body.append(elsewhere);
+	elsewhere.append(btn);
+
+	// Bubbles only through elsewhere -> body -> document; no dispatcher on that path.
+	btn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+	assert.eq(count, 0);
+
+	el.remove();
+	elsewhere.remove();
+});
+
+Testimony.test('Solarite.delegation.documentOptionStamped', `The 'document' option also covers handlers written by the compiled stamp program (list rows).`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let hits = [];
+	let rows = [1, 2, 3];
+	h(el, {eventDelegation: 'document'})`<div>${rows.map(n =>
+		h`<p key=${n} onmouseup=${[i => hits.push(i), n]}>row</p>`)}</div>`;
+
+	// Re-parent a stamped row outside the component; its array-form handler must still fire.
+	// (mouseup keeps this test's document dispatcher independent of the other two tests'.)
+	let p = el.querySelectorAll('p')[1];
+	let elsewhere = document.createElement('div');
+	document.body.append(elsewhere);
+	elsewhere.append(p);
+	p.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+	assert.eq(hits.length, 1);
+	assert.eq(hits[0], 2);
+
+	el.remove();
+	elsewhere.remove();
+});
+
 Testimony.test('Solarite.delegation.nested', `Nested components each delegate without double-firing.`, () => {
 	let outer = 0, inner = 0;
 
@@ -5858,5 +5926,411 @@ Testimony.test('Solarite.full._misc', () => {
 	//sp.setValue(products[0], 'c', '');
 });
 
+
+Testimony.test('Solarite.attrib.typedConstructor', () => {
+
+	// super(attribs, types) coerces literal-string attribute values to the declared
+	// types before the subclass copies them onto its fields.
+	class RTypedCtor extends Solarite {
+		count = 0;
+		enabled = false;
+		when = null;
+		constructor(attribs) {
+			super(attribs, {count: Number, enabled: Boolean, when: Date});
+			Object.assign(this, attribs);
+		}
+		render() {
+			h(this)`<div></div>`;
+		}
+	}
+
+	// Strings coerce: Number, a bare attribute (empty string) => true, Date.
+	let a = new RTypedCtor({count: '5', enabled: '', when: '2026-07-21'});
+	assert.eq(a.count, 5);
+	assert.eq(a.enabled, true);
+	assert.eq(a.when instanceof Date, true);
+
+	// 'false' and '0' are the only boolean strings that read as false.
+	let b = new RTypedCtor({count: '0', enabled: 'false'});
+	assert.eq(b.count, 0);
+	assert.eq(b.enabled, false);
+	assert.eq(new RTypedCtor({enabled: '0'}).enabled, false);
+
+	// Non-string values (e.g. a ${true} template expression) pass through untouched.
+	let c = new RTypedCtor({count: 3, enabled: true});
+	assert.eq(c.count, 3);
+	assert.eq(c.enabled, true);
+
+	// With no types map the constructor behaves exactly as before: no coercion.
+	class RUntypedCtor extends Solarite {
+		flag = null;
+		constructor(attribs) {
+			super(attribs);
+			Object.assign(this, attribs);
+		}
+		render() {
+			h(this)`<div></div>`;
+		}
+	}
+	assert.eq(new RUntypedCtor({flag: 'true'}).flag, 'true');
+
+	a.render();
+	assert.eq(getHtml(a), `<r-typed-ctor><div></div></r-typed-ctor>`);
+});
+
+
+//endregion
+
+/*┌─────────────────────────────╮
+  | Alias (expr-array borrow)   |
+  └─────────────────────────────╯*/
+//region alias
+
+// Targeted checks for the collectItems alias fast path: an all-Templates array
+// is borrowed directly during apply, so re-rendering after the USER mutates
+// their own array (same instance or new instance) must behave exactly like the
+// old copying path, and Solarite must not hold a reference to the array.
+
+Testimony.test('Solarite.alias.sameArrayMutated', `Re-rendering after in-place mutations of the same borrowed array matches the copying path.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+
+	let rows = [h`<p>a</p>`, h`<p>b</p>`];
+	let render = () => h(el)`<div>${rows}</div>`;
+	render();
+	assert.eq(el.querySelectorAll('p').length, 2);
+	assert.eq(el.textContent, 'ab');
+
+	// Mutate the SAME array instance in place, then re-render.
+	rows.push(h`<p>c</p>`);
+	rows[0] = h`<p>A</p>`;
+	render();
+	assert.eq(el.querySelectorAll('p').length, 3);
+	assert.eq(el.textContent, 'Abc');
+
+	// Shrink in place.
+	rows.length = 1;
+	render();
+	assert.eq(el.querySelectorAll('p').length, 1);
+	assert.eq(el.textContent, 'A');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.alias.keyedSameArrayMutated', `Keyed reorder via in-place swap of the borrowed array moves nodes by identity.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+
+	let data = [{id: 1, t: 'one'}, {id: 2, t: 'two'}, {id: 3, t: 'three'}];
+	let rows = data.map(d => h`<p key=${d.id}>${d.t}</p>`);
+	let render = () => h(el)`<div>${rows}</div>`;
+	render();
+	assert.eq(el.textContent, 'onetwothree');
+	let first = el.querySelector('p');
+
+	// Swap two entries of the same array instance; keyed diff should move nodes.
+	[rows[0], rows[2]] = [rows[2], rows[0]];
+	render();
+	assert.eq(el.textContent, 'threetwoone');
+	assert.eq(el.querySelectorAll('p')[2], first); // Node identity followed the key.
+
+	el.remove();
+});
+
+Testimony.test('Solarite.alias.mixedArrayFallsBack', `An array with any non-Template takes the copying path with identical output.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+
+	// A non-Template element anywhere must take the copying path with identical results.
+	let rows = [h`<p>a</p>`, 'text', 5, null, [h`<p>b</p>`]];
+	h(el)`<div>${rows}</div>`;
+	assert.eq(el.firstElementChild.childNodes.length, 5); // p, 'text', '5', '', p
+	assert.eq(el.textContent, 'atext5b');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.alias.frozenArray', `A frozen user array renders fine — the borrow never writes to it.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+
+	// The alias must never write to the user's array; a frozen one would throw in strict mode.
+	let rows = Object.freeze([h`<p>x</p>`, h`<p>y</p>`]);
+	h(el)`<div>${rows}</div>`;
+	assert.eq(el.textContent, 'xy');
+	h(el)`<div>${Object.freeze([h`<p>z</p>`])}</div>`;
+	assert.eq(el.textContent, 'z');
+
+	el.remove();
+});
+
+//endregion
+
+/*┌─────────────────────────────╮
+  | Detach (bulk-insert detour) |
+  └─────────────────────────────╯*/
+//region detach
+
+// Targeted checks for the detached-parent bulk-insert detour in applyKeyed step 5a:
+// when a whole-parent keyed list is fully replaced with more than 500 rows, the parent
+// element is detached before the insert loop and reattached once afterward.  These tests
+// prove the detour fires exactly when intended (observed via a MutationObserver on the
+// grandparent), that every guarded case stays on the old direct-insert path, and that
+// rendered output, node identity, events, and focus are unchanged either way.
+
+/**
+ * Build n keyed row templates with keys starting at keyBase. */
+function makeRows(n, keyBase=0) {
+	let rows = new Array(n);
+	for (let i=0; i<n; i++)
+		rows[i] = h`<p key=${keyBase + i}>${'r' + (keyBase + i)}</p>`;
+	return rows;
+}
+
+/**
+ * Watch parent's own childList (not subtree) and report whether the given child
+ * was removed and re-added during fn() — i.e. whether the detour fired. */
+function sawDetach(parent, child, fn) {
+	let mo = new MutationObserver(() => {});
+	mo.observe(parent, {childList: true});
+	fn();
+	let recs = mo.takeRecords();
+	mo.disconnect();
+	let removed = recs.some(r => [...r.removedNodes].includes(child));
+	let added = recs.some(r => [...r.addedNodes].includes(child));
+	return removed && added;
+}
+
+Testimony.test('Solarite.detach.createLargeFromEmpty', `Creating >500 rows into an empty whole-parent list takes the detach detour (one remove+add seen by the grandparent).`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+
+	// Krausest shape: empty keyed tbody, then create-rows in one render.
+	let rows = [];
+	let render = () => h(el)`<table><tbody>${rows}</tbody></table>`;
+	render();
+	let tbody = el.querySelector('tbody');
+	assert.eq(tbody.childElementCount, 0);
+
+	rows = new Array(1200);
+	for (let i=0; i<1200; i++)
+		rows[i] = h`<tr key=${i}><td>${'r' + i}</td></tr>`;
+	let detoured = sawDetach(el.querySelector('table'), tbody, render);
+
+	assert(detoured); // The detour must fire for a >500-row create into an empty list.
+	assert.eq(el.querySelector('tbody'), tbody); // Same node reattached.
+	assert.eq(tbody.childElementCount, 1200);
+	assert.eq(tbody.firstElementChild.textContent, 'r0');
+	assert.eq(tbody.children[599].textContent, 'r599');
+	assert.eq(tbody.lastElementChild.textContent, 'r1199');
+	assert(tbody.isConnected);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.detach.replaceAllLarge', `Fully replacing a large keyed list also takes the detour.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+
+	let rows = makeRows(800);
+	let render = () => h(el)`<div class="wrap">${rows}</div>`;
+	render();
+	let list = el.firstElementChild;
+	assert.eq(list.childElementCount, 800);
+	let oldFirst = list.firstElementChild;
+
+	// All-new keys: kept === 0, full region → fastClear + detour.
+	rows = makeRows(800, 10000);
+	let detoured = sawDetach(el, list, render);
+
+	assert(detoured);
+	assert.eq(list.childElementCount, 800);
+	assert.eq(list.firstElementChild.textContent, 'r10000');
+	assert.eq(list.lastElementChild.textContent, 'r10799');
+	assert(list.firstElementChild !== oldFirst); // Keyed semantics: new keys get new nodes.
+
+	el.remove();
+});
+
+Testimony.test('Solarite.detach.smallListStaysDirect', `500 rows or fewer insert directly — no detach.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+
+	let rows = makeRows(100);
+	let render = () => h(el)`<div>${rows}</div>`;
+	render();
+	let list = el.firstElementChild;
+
+	rows = makeRows(100, 5000);
+	let detoured = sawDetach(el, list, render);
+
+	assert(!detoured); // At or below the threshold, inserts stay on the direct path.
+	assert.eq(list.childElementCount, 100);
+	assert.eq(list.firstElementChild.textContent, 'r5000');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.detach.notWholeParentSkips', `A list that does not own its whole parent never detaches.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+
+	// Leading text keeps the list from being the parent's entire content,
+	// so wholeParent is false and the detour must not fire.
+	let rows = makeRows(600);
+	let render = () => h(el)`<div>head${rows}</div>`;
+	render();
+	let list = el.firstElementChild;
+
+	rows = makeRows(600, 20000);
+	let detoured = sawDetach(el, list, render);
+
+	assert(!detoured);
+	assert.eq(list.querySelectorAll('p').length, 600);
+	assert(list.textContent.startsWith('headr20000'));
+	assert(list.textContent.endsWith('r20599'));
+
+	el.remove();
+});
+
+Testimony.test('Solarite.detach.keptRowsUse5b', `Replacements that keep some rows use the mixed insert path, not the detour.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+
+	let rows = makeRows(600);
+	let render = () => h(el)`<div>${rows}</div>`;
+	render();
+	let list = el.firstElementChild;
+	let keeper = list.children[300]; // key 300
+
+	// Keep one key in the middle; kept > 0 routes to step 5b, never the detour.
+	// The kept row must come from the same template call site (inside makeRows)
+	// or itemClose treats it as a different shape and recreates it.
+	rows = makeRows(600, 40000);
+	rows[250] = makeRows(1, 300)[0];
+	let detoured = sawDetach(el, list, render);
+
+	assert(!detoured);
+	assert.eq(list.childElementCount, 600);
+	assert.eq(list.children[250], keeper); // Node identity followed the kept key.
+	assert.eq(list.children[0].textContent, 'r40000');
+	assert.eq(list.children[599].textContent, 'r40599');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.detach.disconnectedParentSkips', `A parent not in the document inserts directly.`, () => {
+	// Never appended to the document: the gate's isConnected check skips the
+	// detour, and rendering must still work on the fully detached tree.
+	let el = document.createElement('div');
+
+	let rows = makeRows(600);
+	let render = () => h(el)`<div>${rows}</div>`;
+	render();
+	let list = el.firstElementChild;
+	assert.eq(list.childElementCount, 600);
+
+	rows = makeRows(600, 60000);
+	render();
+	assert.eq(list.childElementCount, 600);
+	assert.eq(list.firstElementChild.textContent, 'r60000');
+	assert.eq(list.lastElementChild.textContent, 'r60599');
+});
+
+Testimony.test('Solarite.detach.customElementParentSkips', `A web-component parent is never detached, so its lifecycle callbacks cannot fire mid-render.`, () => {
+	// The reachable custom-element-parent case: a self-rendering h(this) component
+	// whose root element directly wraps the keyed list, so the wholeParent node IS
+	// the component.  Detaching it mid-render would fire its disconnected/connected
+	// callbacks, where subclasses may run teardown logic — the gate must skip it.
+	class DetachSelfList extends HTMLElement {
+		connectedCallback() { DetachSelfList.conn++; this.render(); }
+		disconnectedCallback() { DetachSelfList.disc++; }
+		render() { h(this)`<detach-self-list>${this.rows}</detach-self-list>`; }
+	}
+	DetachSelfList.conn = 0;
+	DetachSelfList.disc = 0;
+	customElements.define('detach-self-list', DetachSelfList);
+
+	let list = document.createElement('detach-self-list');
+	list.rows = makeRows(600);
+	document.body.append(list); // connectedCallback renders the first 600 rows.
+	assert.eq(DetachSelfList.conn, 1);
+	assert.eq(list.childElementCount, 600);
+
+	list.rows = makeRows(600, 80000);
+	let detoured = sawDetach(document.body, list, () => list.render());
+
+	assert(!detoured);
+	assert.eq(DetachSelfList.disc, 0); // Lifecycle callbacks never fired mid-render.
+	assert.eq(DetachSelfList.conn, 1);
+	assert.eq(list.childElementCount, 600);
+	assert.eq(list.firstElementChild.textContent, 'r80000');
+	assert.eq(list.lastElementChild.textContent, 'r80599');
+
+	list.remove();
+});
+
+Testimony.test('Solarite.detach.eventsSurviveReattach', `Delegated event handlers still fire after the detach/reattach cycle.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+
+	// Delegated handlers ride on per-node expandos; detach/reattach must not lose them.
+	let clicked = [];
+	let rows = new Array(600);
+	for (let i=0; i<600; i++)
+		rows[i] = h`<p key=${i} onclick=${() => clicked.push(i)}>${'r' + i}</p>`;
+	h(el)`<div>${rows}</div>`;
+
+	let list = el.firstElementChild;
+	list.children[0].dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	list.children[599].dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(clicked.join(','), '0,599');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.detach.clearThenRecreate', `Clear followed by a large re-create (the benchmark 09+07 pattern) renders correctly.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+
+	// Krausest 09 + 07 sequence: create, clear, create again.
+	let rows = makeRows(700);
+	let render = () => h(el)`<div>${rows}</div>`;
+	render();
+	let list = el.firstElementChild;
+	assert.eq(list.childElementCount, 700);
+
+	rows = [];
+	render();
+	assert.eq(list.childElementCount, 0);
+
+	rows = makeRows(700, 90000);
+	render();
+	assert.eq(list.childElementCount, 700);
+	assert.eq(list.firstElementChild.textContent, 'r90000');
+	assert.eq(list.lastElementChild.textContent, 'r90699');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.detach.focusOutsideSurvives', `Focus outside the list parent is not disturbed by the detour.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let input = document.createElement('input');
+	document.body.append(input);
+	input.focus();
+
+	let rows = makeRows(600);
+	let render = () => h(el)`<div>${rows}</div>`;
+	render();
+	rows = makeRows(600, 70000);
+	render(); // Detour fires; focus outside the detached parent must be untouched.
+
+	assert.eq(document.activeElement, input);
+	assert.eq(el.firstElementChild.childElementCount, 600);
+
+	input.remove();
+	el.remove();
+});
 
 //endregion

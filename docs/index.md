@@ -11,7 +11,7 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite
 
-Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed.  It's tiny (12KB min+gzip) and runs straight in the browser as a standard ES module.
+Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed.  It's tiny (13.5KB min+gzip) and runs straight in the browser as a standard ES module.
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -81,7 +81,7 @@ document.body.append(new ShoppingList([{name: 'Solarite', qty: 1}]));
 
 Import the module directly from a CDN:
 
-- [Solarite.min.js](https://cdn.jsdelivr.net/npm/solarite@0.7.0/dist/Solarite.min.js) (12KB minified+gzipped)
+- [Solarite.min.js](https://cdn.jsdelivr.net/npm/solarite@0.7.0/dist/Solarite.min.js) (13.5KB minified+gzipped)
 
 Or install via NPM:
 
@@ -428,9 +428,9 @@ class LogViewer extends Solarite {
 document.body.append(new LogViewer());
 ```
 
-Only events that bubble are delegated (click, input, keydown, and the like); focus, blur, scroll and other non-bubbling events automatically keep regular listeners.  Pass `eventDelegation: ['click', 'input']` as a render option to delegate only specific events, or `eventDelegation: false` to bind every event directly with `addEventListener`.
+Only events that bubble are delegated (click, input, keydown, and the like); focus, blur, scroll and other non-bubbling events automatically keep regular listeners.  Pass `eventDelegation: ['click', 'input']` as a render option to delegate only specific events, or `eventDelegation: false` to bind every event directly with `addEventListener`.  Pass `eventDelegation: 'document'` to also register the dispatcher on the document, so handlers keep firing on nodes that another component re-parents outside your component - for example a toolbar that a dock panel moves into its own tab bar.  The best design is still to render such content into an element that moves with it, since then no option is needed; `'document'` is the escape hatch for content that must be rendered in place and moved by someone else.
 
-A few caveats, all rare in practice: delegated handlers run when the event reaches the document, so a manually added `addEventListener` on an ancestor element fires before them rather than after, and `stopPropagation()` called from such a manual listener prevents delegated handlers from running.  A non-bubbling event dispatched programmatically (`dispatchEvent` without `bubbles: true`) won't reach delegated handlers either.  Handlers see the correct `event.currentTarget` in every case.  Use `eventDelegation: false` if any of these matter.
+A few caveats, all rare in practice: delegated handlers run when the event bubbles up to the component's root element (or the document, with `'document'`), so a manually added `addEventListener` on an element in between fires before them rather than after, and `stopPropagation()` called from such a manual listener prevents delegated handlers from running.  A non-bubbling event dispatched programmatically (`dispatchEvent` without `bubbles: true`) won't reach delegated handlers either.  Handlers see the correct `event.currentTarget` in every case.  Use `eventDelegation: false` if any of these matter.
 
 ### Two-Way Binding
 

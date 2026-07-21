@@ -1,6 +1,25 @@
 import Util from "./Util.js";
 
 /**
+ * Convert an attribute string with the given converter: Number, Boolean, String, Date,
+ * or any function taking the string and returning a value.  Boolean is true for any string
+ * except 'false' and '0', so a bare attribute like `<my-timer auto-start>` reads as true.
+ * Date uses new Date(value).  No converter returns the string unchanged. */
+export function convertType(value, type) {
+	if (type === Date)
+		return new Date(value);
+	if (type === Boolean)
+		return !['false', '0'].includes(value);
+	if (type === Number)
+		return Number(value);
+	if (type === String)
+		return String(value);
+	if (type) // custom string=>value function
+		return type(value);
+	return value;
+}
+
+/**
  * Read an element's html attributes onto fields that already exist on the element.
  * Typically called from a web component constructor to support plain-html instantiation
  * like `<my-timer duration="7" auto-start>`.  Tagged-template values are already typed and
@@ -34,16 +53,8 @@ export function assignAttributes(dest, types={}, ignore=[]) {
 			dest[name] = JSON.parse(value.slice(2, -1));
 
 		// 2. Cast the string with the converter named in `types`, if any.
-		else if (type === Date)
-			dest[name] = new Date(value);
-		else if (type === Boolean)
-			dest[name] = !['false', '0'].includes(value);
-		else if (type === Number)
-			dest[name] = Number(value);
-		else if (type === String)
-			dest[name] = String(value);
-		else if (type) // custom string=>value function
-			dest[name] = type(value);
+		else if (type)
+			dest[name] = convertType(value, type);
 
 		// 3. No converter named: assign the raw string.  But an empty value over a function/object
 		// field is just the serialization residue of a template expression (functions render as

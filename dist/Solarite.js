@@ -926,10 +926,11 @@ class PathToAttribValue extends Path {
 		// delegatable event names, so this test also excludes non-bubbling events.
 		if (capture === false && this.delegatedKey !== undefined) {
 			let opt = this.parentNg.rootNg.options?.eventDelegation ?? true;
-			if (opt !== false && (opt === true || opt.includes(eventName))) {
+			let toDocument = opt === 'document';
+			if (opt !== false && (opt === true || toDocument || opt.includes(eventName))) {
 				let dk = this.delegatedKey;
 				if (node[dk] === undefined) // First binding of this type on this node.
-					ensureDelegatedDispatcher(root, eventName);
+					ensureDelegatedDispatcher(root, eventName, toDocument);
 				// Array-form bindings (onclick=${[fn, arg]}, the hot per-row case) store the
 				// template's own [func, ...args] array; a plain function is stored bare.
 				// Either way, nothing is allocated.
@@ -1031,15 +1032,32 @@ const delegatedTypesKey = Symbol('solariteDelegatedTypes');
 /**
  * Register the delegated dispatcher for eventName on root if it isn't already.
  * Shared by bindEvent()'s delegated branch and NodeGroup.applyStamp()'s stamp program.
+ *
+ * With andDocument (the eventDelegation:'document' render option), the dispatcher is also
+ * registered on the document, once per event type: a bound node that gets re-parented
+ * OUTSIDE its root (e.g. a toolbar a dock parks in its own chrome) bubbles past the root's
+ * listener, and only a document-level listener can still reach its handler.  The
+ * delegatedDoneKey marker keeps the two dispatchers from double-running the same event.
  * @param root {HTMLElement}
- * @param eventName {string} */
-function ensureDelegatedDispatcher(root, eventName) {
+ * @param eventName {string}
+ * @param andDocument {boolean} */
+function ensureDelegatedDispatcher(root, eventName, andDocument=false) {
 	let types = root[delegatedTypesKey];
 	if (types === undefined)
 		types = root[delegatedTypesKey] = new Set();
 	if (!types.has(eventName)) {
 		types.add(eventName);
 		root.addEventListener(eventName, delegatedDispatcher);
+	}
+	if (andDocument) {
+		let doc = root.ownerDocument ?? document;
+		let docTypes = doc[delegatedTypesKey];
+		if (docTypes === undefined)
+			docTypes = doc[delegatedTypesKey] = new Set();
+		if (!docTypes.has(eventName)) {
+			docTypes.add(eventName);
+			doc.addEventListener(eventName, delegatedDispatcher);
+		}
 	}
 }
 
@@ -3735,7 +3753,8 @@ class NodeGroup {
 		let rootNg = this.rootNg;
 		let root = rootNg.root;
 		let opt = rootNg.options?.eventDelegation;
-		let delegateAll = opt === undefined || opt === true;
+		let delegateDoc = opt === 'document';
+		let delegateAll = opt === undefined || opt === true || delegateDoc;
 		for (let i = ops.length - 1; i >= 0; i--) {
 			let v = exprs[i];
 			let o = ops[i];
@@ -3757,7 +3776,7 @@ class NodeGroup {
 				let node = slots[slotIdx[i]];
 				let dk = sp.delegatedKey;
 				if (node[dk] === undefined)
-					ensureDelegatedDispatcher(root, sp.eventName);
+					ensureDelegatedDispatcher(root, sp.eventName, delegateDoc);
 				node[dk] = v;
 				node[delegatedRootKey] = root;
 			}
@@ -4475,7 +4494,11 @@ const renderTemplateKey = Symbol('solariteRender');
 // Using `arguments` alongside rest params would force the engine to materialize both per call.
 const noArg = Symbol();
 
-function h(htmlStrings=noArg, ...exprs) {
+// The /** @type {*} */ cast on the default keeps TypeScript from inferring the parameter as
+// `symbol` from noArg: TS can't parse the closure-style @param type above (function() without
+// a return type under noImplicitAny), falls back to the default's type, and then flags every
+// h(this) / h`` call in the codebase as an error.  JetBrains reads the @param fine either way.
+function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 
 	// 1. Tagged template: h`<div>...</div>`
 	if (Array.isArray(htmlStrings)) {
@@ -4638,6 +4661,25 @@ h.map = (items, fn) => {
 h.immutableMap = h.map;
 
 /**
+ * Convert an attribute string with the given converter: Number, Boolean, String, Date,
+ * or any function taking the string and returning a value.  Boolean is true for any string
+ * except 'false' and '0', so a bare attribute like `<my-timer auto-start>` reads as true.
+ * Date uses new Date(value).  No converter returns the string unchanged. */
+function convertType(value, type) {
+	if (type === Date)
+		return new Date(value);
+	if (type === Boolean)
+		return !['false', '0'].includes(value);
+	if (type === Number)
+		return Number(value);
+	if (type === String)
+		return String(value);
+	if (type) // custom string=>value function
+		return type(value);
+	return value;
+}
+
+/**
  * Read an element's html attributes onto fields that already exist on the element.
  * Typically called from a web component constructor to support plain-html instantiation
  * like `<my-timer duration="7" auto-start>`.  Tagged-template values are already typed and
@@ -4671,16 +4713,8 @@ function assignAttributes(dest, types={}, ignore=[]) {
 			dest[name] = JSON.parse(value.slice(2, -1));
 
 		// 2. Cast the string with the converter named in `types`, if any.
-		else if (type === Date)
-			dest[name] = new Date(value);
-		else if (type === Boolean)
-			dest[name] = !['false', '0'].includes(value);
-		else if (type === Number)
-			dest[name] = Number(value);
-		else if (type === String)
-			dest[name] = String(value);
-		else if (type) // custom string=>value function
-			dest[name] = type(value);
+		else if (type)
+			dest[name] = convertType(value, type);
 
 		// 3. No converter named: assign the raw string.  But an empty value over a function/object
 		// field is just the serialization residue of a template expression (functions render as
@@ -4730,8 +4764,27 @@ let HTMLElementAutoDefine = new Proxy(HTMLElement, {
 class Solarite extends HTMLElementAutoDefine {
 
 	/**
-	 * @param attribs {?Record<string, any>} */
-	constructor(attribs=null) {
+	 * Fill in and fix up the attribs object a component's constructor receives, so the component
+	 * can then copy those values onto its own fields, e.g. with ObjectUtil.assign(this, attribs).
+	 *
+	 * 1.  If attribs is an empty object, fill it with the attributes on the DOM element.
+	 *     This happens when the browser creates the element from plain html, because then nothing
+	 *     calls the constructor with arguments.  Attribute names convert from dash-case to
+	 *     camelCase, and `${...}` values are parsed from JSON.
+	 * 2.  If types is given, convert attribs values from strings to those types.  Attribute values
+	 *     written as literal text always arrive as strings, whether from plain html or from an h()
+	 *     template.  types maps a field name to Number, Boolean, String, Date, or any function
+	 *     taking the string and returning a value.  Boolean is true for every string except
+	 *     'false' and '0', so a bare attribute like `<select-box-3 editable>` becomes true.
+	 *     Values that are already not strings, like a `${true}` template expression, are left alone.
+	 *
+	 * This runs before the subclass initializes its fields and renders, so converted values are
+	 * right the first time, even for fields that change what render() builds.  This constructor
+	 * can't copy attribs onto fields itself, because subclass field initializers run after it
+	 * finishes and would overwrite them; that's why the subclass does the final assign.
+	 * @param attribs {?Record<string, any>}
+	 * @param types {?Record<string, Function>} */
+	constructor(attribs=null, types=null) {
 		super();
 
 		if (attribs) {
@@ -4739,33 +4792,18 @@ class Solarite extends HTMLElementAutoDefine {
 				throw new Error('First argument to custom element constructor must be an object.');
 
 			// 1. Populate attribs if it's an empty object.
-			if (attribs && !Object.keys(attribs).length) {
+			if (!Object.keys(attribs).length) {
 				let attribs2 =  Solarite.getAttribs(this);
 				for (let name in attribs2) {
 					attribs[name] = attribs2[name];
 				}
 			}
 
-			// 2. Populate fields from attribs.
-			// This does nothing because the fields are overwritten by the child class after this super() constructor executes.
-			//for (let name in attribs || {}) {
-			//	if (name in this) {
-			//		const descriptor = Object.getOwnPropertyDescriptor(this, name);
-			//		if (!descriptor || descriptor.writable || descriptor.set)
-			//			this[name] = attribs[name];
-			//	}
-			//}
+			// 2. Convert string values to the types the component declares.
+			for (let name in types || {})
+				if (typeof attribs[name] === 'string')
+					attribs[name] = convertType(attribs[name], types[name]);
 		}
-
-		// 3. Wrap render function so it always provides the attribs argument.
-		// Disabled because this gives us strings for attribute values when we call render manually.
-		// Instead of values given from ${...} expressions.
-		// let originalRender = this.render;
-		// this.render = (attribs, changed=true) => {
-		// 	if (!attribs) // If we have to look up the attribs, we don't know if they changed or not.
-		// 		attribs = Solarite.getAttribs(this);
-		// 	originalRender.call(this, attribs, changed);
-		// }
 	}
 
 	'render'() {
@@ -4908,4 +4946,4 @@ class Solarite extends HTMLElementAutoDefine {
 }
 
 export default h;
-export { Fragment, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, assignAttributes, delve, getEventBinding, h, svg, toEl };
+export { Fragment, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, assignAttributes, convertType, delve, getEventBinding, h, svg, toEl };
