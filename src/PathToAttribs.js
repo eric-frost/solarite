@@ -11,8 +11,13 @@ export default class PathToAttribs extends Path {
 	 * @type {Set<string>} Used for type=AttribType.Multiple to remember the attributes that were added. */
 	attrNames;
 
-	/** @type {boolean} Provides one or more attributes on a component. */
-	isComponent;
+	/** @type {PathToEvent|PathToAttribValue|undefined} Cached sub-path for the JSX
+	 * whole-attribute fast path; see applyJsxAttr().  Declared so the first assignment
+	 * doesn't transition the hidden class. */
+	jsxSub;
+
+	/** @type {?string} The attribute name jsxSub was built for. */
+	jsxSubName;
 
 	constructor(nodeBefore, nodeMarker) {
 		super(null, null);

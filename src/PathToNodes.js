@@ -9,6 +9,12 @@ import MultiValueMap from "./MultiValueMap.js";
 
 export default class PathToNodes extends Path {
 
+	/** @type {boolean} True when the previous render's items contained raw DOM Nodes,
+	 * which routes applySingle() to the generic reconciler.  Declared so the hot
+	 * `!this.itemsHaveNodes` check reads a real field instead of a missing property,
+	 * and so the first raw-Node render doesn't transition the hidden class. */
+	itemsHaveNodes = false;
+
 	/** @type {?NodeGroup[]} The NodeGroups created by this path's expression, in order.
 	 * Lazily created; null when the path has only ever rendered a primitive (see textNode). */
 	nodeGroups = null;
@@ -147,9 +153,27 @@ export default class PathToNodes extends Path {
 		}
 
 		// 1. Flatten the expression to a list of Templates, strings and Nodes, evaluating functions along the way.
+		// A flat array that is entirely Templates — the rows.map(...) / h.map(...) shape that list
+		// renders produce — is borrowed directly instead of copied.  The borrow lasts only for the
+		// rest of this synchronous call:  applyDiff/applyKeyed/applyGeneric read the items and
+		// retain only the NodeGroups (and each item's own Template) built from them, never the
+		// items array itself, so no reference to the caller's array survives the render.  Keep
+		// that invariant — storing newItems on any long-lived object would pin the caller's
+		// per-render array until the next render, moving its collection into a later frame.
 		/** @type {(Template|string|Node)[]} */
-		let newItems = [];
-		let hasNodesNow = this.collectItems(expr, newItems, false);
+		let newItems = null;
+		let hasNodesNow = false;
+		if (Array.isArray(expr)) {
+			let len = expr.length, i = 0;
+			while (i < len && expr[i] instanceof Template)
+				i++;
+			if (i === len)
+				newItems = expr; // Borrowed from the caller; read-only from here on.
+		}
+		if (newItems === null) {
+			newItems = [];
+			hasNodesNow = this.collectItems(expr, newItems, false);
+		}
 
 		// 2. Raw Nodes in the items (now or on the previous render) can't be diffed positionally
 		// because this.nodeGroups only tracks NodeGroups.  Use the generic path for those.

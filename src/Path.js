@@ -39,6 +39,17 @@ export default class Path {
 	 * @type {Node[]} Cached result of getNodes() */
 	nodesCache;
 
+	/** @type {boolean|undefined} True when this path provides an attribute of a web component
+	 * (a -solarite-placeholder element).  Only attribute paths ever set it true, but it's
+	 * declared here on every Path because clone() and cloneWithNodes() copy it to every clone;
+	 * declaring it keeps those stores from transitioning the clone's hidden class. */
+	isComponentAttrib;
+
+	/** @type {boolean|undefined} True when the attribute is a live HTML property
+	 * (checked/value/selected — Util.isHtmlProp), which users can flip underneath the
+	 * template.  Declared here for the same hidden-class reason as isComponentAttrib. */
+	isHtmlProperty;
+
 	// Set only on Shell paths, never on cloned instances, so they're not declared as
 	// class fields; that would cost a store per field on every clone:
 	// nodeBeforeIndex {int} Index of nodeBefore among its parentNode's children.
