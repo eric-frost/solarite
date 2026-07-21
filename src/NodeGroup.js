@@ -6,6 +6,7 @@ import Path from "./Path.js";
 import Globals from './Globals.js';
 import PathToComponent from "./PathToComponent.js";
 import PathToNodes from "./PathToNodes.js";
+import {ensureDelegatedDispatcher, delegatedRootKey} from "./PathToAttribValue.js";
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
@@ -273,27 +274,53 @@ export default class NodeGroup {
 			}
 		}
 
-		// 2. Resolve target nodes, then write each expression.
+		// 2. Resolve target nodes, then run the shell's compiled stamp program: a flat
+		// opcode per path replaces per-path applySingle() dispatch (see Shell.stampOp).
 		let slots = this.resolveStampSlots(shell);
-		let paths = shell.paths, stampers = shell.stampPaths;
-		for (let i = paths.length - 1; i >= 0; i--) {
-			let stamper = stampers[i];
-			let marker = slots[paths[i].markerSlot];
+		let ops = shell.stampOp, slotIdx = shell.stampSlot, aux = shell.stampAux;
+		let stampers = shell.stampPaths;
+		let rootNg = this.rootNg;
+		let root = rootNg.root;
+		let opt = rootNg.options?.eventDelegation;
+		let delegateAll = opt === undefined || opt === true;
+		for (let i = ops.length - 1; i >= 0; i--) {
+			let v = exprs[i];
+			let o = ops[i];
 
-			// A wholeParent text path's marker is the (freshly cloned, empty) only-child slot:
-			// write its text directly, skipping applySingle's branching and the shared-stamper
-			// bookkeeping.  Child exprs are primitive here (step 1 bailed otherwise).
-			if (stamper.wholeParent) {
-				let v = exprs[i];
+			// Whole-parent child text: the marker is the (freshly cloned, empty) only-child
+			// slot.  Child exprs are primitive here (step 1 bailed otherwise).
+			if (o === 2) {
 				if (typeof v === 'number')
 					v += '';
-				marker.textContent = v;
-				continue;
+				slots[slotIdx[i]].textContent = v;
 			}
 
-			stamper.nodeMarker = marker;
-			stamper.parentNg = this;
-			stamper.applySingle(exprs[i]);
+			// Delegatable event with a valid handler shape: write the node expandos
+			// directly, mirroring bindEvent()'s delegated branch.  An event-name-array
+			// delegation option or an invalid value falls through to the generic stamper.
+			else if (o === 3 && delegateAll
+				&& (typeof v === 'function' || (Array.isArray(v) && typeof v[0] === 'function'))) {
+				let sp = aux[i];
+				let node = slots[slotIdx[i]];
+				let dk = sp.delegatedKey;
+				if (node[dk] === undefined)
+					ensureDelegatedDispatcher(root, sp.eventName);
+				node[dk] = v;
+				node[delegatedRootKey] = root;
+			}
+
+			// The list key never touches the DOM.
+			else if (o === 1)
+				this.key = v;
+
+			// Everything else (attributes, disabled delegation, odd values) goes through
+			// the shared stamper's full applySingle() semantics.
+			else {
+				let stamper = stampers[i];
+				stamper.nodeMarker = slots[slotIdx[i]];
+				stamper.parentNg = this;
+				stamper.applySingle(v);
+			}
 		}
 
 		this.nodesCache = null;

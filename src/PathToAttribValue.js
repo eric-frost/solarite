@@ -236,14 +236,29 @@ export default class PathToAttribValue extends Path {
 		if (typeof func !== 'function')
 			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
 
-		// Whether to delegate is decided in registerBinding(), which only runs for a NEW binding.
-		// Re-renders rebind existing rows (just updating binding.args below), so they skip the
-		// options lookup + delegatableEvents check entirely.
-		let options = this.parentNg.rootNg.options;
+		// Delegated path: a bubbling event (when the root's options allow it, the default)
+		// stores its handler directly on the node as a per-event-type Symbol expando, with no
+		// EventBinding object and no addEventListener call.  The root-level dispatcher reads
+		// these expandos while walking up from the event target.  Re-renders just overwrite
+		// the property.  this.delegatedKey is set by the PathToEvent constructor only for
+		// delegatable event names, so this test also excludes non-bubbling events.
+		if (capture === false && this.delegatedKey !== undefined) {
+			let opt = this.parentNg.rootNg.options?.eventDelegation ?? true;
+			if (opt !== false && (opt === true || opt.includes(eventName))) {
+				let dk = this.delegatedKey;
+				if (node[dk] === undefined) // First binding of this type on this node.
+					ensureDelegatedDispatcher(root, eventName);
+				// Array-form bindings (onclick=${[fn, arg]}, the hot per-row case) store the
+				// template's own [func, ...args] array; a plain function is stored bare.
+				// Either way, nothing is allocated.
+				node[dk] = funcAndArgs || func;
+				node[delegatedRootKey] = root;
+				return;
+			}
+		}
 
-		// Store the callable as a single [func, ...args] array.  Array-form bindings
-		// (onclick=${[fn, arg]}, the hot per-row case) pass it through with no allocation;
-		// a plain function allocates a one-element array, which is rare (buttons, two-way).
+		// Direct path: capture bindings, non-bubbling events, and eventDelegation:false.
+		// Store the callable as a single [func, ...args] array.
 		let args = funcAndArgs || [func];
 
 		// One stable EventBinding object per node+key is registered with addEventListener
@@ -253,7 +268,7 @@ export default class PathToAttribValue extends Path {
 		let nodeEvents = node[eventBindingsKey];
 		if (nodeEvents === undefined) {
 			let b = node[eventBindingsKey] = new EventBinding(root, node, key, args);
-			registerBinding(b, node, eventName, capture, options, root);
+			node.addEventListener(eventName, b, capture);
 			return;
 		}
 
@@ -271,7 +286,7 @@ export default class PathToAttribValue extends Path {
 				let map = node[eventBindingsKey] = {};
 				map[nodeEvents.key] = nodeEvents;
 				binding = map[key] = new EventBinding(root, node, key, args);
-				registerBinding(binding, node, eventName, capture, options, root);
+				node.addEventListener(eventName, binding, capture);
 				return;
 			}
 		}
@@ -279,7 +294,7 @@ export default class PathToAttribValue extends Path {
 			binding = nodeEvents[key];
 			if (!binding) {
 				binding = nodeEvents[key] = new EventBinding(root, node, key, args);
-				registerBinding(binding, node, eventName, capture, options, root);
+				node.addEventListener(eventName, binding, capture);
 				return;
 			}
 		}
@@ -304,44 +319,47 @@ export function getEventBinding(node, key) {
 	return b instanceof EventBinding ? (b.key === key ? b : undefined) : b[key];
 }
 
-/**
- * Attach a new EventBinding either directly or through the root component's delegated
- * dispatcher.  The dispatcher lives on the root element (not the document) so a component
- * still receives delegated events while detached from the document, and events stay scoped
- * to the component that rendered them. */
-function registerBinding(binding, node, eventName, capture, options, root) {
-	// Bubbling events are delegated by default: they skip addEventListener entirely, and one
-	// root-level dispatcher per event type finds bindings by walking up from the event target.
-	// eventDelegation:false opts out; an array delegates only the named events.  Capture
-	// bindings and non-bubbling events always stay direct.
-	let delegate = false;
-	if (capture === false) {
-		let opt = options?.eventDelegation ?? true;
-		if (opt !== false && delegatableEvents.has(eventName))
-			delegate = opt === true || opt.includes(eventName);
-	}
-
-	if (delegate) {
-		binding.delegated = true;
-		let types = root[delegatedTypesKey];
-		if (types === undefined)
-			types = root[delegatedTypesKey] = new Set();
-		if (!types.has(eventName)) {
-			types.add(eventName);
-			root.addEventListener(eventName, delegatedDispatcher);
-		}
-	}
-	else
-		node.addEventListener(eventName, binding, capture);
-}
-
 // Bubbling events that one root-level listener can dispatch.  Same set Solid.js delegates.
 const delegatableEvents = new Set(['beforeinput', 'click', 'contextmenu', 'dblclick', 'focusin', 'focusout',
 	'input', 'keydown', 'keyup', 'mousedown', 'mousemove', 'mouseout', 'mouseover', 'mouseup',
 	'pointerdown', 'pointermove', 'pointerout', 'pointerover', 'pointerup', 'touchend', 'touchmove', 'touchstart']);
 
+// One Symbol per delegated event type; nodes store their delegated handler under it.
+// Symbols (vs string expandos like Solid's $$click) can't collide with user properties.
+const delegatedKeys = {};
+
+/**
+ * Get the per-event-type Symbol key, or undefined for non-delegatable events.
+ * Called once per PathToEvent construction, never per bind.
+ * @param eventName {string}
+ * @return {symbol|undefined} */
+export function delegatedKeyFor(eventName) {
+	if (!delegatableEvents.has(eventName))
+		return undefined;
+	return delegatedKeys[eventName] ??= Symbol('sol$' + eventName);
+}
+
+// The component root a node's delegated handlers run with as `this`.
+// Exported so NodeGroup.applyStamp()'s compiled stamp program can write it directly.
+export const delegatedRootKey = Symbol('solariteDelegatedRoot');
+
 // Per-root-element Set of event types that already have a delegated dispatcher registered.
 const delegatedTypesKey = Symbol('solariteDelegatedTypes');
+
+/**
+ * Register the delegated dispatcher for eventName on root if it isn't already.
+ * Shared by bindEvent()'s delegated branch and NodeGroup.applyStamp()'s stamp program.
+ * @param root {HTMLElement}
+ * @param eventName {string} */
+export function ensureDelegatedDispatcher(root, eventName) {
+	let types = root[delegatedTypesKey];
+	if (types === undefined)
+		types = root[delegatedTypesKey] = new Set();
+	if (!types.has(eventName)) {
+		types.add(eventName);
+		root.addEventListener(eventName, delegatedDispatcher);
+	}
+}
 
 // Marks an event the innermost root dispatcher has already walked, so an outer root's
 // listener (when components are nested) skips it instead of dispatching the bindings again.
@@ -349,28 +367,34 @@ const delegatedDoneKey = Symbol('solariteDelegated');
 
 /**
  * The per-root listener for each delegated event type.  The first (innermost) root the
- * bubbling event reaches walks from the event target upward, invoking delegated
- * EventBindings stored on the nodes along the way; outer roots then see the done-marker and
- * skip.  Each binding carries its own root, so handlers in an outer component still run with
- * the correct `this`.  event.currentTarget is patched to the node whose binding is running,
- * and restored after.  stopPropagation() inside a handler ends the walk, mirroring native
- * bubbling. */
+ * bubbling event reaches walks from the event target upward, invoking delegated handlers
+ * stored on the nodes along the way; outer roots then see the done-marker and skip.
+ * Each node carries the root its handlers run with as `this` (see delegatedRootKey), so
+ * handlers in an outer component still run with the correct component.  event.currentTarget
+ * is patched to the node whose handler is running, and restored after.  stopPropagation()
+ * inside a handler ends the walk, mirroring native bubbling. */
 function delegatedDispatcher(ev) {
 	if (ev[delegatedDoneKey])
 		return;
 	ev[delegatedDoneKey] = true;
-	let type = ev.type;
+	let dk = delegatedKeys[ev.type];
 	let current = ev.target;
 	Object.defineProperty(ev, 'currentTarget', {configurable: true, get() { return current }});
 	while (current) {
-		let b = current[eventBindingsKey];
-		if (b !== undefined) {
-			let binding = b instanceof EventBinding ? b : b[type];
-			if (binding !== undefined && binding.delegated === true && binding.key === type) {
-				binding.handleEvent(ev);
-				if (ev.cancelBubble)
-					break;
-			}
+		let a = current[dk];
+		if (a !== undefined) {
+			let root = current[delegatedRootKey];
+			if (typeof a === 'function')
+				a.call(root, ev, current);
+			else
+				switch (a.length) {
+					case 1: a[0].call(root, ev, current); break;
+					case 2: a[0].call(root, a[1], ev, current); break;
+					case 3: a[0].call(root, a[1], a[2], ev, current); break;
+					default: a[0].call(root, ...a.slice(1), ev, current);
+				}
+			if (ev.cancelBubble)
+				break;
 		}
 		current = current.parentNode;
 	}

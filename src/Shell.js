@@ -376,6 +376,36 @@ export default class Shell {
 				/** @type {Path[]} One shared stamper per path; nodeMarker/parentNg are set per use. */
 				this.stampPaths = this.paths.map(p => p.cloneWithNodes(null, p.nodeMarker));
 
+				// Compiled stamp program: one opcode per path lets applyStamp() write a fresh
+				// row through a flat branch chain instead of dispatching applySingle() per path.
+				// 0 = generic (shared stamper fallback), 1 = list key (no DOM), 2 = wholeParent
+				// child text, 3 = delegatable single-expression event (written as node expandos
+				// when the root delegates, the default).
+				let n = this.paths.length;
+
+				/** @type {Uint8Array} Opcode per path. */
+				this.stampOp = new Uint8Array(n);
+
+				/** @type {Uint16Array} paths[i].markerSlot, in a flat array so the hot loop
+				 * doesn't load the Path object to find its slot. */
+				this.stampSlot = new Uint16Array(n);
+
+				/** @type {?Path[]} The event stamper per op-3 path (carries delegatedKey and
+				 * eventName); null for other opcodes. */
+				this.stampAux = new Array(n).fill(null);
+
+				for (let i=0; i<n; i++) {
+					let p = this.paths[i], sp = this.stampPaths[i];
+					this.stampSlot[i] = p.markerSlot;
+					if (p instanceof PathToKey)
+						this.stampOp[i] = 1;
+					else if (sp.wholeParent)
+						this.stampOp[i] = 2;
+					else if (sp instanceof PathToEvent && sp.delegatedKey !== undefined && !sp.attrValue) {
+						this.stampOp[i] = 3;
+						this.stampAux[i] = sp;
+					}
+				}
 			}
 		}
 
