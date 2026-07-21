@@ -1,5 +1,5 @@
 import h, {toEl, Solarite} from "../../src/Solarite.js";
-import "./ui/CodeEditor.js";
+import "./ui/CodeEditor2.js";
 import "./ui/FlexResizer.js";
 
 
@@ -22,20 +22,29 @@ export default class Playground extends Solarite {
 		this.prefix2 = prefix;
 		this.maxHeight = maxHeight
 		this.render();
-		
-		this.editor.onChange.push(() => {
-			this.run();
-		});
-		
+
+		this.editor.addEventListener('input', () => this.run());
+		this.editor.setTabSize(2);
+
+		// Attach the TypeScript language service (completions, hover, diagnostics) lazily on first
+		// focus, so the ~3.5MB compiler + type libs never load until someone actually types here.
+		this.editor.addEventListener('focusin', () => {
+			import("./lsp/ts/TsService.js").then(({default: tsService}) => {
+				this.editor.setServices({js: tsService({
+					filename: 'file.js', fetchImports: false, compilerOptions: {checkJs: false}
+				})});
+			});
+		}, {once: true});
+
 		this.run();
 	}
 
 	run() {
 		let html;
 		if (this.language === 'javascript')
-			html = `<script type="module">${this.editor.getValue()}</script>`;
+			html = `<script type="module">${this.editor.value}</script>`;
 		else if (this.language === 'html')
-			html = this.editor.getValue();
+			html = this.editor.value;
 		else {
 			this.editor.style.width = '100%';
 			this.editor.style.borderRight = 'none';
@@ -139,16 +148,16 @@ export default class Playground extends Solarite {
 			<play-ground class="card row pad stretch-v  pad-small-tablet col-mobile pad-tiny-mobile">
 				<style>
 					@media (width < 768px) { /* On mobile, put preview below code */
-						:host code-editor { max-height: 300px; border-bottom: var(--border) }
+						:host code-editor-2 { max-height: 300px; border-bottom: var(--border) }
 						:host [data-id=preview] { margin: 0; min-width: 0; background: white }
 						:host flex-resizer { display: none }
 					}
 					@media (768px <= width) {
-						:host code-editor { width: ${this.width}%; border-right: var(--border) }
+						:host code-editor-2 { width: ${this.width}%; border-right: var(--border) }
 						:host [data-id=preview] { width: ${100 - this.width}%; min-width: 0; margin: 0; background: white }
 					}
-				</style>			
-				<code-editor data-id="editor" value=${this.value} language=${this.language} options=${{tabSize: 2}}></code-editor>
+				</style>
+				<code-editor-2 data-id="editor" value=${this.value} language=${this.language}></code-editor-2>
 				<flex-resizer data-id="resizer"></flex-resizer>
 				<iframe data-id="preview" frameborder="0"></iframe>
 				<slot data-id="code" style="display: none"></slot>

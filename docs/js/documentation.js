@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	function upgrade(pre) {
 		let lines = [];
 		for (let preLine of pre.querySelectorAll('pre.CodeMirror-line > span'))
-			lines.push(preLine.textContent.replace(/\xa0/g, ' ').replace(/\n$/g, '').replace(/    /g, '\t'))
+			lines.push(preLine.textContent.replace(/\xa0/g, ' ').replace(/\n$/g, ''))
 
 		let prefix = `
 			<style>
