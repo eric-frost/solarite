@@ -241,10 +241,11 @@ export default class PathToAttribValue extends Path {
 		// delegatable event names, so this test also excludes non-bubbling events.
 		if (capture === false && this.delegatedKey !== undefined) {
 			let opt = this.parentNg.rootNg.options?.eventDelegation ?? true;
-			if (opt !== false && (opt === true || opt.includes(eventName))) {
+			let toDocument = opt === 'document';
+			if (opt !== false && (opt === true || toDocument || opt.includes(eventName))) {
 				let dk = this.delegatedKey;
 				if (node[dk] === undefined) // First binding of this type on this node.
-					ensureDelegatedDispatcher(root, eventName);
+					ensureDelegatedDispatcher(root, eventName, toDocument);
 				// Array-form bindings (onclick=${[fn, arg]}, the hot per-row case) store the
 				// template's own [func, ...args] array; a plain function is stored bare.
 				// Either way, nothing is allocated.
@@ -346,15 +347,32 @@ const delegatedTypesKey = Symbol('solariteDelegatedTypes');
 /**
  * Register the delegated dispatcher for eventName on root if it isn't already.
  * Shared by bindEvent()'s delegated branch and NodeGroup.applyStamp()'s stamp program.
+ *
+ * With andDocument (the eventDelegation:'document' render option), the dispatcher is also
+ * registered on the document, once per event type: a bound node that gets re-parented
+ * OUTSIDE its root (e.g. a toolbar a dock parks in its own chrome) bubbles past the root's
+ * listener, and only a document-level listener can still reach its handler.  The
+ * delegatedDoneKey marker keeps the two dispatchers from double-running the same event.
  * @param root {HTMLElement}
- * @param eventName {string} */
-export function ensureDelegatedDispatcher(root, eventName) {
+ * @param eventName {string}
+ * @param andDocument {boolean} */
+export function ensureDelegatedDispatcher(root, eventName, andDocument=false) {
 	let types = root[delegatedTypesKey];
 	if (types === undefined)
 		types = root[delegatedTypesKey] = new Set();
 	if (!types.has(eventName)) {
 		types.add(eventName);
 		root.addEventListener(eventName, delegatedDispatcher);
+	}
+	if (andDocument) {
+		let doc = root.ownerDocument ?? document;
+		let docTypes = doc[delegatedTypesKey];
+		if (docTypes === undefined)
+			docTypes = doc[delegatedTypesKey] = new Set();
+		if (!docTypes.has(eventName)) {
+			docTypes.add(eventName);
+			doc.addEventListener(eventName, delegatedDispatcher);
+		}
 	}
 }
 

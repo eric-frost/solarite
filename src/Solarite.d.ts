@@ -10,14 +10,17 @@ export interface RenderOptions {
     ids?: boolean;
     render?: boolean;
 
-    /** Defaults to true: bubbling events (click, input, etc.) dispatch from one document-level
-     * listener instead of addEventListener per element - much faster creation and teardown
-     * of large lists.  Pass false to bind every event directly, or an array to delegate only
-     * the listed event names.  Non-bubbling events always bind directly.  Note: delegated
-     * handlers run when the event reaches the document, so manual stopPropagation() on an
-     * ancestor suppresses them, and manually added ancestor listeners fire first.  A
-     * programmatically dispatched non-bubbling event won't reach delegated handlers. */
-    eventDelegation?: boolean | string[];
+    /** Defaults to true: bubbling events (click, input, etc.) dispatch from one listener on
+     * the component's root element instead of addEventListener per element - much faster
+     * creation and teardown of large lists.  Pass false to bind every event directly, or an
+     * array to delegate only the listed event names.  Pass 'document' to also register the
+     * dispatcher on the document, so handlers keep firing on nodes that get re-parented
+     * outside the component (e.g. a toolbar a dock parks in its own chrome).  Non-bubbling
+     * events always bind directly.  Note: delegated handlers run when the event bubbles to
+     * the root (or document), so stopPropagation() in a manually added listener on an element
+     * in between suppresses them, and such manual listeners fire first.  A programmatically
+     * dispatched non-bubbling event won't reach delegated handlers. */
+    eventDelegation?: boolean | string[] | 'document';
 }
 
 /**
@@ -54,7 +57,26 @@ export {h, svg};
 /**
  * Solarite provides more features if your web component extends Solarite instead of HTMLElement. */
 export class Solarite extends HTMLElement {
-    constructor(attribs?: Record<string, any> | null);
+	/**
+	 * Fill in and fix up the attribs object a component's constructor receives, so the component
+	 * can then copy those values onto its own fields, e.g. with ObjectUtil.assign(this, attribs).
+	 *
+	 * 1.  If attribs is an empty object, fill it with the attributes on the DOM element.
+	 *     This happens when the browser creates the element from plain html, because then nothing
+	 *     calls the constructor with arguments.  Attribute names convert from dash-case to
+	 *     camelCase, and `${...}` values are parsed from JSON.
+	 * 2.  If types is given, convert attribs values from strings to those types.  Attribute values
+	 *     written as literal text always arrive as strings, whether from plain html or from an h()
+	 *     template.  types maps a field name to Number, Boolean, String, Date, or any function
+	 *     taking the string and returning a value.  Boolean is true for every string except
+	 *     'false' and '0', so a bare attribute like `<select-box-3 editable>` becomes true.
+	 *     Values that are already not strings, like a `${true}` template expression, are left alone.
+	 *
+	 * This runs before the subclass initializes its fields and renders, so converted values are
+	 * right the first time, even for fields that change what render() builds.  This constructor
+	 * can't copy attribs onto fields itself, because subclass field initializers run after it
+	 * finishes and would overwrite them; that's why the subclass does the final assign. */
+    constructor(attribs?: Record<string, any> | null, types?: Record<string, Function> | null);
     render(attribs?: Record<string, any>, changed?:boolean): void;
     renderFirstTime(): void;
     connectedCallback(): void;
@@ -87,6 +109,13 @@ export function getEventBinding(node: Node, key: string): EventBinding | undefin
  * taking the string and returning a value.  Boolean is true for any string except 'false'
  * and '0', so a bare attribute reads as true.  Field names in `ignore` are skipped. */
 export function assignAttributes(dest: HTMLElement, types?: Record<string, Function>, ignore?: string[]): void;
+
+/**
+ * Convert an attribute string with the given converter: Number, Boolean, String, Date,
+ * or any function taking the string and returning a value.  Boolean is true for any string
+ * except 'false' and '0', so a bare attribute reads as true.  No converter returns the
+ * string unchanged. */
+export function convertType(value: string, type?: Function): any;
 
 export class Template {
     exprs: any[];

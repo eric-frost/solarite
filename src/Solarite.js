@@ -7,11 +7,12 @@ JavasCript UI library
 @copyright Vorticode LLC
 https://vorticode.github.io/solarite/ */
 import h from './h.js';
+import {convertType} from './assignAttributes.js';
 export default h;
 export {default as delve} from './delve.js';
 export {default as Template} from './Template.js';
 export {default as toEl} from './toEl.js';
-export {assignAttributes} from './assignAttributes.js';
+export {assignAttributes, convertType} from './assignAttributes.js';
 export {svg} from './h.js';
 export {getEventBinding} from './PathToAttribValue.js';
 export {Fragment} from './jsx.js';
@@ -65,8 +66,27 @@ let HTMLElementAutoDefine = new Proxy(HTMLElement, {
 export class Solarite extends HTMLElementAutoDefine {
 
 	/**
-	 * @param attribs {?Record<string, any>} */
-	constructor(attribs=null) {
+	 * Fill in and fix up the attribs object a component's constructor receives, so the component
+	 * can then copy those values onto its own fields, e.g. with ObjectUtil.assign(this, attribs).
+	 *
+	 * 1.  If attribs is an empty object, fill it with the attributes on the DOM element.
+	 *     This happens when the browser creates the element from plain html, because then nothing
+	 *     calls the constructor with arguments.  Attribute names convert from dash-case to
+	 *     camelCase, and `${...}` values are parsed from JSON.
+	 * 2.  If types is given, convert attribs values from strings to those types.  Attribute values
+	 *     written as literal text always arrive as strings, whether from plain html or from an h()
+	 *     template.  types maps a field name to Number, Boolean, String, Date, or any function
+	 *     taking the string and returning a value.  Boolean is true for every string except
+	 *     'false' and '0', so a bare attribute like `<select-box-3 editable>` becomes true.
+	 *     Values that are already not strings, like a `${true}` template expression, are left alone.
+	 *
+	 * This runs before the subclass initializes its fields and renders, so converted values are
+	 * right the first time, even for fields that change what render() builds.  This constructor
+	 * can't copy attribs onto fields itself, because subclass field initializers run after it
+	 * finishes and would overwrite them; that's why the subclass does the final assign.
+	 * @param attribs {?Record<string, any>}
+	 * @param types {?Record<string, Function>} */
+	constructor(attribs=null, types=null) {
 		super();
 
 		if (attribs) {
@@ -74,33 +94,18 @@ export class Solarite extends HTMLElementAutoDefine {
 				throw new Error('First argument to custom element constructor must be an object.');
 
 			// 1. Populate attribs if it's an empty object.
-			if (attribs && !Object.keys(attribs).length) {
+			if (!Object.keys(attribs).length) {
 				let attribs2 =  Solarite.getAttribs(this);
 				for (let name in attribs2) {
 					attribs[name] = attribs2[name];
 				}
 			}
 
-			// 2. Populate fields from attribs.
-			// This does nothing because the fields are overwritten by the child class after this super() constructor executes.
-			//for (let name in attribs || {}) {
-			//	if (name in this) {
-			//		const descriptor = Object.getOwnPropertyDescriptor(this, name);
-			//		if (!descriptor || descriptor.writable || descriptor.set)
-			//			this[name] = attribs[name];
-			//	}
-			//}
+			// 2. Convert string values to the types the component declares.
+			for (let name in types || {})
+				if (typeof attribs[name] === 'string')
+					attribs[name] = convertType(attribs[name], types[name]);
 		}
-
-		// 3. Wrap render function so it always provides the attribs argument.
-		// Disabled because this gives us strings for attribute values when we call render manually.
-		// Instead of values given from ${...} expressions.
-		// let originalRender = this.render;
-		// this.render = (attribs, changed=true) => {
-		// 	if (!attribs) // If we have to look up the attribs, we don't know if they changed or not.
-		// 		attribs = Solarite.getAttribs(this);
-		// 	originalRender.call(this, attribs, changed);
-		// }
 	}
 
 	'render'() {

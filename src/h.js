@@ -56,7 +56,11 @@ const renderTemplateKey = Symbol('solariteRender');
 // Using `arguments` alongside rest params would force the engine to materialize both per call.
 const noArg = Symbol();
 
-export default function h(htmlStrings=noArg, ...exprs) {
+// The /** @type {*} */ cast on the default keeps TypeScript from inferring the parameter as
+// `symbol` from noArg: TS can't parse the closure-style @param type above (function() without
+// a return type under noImplicitAny), falls back to the default's type, and then flags every
+// h(this) / h`` call in the codebase as an error.  JetBrains reads the @param fine either way.
+export default function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 
 	// 1. Tagged template: h`<div>...</div>`
 	if (Array.isArray(htmlStrings)) {

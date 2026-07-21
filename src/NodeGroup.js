@@ -287,7 +287,8 @@ export default class NodeGroup {
 		let rootNg = this.rootNg;
 		let root = rootNg.root;
 		let opt = rootNg.options?.eventDelegation;
-		let delegateAll = opt === undefined || opt === true;
+		let delegateDoc = opt === 'document';
+		let delegateAll = opt === undefined || opt === true || delegateDoc;
 		for (let i = ops.length - 1; i >= 0; i--) {
 			let v = exprs[i];
 			let o = ops[i];
@@ -309,7 +310,7 @@ export default class NodeGroup {
 				let node = slots[slotIdx[i]];
 				let dk = sp.delegatedKey;
 				if (node[dk] === undefined)
-					ensureDelegatedDispatcher(root, sp.eventName);
+					ensureDelegatedDispatcher(root, sp.eventName, delegateDoc);
 				node[dk] = v;
 				node[delegatedRootKey] = root;
 			}
