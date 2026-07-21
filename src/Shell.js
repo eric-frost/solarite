@@ -65,6 +65,43 @@ export default class Shell {
 	 * with no per-instance Path objects.  See the stampPaths setup in the constructor. */
 	stampable = false;
 
+	// The remaining fields are only filled in for some shells (resolve program, stampable),
+	// but they're all declared here so every Shell instance shares one hidden class.
+	// NodeGroup's per-row code (its constructor, applyStamp, resolveStampSlots) reads these
+	// off whichever shell it's given, and a single shape keeps those loads monomorphic.
+
+	/** @type {?string} The Template close key, cached here by the NodeGroup constructor so
+	 * each new template row skips a WeakMap lookup.  See Template.getCloseKey(). */
+	closeKey;
+
+	/** @type {?int[]} The resolve program: flat [parentSlot, childIndex] pairs in dependency
+	 * order; pair i fills slot i+1, slot 0 being the fragment.  Built by buildResolveProgram();
+	 * undefined for shells with components. */
+	resolveOps;
+
+	/** @type {?Node[]} Reusable scratch array for resolved nodes; safe because resolution
+	 * never re-enters. */
+	resolveSlots;
+
+	// The stamp program, set only when stampable is true:
+
+	/** @type {?int[]} Indexes of PathToNodes paths, checked for primitive exprs before stamping. */
+	nodesPathIdx;
+
+	/** @type {?Path[]} One shared stamper per path; nodeMarker/parentNg are set per use. */
+	stampPaths;
+
+	/** @type {?Uint8Array} Opcode per path; see the stamp-program comment in the constructor. */
+	stampOp;
+
+	/** @type {?Uint16Array} paths[i].markerSlot, in a flat array so the hot loop
+	 * doesn't load the Path object to find its slot. */
+	stampSlot;
+
+	/** @type {?Path[]} The event stamper per op-3 path (carries delegatedKey and
+	 * eventName); null for other opcodes. */
+	stampAux;
+
 	/**
 	 * Create the nodes but without filling in the expressions.
 	 * This is useful because the expression-less nodes created by a template can be cached.
@@ -322,13 +359,14 @@ export default class Shell {
 			throw new Error(`Could not parse expressions in template.  Check for duplicate attributes or malformed html: ${html.join('${...}')}`);
 
 		for (let path of this.paths) {
-			if (path.nodeBefore)
-				path.nodeBeforeIndex = Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore)
+			// -1 when the path has no nodeBefore.  Assigned unconditionally so every shell path
+			// of a given class takes the same property-addition order and shares one hidden class.
+			path.nodeBeforeIndex = path.nodeBefore
+				? Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore)
+				: -1;
 
 			// Must be calculated after we remove the toRemove nodes:
 			path.nodeMarkerPath = Path.get(path.nodeMarker)
-
-
 		}
 
 		this.findEmbeds();
@@ -369,11 +407,7 @@ export default class Shell {
 			}
 			if (ok) {
 				this.stampable = true;
-
-				/** @type {int[]} Indexes of PathToNodes paths, checked for primitive exprs before stamping. */
 				this.nodesPathIdx = nodesIdx;
-
-				/** @type {Path[]} One shared stamper per path; nodeMarker/parentNg are set per use. */
 				this.stampPaths = this.paths.map(p => p.cloneWithNodes(null, p.nodeMarker));
 
 				// Compiled stamp program: one opcode per path lets applyStamp() write a fresh
@@ -382,16 +416,8 @@ export default class Shell {
 				// child text, 3 = delegatable single-expression event (written as node expandos
 				// when the root delegates, the default).
 				let n = this.paths.length;
-
-				/** @type {Uint8Array} Opcode per path. */
 				this.stampOp = new Uint8Array(n);
-
-				/** @type {Uint16Array} paths[i].markerSlot, in a flat array so the hot loop
-				 * doesn't load the Path object to find its slot. */
 				this.stampSlot = new Uint16Array(n);
-
-				/** @type {?Path[]} The event stamper per op-3 path (carries delegatedKey and
-				 * eventName); null for other opcodes. */
 				this.stampAux = new Array(n).fill(null);
 
 				for (let i=0; i<n; i++) {
@@ -521,10 +547,7 @@ export default class Shell {
 			path.beforeSlot = path.nodeBefore ? getSlot(path.nodeBefore) : -1;
 		}
 
-		/** @type {?int[]} Flat [parentSlot, childIndex] pairs; pair i fills slot i+1. */
 		this.resolveOps = ops;
-
-		/** @type {Node[]} Reusable scratch array for resolved nodes; safe because resolution never re-enters. */
 		this.resolveSlots = new Array(nextSlot);
 
 		// A lone root element means slot 1 is always that element (the first op pair is [0, 0]),

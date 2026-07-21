@@ -510,6 +510,17 @@ class Path {
 	 * @type {Node[]} Cached result of getNodes() */
 	nodesCache;
 
+	/** @type {boolean|undefined} True when this path provides an attribute of a web component
+	 * (a -solarite-placeholder element).  Only attribute paths ever set it true, but it's
+	 * declared here on every Path because clone() and cloneWithNodes() copy it to every clone;
+	 * declaring it keeps those stores from transitioning the clone's hidden class. */
+	isComponentAttrib;
+
+	/** @type {boolean|undefined} True when the attribute is a live HTML property
+	 * (checked/value/selected — Util.isHtmlProp), which users can flip underneath the
+	 * template.  Declared here for the same hidden-class reason as isComponentAttrib. */
+	isHtmlProperty;
+
 	// Set only on Shell paths, never on cloned instances, so they're not declared as
 	// class fields; that would cost a store per field on every clone:
 	// nodeBeforeIndex {int} Index of nodeBefore among its parentNode's children.
@@ -795,10 +806,7 @@ class PathToAttribValue extends Path {
 	 * @type {?string[]} Used only if type=AttribType.Value. If null, use one expr to set the whole attribute value. */
 	attrValue;
 
-	/** @type {boolean} Provides value for attribute on a component. */
-	isComponent;
-
-	isHtmlProperty;
+	// isComponentAttrib and isHtmlProperty are declared on the Path base class.
 
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
 		super(null, nodeMarker);
@@ -1486,8 +1494,13 @@ class PathToAttribs extends Path {
 	 * @type {Set<string>} Used for type=AttribType.Multiple to remember the attributes that were added. */
 	attrNames;
 
-	/** @type {boolean} Provides one or more attributes on a component. */
-	isComponent;
+	/** @type {PathToEvent|PathToAttribValue|undefined} Cached sub-path for the JSX
+	 * whole-attribute fast path; see applyJsxAttr().  Declared so the first assignment
+	 * doesn't transition the hidden class. */
+	jsxSub;
+
+	/** @type {?string} The attribute name jsxSub was built for. */
+	jsxSubName;
 
 	constructor(nodeBefore, nodeMarker) {
 		super(null, null);
@@ -1648,6 +1661,12 @@ class MultiValueMap {
 
 class PathToNodes extends Path {
 
+	/** @type {boolean} True when the previous render's items contained raw DOM Nodes,
+	 * which routes applySingle() to the generic reconciler.  Declared so the hot
+	 * `!this.itemsHaveNodes` check reads a real field instead of a missing property,
+	 * and so the first raw-Node render doesn't transition the hidden class. */
+	itemsHaveNodes = false;
+
 	/** @type {?NodeGroup[]} The NodeGroups created by this path's expression, in order.
 	 * Lazily created; null when the path has only ever rendered a primitive (see textNode). */
 	nodeGroups = null;
@@ -1786,9 +1805,27 @@ class PathToNodes extends Path {
 		}
 
 		// 1. Flatten the expression to a list of Templates, strings and Nodes, evaluating functions along the way.
+		// A flat array that is entirely Templates — the rows.map(...) / h.map(...) shape that list
+		// renders produce — is borrowed directly instead of copied.  The borrow lasts only for the
+		// rest of this synchronous call:  applyDiff/applyKeyed/applyGeneric read the items and
+		// retain only the NodeGroups (and each item's own Template) built from them, never the
+		// items array itself, so no reference to the caller's array survives the render.  Keep
+		// that invariant — storing newItems on any long-lived object would pin the caller's
+		// per-render array until the next render, moving its collection into a later frame.
 		/** @type {(Template|string|Node)[]} */
-		let newItems = [];
-		let hasNodesNow = this.collectItems(expr, newItems, false);
+		let newItems = null;
+		let hasNodesNow = false;
+		if (Array.isArray(expr)) {
+			let len = expr.length, i = 0;
+			while (i < len && expr[i] instanceof Template)
+				i++;
+			if (i === len)
+				newItems = expr; // Borrowed from the caller; read-only from here on.
+		}
+		if (newItems === null) {
+			newItems = [];
+			hasNodesNow = this.collectItems(expr, newItems, false);
+		}
 
 		// 2. Raw Nodes in the items (now or on the previous render) can't be diffed positionally
 		// because this.nodeGroups only tracks NodeGroups.  Use the generic path for those.
@@ -3022,6 +3059,43 @@ class Shell {
 	 * with no per-instance Path objects.  See the stampPaths setup in the constructor. */
 	stampable = false;
 
+	// The remaining fields are only filled in for some shells (resolve program, stampable),
+	// but they're all declared here so every Shell instance shares one hidden class.
+	// NodeGroup's per-row code (its constructor, applyStamp, resolveStampSlots) reads these
+	// off whichever shell it's given, and a single shape keeps those loads monomorphic.
+
+	/** @type {?string} The Template close key, cached here by the NodeGroup constructor so
+	 * each new template row skips a WeakMap lookup.  See Template.getCloseKey(). */
+	closeKey;
+
+	/** @type {?int[]} The resolve program: flat [parentSlot, childIndex] pairs in dependency
+	 * order; pair i fills slot i+1, slot 0 being the fragment.  Built by buildResolveProgram();
+	 * undefined for shells with components. */
+	resolveOps;
+
+	/** @type {?Node[]} Reusable scratch array for resolved nodes; safe because resolution
+	 * never re-enters. */
+	resolveSlots;
+
+	// The stamp program, set only when stampable is true:
+
+	/** @type {?int[]} Indexes of PathToNodes paths, checked for primitive exprs before stamping. */
+	nodesPathIdx;
+
+	/** @type {?Path[]} One shared stamper per path; nodeMarker/parentNg are set per use. */
+	stampPaths;
+
+	/** @type {?Uint8Array} Opcode per path; see the stamp-program comment in the constructor. */
+	stampOp;
+
+	/** @type {?Uint16Array} paths[i].markerSlot, in a flat array so the hot loop
+	 * doesn't load the Path object to find its slot. */
+	stampSlot;
+
+	/** @type {?Path[]} The event stamper per op-3 path (carries delegatedKey and
+	 * eventName); null for other opcodes. */
+	stampAux;
+
 	/**
 	 * Create the nodes but without filling in the expressions.
 	 * This is useful because the expression-less nodes created by a template can be cached.
@@ -3279,13 +3353,14 @@ class Shell {
 			throw new Error(`Could not parse expressions in template.  Check for duplicate attributes or malformed html: ${html.join('${...}')}`);
 
 		for (let path of this.paths) {
-			if (path.nodeBefore)
-				path.nodeBeforeIndex = Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore);
+			// -1 when the path has no nodeBefore.  Assigned unconditionally so every shell path
+			// of a given class takes the same property-addition order and shares one hidden class.
+			path.nodeBeforeIndex = path.nodeBefore
+				? Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore)
+				: -1;
 
 			// Must be calculated after we remove the toRemove nodes:
 			path.nodeMarkerPath = Path.get(path.nodeMarker);
-
-
 		}
 
 		this.findEmbeds();
@@ -3326,11 +3401,7 @@ class Shell {
 			}
 			if (ok) {
 				this.stampable = true;
-
-				/** @type {int[]} Indexes of PathToNodes paths, checked for primitive exprs before stamping. */
 				this.nodesPathIdx = nodesIdx;
-
-				/** @type {Path[]} One shared stamper per path; nodeMarker/parentNg are set per use. */
 				this.stampPaths = this.paths.map(p => p.cloneWithNodes(null, p.nodeMarker));
 
 				// Compiled stamp program: one opcode per path lets applyStamp() write a fresh
@@ -3339,16 +3410,8 @@ class Shell {
 				// child text, 3 = delegatable single-expression event (written as node expandos
 				// when the root delegates, the default).
 				let n = this.paths.length;
-
-				/** @type {Uint8Array} Opcode per path. */
 				this.stampOp = new Uint8Array(n);
-
-				/** @type {Uint16Array} paths[i].markerSlot, in a flat array so the hot loop
-				 * doesn't load the Path object to find its slot. */
 				this.stampSlot = new Uint16Array(n);
-
-				/** @type {?Path[]} The event stamper per op-3 path (carries delegatedKey and
-				 * eventName); null for other opcodes. */
 				this.stampAux = new Array(n).fill(null);
 
 				for (let i=0; i<n; i++) {
@@ -3478,10 +3541,7 @@ class Shell {
 			path.beforeSlot = path.nodeBefore ? getSlot(path.nodeBefore) : -1;
 		}
 
-		/** @type {?int[]} Flat [parentSlot, childIndex] pairs; pair i fills slot i+1. */
 		this.resolveOps = ops;
-
-		/** @type {Node[]} Reusable scratch array for resolved nodes; safe because resolution never re-enters. */
 		this.resolveSlots = new Array(nextSlot);
 
 		// A lone root element means slot 1 is always that element (the first op pair is [0, 0]),
