@@ -2073,6 +2073,33 @@ class PathToNodes extends Path {
 				// DocumentFragment would double the insert count for no benefit, since
 				// style/layout work is deferred until the next frame either way.
 				if (kept === 0) {
+
+					// When a large whole-parent list is fully replaced, detach the parent
+					// element first and reattach it once after the loop.  Every insert then
+					// happens on a disconnected subtree, so the browser's connected-tree
+					// bookkeeping (parent child-change notifications, tree-version bumps,
+					// MutationObserver interest walks, deferred accessibility/style consumers)
+					// runs once at reattach instead of once per row.  The full-region gate
+					// (start 0, newEnd === newLen, kept 0) means fastClear in step 4 already
+					// emptied the parent when it had old rows, so no focus can be inside it
+					// and anchor is null — appends behave identically while detached.  The
+					// size threshold keeps small lists on the direct path, where the fixed
+					// detach/reattach cost (and the extra MutationObserver records it
+					// creates) would outweigh the savings.  Custom-element parents (and
+					// customized built-ins) are excluded: detaching one would fire its
+					// disconnected/connectedCallback in the middle of this render, and a
+					// subclass may run arbitrary teardown/setup logic there.  Parents that
+					// are already outside the document skip the detour too — the
+					// notification storm only exists on connected trees.
+					let detachedFrom = null, reattachBefore = null;
+					if (wholeParent && start === 0 && newEnd === newLen && newRemain > 500
+						&& parent.isConnected && parent.parentNode !== null
+						&& parent.localName.indexOf('-') === -1 && !parent.hasAttribute('is')) {
+						detachedFrom = parent.parentNode;
+						reattachBefore = parent.nextSibling;
+						parent.remove();
+					}
+
 					for (let i=start; i<newEnd; i++) {
 						let ng = this.createNew(newItems[i]);
 						newNgs[i] = ng;
@@ -2087,6 +2114,9 @@ class PathToNodes extends Path {
 							node = next;
 						}
 					}
+
+					if (detachedFrom !== null)
+						detachedFrom.insertBefore(parent, reattachBefore);
 				}
 
 				// 5b. Mixed: iterate backwards so each item's anchor is already in place.
