@@ -1,5 +1,5 @@
 import assert from "./assert.js";
-import PathToAttribValue from "./PathToAttribValue.js";
+import PathToAttribValue, {delegatedKeyFor} from "./PathToAttribValue.js";
 
 // TODO: Merge this into PathToAttribValue?
 export default class PathToEvent extends PathToAttribValue {
@@ -7,9 +7,14 @@ export default class PathToEvent extends PathToAttribValue {
 	/** @type {string} The attrName without the "on" prefix. */
 	eventName;
 
+	/** @type {symbol|undefined} Expando key nodes store this event's delegated handler under.
+	 * Undefined for non-delegatable (non-bubbling) events; bindEvent() then binds directly. */
+	delegatedKey;
+
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
 		super(null, nodeMarker, attrName, attrValue);
 		this.eventName = attrName ? attrName.slice(2) : null;
+		this.delegatedKey = this.eventName !== null ? delegatedKeyFor(this.eventName) : undefined;
 	}
 
 	/**

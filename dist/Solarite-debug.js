@@ -1019,14 +1019,29 @@ class PathToAttribValue extends Path {
 		if (typeof func !== 'function')
 			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
 
-		// Whether to delegate is decided in registerBinding(), which only runs for a NEW binding.
-		// Re-renders rebind existing rows (just updating binding.args below), so they skip the
-		// options lookup + delegatableEvents check entirely.
-		let options = this.parentNg.rootNg.options;
+		// Delegated path: a bubbling event (when the root's options allow it, the default)
+		// stores its handler directly on the node as a per-event-type Symbol expando, with no
+		// EventBinding object and no addEventListener call.  The root-level dispatcher reads
+		// these expandos while walking up from the event target.  Re-renders just overwrite
+		// the property.  this.delegatedKey is set by the PathToEvent constructor only for
+		// delegatable event names, so this test also excludes non-bubbling events.
+		if (capture === false && this.delegatedKey !== undefined) {
+			let opt = this.parentNg.rootNg.options?.eventDelegation ?? true;
+			if (opt !== false && (opt === true || opt.includes(eventName))) {
+				let dk = this.delegatedKey;
+				if (node[dk] === undefined) // First binding of this type on this node.
+					ensureDelegatedDispatcher(root, eventName);
+				// Array-form bindings (onclick=${[fn, arg]}, the hot per-row case) store the
+				// template's own [func, ...args] array; a plain function is stored bare.
+				// Either way, nothing is allocated.
+				node[dk] = funcAndArgs || func;
+				node[delegatedRootKey] = root;
+				return;
+			}
+		}
 
-		// Store the callable as a single [func, ...args] array.  Array-form bindings
-		// (onclick=${[fn, arg]}, the hot per-row case) pass it through with no allocation;
-		// a plain function allocates a one-element array, which is rare (buttons, two-way).
+		// Direct path: capture bindings, non-bubbling events, and eventDelegation:false.
+		// Store the callable as a single [func, ...args] array.
 		let args = funcAndArgs || [func];
 
 		// One stable EventBinding object per node+key is registered with addEventListener
@@ -1036,7 +1051,7 @@ class PathToAttribValue extends Path {
 		let nodeEvents = node[eventBindingsKey];
 		if (nodeEvents === undefined) {
 			let b = node[eventBindingsKey] = new EventBinding(root, node, key, args);
-			registerBinding(b, node, eventName, capture, options, root);
+			node.addEventListener(eventName, b, capture);
 			return;
 		}
 
@@ -1054,7 +1069,7 @@ class PathToAttribValue extends Path {
 				let map = node[eventBindingsKey] = {};
 				map[nodeEvents.key] = nodeEvents;
 				binding = map[key] = new EventBinding(root, node, key, args);
-				registerBinding(binding, node, eventName, capture, options, root);
+				node.addEventListener(eventName, binding, capture);
 				return;
 			}
 		}
@@ -1062,7 +1077,7 @@ class PathToAttribValue extends Path {
 			binding = nodeEvents[key];
 			if (!binding) {
 				binding = nodeEvents[key] = new EventBinding(root, node, key, args);
-				registerBinding(binding, node, eventName, capture, options, root);
+				node.addEventListener(eventName, binding, capture);
 				return;
 			}
 		}
@@ -1087,44 +1102,47 @@ function getEventBinding(node, key) {
 	return b instanceof EventBinding ? (b.key === key ? b : undefined) : b[key];
 }
 
-/**
- * Attach a new EventBinding either directly or through the root component's delegated
- * dispatcher.  The dispatcher lives on the root element (not the document) so a component
- * still receives delegated events while detached from the document, and events stay scoped
- * to the component that rendered them. */
-function registerBinding(binding, node, eventName, capture, options, root) {
-	// Bubbling events are delegated by default: they skip addEventListener entirely, and one
-	// root-level dispatcher per event type finds bindings by walking up from the event target.
-	// eventDelegation:false opts out; an array delegates only the named events.  Capture
-	// bindings and non-bubbling events always stay direct.
-	let delegate = false;
-	if (capture === false) {
-		let opt = options?.eventDelegation ?? true;
-		if (opt !== false && delegatableEvents.has(eventName))
-			delegate = opt === true || opt.includes(eventName);
-	}
-
-	if (delegate) {
-		binding.delegated = true;
-		let types = root[delegatedTypesKey];
-		if (types === undefined)
-			types = root[delegatedTypesKey] = new Set();
-		if (!types.has(eventName)) {
-			types.add(eventName);
-			root.addEventListener(eventName, delegatedDispatcher);
-		}
-	}
-	else
-		node.addEventListener(eventName, binding, capture);
-}
-
 // Bubbling events that one root-level listener can dispatch.  Same set Solid.js delegates.
 const delegatableEvents = new Set(['beforeinput', 'click', 'contextmenu', 'dblclick', 'focusin', 'focusout',
 	'input', 'keydown', 'keyup', 'mousedown', 'mousemove', 'mouseout', 'mouseover', 'mouseup',
 	'pointerdown', 'pointermove', 'pointerout', 'pointerover', 'pointerup', 'touchend', 'touchmove', 'touchstart']);
 
+// One Symbol per delegated event type; nodes store their delegated handler under it.
+// Symbols (vs string expandos like Solid's $$click) can't collide with user properties.
+const delegatedKeys = {};
+
+/**
+ * Get the per-event-type Symbol key, or undefined for non-delegatable events.
+ * Called once per PathToEvent construction, never per bind.
+ * @param eventName {string}
+ * @return {symbol|undefined} */
+function delegatedKeyFor(eventName) {
+	if (!delegatableEvents.has(eventName))
+		return undefined;
+	return delegatedKeys[eventName] ??= Symbol('sol$' + eventName);
+}
+
+// The component root a node's delegated handlers run with as `this`.
+// Exported so NodeGroup.applyStamp()'s compiled stamp program can write it directly.
+const delegatedRootKey = Symbol('solariteDelegatedRoot');
+
 // Per-root-element Set of event types that already have a delegated dispatcher registered.
 const delegatedTypesKey = Symbol('solariteDelegatedTypes');
+
+/**
+ * Register the delegated dispatcher for eventName on root if it isn't already.
+ * Shared by bindEvent()'s delegated branch and NodeGroup.applyStamp()'s stamp program.
+ * @param root {HTMLElement}
+ * @param eventName {string} */
+function ensureDelegatedDispatcher(root, eventName) {
+	let types = root[delegatedTypesKey];
+	if (types === undefined)
+		types = root[delegatedTypesKey] = new Set();
+	if (!types.has(eventName)) {
+		types.add(eventName);
+		root.addEventListener(eventName, delegatedDispatcher);
+	}
+}
 
 // Marks an event the innermost root dispatcher has already walked, so an outer root's
 // listener (when components are nested) skips it instead of dispatching the bindings again.
@@ -1132,28 +1150,34 @@ const delegatedDoneKey = Symbol('solariteDelegated');
 
 /**
  * The per-root listener for each delegated event type.  The first (innermost) root the
- * bubbling event reaches walks from the event target upward, invoking delegated
- * EventBindings stored on the nodes along the way; outer roots then see the done-marker and
- * skip.  Each binding carries its own root, so handlers in an outer component still run with
- * the correct `this`.  event.currentTarget is patched to the node whose binding is running,
- * and restored after.  stopPropagation() inside a handler ends the walk, mirroring native
- * bubbling. */
+ * bubbling event reaches walks from the event target upward, invoking delegated handlers
+ * stored on the nodes along the way; outer roots then see the done-marker and skip.
+ * Each node carries the root its handlers run with as `this` (see delegatedRootKey), so
+ * handlers in an outer component still run with the correct component.  event.currentTarget
+ * is patched to the node whose handler is running, and restored after.  stopPropagation()
+ * inside a handler ends the walk, mirroring native bubbling. */
 function delegatedDispatcher(ev) {
 	if (ev[delegatedDoneKey])
 		return;
 	ev[delegatedDoneKey] = true;
-	let type = ev.type;
+	let dk = delegatedKeys[ev.type];
 	let current = ev.target;
 	Object.defineProperty(ev, 'currentTarget', {configurable: true, get() { return current }});
 	while (current) {
-		let b = current[eventBindingsKey];
-		if (b !== undefined) {
-			let binding = b instanceof EventBinding ? b : b[type];
-			if (binding !== undefined && binding.delegated === true && binding.key === type) {
-				binding.handleEvent(ev);
-				if (ev.cancelBubble)
-					break;
-			}
+		let a = current[dk];
+		if (a !== undefined) {
+			let root = current[delegatedRootKey];
+			if (typeof a === 'function')
+				a.call(root, ev, current);
+			else
+				switch (a.length) {
+					case 1: a[0].call(root, ev, current); break;
+					case 2: a[0].call(root, a[1], ev, current); break;
+					case 3: a[0].call(root, a[1], a[2], ev, current); break;
+					default: a[0].call(root, ...a.slice(1), ev, current);
+				}
+			if (ev.cancelBubble)
+				break;
 		}
 		current = current.parentNode;
 	}
@@ -1190,9 +1214,14 @@ class PathToEvent extends PathToAttribValue {
 	/** @type {string} The attrName without the "on" prefix. */
 	eventName;
 
+	/** @type {symbol|undefined} Expando key nodes store this event's delegated handler under.
+	 * Undefined for non-delegatable (non-bubbling) events; bindEvent() then binds directly. */
+	delegatedKey;
+
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
 		super(null, nodeMarker, attrName, attrValue);
 		this.eventName = attrName ? attrName.slice(2) : null;
+		this.delegatedKey = this.eventName !== null ? delegatedKeyFor(this.eventName) : undefined;
 	}
 
 	/**
@@ -1803,8 +1832,7 @@ class PathToNodes extends Path {
 			let ng = oldNgs[start], t = newItems[start];
 			if (!itemSame(ng, t))
 				break;
-			if (ng.hasComponentPaths)
-				ng.applyExprs(t.exprs, false);
+			this.refreshSameItem(ng, t);
 			newNgs[start] = ng;
 			start++;
 		}
@@ -1814,8 +1842,7 @@ class PathToNodes extends Path {
 			let ng = oldNgs[oldEnd-1], t = newItems[newEnd-1];
 			if (!itemSame(ng, t))
 				break;
-			if (ng.hasComponentPaths)
-				ng.applyExprs(t.exprs, false);
+			this.refreshSameItem(ng, t);
 			newNgs[--newEnd] = ng;
 			oldEnd--;
 		}
@@ -1823,10 +1850,8 @@ class PathToNodes extends Path {
 		// 3. Aligned middle scan: keep unchanged NodeGroups, rewrite same-shape ones in place.
 		while (start < oldEnd && start < newEnd) {
 			let ng = oldNgs[start], t = newItems[start];
-			if (itemSame(ng, t)) { // Can happen between changed rows, e.g. partial updates.
-				if (ng.hasComponentPaths)
-					ng.applyExprs(t.exprs, false);
-			}
+			if (itemSame(ng, t)) // Can happen between changed rows, e.g. partial updates.
+				this.refreshSameItem(ng, t);
 			else if (itemClose(ng, t))
 				this.rewriteNodeGroup(ng, t);
 			else
@@ -1862,34 +1887,27 @@ class PathToNodes extends Path {
 				}
 			}
 
-			// 5. Insert leftover new items.
+			// 5. Insert leftover new items directly.  Each row is one native insert; a
+			// batching DocumentFragment would double the insert count for no benefit,
+			// since style/layout work is deferred until the next frame either way.
 			if (newRemain) {
 				let wholeParent = this.wholeParent;
 				let anchor = newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker);
 				let parent = wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
-				let target = parent, before = anchor;
-				let fragment = null;
-				if (newRemain > 1) { // Batch-insert through a fragment.
-					fragment = Globals$1.doc.createDocumentFragment();
-					target = fragment;
-					before = null;
-				}
 				for (let i=start; i<newEnd; i++) {
 					let ng = this.createOrReuse(newItems[i]);
 					newNgs[i] = ng;
 					let node = ng.startNode, end = ng.endNode;
 					if (node === end) // Single-node NodeGroups are the common case in loops.
-						target.insertBefore(node, before);
+						parent.insertBefore(node, anchor);
 					else while (true) {
 						let next = node.nextSibling;
-						target.insertBefore(node, before);
+						parent.insertBefore(node, anchor);
 						if (node === end)
 							break;
 						node = next;
 					}
 				}
-				if (fragment)
-					parent.insertBefore(fragment, anchor);
 			}
 
 			// 6. Node membership changed, so invalidate caches.
@@ -1957,16 +1975,12 @@ class PathToNodes extends Path {
 		while (start < oldEnd && start < newEnd) {
 			let ng = oldNgs[start], t = newItems[start];
 			// An identical Template instance (h.map) implies an identical key, so skip key extraction.
-			if (ng.template === t) {
-				if (ng.hasComponentPaths)
-					ng.applyExprs(t.exprs, false);
-			}
+			if (ng.template === t)
+				this.refreshSameItem(ng, t);
 			else if (typeof t === 'string' || ng.key !== keyOf(t) || !itemClose(ng, t))
 				break;
-			else if (itemSame(ng, t)) {
-				if (ng.hasComponentPaths)
-					ng.applyExprs(t.exprs, false);
-			}
+			else if (itemSame(ng, t))
+				this.refreshSameItem(ng, t);
 			else
 				this.rewriteNodeGroup(ng, t);
 			newNgs[start] = ng;
@@ -1976,16 +1990,12 @@ class PathToNodes extends Path {
 		// 2. Keep the matching suffix.
 		while (oldEnd > start && newEnd > start) {
 			let ng = oldNgs[oldEnd-1], t = newItems[newEnd-1];
-			if (ng.template === t) {
-				if (ng.hasComponentPaths)
-					ng.applyExprs(t.exprs, false);
-			}
+			if (ng.template === t)
+				this.refreshSameItem(ng, t);
 			else if (typeof t === 'string' || ng.key !== keyOf(t) || !itemClose(ng, t))
 				break;
-			else if (itemSame(ng, t)) {
-				if (ng.hasComponentPaths)
-					ng.applyExprs(t.exprs, false);
-			}
+			else if (itemSame(ng, t))
+				this.refreshSameItem(ng, t);
 			else
 				this.rewriteNodeGroup(ng, t);
 			newNgs[--newEnd] = ng;
@@ -1996,6 +2006,97 @@ class PathToNodes extends Path {
 		if (oldRemain || newRemain) {
 			let wholeParent = this.wholeParent;
 			let parent = wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
+
+			// 3a. Equal-length windows: scan them aligned.  Rows whose keys match positionally
+			// are updated in place with no bookkeeping, and when at most 8 positions are
+			// displaced (a swap, a dragged row, a small shuffle) they're cross-matched and
+			// moved directly — no key map, no sources array, no LIS.  A bigger shuffle falls
+			// through to the general map phase; the in-place updates already done stay valid
+			// there, since the map phase finds those rows already matching their new items.
+			let fastHandled = false;
+			if (oldRemain === newRemain) {
+				let displaced = null;
+				let ok = true;
+				for (let i=start; i<newEnd; i++) {
+					let ng = oldNgs[i], t = newItems[i];
+					if (ng.template === t)
+						this.refreshSameItem(ng, t);
+					else {
+						let k = typeof t === 'string' ? undefined : keyOf(t);
+						if (k !== undefined && ng.key === k && itemClose(ng, t)) {
+							if (itemSame(ng, t))
+								this.refreshSameItem(ng, t);
+							else
+								this.rewriteNodeGroup(ng, t);
+						}
+						else {
+							(displaced ??= []).push(i);
+							if (displaced.length > 8) {
+								ok = false;
+								break;
+							}
+							continue; // newNgs[i] is filled during the placement pass below.
+						}
+					}
+					newNgs[i] = ng;
+				}
+				if (ok) {
+					if (displaced !== null) {
+						let d = displaced.length;
+						let used = 0; // Bitmask of consumed old positions; d is at most 8.
+
+						// Cross-match each displaced new item to a displaced old NodeGroup by key.
+						for (let a=0; a<d; a++) {
+							let p = displaced[a];
+							let t = newItems[p];
+							let k = typeof t === 'string' ? undefined : keyOf(t);
+							if (k !== undefined)
+								for (let b=0; b<d; b++) {
+									if (used & (1<<b))
+										continue;
+									let ng = oldNgs[displaced[b]];
+									if (ng.key === k && itemClose(ng, t)) {
+										used |= 1<<b;
+										if (itemSame(ng, t))
+											this.refreshSameItem(ng, t);
+										else
+											this.rewriteNodeGroup(ng, t);
+										newNgs[p] = ng;
+										break;
+									}
+								}
+						}
+
+						// Discard unmatched old NodeGroups — never pooled, as keyed semantics require.
+						for (let b=0; b<d; b++)
+							if (!(used & (1<<b))) {
+								let ng = oldNgs[displaced[b]];
+								if (ng.startNode !== ng.endNode)
+									Util.saveOrphans(ng.getNodes());
+								else
+									ng.startNode.remove();
+							}
+
+						// Create missing rows and move displaced ranges, right to left so each
+						// position's anchor is already in its final place.
+						for (let a=d-1; a>=0; a--) {
+							let p = displaced[a];
+							let ng = newNgs[p];
+							if (ng === undefined) {
+								ng = this.createNew(newItems[p]);
+								newNgs[p] = ng;
+							}
+							let anchor = p+1 < newEnd ? newNgs[p+1].startNode
+								: (newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker));
+							if (ng.endNode.nextSibling !== anchor || ng.startNode.parentNode !== parent)
+								insertNodesBefore(parent, ng, anchor);
+						}
+					}
+					fastHandled = true;
+				}
+			}
+
+			if (!fastHandled) {
 
 			// 3. Match the middle windows by key.
 			let kept = 0, moved = false;
@@ -2022,10 +2123,8 @@ class PathToNodes extends Path {
 								moved = true;
 							else
 								lastNewIndex = newIndex;
-							if (itemSame(ng, t)) {
-								if (ng.hasComponentPaths)
-									ng.applyExprs(t.exprs, false);
-							}
+							if (itemSame(ng, t))
+								this.refreshSameItem(ng, t);
 							else
 								this.rewriteNodeGroup(ng, t);
 							newNgs[newIndex] = ng;
@@ -2062,31 +2161,25 @@ class PathToNodes extends Path {
 			if (newRemain) {
 				let anchor = newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker);
 
-				// 5a. Nothing kept in the middle: batch-insert every new item through a fragment.
+				// 5a. Nothing kept in the middle: insert every new item directly.
+				// Each row is one native insert; routing rows through a batching
+				// DocumentFragment would double the insert count for no benefit, since
+				// style/layout work is deferred until the next frame either way.
 				if (kept === 0) {
-					let target = parent, before = anchor;
-					let fragment = null;
-					if (newRemain > 1) {
-						fragment = Globals$1.doc.createDocumentFragment();
-						target = fragment;
-						before = null;
-					}
 					for (let i=start; i<newEnd; i++) {
 						let ng = this.createNew(newItems[i]);
 						newNgs[i] = ng;
 						let node = ng.startNode, end = ng.endNode;
 						if (node === end)
-							target.insertBefore(node, before);
+							parent.insertBefore(node, anchor);
 						else while (true) {
 							let next = node.nextSibling;
-							target.insertBefore(node, before);
+							parent.insertBefore(node, anchor);
 							if (node === end)
 								break;
 							node = next;
 						}
 					}
-					if (fragment)
-						parent.insertBefore(fragment, anchor);
 				}
 
 				// 5b. Mixed: iterate backwards so each item's anchor is already in place.
@@ -2112,6 +2205,8 @@ class PathToNodes extends Path {
 					}
 				}
 			}
+
+			} // end if (!fastHandled)
 
 			// 6. Node membership or order changed, so invalidate caches.
 			// During a NodeGroup's first applyExprs(), no ancestor caches can reference its nodes yet.
@@ -2146,6 +2241,22 @@ class PathToNodes extends Path {
 	}
 
 	/**
+	 * Refresh a NodeGroup whose new template has the SAME values as its current one.
+	 * Components still render so changes deeper in the tree can surface, and groups holding
+	 * live-HTML-property bindings (checked/value/selected) rewrite in place — a user's click
+	 * flips those DOM properties underneath the cached expression, so same values ≠ same DOM.
+	 * rewriteNodeGroup's per-path skip exempts exactly those paths; everything else is
+	 * compared and skipped as before, so this stays cheap.
+	 * @param ng {NodeGroup}
+	 * @param t {Template|string} */
+	refreshSameItem(ng, t) {
+		if (ng.hasComponentPaths)
+			ng.applyExprs(t.exprs, false);
+		else if (ng.hasLivePropPaths && ng.pathsSingleExpr && typeof t !== 'string')
+			this.rewriteNodeGroup(ng, t);
+	}
+
+	/**
 	 * Update an existing NodeGroup, created from the same html strings, with new values.
 	 * @param ng {NodeGroup}
 	 * @param item {Template|string} */
@@ -2165,7 +2276,11 @@ class PathToNodes extends Path {
 					let oldExprs = ng.template.exprs, newExprs = item.exprs;
 					let paths = ng.paths ?? ng.materializePaths();
 					for (let i = paths.length - 1; i >= 0; i--)
-						if (!exprSame(oldExprs[i], newExprs[i]))
+						// Boolean live-HTML-property bindings are exempt from the unchanged-value
+						// skip — a click flips the property underneath the cached expression;
+						// applySingle() compares against the live node before writing.
+						if (!exprSame(oldExprs[i], newExprs[i])
+							|| (paths[i].isHtmlProperty && typeof newExprs[i] === 'boolean'))
 							paths[i].applySingle(newExprs[i]);
 				}
 
@@ -2379,11 +2494,8 @@ class PathToNodes extends Path {
 			|| this.nodeGroupsDetachedAvailable?.deleteAny(closeKey);
 
 		if (result) {
-			if (templatesSame(result.template, template)) {
-				// Components still render so changes deeper in the tree can surface.
-				if (result.hasComponentPaths)
-					result.applyExprs(template.exprs, false);
-			}
+			if (templatesSame(result.template, template))
+				this.refreshSameItem(result, template);
 			else
 				result.applyExprs(template.exprs);
 			result.template = template;
@@ -2731,8 +2843,27 @@ class PathToComponent extends Path {
 			// 2a. Instantiate component
 			let tagName = (isAttrib || el.tagName.slice(0, -21)).toLowerCase(); // Remove -SOLARITE-PLACEHOLDER
 			let Constructor = customElements.get(tagName);
-			if (!Constructor)
-				throw new Error(`Must call customElements.define('${tagName}', Class) before using it.`);
+
+			// Not defined yet (e.g. the module is being lazily imported): keep the placeholder
+			// and instantiate when the definition lands, like a native custom-element upgrade.
+			// deferredExprs always holds the LATEST exprs so re-renders while undefined win.
+			if (!Constructor) {
+				this.deferredExprs = exprs;
+				if (!this.whenDefinedPending) {
+					this.whenDefinedPending = true;
+					console.warn(`Solarite: <${tagName}> is not defined; deferring until customElements.define('${tagName}', ...).`);
+					customElements.whenDefined(tagName).then(() => {
+						this.whenDefinedPending = false;
+						let deferred = this.deferredExprs;
+						this.deferredExprs = null;
+						// Skip if a newer render already instantiated or replaced the placeholder.
+						if (deferred && this.nodeMarker === el && el.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
+							this.apply(deferred);
+					});
+				}
+				Globals$1.currentSlotChildren = null;
+				return;
+			}
 
 			Globals$1.currentSlotChildren = [...el.childNodes]; // TODO: Does this need to be a stack?
 			let newEl = new Constructor(attribs);
@@ -2866,6 +2997,11 @@ class Shell {
 
 	/** @type {boolean} True if any of this Shell's own paths is a PathToComponent. */
 	hasComponentPaths = false;
+
+	/** @type {boolean} True if any path binds an attribute that's a live HTML property
+	 * (checked, value, selected — Util.isHtmlProp).  Users flip those underneath the template,
+	 * so "expression unchanged" doesn't mean "DOM unchanged" and the skip shortcuts exempt them. */
+	hasLivePropPaths = false;
 
 	/** @type {boolean} True if every path consumes exactly one expression and none are components.
 	 * Lets NodeGroup.applyExprs() use a fast loop without allocating per-path expression arrays. */
@@ -3160,10 +3296,11 @@ class Shell {
 			if (path instanceof PathToComponent) {
 				this.hasComponentPaths = true;
 				this.pathsSingleExpr = false;
-				break; // Both facts are now decided.
 			}
-			if (path.getExpressionCount() !== 1)
-				this.pathsSingleExpr = false; // Keep scanning for components.
+			else if (path.getExpressionCount() !== 1)
+				this.pathsSingleExpr = false;
+			if (path.isHtmlProperty) // needs the full scan — no early break
+				this.hasLivePropPaths = true;
 		}
 
 		// Stampable shells create NodeGroups without allocating any Path objects:
@@ -3196,6 +3333,36 @@ class Shell {
 				/** @type {Path[]} One shared stamper per path; nodeMarker/parentNg are set per use. */
 				this.stampPaths = this.paths.map(p => p.cloneWithNodes(null, p.nodeMarker));
 
+				// Compiled stamp program: one opcode per path lets applyStamp() write a fresh
+				// row through a flat branch chain instead of dispatching applySingle() per path.
+				// 0 = generic (shared stamper fallback), 1 = list key (no DOM), 2 = wholeParent
+				// child text, 3 = delegatable single-expression event (written as node expandos
+				// when the root delegates, the default).
+				let n = this.paths.length;
+
+				/** @type {Uint8Array} Opcode per path. */
+				this.stampOp = new Uint8Array(n);
+
+				/** @type {Uint16Array} paths[i].markerSlot, in a flat array so the hot loop
+				 * doesn't load the Path object to find its slot. */
+				this.stampSlot = new Uint16Array(n);
+
+				/** @type {?Path[]} The event stamper per op-3 path (carries delegatedKey and
+				 * eventName); null for other opcodes. */
+				this.stampAux = new Array(n).fill(null);
+
+				for (let i=0; i<n; i++) {
+					let p = this.paths[i], sp = this.stampPaths[i];
+					this.stampSlot[i] = p.markerSlot;
+					if (p instanceof PathToKey)
+						this.stampOp[i] = 1;
+					else if (sp.wholeParent)
+						this.stampOp[i] = 2;
+					else if (sp instanceof PathToEvent && sp.delegatedKey !== undefined && !sp.attrValue) {
+						this.stampOp[i] = 3;
+						this.stampAux[i] = sp;
+					}
+				}
 			}
 		}
 
@@ -3431,6 +3598,10 @@ class NodeGroup {
 	/** @type {boolean} True if any of this NodeGroup's own paths is a PathToComponent. */
 	hasComponentPaths = false;
 
+	/** @type {boolean} True if any path binds a live HTML property (checked/value/selected) —
+	 * see Shell.hasLivePropPaths. */
+	hasLivePropPaths = false;
+
 	/** @type {boolean} True if every path consumes exactly one expression and none are components. */
 	pathsSingleExpr = false;
 
@@ -3487,6 +3658,7 @@ class NodeGroup {
 			this.closeKey = shell.closeKey ??= template.getCloseKey();
 
 			this.hasComponentPaths = shell.hasComponentPaths;
+			this.hasLivePropPaths = shell.hasLivePropPaths;
 			this.pathsSingleExpr = shell.pathsSingleExpr;
 
 			// A lone root element is cloned directly, skipping a throwaway fragment wrapper.
@@ -3654,27 +3826,53 @@ class NodeGroup {
 			}
 		}
 
-		// 2. Resolve target nodes, then write each expression.
+		// 2. Resolve target nodes, then run the shell's compiled stamp program: a flat
+		// opcode per path replaces per-path applySingle() dispatch (see Shell.stampOp).
 		let slots = this.resolveStampSlots(shell);
-		let paths = shell.paths, stampers = shell.stampPaths;
-		for (let i = paths.length - 1; i >= 0; i--) {
-			let stamper = stampers[i];
-			let marker = slots[paths[i].markerSlot];
+		let ops = shell.stampOp, slotIdx = shell.stampSlot, aux = shell.stampAux;
+		let stampers = shell.stampPaths;
+		let rootNg = this.rootNg;
+		let root = rootNg.root;
+		let opt = rootNg.options?.eventDelegation;
+		let delegateAll = opt === undefined || opt === true;
+		for (let i = ops.length - 1; i >= 0; i--) {
+			let v = exprs[i];
+			let o = ops[i];
 
-			// A wholeParent text path's marker is the (freshly cloned, empty) only-child slot:
-			// write its text directly, skipping applySingle's branching and the shared-stamper
-			// bookkeeping.  Child exprs are primitive here (step 1 bailed otherwise).
-			if (stamper.wholeParent) {
-				let v = exprs[i];
+			// Whole-parent child text: the marker is the (freshly cloned, empty) only-child
+			// slot.  Child exprs are primitive here (step 1 bailed otherwise).
+			if (o === 2) {
 				if (typeof v === 'number')
 					v += '';
-				marker.textContent = v;
-				continue;
+				slots[slotIdx[i]].textContent = v;
 			}
 
-			stamper.nodeMarker = marker;
-			stamper.parentNg = this;
-			stamper.applySingle(exprs[i]);
+			// Delegatable event with a valid handler shape: write the node expandos
+			// directly, mirroring bindEvent()'s delegated branch.  An event-name-array
+			// delegation option or an invalid value falls through to the generic stamper.
+			else if (o === 3 && delegateAll
+				&& (typeof v === 'function' || (Array.isArray(v) && typeof v[0] === 'function'))) {
+				let sp = aux[i];
+				let node = slots[slotIdx[i]];
+				let dk = sp.delegatedKey;
+				if (node[dk] === undefined)
+					ensureDelegatedDispatcher(root, sp.eventName);
+				node[dk] = v;
+				node[delegatedRootKey] = root;
+			}
+
+			// The list key never touches the DOM.
+			else if (o === 1)
+				this.key = v;
+
+			// Everything else (attributes, disabled delegation, odd values) goes through
+			// the shared stamper's full applySingle() semantics.
+			else {
+				let stamper = stampers[i];
+				stamper.nodeMarker = slots[slotIdx[i]];
+				stamper.parentNg = this;
+				stamper.applySingle(v);
+			}
 		}
 
 		this.nodesCache = null;
@@ -3701,7 +3899,11 @@ class NodeGroup {
 		let paths = shell.paths, stampers = shell.stampPaths;
 		let slots = null; // Nodes are resolved only if something actually changed.
 		for (let i = paths.length - 1; i >= 0; i--) {
-			if (!exprSame(oldExprs[i], newExprs[i])) {
+			// Live HTML properties (checked etc., boolean-valued) are exempt from the
+			// unchanged-value skip: a user's click flips the DOM property underneath the cached
+			// expression, and applySingle() compares against the live node before writing.
+			if (!exprSame(oldExprs[i], newExprs[i])
+				|| (stampers[i].isHtmlProperty && typeof newExprs[i] === 'boolean')) {
 				if (slots === null)
 					slots = this.resolveStampSlots(shell);
 				let stamper = stampers[i];
@@ -4603,15 +4805,6 @@ h.map = (items, fn) => {
 };
 
 h.immutableMap = h.map;
-
-/*
-┏┓  ┓    •
-┗┓┏┓┃┏┓┏┓┓╋▗▖
-┗┛┗┛┗┗┻╹ ╹╹┗
-JavaScript UI library
-@license MIT
-@copyright Vorticode LLC
-https://vorticode.github.io/solarite/ */
 
 /**
  * Read an element's html attributes onto fields that already exist on the element.

@@ -248,34 +248,27 @@ export default class PathToNodes extends Path {
 				}
 			}
 
-			// 5. Insert leftover new items.
+			// 5. Insert leftover new items directly.  Each row is one native insert; a
+			// batching DocumentFragment would double the insert count for no benefit,
+			// since style/layout work is deferred until the next frame either way.
 			if (newRemain) {
 				let wholeParent = this.wholeParent;
 				let anchor = newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker);
 				let parent = wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
-				let target = parent, before = anchor;
-				let fragment = null;
-				if (newRemain > 1) { // Batch-insert through a fragment.
-					fragment = Globals.doc.createDocumentFragment();
-					target = fragment;
-					before = null;
-				}
 				for (let i=start; i<newEnd; i++) {
 					let ng = this.createOrReuse(newItems[i]);
 					newNgs[i] = ng;
 					let node = ng.startNode, end = ng.endNode;
 					if (node === end) // Single-node NodeGroups are the common case in loops.
-						target.insertBefore(node, before);
+						parent.insertBefore(node, anchor);
 					else while (true) {
 						let next = node.nextSibling;
-						target.insertBefore(node, before);
+						parent.insertBefore(node, anchor);
 						if (node === end)
 							break;
 						node = next;
 					}
 				}
-				if (fragment)
-					parent.insertBefore(fragment, anchor);
 			}
 
 			// 6. Node membership changed, so invalidate caches.
@@ -375,6 +368,97 @@ export default class PathToNodes extends Path {
 			let wholeParent = this.wholeParent;
 			let parent = wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
 
+			// 3a. Equal-length windows: scan them aligned.  Rows whose keys match positionally
+			// are updated in place with no bookkeeping, and when at most 8 positions are
+			// displaced (a swap, a dragged row, a small shuffle) they're cross-matched and
+			// moved directly — no key map, no sources array, no LIS.  A bigger shuffle falls
+			// through to the general map phase; the in-place updates already done stay valid
+			// there, since the map phase finds those rows already matching their new items.
+			let fastHandled = false;
+			if (oldRemain === newRemain) {
+				let displaced = null;
+				let ok = true;
+				for (let i=start; i<newEnd; i++) {
+					let ng = oldNgs[i], t = newItems[i];
+					if (ng.template === t)
+						this.refreshSameItem(ng, t);
+					else {
+						let k = typeof t === 'string' ? undefined : keyOf(t);
+						if (k !== undefined && ng.key === k && itemClose(ng, t)) {
+							if (itemSame(ng, t))
+								this.refreshSameItem(ng, t);
+							else
+								this.rewriteNodeGroup(ng, t);
+						}
+						else {
+							(displaced ??= []).push(i);
+							if (displaced.length > 8) {
+								ok = false;
+								break;
+							}
+							continue; // newNgs[i] is filled during the placement pass below.
+						}
+					}
+					newNgs[i] = ng;
+				}
+				if (ok) {
+					if (displaced !== null) {
+						let d = displaced.length;
+						let used = 0; // Bitmask of consumed old positions; d is at most 8.
+
+						// Cross-match each displaced new item to a displaced old NodeGroup by key.
+						for (let a=0; a<d; a++) {
+							let p = displaced[a];
+							let t = newItems[p];
+							let k = typeof t === 'string' ? undefined : keyOf(t);
+							if (k !== undefined)
+								for (let b=0; b<d; b++) {
+									if (used & (1<<b))
+										continue;
+									let ng = oldNgs[displaced[b]];
+									if (ng.key === k && itemClose(ng, t)) {
+										used |= 1<<b;
+										if (itemSame(ng, t))
+											this.refreshSameItem(ng, t);
+										else
+											this.rewriteNodeGroup(ng, t);
+										newNgs[p] = ng;
+										break;
+									}
+								}
+						}
+
+						// Discard unmatched old NodeGroups — never pooled, as keyed semantics require.
+						for (let b=0; b<d; b++)
+							if (!(used & (1<<b))) {
+								let ng = oldNgs[displaced[b]];
+								if (ng.startNode !== ng.endNode)
+									Util.saveOrphans(ng.getNodes());
+								else
+									ng.startNode.remove();
+							}
+
+						// Create missing rows and move displaced ranges, right to left so each
+						// position's anchor is already in its final place.
+						for (let a=d-1; a>=0; a--) {
+							let p = displaced[a];
+							let ng = newNgs[p];
+							if (ng === undefined) {
+								ng = this.createNew(newItems[p]);
+								newNgs[p] = ng;
+							}
+							let anchor = p+1 < newEnd ? newNgs[p+1].startNode
+								: (newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker));
+							if (ng.endNode.nextSibling !== anchor || ng.startNode.parentNode !== parent)
+								insertNodesBefore(parent, ng, anchor);
+						}
+					}
+					fastHandled = true;
+				}
+			}
+
+			if (!fastHandled) {
+
 			// 3. Match the middle windows by key.
 			let kept = 0, moved = false;
 			let sources = null; // sources[i] = old index reused by new item start+i, or -1 to create fresh.
@@ -438,31 +522,25 @@ export default class PathToNodes extends Path {
 			if (newRemain) {
 				let anchor = newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker);
 
-				// 5a. Nothing kept in the middle: batch-insert every new item through a fragment.
+				// 5a. Nothing kept in the middle: insert every new item directly.
+				// Each row is one native insert; routing rows through a batching
+				// DocumentFragment would double the insert count for no benefit, since
+				// style/layout work is deferred until the next frame either way.
 				if (kept === 0) {
-					let target = parent, before = anchor;
-					let fragment = null;
-					if (newRemain > 1) {
-						fragment = Globals.doc.createDocumentFragment();
-						target = fragment;
-						before = null;
-					}
 					for (let i=start; i<newEnd; i++) {
 						let ng = this.createNew(newItems[i]);
 						newNgs[i] = ng;
 						let node = ng.startNode, end = ng.endNode;
 						if (node === end)
-							target.insertBefore(node, before);
+							parent.insertBefore(node, anchor);
 						else while (true) {
 							let next = node.nextSibling;
-							target.insertBefore(node, before);
+							parent.insertBefore(node, anchor);
 							if (node === end)
 								break;
 							node = next;
 						}
 					}
-					if (fragment)
-						parent.insertBefore(fragment, anchor);
 				}
 
 				// 5b. Mixed: iterate backwards so each item's anchor is already in place.
@@ -488,6 +566,8 @@ export default class PathToNodes extends Path {
 					}
 				}
 			}
+
+			} // end if (!fastHandled)
 
 			// 6. Node membership or order changed, so invalidate caches.
 			// During a NodeGroup's first applyExprs(), no ancestor caches can reference its nodes yet.
