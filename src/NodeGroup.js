@@ -62,6 +62,11 @@ export default class NodeGroup {
 	 * @type {Node[]} Cached result of getNodes() used only for improving performance.*/
 	nodesCache;
 
+	/** @type {?Node[]} Slot nodes resolved by the first rewriteStamp(); a stamped group's
+	 * element structure never changes while it stays stampable, so they're reused on every
+	 * later rewrite.  Declared here so every NodeGroup keeps one monomorphic hidden class. */
+	stampSlotsCache = null;
+
 	/**
 	 * A map between <style> Elements and their text content.
 	 * This lets NodeGroup.updateStyles() see when the style text has changed.
@@ -345,15 +350,17 @@ export default class NodeGroup {
 
 		let oldExprs = this.template.exprs;
 		let paths = shell.paths, stampers = shell.stampPaths;
-		let slots = null; // Nodes are resolved only if something actually changed.
+		let slots = this.stampSlotsCache; // Nodes are resolved only if something actually changed, then cached.
 		for (let i = paths.length - 1; i >= 0; i--) {
 			// Live HTML properties (checked etc., boolean-valued) are exempt from the
 			// unchanged-value skip: a user's click flips the DOM property underneath the cached
 			// expression, and applySingle() compares against the live node before writing.
 			if (!exprSame(oldExprs[i], newExprs[i])
 				|| (stampers[i].isHtmlProperty && typeof newExprs[i] === 'boolean')) {
+				// .slice() is required: resolveStampSlots returns the Shell's SHARED scratch
+				// array, which the next row's resolve would overwrite.
 				if (slots === null)
-					slots = this.resolveStampSlots(shell);
+					slots = this.stampSlotsCache = this.resolveStampSlots(shell).slice();
 				let stamper = stampers[i];
 				let marker = slots[paths[i].markerSlot];
 
