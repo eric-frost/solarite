@@ -1,20 +1,30 @@
-import {EditorView, HighlightStyle, syntaxHighlighting, tags as t} from './codemirror6.js';
-
+/** @copyright Vorticode LLC */
 
 /**
  * Use warm colors for xml-like languages, cool colors for other languages.
+ *
+ * Deliberately imports NO CodeMirror itself: CodeMirror rejects extensions built from a
+ * different module instance than the EditorState's, so the caller passes in its own bundle
+ * (vendor/codemirror6b.js for CodeEditor2.ts).  Theme edits therefore need no bundle rebuild.
+ *
+ * @param cm {object} The caller's CodeMirror bundle module; the returned extensions belong to it.
  * @param lang {string} Can be 'js', 'md', 'htaccess', etc.  The file extension.
- * @param isDark
+ * @param isDark {boolean}
  * @returns {*[]} */
-function themeSolarIce(lang, isDark=false) {
-	
+function codeMirrorThemeSolarIce(cm, lang, isDark=false) {
+	const {EditorView, HighlightStyle, syntaxHighlighting, tags: t} = cm;
+
+	lang = (lang || '').toLowerCase(); // CodeEditor2's Language enum values are capitalized ('Php').
+	if (lang === 'javascript') // CodeEditor2's enum value.
+		lang = 'js';
+
 	// Re-used colors
 	const
 		stone = "#7d8799",
 		text = isDark ? "#aaa" : 'black',
 		darkBackground = "#21252b",
 		highlightBackground = isDark ? "#2c313a" : '#ddd',
-		background = isDark ? "transparent" : 'white',
+		background = isDark ? 'transparent' : 'white', // transparent in dark: inherit the page/card bg (no distinct editor fill)
 		tooltipBackground = "#353a42",
 		selection = isDark ? "#234" : '#ccc',
 		cursor = "#528bff"
@@ -30,7 +40,6 @@ function themeSolarIce(lang, isDark=false) {
 		".cm-content": {
 			caretColor: cursor,
 			//fontFamily: 'Hack',
-			fontSize: window.outerWidth > 512 ? '13px' : '12px',
 			//lineHeight: 1
 		},
 
@@ -88,6 +97,23 @@ function themeSolarIce(lang, isDark=false) {
 			"& > ul > li[aria-selected]": {
 				backgroundColor: highlightBackground,
 				color: text
+			},
+			// Group headers (declaring class) for sectioned completions — overrides the base
+			// theme's list-item/silver-border look.  Fixed colors: the tooltip background is
+			// tooltipBackground (dark) in BOTH page themes.
+			"& > ul > completion-section": {
+				display: "block",
+				padding: "3px 8px 1px",
+				fontFamily: "Arial, sans-serif",
+				fontSize: "85%",
+				letterSpacing: ".05em",
+				color: "#8a94a3",
+				borderTop: "1px solid #4a5058",
+				borderBottom: "none",
+				opacity: 1
+			},
+			"& > ul > completion-section:first-child": {
+				borderTop: "none"
 			}
 		}
 	}, {dark: true})
@@ -146,7 +172,7 @@ function themeSolarIce(lang, isDark=false) {
 			tag: [t.atom], // Css value like 'Arial' or 'none'.  Keyword 'super' in javascript
 			color: lang === 'js'
 				? (isDark ? '#26f' : '#00f')
-				: (isDark ? '#26f' : '')
+				: (isDark ? '#75f' : '')
 		},
 		{
 			tag: [t.unit],
@@ -292,10 +318,10 @@ function themeSolarIce(lang, isDark=false) {
 		}
 	];
 
-	if (lang==='html' || lang==='php')
+	if (lang==='html' || lang==='php' || lang==='xml' || lang==='vue')
 		styles.push({
-			tag: t.processingInstruction, // php tags
-			color: isDark ? '#f0f' : '#f0b',
+			tag: t.processingInstruction, // php tags, <?xml ?> declarations
+			color: '#ff00ff',
 			fontWeight: 'bold'
 		});
 
@@ -309,4 +335,4 @@ function themeSolarIce(lang, isDark=false) {
 }
 
 
-export default themeSolarIce;
+export default codeMirrorThemeSolarIce;
