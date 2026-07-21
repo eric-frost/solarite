@@ -1,0 +1,11 @@
+# Keep source, docs, tests, and config files LF on checkout.
+* text=auto eol=lf
+
+# Binary assets.
+*.png binary
+*.webp binary
+*.woff2 binary
+
+# Generated/vendor bundles are not edited directly.
+dist/** -text
+build/lib/*.min.js -text
