@@ -16,50 +16,48 @@ Solarite makes native web components fast to update, with no build step and no s
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
 
-class ShoppingList extends Solarite { // Solarite extends HTMLElement
-	constructor(items=[]) {
-		super();
-		this.items = items;
-	}
+class ShoppingList extends Solarite { // Solarite extends HTMLElement 
+  constructor(items=[]) {
+    super();
+    this.items = items;
+  }
 
-	addItem() {
-		this.items.push({name: '', qty: 0});
-		this.render();
-	}
+  addItem() { 
+    this.items.push({name:'', qty:0});
+    this.render();
+  }
 
-	removeItem(item) {
-		this.items.splice(this.items.indexOf(item), 1);
-		this.render();
-	}
+  removeItem(it) {
+    this.items.splice(this.items.indexOf(it),1);
+    this.render();
+  }
 
-	render() { 
-		// Think of h(this) as like:
-		// this.outerHTML = `<shopping-list>...` 
-		// but rendering only minimal DOM updates when the html changes.
-		h(this)`
-        <shopping-list>
-            <style> /* scoped styles */
-                :host input { width: 80px }
-            </style>
+  render() {
+    // Think of h(this) as like:
+    // this.outerHTML = `<shopping-list>...` 
+    // but rendering only minimal DOM updates when the html changes.
+    h(this)`
+    <shopping-list oninput=${this.render}>
+      <style>/* scoped styles */ 
+        :host input { width: 80px }
+      </style>
 
-            <button onclick=${this.addItem}>Add Item</button>
+      <button onclick=${this.addItem}>Add Item</button>
 
-            ${this.items.map(item => h`
-                <div>  <!-- 2-way binding -->
-                    <input placeholder="Item" value=${[item, 'name']}
-                        oninput=${this.render}>
-                    <input type="number" value=${[item, 'qty']}
-                        oninput=${this.render}>
-                    <button onclick=${()=>this.removeItem(item)}>x</button>
-                </div>			 
-            `)}
+      ${this.items.map(item => h`
+        <div>  <!-- 2-way binding -->
+          <input placeholder="Item" value=${[item,'name']}>
+          <input type="number" value=${[item,'qty']}>
+          <button onclick=${[this.removeItem, item]}>x</button>
+        </div>`
+      )}
 
-            <pre>items = ${JSON.stringify(this.items, null, 4)}</pre>
-        </shopping-list>`
-	}
+      <pre>items = ${JSON.stringify(this.items,null,4)}</pre>
+    </shopping-list>`
+  }
 }
-
-document.body.append(new ShoppingList()); // add <shopping-list> and call render()
+// If not yet called, render() is called automatically when added to DOM
+document.body.append(new ShoppingList([{name: 'Solarite', qty: 1}])); 
 ```
 
 ## Key Features
@@ -120,16 +118,16 @@ In this minimal example, we create a class called `MyComponent` which extends fr
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class MyComponent extends Solarite {
-	name = 'Fred';
+  name = 'Fred';
 
-	render() {
-        // This is how we'd create a web component using vanilla JavaScript
-        // without Solarite.  But this recreates all children on every render!
-        //this.innerHTML = `Hello <b>${this.name}!</b>`;
+  render() {
+    // This is how we'd create a web component using vanilla JavaScript
+    // without Solarite.  But this recreates all children on every render!
+    //this.innerHTML = `Hello <b>${this.name}!</b>`;
 
-        // Using Solarite's h() function performs minimal updates on render.
-		h(this)`<my-component>Hello <b>${this.name}!</b></my-component>`
-	}
+    // Using Solarite's h() function performs minimal updates on render.
+    h(this)`<my-component>Hello <b>${this.name}!</b></my-component>`
+  }
 }
 
 // Register the <my-component> tag name with the browser.
@@ -180,15 +178,15 @@ Wrapping the web component's html in its tag name is optional.  But without it y
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class MyComponent extends Solarite {
-	name = 'Solarite';
-	render() { 
-		// With optional element tags:
-		// h(this)`<my-component class="big">Hello <b>${this.name}!</b></my-component>`
+  name = 'Solarite';
+  render() { 
+    // With optional element tags:
+    // h(this)`<my-component class="big">Hello <b>${this.name}!</b></my-component>`
 
-		// Without optional element tags:
-		h(this)`Hello <b>${this.name}!</b>`;
-        this.setAttribute('class', 'big');
-	}
+    // Without optional element tags:
+    h(this)`Hello <b>${this.name}!</b>`;
+    this.setAttribute('class', 'big');
+  }
 }
 MyComponent.define('my-component');
 let myComponent = new MyComponent();
@@ -205,23 +203,23 @@ Use the `svg` tagged-template prefix for SVG markup. The resulting template can 
 import h, {Solarite, svg} from './dist/Solarite.min.js';
 
 class BarChart extends Solarite {
-	values = [8, 14, 6, 18, 10];
+  values = [8, 14, 6, 18, 10];
 
-	render() {
-		let max = Math.max(...this.values);
+  render() {
+    let max = Math.max(...this.values);
 
-		h(this)`
-		<bar-chart>
-			${svg`
-			<svg viewBox="0 0 ${this.values.length * 14} 40" width="12em" height="4em" fill="currentColor">
-				${this.values.map((value, i) => svg`
-					<rect x=${i * 14} y=${40 - value / max * 40} width="10" height=${value / max * 40} rx="2">
-						<title>${value}</title>
-					</rect>`
-				)}
-			</svg>`}
-		</bar-chart>`
-	}
+    h(this)`
+    <bar-chart>
+      ${svg`
+      <svg viewBox="0 0 ${this.values.length * 14} 40" width="12em" height="4em" fill="currentColor">
+        ${this.values.map((value, i) => svg`
+          <rect x=${i * 14} y=${40 - value / max * 40} width="10" height=${value / max * 40} rx="2">
+            <title>${value}</title>
+          </rect>`
+        )}
+      </svg>`}
+    </bar-chart>`
+  }
 }
 
 document.body.append(new BarChart());
@@ -233,13 +231,13 @@ By default, expressions render as text. So raw SVG markup in a string expression
 import h, {toEl, svg} from './dist/Solarite.min.js';
 
 let folderIcon = svg`<svg width="10em" height="10em" viewBox="0 0 24 24">
-	<path fill="currentColor" d="M2 4h8l2 2h10v14H2V4Zm2 2v12h16V8h-8.825l-2-2H4Zm0 12V6v12Z"/>
+  <path fill="currentColor" d="M2 4h8l2 2h10v14H2V4Zm2 2v12h16V8h-8.825l-2-2H4Zm0 12V6v12Z"/>
 </svg>`;
 
 let icon = toEl({
-	render() {
-		h(this)`<div>${folderIcon}</div>`
-	}
+  render() {
+    h(this)`<div>${folderIcon}</div>`
+  }
 });
 document.body.append(icon);
 ```
@@ -250,13 +248,13 @@ For reusable SVG icons, store the whole icon as an `svg` template:
 import h, {toEl, svg} from './dist/Solarite.min.js';
 
 const playIcon = svg`<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true">
-	<path d="M8 5v14l11-7L8 5z"></path>
+  <path d="M8 5v14l11-7L8 5z"></path>
 </svg>`;
 
 let button = toEl({
-	render() {
-		h(this)`<button>${playIcon} Play</button>`
-	}
+  render() {
+    h(this)`<button>${playIcon} Play</button>`
+  }
 });
 document.body.append(button);
 ```
@@ -283,15 +281,15 @@ let isEditable = true;
 let height = 40;
 
 let attributeDemo = toEl({
-	render() { 
-		h(this)`
-        <div class="big">
-            <div style=${style}>Look at me</div>
-            <div style="${'width: 100px'}; height: ${height}px; background: gray">Look at me</div>
-            <div style="width: 100px; height: 40px; background: brown" ${'title="I have a title"'}>Hover me</div>
-            <div style="width: 100px; height: 40px; background: red" contenteditable=${isEditable} >Edit me</div>
-        </div>`
-	}
+  render() { 
+    h(this)`
+    <div class="big">
+      <div style=${style}>Look at me</div>
+      <div style="${'width: 100px'}; height: ${height}px; background: gray">Look at me</div>
+      <div style="width: 100px; height: 40px; background: brown" ${'title="I have a title"'}>Hover me</div>
+      <div style="width: 100px; height: 40px; background: red" contenteditable=${isEditable} >Edit me</div>
+    </div>`
+  }
 });
 
 document.body.append(attributeDemo);
@@ -308,29 +306,29 @@ You can also specify multiple attributes at once using an object, where the keys
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class ObjectAttributeDemo extends Solarite {
-    constructor() {
-        super();
-        this.attrs = {
-            class: 'important',
-            style: 'color: blue',
-            'data-test': 'example',
-            disabled: false
-        };
-    }
+  constructor() {
+    super();
+    this.attrs = {
+      class: 'important',
+      style: 'color: blue',
+      'data-test': 'example',
+      disabled: false
+    };
+  }
 
-    setDisabled() {
-        this.attrs.disabled = true;
-        this.render();
-    }
+  setDisabled() {
+    this.attrs.disabled = true;
+    this.render();
+  }
 
-    render() {
-        h(this)`
-        <object-attribute-demo>
-            <button ${this.attrs} onclick=${this.setDisabled}>
-                Click to disable
-            </button>
-        </object-attribute-demo>`
-    }
+  render() {
+    h(this)`
+    <object-attribute-demo>
+      <button ${this.attrs} onclick=${this.setDisabled}>
+        Click to disable
+      </button>
+    </object-attribute-demo>`
+  }
 }
 ObjectAttributeDemo.define('object-attribute-demo');
 document.body.append(new ObjectAttributeDemo());
@@ -348,14 +346,14 @@ Any element in the html with an `id` or `data-id` attribute is automatically bou
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class RaceTeam extends Solarite {    
-	render() {
-        h(this)`
-		<race-team>
-            <input data-id="driver" value="Mario">
-            <div data-id="car">Cutlas Supreme</div>
-            <div data-id="instructor.name">Lightning McQueen</div>
-        </race-team>`
-	}
+  render() {
+    h(this)`
+    <race-team>
+      <input data-id="driver" value="Mario">
+      <div data-id="car">Cutlas Supreme</div>
+      <div data-id="instructor.name">Lightning McQueen</div>
+    </race-team>`
+  }
 }
 let raceTeam = new RaceTeam();
 document.body.append(raceTeam); // calls render();
@@ -375,19 +373,19 @@ To capture events, set an event attribute like `onclick` to a function. Alternat
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class EventDemo extends Solarite {
-	showMessage(message) {
-		alert(message);
-	}
+  showMessage(message) {
+    alert(message);
+  }
 
-	render() { 
-		h(this)`
-		<event-demo>
-			<button onclick=${(ev, el)=>alert('Element ' + el.tagName + ' clicked!')}>
-				Click me</button>
-			<button onclick=${[this.showMessage, 'I too was clicked!']}>
-				Click me too!</button>
-		</event-demo>`
-	}
+  render() { 
+    h(this)`
+    <event-demo>
+      <button onclick=${(ev, el)=>alert('Element ' + el.tagName + ' clicked!')}>
+        Click me</button>
+      <button onclick=${[this.showMessage, 'I too was clicked!']}>
+        Click me too!</button>
+    </event-demo>`
+  }
 } 
 document.body.append(new EventDemo());
 ```
@@ -404,27 +402,27 @@ Solarite delegates bubbling events by default.  Instead of calling `addEventList
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class LogViewer extends Solarite {
-	rows = [
-		{id: 1, text: 'First message'},
-		{id: 2, text: 'Second message'},
-		{id: 3, text: 'Third message'},
-	];
+  rows = [
+    {id: 1, text: 'First message'},
+    {id: 2, text: 'Second message'},
+    {id: 3, text: 'Third message'},
+  ];
 
-	deleteRow(row) {
-		this.rows = this.rows.filter(r => r !== row);
-		this.render();
-	}
+  deleteRow(row) {
+    this.rows = this.rows.filter(r => r !== row);
+    this.render();
+  }
 
-	render() {
-		h(this)`
-		<log-viewer>
-			${this.rows.map(row => h`
-				<div key=${row.id}>
-					${row.text}
-					<button onclick=${[this.deleteRow, row]}>x</button>
-				</div>`)}
-		</log-viewer>`
-	}
+  render() {
+    h(this)`
+    <log-viewer>
+      ${this.rows.map(row => h`
+        <div key=${row.id}>
+          ${row.text}
+          <button onclick=${[this.deleteRow, row]}>x</button>
+        </div>`)}
+    </log-viewer>`
+  }
 }
 
 document.body.append(new LogViewer());
@@ -447,35 +445,35 @@ import h, {Solarite} from './dist/Solarite.min.js';
 
 class BindingDemo extends Solarite {
 
-	constructor() {
-        super();
+  constructor() {
+    super();
+    this.count = 0;
+    this.lines = [];
+  }
+
+  render() { 
+    h(this)`
+    <binding-demo>
+      <input type="number" value=${this.count} 
+        oninput=${ev => {
+          this.count = ev.target.value;
+          this.render();
+        }}>
+      <pre>count is ${this.count}</pre>
+      <textarea rows="6" value=${this.lines.join('\n')}
+        oninput=${ev => {
+          this.lines = ev.target.value.split('\n')
+          this.render();
+        }}            
+      ></textarea>            
+      <pre>line count is ${this.lines.length}</pre>
+      <button onclick=${()=> { 
         this.count = 0;
         this.lines = [];
-    }
-
-	render() { 
-		h(this)`
-        <binding-demo>
-            <input type="number" value=${this.count} 
-                oninput=${ev => {
-                    this.count = ev.target.value;
-                    this.render();
-                }}>
-            <pre>count is ${this.count}</pre>
-            <textarea rows="6" value=${this.lines.join('\n')}
-            	oninput=${ev => {
-        			this.lines = ev.target.value.split('\n')
-                    this.render();
-        		}}            
-            ></textarea>            
-            <pre>line count is ${this.lines.length}</pre>
-            <button onclick=${()=> { 
-                this.count = 0;
-            	this.lines = [];
-                this.render();
-            }}>Reset</button>
-        </binding-demo>`
-	}
+        this.render();
+      }}>Reset</button>
+    </binding-demo>`
+  }
 }
 document.body.append(new BindingDemo());
 ```
@@ -495,31 +493,31 @@ Optionally add an `oninput=${this.render}` attribute to trigger re-rendering whe
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class BindingDemo extends Solarite {
-	constructor() {
-        super();
-        this.reset();
-    }
+  constructor() {
+    super();
+    this.reset();
+  }
 
-    reset() {        
-        this.count = 0;
-        this.isBig = false;
-        this.render();
-    }
+  reset() {        
+    this.count = 0;
+    this.isBig = false;
+    this.render();
+  }
 
-	render() { 
-		h(this)`
-        <binding-demo>
-        	<style> :host { font-size: ${this.isBig ? 20 : 12}px }</style>
-            <input type="number" value=${[this, 'count']}
-                oninput=${this.render}><br>
-            <label>
-                <input type="checkbox" checked=${[this, 'isBig']}
-                    oninput=${this.render}> Big Text
-            </label>
-            <pre>count is ${this.count}</pre>
-            <button onclick=${this.reset}>Reset</button>
-        </binding-demo>`
-	}
+  render() { 
+    h(this)`
+    <binding-demo>
+      <style> :host { font-size: ${this.isBig ? 20 : 12}px }</style>
+      <input type="number" value=${[this, 'count']}
+        oninput=${this.render}><br>
+      <label>
+        <input type="checkbox" checked=${[this, 'isBig']}
+          oninput=${this.render}> Big Text
+      </label>
+      <pre>count is ${this.count}</pre>
+      <button onclick=${this.reset}>Reset</button>
+    </binding-demo>`
+  }
 }
 
 document.body.append(new BindingDemo());
@@ -549,20 +547,20 @@ For a **radio group**, put the same `checked=${[this, 'prop']}` binding on every
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class ColorPicker extends Solarite {
-    color = 'green';
+  color = 'green';
 
-    render() {
-        h(this)`
-        <color-picker>
-            <label><input type="radio" name="color" value="red"
-                checked=${[this, 'color']} oninput=${this.render}> Red</label>
-            <label><input type="radio" name="color" value="green"
-                checked=${[this, 'color']} oninput=${this.render}> Green</label>
-            <label><input type="radio" name="color" value="blue"
-                checked=${[this, 'color']} oninput=${this.render}> Blue</label>
-            <pre>color is ${this.color}</pre>
-        </color-picker>`
-    }
+  render() {
+    h(this)`
+    <color-picker>
+      <label><input type="radio" name="color" value="red"
+        checked=${[this, 'color']} oninput=${this.render}> Red</label>
+      <label><input type="radio" name="color" value="green"
+        checked=${[this, 'color']} oninput=${this.render}> Green</label>
+      <label><input type="radio" name="color" value="blue"
+        checked=${[this, 'color']} oninput=${this.render}> Blue</label>
+      <pre>color is ${this.color}</pre>
+    </color-picker>`
+  }
 }
 document.body.append(new ColorPicker());
 ```
@@ -573,19 +571,19 @@ For a **`<select multiple>`**, bind an array.  Each option whose `value` is in t
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class Toppings extends Solarite {
-    picked = ['cheese'];
+  picked = ['cheese'];
 
-    render() {
-        h(this)`
-        <toppings-list>
-            <select multiple value=${[this, 'picked']} oninput=${this.render}>
-                <option value="cheese">Cheese</option>
-                <option value="olives">Olives</option>
-                <option value="onions">Onions</option>
-            </select>
-            <pre>picked is ${JSON.stringify(this.picked)}</pre>
-        </toppings-list>`
-    }
+  render() {
+    h(this)`
+    <toppings-list>
+      <select multiple value=${[this, 'picked']} oninput=${this.render}>
+        <option value="cheese">Cheese</option>
+        <option value="olives">Olives</option>
+        <option value="onions">Onions</option>
+      </select>
+      <pre>picked is ${JSON.stringify(this.picked)}</pre>
+    </toppings-list>`
+  }
 }
 document.body.append(new Toppings());
 ```
@@ -598,25 +596,25 @@ The most common way to render lists is with JavaScript's [Array.map()](https://d
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class EmojiGarden extends Solarite {
-    plants = ['🌱'];
+  plants = ['🌱'];
 
-    grow() {
-        let seeds = ['🌷', '🌻', '🌵', '🍄', '🌿', '🌳'];
-        this.plants.push(seeds[Math.floor(Math.random() * seeds.length)]);
-        this.render();
-    }
+  grow() {
+    let seeds = ['🌷', '🌻', '🌵', '🍄', '🌿', '🌳'];
+    this.plants.push(seeds[Math.floor(Math.random() * seeds.length)]);
+    this.render();
+  }
 
-    render() {
-        h(this)`
-        <emoji-garden>
-            <div style="font-size: 2rem">
-                ${this.plants.map(plant =>
-                    h`<span title="plant">${plant}</span>`
-                )}
-            </div>
-            <button onclick=${this.grow}>Grow 🌧️</button>
-        </emoji-garden>`
-    }
+  render() {
+    h(this)`
+    <emoji-garden>
+      <div style="font-size: 2rem">
+        ${this.plants.map(plant =>
+          h`<span title="plant">${plant}</span>`
+        )}
+      </div>
+      <button onclick=${this.grow}>Grow 🌧️</button>
+    </emoji-garden>`
+  }
 }
 
 document.body.append(new EmojiGarden());
@@ -636,22 +634,22 @@ Normally each list item runs its `.map()` callback to build a template, and then
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class UserTable extends Solarite {
-	rows = [{id: 1, name: 'Alice'}, {id: 2, name: 'Bob'}, {id: 3, name: 'Carol'}];
+  rows = [{id: 1, name: 'Alice'}, {id: 2, name: 'Bob'}, {id: 3, name: 'Carol'}];
 
-	rename(row) {
-		// Replace the row, don't mutate it, so h.map re-renders just this one.
-		this.rows = this.rows.map(r => r === row ? {...r, name: r.name + '!'} : r);
-		this.render();
-	}
+  rename(row) {
+    // Replace the row, don't mutate it, so h.map re-renders just this one.
+    this.rows = this.rows.map(r => r === row ? {...r, name: r.name + '!'} : r);
+    this.render();
+  }
 
-	render() {
-		h(this)`
-		<user-table>
-			${h.map(this.rows, row =>
-				h`<div key=${row.id}>${row.name} <button onclick=${() => this.rename(row)}>!</button></div>`
-			)}
-		</user-table>`
-	}
+  render() {
+    h(this)`
+    <user-table>
+      ${h.map(this.rows, row =>
+        h`<div key=${row.id}>${row.name} <button onclick=${() => this.rename(row)}>!</button></div>`
+      )}
+    </user-table>`
+  }
 }
 
 document.body.append(new UserTable());
@@ -674,22 +672,22 @@ By default, Solarite matches list items to existing DOM nodes by position, rewri
 import h, {Solarite} from './dist/Solarite.min.js';
 
 class UserTable extends Solarite {
-	rows = [{id: 1, name: 'Alice'}, {id: 2, name: 'Bob'}, {id: 3, name: 'Carol'}];
+  rows = [{id: 1, name: 'Alice'}, {id: 2, name: 'Bob'}, {id: 3, name: 'Carol'}];
 
-	reverse() {
-		this.rows.reverse();
-		this.render();
-	}
+  reverse() {
+    this.rows.reverse();
+    this.render();
+  }
 
-	render() {
-		h(this)`
-		<user-table>
-			${this.rows.map(row =>
-				h`<div key=${row.id}>${row.name} <input placeholder="notes"></div>`
-			)}
-			<button onclick=${this.reverse}>Reverse</button>
-		</user-table>`
-	}
+  render() {
+    h(this)`
+    <user-table>
+      ${this.rows.map(row =>
+        h`<div key=${row.id}>${row.name} <input placeholder="notes"></div>`
+      )}
+      <button onclick=${this.reverse}>Reverse</button>
+    </user-table>`
+  }
 }
 
 document.body.append(new UserTable());
@@ -721,30 +719,30 @@ Internally, scoped styles become:
 import h from './dist/Solarite.min.js';
 
 class FancyText extends HTMLElement {
-    constructor() {
-        super();
-        this.render();
-    }    
-	render() { 
-        h(this)`
-        <fancy-text>
-            <style>
-                :host { display: block; border: 10px dashed red } 
-                :host p { text-shadow: 0 0 3px #f40 } 
-            </style>
-            <p>I have a red border and shadow!</p>
-        </fancy-text>`
+  constructor() {
+    super();
+    this.render();
+  }    
+  render() { 
+    h(this)`
+    <fancy-text>
+      <style>
+        :host { display: block; border: 10px dashed red } 
+        :host p { text-shadow: 0 0 3px #f40 } 
+      </style>
+      <p>I have a red border and shadow!</p>
+    </fancy-text>`
 
-        /* The code above is rewritten as:
-        <fancy-text data-style="1">
-            <style>
-                fancy-text[data-style="1"] { display: block; border: 10px dashed red } 
-                fancy-text[data-style="1"] p { text-shadow: 0 0 3px #f40 } 
-            </style>
-            <p>I have a red border and shadow!</p>
-        </fancy-text>`
-        */
-	}
+    /* The code above is rewritten as:
+    <fancy-text data-style="1">
+      <style>
+        fancy-text[data-style="1"] { display: block; border: 10px dashed red } 
+        fancy-text[data-style="1"] p { text-shadow: 0 0 3px #f40 } 
+      </style>
+      <p>I have a red border and shadow!</p>
+    </fancy-text>`
+    */
+  }
 }
 customElements.define('fancy-text', FancyText);
 document.body.append(new FancyText());
@@ -756,19 +754,19 @@ A style tag with the  `global` attribute defines the style only once in the docu
 import h from './dist/Solarite.min.js';
 
 class FancyText extends HTMLElement {
-    constructor() {
-        super();
-        this.render();
-    }
-	render() { 
-        h(this)`
-        <fancy-text>
-            <style global>
-                :host { display: block; color: blue; margin: 10px; background: #345 } 
-            </style>
-            <p>We all share the same style tag in the document &lt;head&gt;.</p>
-        </fancy-text>`
-	}
+  constructor() {
+    super();
+    this.render();
+  }
+  render() { 
+    h(this)`
+    <fancy-text>
+      <style global>
+        :host { display: block; color: blue; margin: 10px; background: #345 } 
+      </style>
+      <p>We all share the same style tag in the document &lt;head&gt;.</p>
+    </fancy-text>`
+  }
 }
 
 customElements.define('fancy-text', FancyText);
@@ -791,14 +789,14 @@ Use the `<slot>` element to define where children should be rendered:
 import h, {Solarite, toEl} from './dist/Solarite.min.js';
 
 class MyFrame extends Solarite {
-    render() {
-        h(this)`
-        <my-frame>
-            <div style="border: 1px solid gray; padding: 10px">
-                <slot></slot>
-            </div>
-        </my-frame>`
-    }
+  render() {
+    h(this)`
+    <my-frame>
+      <div style="border: 1px solid gray; padding: 10px">
+        <slot></slot>
+      </div>
+    </my-frame>`
+  }
 }
 MyFrame.define();
 
@@ -814,23 +812,23 @@ To use multiple slots, give them a `name` attribute. Assign children to these sl
 import h, {Solarite, toEl} from './dist/Solarite.min.js';
 
 class MyLayout extends Solarite {
-    render() {
-        h(this)`<my-layout>
-            <header><slot name="header"></slot></header>
-            <main><slot></slot></main>
-            <footer><slot name="footer"></slot></footer>
-        </my-layout>`
-    }
+  render() {
+    h(this)`<my-layout>
+      <header><slot name="header"></slot></header>
+      <main><slot></slot></main>
+      <footer><slot name="footer"></slot></footer>
+    </my-layout>`
+  }
 }
 MyLayout.define();
 
 // Usage:
 document.body.append(toEl(`
-    <my-layout>
-        <div slot="header">Page Title</div>
-        <p>Main content goes here.</p>
-        <div slot="footer">Copyright 2024</div>
-    </my-layout>
+  <my-layout>
+    <div slot="header">Page Title</div>
+    <p>Main content goes here.</p>
+    <div slot="footer">Copyright 2024</div>
+  </my-layout>
 `));
 ```
 
@@ -855,38 +853,38 @@ import h, {Solarite} from './dist/Solarite.min.js';
 
 // A single row
 class NotesItem extends Solarite {
-	// Constructor receives item object from attributes.
-	constructor(fields={}) {
-		super();
-		this.item = fields.item;
-        this.fontSize = fields.fontSize;
-		this.render();
-	}
+  // Constructor receives item object from attributes.
+  constructor(fields={}) {
+    super();
+    this.item = fields.item;
+    this.fontSize = fields.fontSize;
+    this.render();
+  }
 
-	render(fields=null, changed=true) { // Same arguments as constructor
-        if (!changed)
-            return; // fields haven't changed since previous render() call.
-        
-        if (fields) {
-			this.item = fields.item;
-			this.fontSize = fields.fontSize;
-		}
-		h(this)`
-		<notes-item>
-		   <style> 
-		   		:host { font-size: ${this.fontSize}px;
-		   			display: block;
-		   			background: #ccf;
-		   			padding: 4px;
-		   			input { width: 90px }
-		   		}
-		   	</style>
-		   <div oninput=${() => this.parentNode.render()}>
-			   <input value=${[this.item, 'name']}>
-			   <input value=${[this.item, 'description']}>
-		   </div>
-		</notes-item>`
-	}
+  render(fields=null, changed=true) { // Same arguments as constructor
+    if (!changed)
+      return; // fields haven't changed since previous render() call.
+
+    if (fields) {
+      this.item = fields.item;
+      this.fontSize = fields.fontSize;
+    }
+    h(this)`
+    <notes-item>
+      <style> 
+        :host { font-size: ${this.fontSize}px;
+          display: block;
+          background: #ccf;
+          padding: 4px;
+          input { width: 90px }
+        }
+        </style>
+      <div oninput=${() => this.parentNode.render()}>
+        <input value=${[this.item, 'name']}>
+        <input value=${[this.item, 'description']}>
+      </div>
+    </notes-item>`
+  }
 }
 // Defining is required because we instantiate it from <notes-item> 
 NotesItem.define('notes-item'); // rather than from new NotesItem()
@@ -894,36 +892,36 @@ NotesItem.define('notes-item'); // rather than from new NotesItem()
 
 // Contains all NotesItems
 class NotesList extends Solarite {
-    constructor(items=[]) {
-        super();
-        this.items = items;
-    }
-    
-    add() {
-        this.items.push({name: '', description: ''});
-        
-        // This calls render(item, changed=false) on the first 
-        // two NotesItems, and changed=true on the third one.
-        // We always call render() even when nothing has changed
-        // so that the component can decide for itself what to do.
-        this.render();
-    }
-    
-	render() { 
-		h(this)`
-		<notes-list>
-			${this.items.map((item, i) => // Pass item object to NotesItem constructor:
-				h`<notes-item item=${item} font-size=${15+i}></notes-item>`
-			)}
-			<button onclick=${this.add}>Add Item</button>
-			<pre>items = ${JSON.stringify(this.items, null, 4)}</pre>
-		</notes-list>`
-	}
+  constructor(items=[]) {
+    super();
+    this.items = items;
+  }
+
+  add() {
+    this.items.push({name: '', description: ''});
+
+    // This calls render(item, changed=false) on the first 
+    // two NotesItems, and changed=true on the third one.
+    // We always call render() even when nothing has changed
+    // so that the component can decide for itself what to do.
+    this.render();
+  }
+
+  render() { 
+    h(this)`
+    <notes-list>
+      ${this.items.map((item, i) => // Pass item object to NotesItem constructor:
+        h`<notes-item item=${item} font-size=${15+i}></notes-item>`
+      )}
+      <button onclick=${this.add}>Add Item</button>
+      <pre>items = ${JSON.stringify(this.items, null, 4)}</pre>
+    </notes-list>`
+  }
 }
 
 let list = new NotesList([
-    {name: 'English', description: 'See spot run.'},
-	{name: 'Science', description: 'Space is big.'}
+  {name: 'English', description: 'See spot run.'},
+  {name: 'Science', description: 'Space is big.'}
 ]);
 document.body.append(list);
 ```
@@ -945,24 +943,24 @@ import h, {Solarite, assignAttributes} from './dist/Solarite.min.js';
 
 class MyTimer extends Solarite {
 
-    duration = 60;
-    autoStart = false;
+  duration = 60;
+  autoStart = false;
 
-    constructor(fields={}) {
-        super();
+  constructor(fields={}) {
+    super();
 
-        // From new or from a tagged template, fields already holds typed values.
-        Object.assign(this, fields);
+    // From new or from a tagged template, fields already holds typed values.
+    Object.assign(this, fields);
 
-        // From plain html, read the attributes and cast the strings.
-        assignAttributes(this, {duration: Number, autoStart: Boolean});
+    // From plain html, read the attributes and cast the strings.
+    assignAttributes(this, {duration: Number, autoStart: Boolean});
 
-        this.render();
-    }
+    this.render();
+  }
 
-    render() {
-        h(this)`<my-timer>${this.duration}s, autoStart=${this.autoStart}</my-timer>`;
-    }
+  render() {
+    h(this)`<my-timer>${this.duration}s, autoStart=${this.autoStart}</my-timer>`;
+  }
 }
 customElements.define('my-timer', MyTimer);
 ```
@@ -997,14 +995,14 @@ In the example above, creating `<notes-item>` via `new` instead of its tag name 
 
 ```JavaScript
 class NotesList extends HTMLElement {
-	render() { 
-		h(this)`
-		<notes-list>
-			${this.items.map(item => // Pass item object to NotesItem constructor:
-				new NotesItem({item: item}) // Causes full redraw every time (!)
-			)}
-		</notes-list>`
-	}
+  render() { 
+    h(this)`
+    <notes-list>
+      ${this.items.map(item => // Pass item object to NotesItem constructor:
+        new NotesItem({item: item}) // Causes full redraw every time (!)
+      )}
+    </notes-list>`
+  }
 }
 ```
 
@@ -1049,7 +1047,7 @@ let c = toEl('<b>Hi</b><u>Bye</u>'); // Create document fragment as a parent to 
 
 let template = h`<div>${'Waz'+'up'}</div>`;
 let d = toEl(template)               // Render Template
-              
+
 document.body.append(a, b, c, d);
 ```
 
@@ -1069,25 +1067,25 @@ To do this, pass `{extends: 'tr'}` as the third argument to `customElements.defi
 import h from './dist/Solarite.min.js';
 
 class LineItem extends HTMLTableRowElement {
-	constructor(user) {
-		super();
-		this.user = user;
-        this.render();
-	}
+  constructor(user) {
+    super();
+    this.user = user;
+    this.render();
+  }
 
-	render() { 
-		h(this)`			   
-            <td>${this.user.name}</td>
-            <td>${this.user.email}</td>`
-	}
+  render() { 
+    h(this)`			   
+      <td>${this.user.name}</td>
+      <td>${this.user.email}</td>`
+  }
 }
 
 customElements.define('line-item', LineItem, {extends: 'tr'});
 
 let table = document.createElement('table')
 for (let i=0; i<10; i++) {
-	let user = {name: 'User ' + i, email: 'user'+i+'@example.com'};
-	table.append(new LineItem(user));
+  let user = {name: 'User ' + i, email: 'user'+i+'@example.com'};
+  table.append(new LineItem(user));
 }
 document.body.append(table);
 ```
@@ -1106,22 +1104,22 @@ This example demonstrates these rules:
 import h, {toEl} from './dist/Solarite.min.js';
 
 let list = toEl({
-    items: [],
+  items: [],
 
-    add() {
-        this.items.push('Item ' + this.items.length);
-        this.render();
-    },
+  add() {
+    this.items.push('Item ' + this.items.length);
+    this.render();
+  },
 
-    render() {
-        h(this)`<div>
-        	<button onclick=${this.add}>Add Item</button>
-        	<hr>
-        	${this.items.map(item => h`
-        		<p>${item}</p>
-        	`)}
-        </div>`
-    }
+  render() {
+    h(this)`<div>
+      <button onclick=${this.add}>Add Item</button>
+      <hr>
+      ${this.items.map(item => h`
+        <p>${item}</p>
+      `)}
+    </div>`
+  }
 });
 
 document.body.append(list);
@@ -1159,16 +1157,16 @@ The `toEl()` function (discussed above) can also be given an object with a `rend
 import h, {toEl} from './dist/Solarite.min.js';
 
 let button = toEl({
-    count: 0,
+  count: 0,
 
-    inc() {
-        this.count++;
-        this.render();
-    },
+  inc() {
+    this.count++;
+    this.render();
+  },
 
-    render() {
-        h(this)`<button onclick=${() => this.inc()}>I've been clicked ${this.count} times.</button>`
-    }
+  render() {
+    h(this)`<button onclick=${() => this.inc()}>I've been clicked ${this.count} times.</button>`
+  }
 });
 document.body.append(button);
 ```
@@ -1179,18 +1177,18 @@ If you want multiple instances of such an element, the code above can be wrapped
 import h, {toEl} from './dist/Solarite.min.js';
 
 function createButton(text) {
-	return toEl({
-		count: 0,
+  return toEl({
+    count: 0,
 
-		inc() {
-			this.count++;
-			this.render();
-		},
+    inc() {
+      this.count++;
+      this.render();
+    },
 
-		render() {
-			h(this)`<button onclick=${this.inc}>${this.count} ${text}</button>`
-		}
-	})
+    render() {
+      h(this)`<button onclick=${this.inc}>${this.count} ${text}</button>`
+    }
+  })
 }
 document.body.append(createButton('clicks'));
 document.body.append(createButton('tickles'));
@@ -1206,12 +1204,12 @@ Solarite components are normally written with `h` tagged templates, which need n
 import h from 'solarite';
 
 class MyButton extends HTMLElement {
-	count = 0;
-	render() {
-		h(this, <button onclick={() => { this.count++; this.render(); }}>
-			{this.count} times
-		</button>);
-	}
+  count = 0;
+  render() {
+    h(this, <button onclick={() => { this.count++; this.render(); }}>
+      {this.count} times
+    </button>);
+  }
 }
 customElements.define('my-button', MyButton);
 ```
@@ -1233,7 +1231,7 @@ JSX has to be converted to JavaScript by a build tool. Your JSX code is always t
 
 ```jsonc
 {
-	"compilerOptions": { "jsx": "precompile", "jsxImportSource": "solarite" }
+  "compilerOptions": { "jsx": "precompile", "jsxImportSource": "solarite" }
 }
 ```
 
@@ -1249,8 +1247,8 @@ export default { plugins: [solarite()] };
 // esbuild build script   —   npm install --save-dev esbuild-plugin-solarite
 import solarite from 'esbuild-plugin-solarite';
 await esbuild.build({
-	entryPoints: ['app.tsx'], bundle: true, outfile: 'app.js',
-	plugins: [solarite()]
+  entryPoints: ['app.tsx'], bundle: true, outfile: 'app.js',
+  plugins: [solarite()]
 });
 ```
 
@@ -1294,30 +1292,30 @@ Consider this example where we're rendering a list of tasks:
 import h from './dist/Solarite.min.js';
 
 class MyTasks extends HTMLElement {
-	tasks = [];
+  tasks = [];
 
-	deleteTask(index) {
-		this.tasks.splice(index, 1);
-		this.render();
-	}
+  deleteTask(index) {
+    this.tasks.splice(index, 1);
+    this.render();
+  }
 
-	render() {
-		h(this)`
-		<div>
-			 ${this.tasks.map((task, index) =>  h`
-				<div>
-					 ${task}
-					 <button onclick=${() => this.deleteTask(index)}>Delete</button>
-				 </div>`
-			 )}
-		</div>`;
-	}
+  render() {
+    h(this)`
+    <div>
+      ${this.tasks.map((task, index) =>  h`
+        <div>
+          ${task}
+          <button onclick=${() => this.deleteTask(index)}>Delete</button>
+          </div>`
+      )}
+    </div>`;
+  }
 }
 customElements.define('my-tasks', MyTasks);
 
 let myTasks = new MyTasks();
 for (let i=0; i<10; i++)
-	myTasks.tasks.push('Item ' + i);
+  myTasks.tasks.push('Item ' + i);
 myTasks.render();
 document.body.append(myTasks);
 ```
@@ -1350,74 +1348,74 @@ const play = svg`<svg height="24px" viewBox="0 0 24 24" width="24px" fill="curre
 
 class MyTimer extends Solarite {
 
-    constructor(attribs={}) {
-        // super() fills the empty attribs object from the html attributes
-        // when the element is instantiated from regular html
-        // rather than inside a tagged template.
-        super(attribs);
-        this.duration = parseFloat(attribs.duration) || 60;
-        this.end = null;
-        this.remaining = this.duration * 1000;
-        this.render();
-    }
+  constructor(attribs={}) {
+    // super() fills the empty attribs object from the html attributes
+    // when the element is instantiated from regular html
+    // rather than inside a tagged template.
+    super(attribs);
+    this.duration = parseFloat(attribs.duration) || 60;
+    this.end = null;
+    this.remaining = this.duration * 1000;
+    this.render();
+  }
 
-    render() {
-        const min = Math.floor(this.remaining / 60000);
-        const sec = pad(min, Math.floor((this.remaining / 1000) % 60));
-        const hun = pad(true, Math.floor((this.remaining % 1000) / 10));
-        h(this)`
-        <my-timer>
-          ${min ? `${min}:${sec}` : `${sec}.${hun}`}
-          <footer>
-            <style>
-            :host { display: inline-block; min-width: 90px; font-size: 30px; text-align: center; padding: 0.2em; margin: 0.2em 0.1em;
-                footer { user-select: none }        
-            }
-            </style>
-            ${
-              this.remaining === 0
-                ? ''
-                : this.running
-                  ? h`<span onclick=${this.pause}>${pause}</span>`
-                  : h`<span onclick=${this.start}>${play}</span>`
-            }
-            <span onclick=${this.reset}>${replay}</span>
-          </footer>
-        </my-timer>`;
-    }
-
-    start() {
-        this.end = Date.now() + this.remaining;
-        this.tick();
-    }
-
-    pause() {
-        this.end = null;
-        this.render();
-    }
-
-    reset() {
-        this.remaining = this.duration * 1000;
-        this.end = this.running ? Date.now() + this.remaining : null;
-        this.render();
-    }
-
-    tick() {
-        if (this.running) {
-            this.remaining = Math.max(0, this.end - Date.now());
-            this.render();
-            requestAnimationFrame(() => this.tick());
+  render() {
+    const min = Math.floor(this.remaining / 60000);
+    const sec = pad(min, Math.floor((this.remaining / 1000) % 60));
+    const hun = pad(true, Math.floor((this.remaining % 1000) / 10));
+    h(this)`
+    <my-timer>
+      ${min ? `${min}:${sec}` : `${sec}.${hun}`}
+      <footer>
+        <style>
+        :host { display: inline-block; min-width: 90px; font-size: 30px; text-align: center; padding: 0.2em; margin: 0.2em 0.1em;
+          footer { user-select: none }        
         }
-    }
+        </style>
+        ${
+          this.remaining === 0
+            ? ''
+            : this.running
+              ? h`<span onclick=${this.pause}>${pause}</span>`
+              : h`<span onclick=${this.start}>${play}</span>`
+        }
+        <span onclick=${this.reset}>${replay}</span>
+      </footer>
+    </my-timer>`;
+  }
 
-    get running() {
-        return this.end && this.remaining;
+  start() {
+    this.end = Date.now() + this.remaining;
+    this.tick();
+  }
+
+  pause() {
+    this.end = null;
+    this.render();
+  }
+
+  reset() {
+    this.remaining = this.duration * 1000;
+    this.end = this.running ? Date.now() + this.remaining : null;
+    this.render();
+  }
+
+  tick() {
+    if (this.running) {
+      this.remaining = Math.max(0, this.end - Date.now());
+      this.render();
+      requestAnimationFrame(() => this.tick());
     }
+  }
+
+  get running() {
+    return this.end && this.remaining;
+  }
 }
 customElements.define('my-timer', MyTimer);
 
 function pad(pad, val) {
-    return pad ? String(val).padStart(2, '0') : val;
+  return pad ? String(val).padStart(2, '0') : val;
 }
 </script>
 <my-timer duration="7"></my-timer>
