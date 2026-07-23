@@ -4,6 +4,7 @@ import delve, {isDelvePath} from "./delve.js";
 import assert from "./assert.js";
 import PathToAttribValue from "./PathToAttribValue.js";
 import PathToKey from "./PathToKey.js";
+import PathToEvent from "./PathToEvent.js";
 import Globals from "./Globals.js";
 import {getObjectHash} from "./Template.js";
 
@@ -46,6 +47,13 @@ export default class PathToComponent extends Path {
 		let attribs = Util.attribsToObject(el, '_is');
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 			if (attribPath instanceof PathToKey) // The list key is never a component arg.
+				continue;
+			// Event attributes like onchange=${...} are bound with addEventListener when the
+			// PathToEvent itself is applied.  They must not also become constructor fields:
+			// a component that assigns its fields onto itself would set the native on*
+			// property, making the handler fire a second time with only the (event) argument
+			// instead of Solarite's documented (event, element) signature.
+			if (attribPath instanceof PathToEvent)
 				continue;
 			if (attribPath instanceof PathToAttribValue) {
 				let name = Util.dashesToCamel(attribPath.attrName);
