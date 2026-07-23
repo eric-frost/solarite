@@ -4028,6 +4028,55 @@ Testimony.test('Solarite.component.attribFunctions', 'Make sure we can pass func
 	c.remove();
 });
 
+Testimony.test('Solarite.component.eventAttrib',
+	`Event attributes on a component bind once with (event, element) args and aren't passed as constructor fields.`, () => {
+
+	let constructorAttribs;
+
+	class C511Child extends Solarite {
+		constructor(attribs={}) {
+			super(attribs);
+			constructorAttribs = attribs;
+
+			// Copy constructor fields onto ourself, like a typical component.  If attribs
+			// contained the onchange handler, this would set the element's native onchange
+			// property, making the handler fire twice — and the native call passes only
+			// (event), without the element argument.
+			Object.assign(this, attribs);
+			this.render();
+		}
+
+		render() {
+			h(this)`<c-511-child></c-511-child>`;
+		}
+	}
+	C511Child.define('c-511-child');
+
+	let calls = [];
+	class C511 extends Solarite {
+		render() {
+			h(this)`<c-511><c-511-child onchange=${(ev, el) => calls.push([ev.type, el])}></c-511-child></c-511>`;
+		}
+	}
+	customElements.define('c-511', C511);
+
+	let c = new C511();
+	document.body.append(c);
+	let child = c.querySelector('c-511-child');
+
+	// The handler must reach the component only as an event binding, never as a field.
+	assert(!('onchange' in constructorAttribs));
+	assert.eq(child.onchange, null);
+
+	// change isn't a delegatable event, so this exercises the direct addEventListener path.
+	child.dispatchEvent(new Event('change', {bubbles: true}));
+	assert.eq(calls.length, 1);
+	assert.eq(calls[0][0], 'change');
+	assert.eq(calls[0][1], child);
+
+	c.remove();
+});
+
 Testimony.test('Solarite.component.staticChildrenInDom', () => {
 	let construct = 0;
 	let render = 0;

@@ -2897,6 +2897,13 @@ class PathToComponent extends Path {
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 			if (attribPath instanceof PathToKey) // The list key is never a component arg.
 				continue;
+			// Event attributes like onchange=${...} are bound with addEventListener when the
+			// PathToEvent itself is applied.  They must not also become constructor fields:
+			// a component that assigns its fields onto itself would set the native on*
+			// property, making the handler fire a second time with only the (event) argument
+			// instead of Solarite's documented (event, element) signature.
+			if (attribPath instanceof PathToEvent)
+				continue;
 			if (attribPath instanceof PathToAttribValue) {
 				let name = Util.dashesToCamel(attribPath.attrName);
 				
