@@ -94,8 +94,13 @@ export default class Template {
 		// If we didn't just create it, we need to render it.
 		if (this.html?.length === 1 && !this.html[0]) // An empty string.
 			el.innerHTML = ''; // Fast path for empty component.
-		else
-			ng.applyExprs(this.exprs);
+		else {
+			// A component renders the same template every time, so hand over the expressions it
+			// applied last time; paths that can prove an unchanged expression is a no-op skip.
+			let last = ng.template;
+			ng.applyExprs(this.exprs, true, last !== this && last.html === this.html ? last.exprs : null);
+			ng.template = this;
+		}
 
 		return el;
 	}
@@ -125,9 +130,13 @@ export default class Template {
 export function templatesSame(a, b) {
 	if (a.html === b.html && a.svgMode === b.svgMode) {
 		let ae = a.exprs, be = b.exprs;
-		for (let i=0; i<ae.length; i++)
-			if (!exprSame(ae[i], be[i]))
+		// Most expressions are identical between renders, so test that here rather than paying
+		// a call into exprSame() to learn it.
+		for (let i=0; i<ae.length; i++) {
+			let x = ae[i], y = be[i];
+			if (x !== y && !exprSame(x, y))
 				return false;
+		}
 		return true;
 	}
 

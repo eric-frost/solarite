@@ -10,6 +10,18 @@ import {ensureDelegatedDispatcher, delegatedRootKey} from "./PathToAttribValue.j
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
+/** Stand-in Shell for text NodeGroups, which are never parsed from html.  Its default field
+ * values (no components, no live properties, no single-expression paths) are exactly what the
+ * per-row code must see for a bare Text node, so ng.shell is never null. */
+const textShell = new Shell();
+
+// The Shell whose delegated dispatchers a root last registered, kept on the RootNodeGroup so
+// that a run of rows checks one field instead of asking at every bound node.  A Symbol rather
+// than a declared field, since only root NodeGroups ever carry it and a declared field would
+// cost a slot on every row.  The delegation mode isn't part of it: it comes from the root's
+// render options, which are fixed when the root is created.
+const lastStampedShellKey = Symbol('solariteStampedShell');
+
 /**
  * A group of Nodes instantiated from a Shell, with Expr's filled in.
  *
@@ -43,15 +55,11 @@ export default class NodeGroup {
 	 * matched by PathToNodes.applyKeyed().  Undefined for unkeyed NodeGroups. */
 	key;
 
-	/** @type {boolean} True if any of this NodeGroup's own paths is a PathToComponent. */
-	hasComponentPaths = false;
-
-	/** @type {boolean} True if any path binds a live HTML property (checked/value/selected) —
-	 * see Shell.hasLivePropPaths. */
-	hasLivePropPaths = false;
-
-	/** @type {boolean} True if every path consumes exactly one expression and none are components. */
-	pathsSingleExpr = false;
+	/** @type {Shell} The Shell this NodeGroup was cloned from, so the per-row code can read
+	 * hasComponentPaths/hasLivePropPaths/pathsSingleExpr and the stamp program off it instead
+	 * of copying them onto every instance and re-looking the Shell up on every apply.
+	 * Text NodeGroups get the shared empty textShell, which reports false for all of them. */
+	shell;
 
 	/** @type {boolean} True until applyExprs() finishes the first time.
 	 * While true, ancestor node caches can't reference this NodeGroup's nodes, so they don't need invalidation. */
@@ -99,20 +107,17 @@ export default class NodeGroup {
 		// If it's just a text node, skip a bunch of unnecessary steps.
 		// el can be an existing Text node to adopt, from PathToNodes' bare-text fast path.
 		if (template.isText) {
+			this.shell = textShell;
 			this.closeKey = template.getCloseKey();
 			this.startNode = this.endNode = el || Globals.doc.createTextNode(template.html[0]);
 		}
 
 		else {
 			// Get a cached version of the parsed and instantiated html, and Paths:
-			const shell = Shell.get(template.html, template.svgMode);
+			const shell = this.shell = Shell.get(template.html, template.svgMode);
 
 			// The shell caches the close key so each new template doesn't repeat the WeakMap lookup.
 			this.closeKey = shell.closeKey ??= template.getCloseKey();
-
-			this.hasComponentPaths = shell.hasComponentPaths;
-			this.hasLivePropPaths = shell.hasLivePropPaths;
-			this.pathsSingleExpr = shell.pathsSingleExpr;
 
 			// A lone root element is cloned directly, skipping a throwaway fragment wrapper.
 			// Only for child NodeGroups; RootNodeGroup's grafting expects a fragment.
@@ -169,8 +174,12 @@ export default class NodeGroup {
 	 * Dispatches expression handling to other functions depending on the path type.
 	 * @param exprs {(*|*[]|function|Template)[]}
 	 * @param includeNonComponents {boolean} False to only apply component paths,
-	 * used when the non-component exprs are known to be unchanged. */
-	applyExprs(exprs, includeNonComponents=true) {
+	 * used when the non-component exprs are known to be unchanged.
+	 * @param lastExprs {?Expr[]} The expressions applied last time, when the caller has them.
+	 * Paths that would provably do nothing with an unchanged expression are then skipped —
+	 * see Path.skipIfSame.  A root template's event bindings are the usual beneficiaries:
+	 * they are the same handlers on every render, and re-binding them costs a call apiece. */
+	applyExprs(exprs, includeNonComponents=true, lastExprs=null) {
 
 		/*#IFDEV*/
 		this.verify();
@@ -180,14 +189,18 @@ export default class NodeGroup {
 
 		// Fast path: every path consumes exactly one expression and none are components,
 		// so skip the bookkeeping that maps expressions to paths.
-		if (this.pathsSingleExpr) {
+		if (this.shell.pathsSingleExpr) {
 			if (includeNonComponents) {
 				if (paths === null) { // Created from a stampable shell; no paths yet.
 					this.applyStamp(exprs);
 					return;
 				}
-				for (let i = paths.length - 1; i >= 0; i--)
-					paths[i].applySingle(exprs[i]);
+				for (let i = paths.length - 1; i >= 0; i--) {
+					let path = paths[i];
+					if (lastExprs !== null && path.skipIfSame && lastExprs[i] === exprs[i])
+						continue;
+					path.applySingle(exprs[i]);
+				}
 
 				if (this.styles)
 					this.updateStyles();
@@ -262,8 +275,7 @@ export default class NodeGroup {
 	 * falls back to materializing real paths and applying normally.
 	 * @param exprs {Expr[]} */
 	applyStamp(exprs) {
-		let template = this.template;
-		let shell = Shell.get(template.html, template.svgMode);
+		let shell = this.shell;
 
 		// 1. Bail to real paths when any child-node expression isn't a primitive.
 		let nodesIdx = shell.nodesPathIdx;
@@ -289,6 +301,18 @@ export default class NodeGroup {
 		let opt = rootNg.options?.eventDelegation;
 		let delegateDoc = opt === 'document';
 		let delegateAll = opt === undefined || opt === true || delegateDoc;
+
+		// Register this shell's delegated dispatchers once for a whole run of rows.  They live on
+		// the root, not on the bound nodes, so asking per node — as the general binding path has
+		// to — would be a call and a set lookup for every handler in the list.
+		let names = shell.stampEventNames;
+		if (names !== null && delegateAll && rootNg[lastStampedShellKey] !== shell) {
+			for (let k=0; k<names.length; k++)
+				ensureDelegatedDispatcher(root, names[k], delegateDoc);
+			rootNg[lastStampedShellKey] = shell;
+		}
+
+		let firstApply = this.firstApply;
 		for (let i = ops.length - 1; i >= 0; i--) {
 			let v = exprs[i];
 			let o = ops[i];
@@ -308,11 +332,16 @@ export default class NodeGroup {
 				&& (typeof v === 'function' || (Array.isArray(v) && typeof v[0] === 'function'))) {
 				let sp = aux[i];
 				let node = slots[slotIdx[i]];
-				let dk = sp.delegatedKey;
-				if (node[dk] === undefined)
-					ensureDelegatedDispatcher(root, sp.eventName, delegateDoc);
-				node[dk] = v;
+				node[sp.delegatedKey] = v;
 				node[delegatedRootKey] = root;
+			}
+
+			// A plain attribute on a freshly cloned row: the shell left it off, so an empty
+			// value means there is simply nothing to write, and any other string can go
+			// straight in without reading the attribute back first.
+			else if (o === 4 && firstApply && typeof v === 'string') {
+				if (v !== '')
+					slots[slotIdx[i]].setAttribute(aux[i], v);
 			}
 
 			// The list key never touches the DOM.
@@ -340,7 +369,7 @@ export default class NodeGroup {
 	 * @return {boolean} False when a child-node expression isn't primitive; the caller
 	 * must then materialize paths and apply normally. */
 	rewriteStamp(template) {
-		let shell = Shell.get(template.html, template.svgMode);
+		let shell = this.shell;
 		let newExprs = template.exprs;
 		let nodesIdx = shell.nodesPathIdx;
 		for (let i=0; i<nodesIdx.length; i++) {
@@ -350,25 +379,29 @@ export default class NodeGroup {
 		}
 
 		let oldExprs = this.template.exprs;
-		let paths = shell.paths, stampers = shell.stampPaths;
+		let stampers = shell.stampPaths, slotIdx = shell.stampSlot, flags = shell.stampFlags;
 		let slots = this.stampSlotsCache; // Nodes are resolved only if something actually changed, then cached.
-		for (let i = paths.length - 1; i >= 0; i--) {
+		for (let i = stampers.length - 1; i >= 0; i--) {
 			// Live HTML properties (checked etc., boolean-valued) are exempt from the
 			// unchanged-value skip: a user's click flips the DOM property underneath the cached
 			// expression, and applySingle() compares against the live node before writing.
-			if (!exprSame(oldExprs[i], newExprs[i])
-				|| (stampers[i].isHtmlProperty && typeof newExprs[i] === 'boolean')) {
+			// The identity test is inline because most expressions are unchanged, and reaching
+			// exprSame() only to be told so costs more than the comparison itself.
+			let oldExpr = oldExprs[i], newExpr = newExprs[i];
+			let flag = flags[i];
+			if ((oldExpr !== newExpr && !exprSame(oldExpr, newExpr))
+				|| ((flag & 1) && typeof newExpr === 'boolean')) {
 				// .slice() is required: resolveStampSlots returns the Shell's SHARED scratch
 				// array, which the next row's resolve would overwrite.
 				if (slots === null)
 					slots = this.stampSlotsCache = this.resolveStampSlots(shell).slice();
 				let stamper = stampers[i];
-				let marker = slots[paths[i].markerSlot];
+				let marker = slots[slotIdx[i]]; // The flat slot array, so the Path isn't loaded.
 
 				// Fast path for a wholeParent text path whose child already exists (the common
 				// rewrite case): set its value directly, skipping applySingle's branching and
 				// textNode bookkeeping.  exprSame above already proved it changed.
-				if (stamper.wholeParent) {
+				if (flag & 2) {
 					let v = newExprs[i], tn = marker.firstChild;
 					if (typeof v === 'number')
 						v += '';
@@ -407,9 +440,18 @@ export default class NodeGroup {
 		let ops = shell.resolveOps;
 		// firstChild/nextSibling pointer walk; see setPathsFromFragment for why not childNodes[i].
 		for (let i=2, s=2; i<ops.length; i+=2, s++) {
-			let node = slots[ops[i]].firstChild;
-			for (let k=ops[i+1]; k>0; k--)
-				node = node.nextSibling;
+			let k = ops[i+1], node;
+			if (k < 0) { // Walk forward from an earlier sibling's slot.
+				node = slots[ops[i]];
+				do
+					node = node.nextSibling;
+				while (++k < 0);
+			}
+			else {
+				node = slots[ops[i]].firstChild;
+				for (; k>0; k--)
+					node = node.nextSibling;
+			}
 			slots[s] = node;
 		}
 		return slots;
@@ -422,7 +464,7 @@ export default class NodeGroup {
 	 * @param shell {?Shell}
 	 * @return {Path[]} */
 	materializePaths(shell=null) {
-		shell ??= Shell.get(this.template.html, this.template.svgMode);
+		shell ??= this.shell;
 		let slots = this.resolveStampSlots(shell);
 		let paths = shell.paths;
 		let pathLength = paths.length;
@@ -516,10 +558,21 @@ export default class NodeGroup {
 			// Resolve each node via firstChild/nextSibling pointer walks instead of
 			// childNodes[index]; the live NodeList indexing is markedly slower, and indices
 			// are small (markers are elements, often the first child after whitespace stripping).
+			// A negative step count means the program reaches this node from an earlier
+			// sibling's slot instead of from its parent (see Shell.buildResolveProgram).
 			for (; i<ops.length; i+=2, s++) {
-				let node = slots[ops[i]].firstChild;
-				for (let k=ops[i+1]; k>0; k--)
-					node = node.nextSibling;
+				let k = ops[i+1], node;
+				if (k < 0) {
+					node = slots[ops[i]];
+					do
+						node = node.nextSibling;
+					while (++k < 0);
+				}
+				else {
+					node = slots[ops[i]].firstChild;
+					for (; k>0; k--)
+						node = node.nextSibling;
+				}
 				slots[s] = node;
 			}
 			for (let i=0; i<pathLength; i++) {

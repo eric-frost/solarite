@@ -50,6 +50,13 @@ export default class Shell {
 	 * Lets NodeGroup.applyExprs() use a fast loop without allocating per-path expression arrays. */
 	pathsSingleExpr = false;
 
+	/** @type {boolean} True when a NodeGroup whose values are unchanged still has work to do:
+	 * components re-render so changes deeper in the tree surface, and live HTML properties are
+	 * rewritten because a click can flip them underneath the cached expression.  The list scans
+	 * check this before calling PathToNodes.refreshSameItem(), so the overwhelmingly common
+	 * unchanged row costs one field read instead of a call. */
+	needsRefresh = false;
+
 	/** @type {boolean} True if this Shell has any ids, styles, or scripts. */
 	hasEmbeds = false;
 
@@ -98,9 +105,18 @@ export default class Shell {
 	 * doesn't load the Path object to find its slot. */
 	stampSlot;
 
-	/** @type {?Path[]} The event stamper per op-3 path (carries delegatedKey and
-	 * eventName); null for other opcodes. */
+	/** @type {?Path[]} Per-path extra the stamp program needs: the event stamper for op 3
+	 * (it carries delegatedKey and eventName), the attribute name for op 4, null otherwise. */
 	stampAux;
+
+	/** @type {?string[]} The delegatable event names this shell binds, so a loop can register
+	 * their dispatchers once for the whole run of rows instead of testing every bound node. */
+	stampEventNames;
+
+	/** @type {?Uint8Array} Per-path flags the in-place rewrite loop needs, so it reads one byte
+	 * from a flat array instead of two properties from a Path object it otherwise wouldn't
+	 * touch.  Bit 1 = the path binds a live HTML property, bit 2 = it's a whole-parent child. */
+	stampFlags;
 
 	/**
 	 * Create the nodes but without filling in the expressions.
@@ -226,12 +242,17 @@ export default class Shell {
 							}
 
 							placeholdersUsed += parts.length - 1;
-							// In svgMode, setting typed SVG attributes (viewBox, r, etc.) with the placeholders
-							// stripped out makes the browser log parse errors, both here and when the fragment is cloned.
-							// Remove the attribute instead; apply() recreates it with the real values.
-							// Event attributes bound to a single expression are removed because they bind via
-							// addEventListener; leaving an empty onclick="" attribute violates a strict CSP when the event fires.
-							if (svgMode || (isEvent && !nonEmptyParts))
+							// An attribute whose whole value is one expression is removed from the shell:
+							// its stamped value is always the empty string, so every clone would carry a
+							// useless empty attribute that costs storage on creation and a slot in the
+							// element's attribute list forever, and apply() writes the real value anyway
+							// (a missing attribute reads back as '', so an empty expression still writes
+							// nothing).  Event attributes must be removed for the same reason plus a
+							// stricter one: an empty onclick="" violates a strict CSP when the event fires.
+							// In svgMode, setting typed SVG attributes (viewBox, r, etc.) with the
+							// placeholders stripped out makes the browser log parse errors, both here and
+							// when the fragment is cloned, so those are removed whether or not they're whole.
+							if (svgMode || !nonEmptyParts)
 								node.removeAttribute(attr.name);
 							else try {
 								node.setAttribute(attr.name, parts.join(''));
@@ -383,6 +404,7 @@ export default class Shell {
 			if (path.isHtmlProperty) // needs the full scan — no early break
 				this.hasLivePropPaths = true;
 		}
+		this.needsRefresh = this.hasComponentPaths || (this.hasLivePropPaths && this.pathsSingleExpr);
 
 		// Stampable shells create NodeGroups without allocating any Path objects:
 		// NodeGroup.applyStamp() writes expressions through these shared stamper paths,
@@ -419,10 +441,13 @@ export default class Shell {
 				this.stampOp = new Uint8Array(n);
 				this.stampSlot = new Uint16Array(n);
 				this.stampAux = new Array(n).fill(null);
+				this.stampFlags = new Uint8Array(n);
 
+				let eventNames = null;
 				for (let i=0; i<n; i++) {
 					let p = this.paths[i], sp = this.stampPaths[i];
 					this.stampSlot[i] = p.markerSlot;
+					this.stampFlags[i] = (sp.isHtmlProperty ? 1 : 0) | (sp.wholeParent ? 2 : 0);
 					if (p instanceof PathToKey)
 						this.stampOp[i] = 1;
 					else if (sp.wholeParent)
@@ -430,8 +455,20 @@ export default class Shell {
 					else if (sp instanceof PathToEvent && sp.delegatedKey !== undefined && !sp.attrValue) {
 						this.stampOp[i] = 3;
 						this.stampAux[i] = sp;
+						(eventNames ??= []).push(sp.eventName);
+					}
+
+					// A plain attribute holding one whole expression.  The shell no longer carries
+					// the attribute at all (see the placeholder handling above), so on a freshly
+					// cloned row the value is known to be absent and a string can be written
+					// without first reading back what's there.
+					else if (sp instanceof PathToAttribValue && !sp.attrValue && !sp.isHtmlProperty
+						&& !sp.isComponentAttrib) {
+						this.stampOp[i] = 4;
+						this.stampAux[i] = sp.attrName;
 					}
 				}
+				this.stampEventNames = eventNames;
 			}
 		}
 
@@ -536,7 +573,25 @@ export default class Shell {
 				return 0;
 			let s = slotOf.get(node);
 			if (s === undefined) {
-				ops.push(getSlot(node.parentNode), Array.prototype.indexOf.call(node.parentNode.childNodes, node));
+				// Two ways to reach a node, costing one pointer step each: walk forward from an
+				// already-resolved earlier sibling, or take the parent's firstChild and walk
+				// forward.  Sibling steps win whenever they're no more numerous, and they can
+				// also spare the parent a slot of its own — in a row of cells, resolving each
+				// <td> from the previous one is one step instead of firstChild plus its index.
+				let d = 0, from = -1;
+				for (let sib = node.previousSibling; sib; sib = sib.previousSibling) {
+					d++;
+					let ss = slotOf.get(sib);
+					if (ss !== undefined) {
+						from = ss;
+						break;
+					}
+				}
+				let index = Array.prototype.indexOf.call(node.parentNode.childNodes, node);
+				if (from >= 0 && d <= index + 1)
+					ops.push(from, -d); // A negative step count means "walk nextSibling from that slot".
+				else
+					ops.push(getSlot(node.parentNode), index);
 				s = nextSlot++;
 				slotOf.set(node, s);
 			}

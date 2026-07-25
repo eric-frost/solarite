@@ -45,6 +45,12 @@ export default class Path {
 	 * declaring it keeps those stores from transitioning the clone's hidden class. */
 	isComponentAttrib;
 
+	/** @type {boolean} True when re-applying an expression identical to the one already
+	 * applied is provably a no-op, so a re-render can skip this path entirely.  Only event
+	 * bindings qualify: binding the same handler to the same node again changes nothing,
+	 * while an attribute or a child expression may have been altered outside the template. */
+	skipIfSame = false;
+
 	/** @type {boolean|undefined} True when the attribute is a live HTML property
 	 * (checked/value/selected — Util.isHtmlProp), which users can flip underneath the
 	 * template.  Declared here for the same hidden-class reason as isComponentAttrib. */

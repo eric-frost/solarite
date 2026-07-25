@@ -2,6 +2,16 @@
 
 All notable changes to Solarite are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/). While the version is below 1.0, minor releases may include breaking changes; these are called out below.
 
+## [Unreleased]
+
+### Changed
+- **Breaking:** `h.map()` returns a `MappedList` (the items plus the callback) rather than an array of templates, so the reconciler can recognize an unchanged row by the item it was built from. Put it straight into a template expression as before. It is iterable, so spreading it (`[...h.map(rows, fn)]`), nesting it inside an array, or returning it from a function all still work and expand to templates — but each of those builds every row, which is the work the identity shortcut exists to skip. A row is now reused for as long as its item is `===` to the one that built it, which means primitives compare by value where they previously rebuilt every render.
+- **Much faster list re-renders.** A same-length list in which only a few rows changed no longer scans the list at all: only the changed positions are built and patched, so a selection or a partial update costs work proportional to the change. A list that changed length follows the offset an insertion or removal creates instead of treating every later row as changed. The persistent per-item template cache is gone, replaced by a map built on demand from the rows a list already holds — it had been paying a write for every row of every list ever built, and holding each template alive for as long as the caller held the item.
+- **Faster list creation.** An attribute whose whole value is one expression is no longer baked into the parsed template as an empty attribute, so every clone carries one fewer attribute and an empty value now writes nothing at all. Visible consequence: `class=${''}` leaves the element with no `class` attribute rather than `class=""`, and an object- or function-valued attribute on a component (which has no string form) no longer leaves an empty attribute behind. Also, the path-resolution program can walk siblings as well as descend, cutting the pointer walks a typical table row needs; delegated event dispatchers are registered once per template per root instead of being checked at every bound node; and a full list replace now detaches its parent before emptying it, not after.
+- **Re-rendering a component no longer re-binds event handlers that didn't change.** A root template's `onclick=${this.method}` bindings are the same handlers on every render, and re-binding them is provably a no-op, so they're skipped. Together with the list work, a `render()` where nothing at all changed is now several times cheaper.
+- An element's render closure is cached even when `render()` passes options, which is how it is usually written.
+- Two shapes that a benchmark wouldn't catch were measured and fixed along the way: a partial update of a very long list, and inserting rows into the middle or the front of one. Both used to fall off the fast path and build a lookup map of every row; the reconciler now works out whether a list was reordered (where such a map pays) or merely had its contents changed (where it doesn't).
+
 ## [0.7.0] - 2026-07-04
 
 ### Added

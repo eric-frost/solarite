@@ -60,3 +60,56 @@ Testimony.test('Dist.events.twoWayBinding', `Two-way input binding in the minifi
 
 	a.remove();
 });
+
+Testimony.test('Dist.map.keyed', `h.map and the keyed reconciler work in the minified build`, () => {
+	class DistMapTest extends SolariteMin {
+		rows = [];
+		sel = null;
+		render() {
+			hMin(this)`<dist-map-test><table><tbody>${hMin.map(this.rows, row =>
+				hMin`<tr key=${row.id} class=${row.id === this.sel ? 'danger' : ''}><td>${row.label}</td></tr>`)}
+			</tbody></table></dist-map-test>`;
+		}
+	}
+	customElements.define('dist-map-test', DistMapTest);
+	let a = new DistMapTest();
+	for (let i=1; i<=10; i++)
+		a.rows.push({id: i, label: 'r' + i});
+	document.body.append(a);
+	a.render();
+
+	let trs = [...a.querySelectorAll('tr')];
+	assert.eq(trs.length, 10);
+	assert.eq(trs[3].textContent, 'r4');
+
+	// An unchanged render must keep every element.
+	a.render();
+	assert.eq(a.querySelectorAll('tr')[3], trs[3]);
+
+	// Patch one row: same element, new content.
+	a.sel = 4;
+	a.rows[3] = {...a.rows[3], label: 'changed'};
+	a.render();
+	assert.eq(a.querySelectorAll('tr')[3], trs[3]);
+	assert.eq(a.querySelectorAll('tr')[3].textContent, 'changed');
+	assert.eq(a.querySelectorAll('tr')[3].className, 'danger');
+
+	// Swap two rows: their elements move with their keys.
+	let t = a.rows[1];
+	a.rows[1] = a.rows[8];
+	a.rows[8] = t;
+	a.render();
+	assert.eq(a.querySelectorAll('tr')[1], trs[8]);
+	assert.eq(a.querySelectorAll('tr')[8], trs[1]);
+
+	// Remove one from the middle; everything after it shifts and keeps its element.
+	a.rows.splice(4, 1);
+	a.render();
+	assert.eq(a.querySelectorAll('tr').length, 9);
+	assert.eq(a.querySelectorAll('tr')[4], trs[5]);
+
+	a.rows = [];
+	a.render();
+	assert.eq(a.querySelectorAll('tr').length, 0);
+	a.remove();
+});

@@ -516,6 +516,12 @@ class Path {
 	 * declaring it keeps those stores from transitioning the clone's hidden class. */
 	isComponentAttrib;
 
+	/** @type {boolean} True when re-applying an expression identical to the one already
+	 * applied is provably a no-op, so a re-render can skip this path entirely.  Only event
+	 * bindings qualify: binding the same handler to the same node again changes nothing,
+	 * while an attribute or a child expression may have been altered outside the template. */
+	skipIfSame = false;
+
 	/** @type {boolean|undefined} True when the attribute is a live HTML property
 	 * (checked/value/selected — Util.isHtmlProp), which users can flip underneath the
 	 * template.  Declared here for the same hidden-class reason as isComponentAttrib. */
@@ -1246,6 +1252,7 @@ class PathToEvent extends PathToAttribValue {
 
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
 		super(null, nodeMarker, attrName, attrValue);
+		this.skipIfSame = true;
 		this.eventName = attrName ? attrName.slice(2) : null;
 		this.delegatedKey = this.eventName !== null ? delegatedKeyFor(this.eventName) : undefined;
 	}
@@ -1677,7 +1684,56 @@ class MultiValueMap {
 	}
 }
 
+/**
+ * A list of items plus the function that builds one item's Template, as returned by h.map().
+ *
+ * Handing the reconciler the source items instead of an array of Templates is what makes
+ * h.map() cheap on a long list: a row whose item is the same object it was built from needs
+ * neither a Template built for it nor a cache lookup to find one, just an identity check
+ * against the item the row already remembers.  Rows that moved are recognized too — see
+ * PathToNodes.applyMapped(), which follows a shifted list's offset and, failing that, matches
+ * items against the Templates the previous render built.
+ */
+class MappedList {
+
+	/** @type {Array} */
+	items;
+
+	/** @type {function(*):Template} */
+	fn;
+
+	constructor(items, fn) {
+		this.items = items;
+		this.fn = fn;
+	}
+
+	/**
+	 * Yield the Templates, building each one as it goes, so that code written against the older
+	 * array-returning h.map() — spreading it, iterating it, passing it to Array.from — still
+	 * works.  Doing so builds every row, which is exactly the work the reconciler skips when the
+	 * list is handed to it whole, so prefer putting an h.map() straight into a template. */
+	*[Symbol.iterator]() {
+		let items = this.items, fn = this.fn;
+		for (let i=0; i<items.length; i++)
+			yield fn(items[i]);
+	}
+}
+
 class PathToNodes extends Path {
+
+	/** @type {boolean} True once any NodeGroup this path created needs a visit even when its
+	 * values are unchanged (it holds a component or a live HTML property).  Those rows are the
+	 * reason the list scans exist, so their presence rules out applyMisses()' skip-the-scan
+	 * path.  Sticky: it's never cleared, which can only cost a scan that wasn't needed. */
+	anyNeedsRefresh = false;
+
+	/** @type {?Array} The h.map() items the previous render drew, one per NodeGroup and in the
+	 * same order, so an unchanged row is recognized by comparing two arrays rather than by
+	 * following a pointer into each NodeGroup.  A thousand rows' NodeGroups are scattered over
+	 * a hundred kilobytes, so reading a field from each one costs a cache miss apiece; two flat
+	 * arrays walk in step.  Null whenever the last render wasn't an h.map().
+	 * @type {?Array} */
+	lastItems = null;
 
 	/** @type {boolean} True when the previous render's items contained raw DOM Nodes,
 	 * which routes applySingle() to the generic reconciler.  Declared so the hot
@@ -1822,9 +1878,20 @@ class PathToNodes extends Path {
 			this.textNode = null;
 		}
 
-		// 1. Flatten the expression to a list of Templates, strings and Nodes, evaluating functions along the way.
-		// A flat array that is entirely Templates — the rows.map(...) / h.map(...) shape that list
-		// renders produce — is borrowed directly instead of copied.  The borrow lasts only for the
+		// 1. h.map() hands over its source items and callback rather than built Templates, so a
+		// row whose item is unchanged is recognized without building or looking up a Template.
+		if (expr instanceof MappedList) {
+			this.applyMapped(expr);
+			/*#IFDEV*/this.verify();/*#ENDIF*/
+			return;
+		}
+
+		// Anything that isn't an h.map() leaves no items to recognize rows by next time.
+		this.lastItems = null;
+
+		// 2. Flatten the expression to a list of Templates, strings and Nodes, evaluating functions along the way.
+		// A flat array that is entirely Templates — the rows.map(...) shape that list renders
+		// produce — is borrowed directly instead of copied.  The borrow lasts only for the
 		// rest of this synchronous call:  applyDiff/applyKeyed/applyGeneric read the items and
 		// retain only the NodeGroups (and each item's own Template) built from them, never the
 		// items array itself, so no reference to the caller's array survives the render.  Keep
@@ -1845,26 +1912,376 @@ class PathToNodes extends Path {
 			hasNodesNow = this.collectItems(expr, newItems, false);
 		}
 
-		// 2. Raw Nodes in the items (now or on the previous render) can't be diffed positionally
+		// 3. Raw Nodes in the items (now or on the previous render) can't be diffed positionally
 		// because this.nodeGroups only tracks NodeGroups.  Use the generic path for those.
 		if (hasNodesNow || this.itemsHaveNodes) {
 			this.itemsHaveNodes = hasNodesNow;
 			this.applyGeneric(newItems);
 		}
-		else {
-			// Templates with a key=${} attribute diff by key so node identity follows the data.
-			// An empty list also routes to applyKeyed when the previous render was keyed,
-			// so removed keyed NodeGroups are discarded instead of pooled.
-			let first = newItems.length !== 0 ? newItems[0] : null;
-			if (first !== null
-				? (typeof first !== 'string' && (first.key !== undefined || Shell.get(first.html, first.svgMode).keyIndex >= 0))
-				: (this.nodeGroups !== null && this.nodeGroups.length !== 0 && this.nodeGroups[0].key !== undefined))
-				this.applyKeyed(newItems);
-			else
-				this.applyDiff(newItems);
-		}
+		else
+			this.diffItems(newItems);
 
 		/*#IFDEV*/this.verify();/*#ENDIF*/
+	}
+
+	/**
+	 * Reconcile a flat list of Templates and strings against this path's NodeGroups.
+	 * Templates with a key=${} attribute diff by key so node identity follows the data.
+	 * An empty list also routes to applyKeyed when the previous render was keyed, so removed
+	 * keyed NodeGroups are discarded instead of pooled.
+	 * @param newItems {(Template|string)[]} */
+	diffItems(newItems) {
+		let first = newItems.length !== 0 ? newItems[0] : null;
+		if (first !== null
+			? (typeof first !== 'string' && (first.key !== undefined || Shell.get(first.html, first.svgMode).keyIndex >= 0))
+			: (this.nodeGroups !== null && this.nodeGroups.length !== 0 && this.nodeGroups[0].key !== undefined))
+			this.applyKeyed(newItems);
+		else
+			this.applyDiff(newItems);
+	}
+
+	/**
+	 * Render an h.map() list.
+	 *
+	 * What makes this cheaper than reconciling an array of Templates is that a row still holding
+	 * the item it was built from needs no Template at all: it is recognized by one identity
+	 * check, with nothing built and nothing compared.  When the list is the same length and only
+	 * a few rows changed, that is the whole render — see applyMisses().  Otherwise the walk
+	 * follows the offset a shifted list settles on, and finally consults a map from item to the
+	 * Template the previous render built, so rows that moved far are still reused.
+	 * @param mapped {MappedList} */
+	applyMapped(mapped) {
+		let items = mapped.items, fn = mapped.fn;
+		let len = items.length;
+		let oldNgs = this.nodeGroups;
+		// Only rows this path drew from an h.map() last time can be recognized by their item;
+		// anything else starts over.
+		let lastItems = this.lastItems;
+		let oldLen = oldNgs === null || lastItems === null || lastItems.length !== oldNgs.length
+			? 0 : oldNgs.length;
+
+		// Patch path.  When the list is the same length as last time, every row that still holds
+		// the item it was built from is already final: it needs no Template, no comparison and no
+		// visit.  So find the positions that did change, build only those, and patch them.  That
+		// makes a selection or a partial update cost work proportional to the change instead of
+		// to the length of the list.  Rows that must be visited even when unchanged (components,
+		// live HTML properties) rule it out, since revisiting them is what the full scan is for.
+		let misses = null, missTemplates = null, missCount = 0;
+		if (oldLen === len && len !== 0 && !this.anyNeedsRefresh && !this.itemsHaveNodes) {
+			let tooMany = false;
+			let cap = missProbeThreshold;
+
+			// First find WHICH positions changed, without building anything for them.  A change
+			// this path can't handle is then abandoned having cost only comparisons — building
+			// as we went would throw away a Template for every row of, say, a reversed list,
+			// which the general diff is about to reuse from the previous render.
+			for (let i=0; i<len; i++) {
+				if (lastItems[i] !== items[i]) {
+					if (missCount === cap) {
+						// Enough of the list has changed to ask what kind of change this is,
+						// because the two kinds want opposite treatment.  If the item at this
+						// position is somewhere else in the old list, the rows were reordered,
+						// and the general diff's item map will reuse their Templates instead of
+						// rebuilding them — so stop here and let it.  If the item is new, the
+						// rows' contents changed, and there is nothing to reuse: keep going and
+						// patch them all, however many there are.  The scan costs one pass over
+						// the old rows, once, and only for a list that changed this much.
+						if (itemIsElsewhere(lastItems, oldLen, items[i])) {
+							tooMany = true;
+							missCount = 0; // Nothing was built, so the general path has nothing to reuse.
+							break;
+						}
+						cap = len; // Asked and answered; there is no second probe.
+					}
+					(misses ??= [])[missCount++] = i;
+				}
+			}
+
+			// Now build them.
+			if (!tooMany && missCount !== 0) {
+				missTemplates = new Array(missCount);
+				for (let k=0; k<missCount; k++) {
+					let t = fn(items[misses[k]]);
+					if (!(t instanceof Template) && typeof t !== 'string') { // A Node, an array, …
+						tooMany = true;
+						missCount = k; // Keep the ones already built; the rest are the caller's problem.
+						break;
+					}
+					missTemplates[k] = t;
+				}
+			}
+			if (!tooMany && (missCount === 0
+					|| this.applyMisses(oldNgs, misses, missTemplates, missCount, len))) {
+				for (let k=0; k<missCount; k++) {
+					let j = misses[k];
+					lastItems[j] = items[j];
+				}
+				return;
+			}
+		}
+
+		// General path: build the whole list of Templates and hand it to the reconciler.
+		let newItems = new Array(len);
+		let built = missCount !== 0 ? misses : null, b = 0;
+		let itemMap = null, noItemMap = false;
+		const indexOfItem = item => {
+			if (noItemMap)
+				return -1;
+			if (itemMap === null) {
+				// One scan before paying for a map: if this item is nowhere in the old rows, the
+				// list's contents changed rather than moved, so there is nothing to look up and
+				// every later miss can go straight to the callback.  A scan is cheaper than a map
+				// of every row, and this is the common shape — rows replaced in place.
+				if (!itemIsElsewhere(lastItems, oldLen, item)) {
+					noItemMap = true;
+					return -1;
+				}
+				itemMap = new Map();
+				for (let k=0; k<oldLen; k++)
+					itemMap.set(lastItems[k], k);
+			}
+			let k = itemMap.get(item);
+			return k === undefined ? -1 : k;
+		};
+		// Walk the two lists together.  A row is recognized by the item it was built from, at the
+		// offset the walk has settled on: after an insertion or a removal every later row sits a
+		// fixed distance from where it was, and following that keeps recognizing them instead of
+		// treating the whole tail as changed.  The short search that re-establishes the offset
+		// only runs while the walk is still in step, so a list of genuinely new rows (an append,
+		// a replace-all) gives up after one miss rather than searching for every row.  Failing
+		// all that, a map from item to the Template the previous render built for it catches
+		// rows that moved far — a sort, a shuffle.  It's built on demand, from the rows this
+		// path already holds: a persistent per-item cache would instead pay a write for every
+		// row of every list ever created, which is most of the work of building a list from
+		// scratch, and would hold each Template alive for as long as the caller holds the item.
+		if (oldLen !== 0) {
+			let delta = 0, inSync = true;
+			for (let i=0; i<len; i++) {
+				let item = items[i];
+				let j = i + delta;
+				let inRange = j >= 0 && j < oldLen;
+				if (inRange && lastItems[j] === item) {
+					newItems[i] = oldNgs[j].template;
+					inSync = true;
+					continue;
+				}
+
+				// This position was already found to have changed, and its Template built, by the
+				// patch scan above.  That only happens for a same-length list, where the offset
+				// stays zero, so there's no search to redo here.
+				if (built !== null && b < missCount && built[b] === i) {
+					newItems[i] = missTemplates[b++];
+					continue;
+				}
+
+				if (inSync) {
+					let found = -1;
+					for (let d=1; d<=shiftSearchDistance; d++) {
+						let after = j + d, before = j - d;
+						if (after < oldLen && lastItems[after] === item) {
+							found = after;
+							break;
+						}
+						if (before >= 0 && lastItems[before] === item) {
+							found = before;
+							break;
+						}
+					}
+					if (found >= 0) {
+						delta = found - i;
+						newItems[i] = oldNgs[found].template;
+						continue;
+					}
+
+					// The item isn't in the old list at all, but the old row standing here
+					// belongs to an item a little further along: rows were INSERTED here.  Build
+					// this one and shift the offset, so the rest of the list is still recognized.
+					// Without this, prepending one row to a long list would look like a change to
+					// every row in it.  Only worth asking when the list actually grew.
+					if (inRange && len > oldLen)
+						for (let d=1; d<=insertSearchDistance && i+d<len; d++)
+							if (items[i+d] === lastItems[j]) {
+								newItems[i] = fn(item);
+								delta--;
+								found = -2; // Handled; skip the fallbacks below.
+								break;
+							}
+					if (found === -2)
+						continue;
+
+					inSync = false;
+				}
+
+				// Past the end of the old list there is nothing left to match, so appended rows
+				// go straight to the callback instead of paying for a lookup that must miss.
+				if (j < oldLen) {
+					let k = indexOfItem(item);
+					if (k >= 0) {
+						newItems[i] = oldNgs[k].template;
+						delta = k - i; // Back in step; the rest of the list can walk positionally again.
+						inSync = true;
+						continue;
+					}
+				}
+				newItems[i] = fn(item);
+			}
+		}
+
+		else
+			for (let i=0; i<len; i++)
+				newItems[i] = fn(items[i]);
+
+		// A callback that returns something other than a Template or a string (a raw Node, an
+		// array, a nested list) can't be diffed positionally; flatten it the general way.
+		let first = len !== 0 ? newItems[0] : null;
+		if (first !== null && !(first instanceof Template) && typeof first !== 'string') {
+			let flat = [];
+			let hasNodesNow = this.collectItems(newItems, flat, false);
+			if (hasNodesNow || this.itemsHaveNodes) {
+				this.itemsHaveNodes = hasNodesNow;
+				this.applyGeneric(flat);
+			}
+			else
+				this.diffItems(flat);
+			return;
+		}
+
+		if (this.itemsHaveNodes) {
+			this.itemsHaveNodes = false;
+			this.applyGeneric(newItems);
+			return;
+		}
+
+		this.diffItems(newItems);
+
+		// Remember which item drew each row, so the next render can match them by identity.
+		// The reconciler leaves nodeGroups aligned with newItems, and therefore with items.
+		// The caller's array is copied rather than kept, since the caller mutates it in place.
+		let li = this.lastItems;
+		if (li === null || li.length !== len)
+			li = this.lastItems = new Array(len);
+		for (let j=0; j<len; j++)
+			li[j] = items[j];
+	}
+
+	/**
+	 * Patch only the positions an h.map() render changed, leaving every other row alone.
+	 *
+	 * Every unchanged position already holds the NodeGroup built from that exact item, so it
+	 * needs no visit at all; only the changed positions can require a rewrite, a move, or a new
+	 * row.  Changed positions are handled in two steps, the same shape as the general keyed
+	 * diff's small-reorder path: first the ones that kept their key (a row whose data changed
+	 * in place), then the leftovers are cross-matched against each other by key so a swap or a
+	 * short shuffle moves the fewest node ranges.
+	 *
+	 * @param ngs {NodeGroup[]} This path's NodeGroups, patched in place.
+	 * @param misses {int[]} Positions whose item changed, ascending.
+	 * @param templates {(Template|string)[]} The new Template for each of those positions.
+	 * @param missCount {int}
+	 * @param len {int} Length of the list, for anchoring the last position.
+	 * @return {boolean} False when the change doesn't fit this path and the caller must run
+	 * the general diff instead; nothing has been modified in that case. */
+	applyMisses(ngs, misses, templates, missCount, len) {
+
+		// Only a keyed list can move rows around safely.  An unkeyed one can still be rewritten
+		// in place, which is what the positional diff would do for it anyway.
+		let keyed = ngs[0].key !== undefined;
+
+		// 1. Classify the changed positions without touching anything, so that a change too big
+		// for this path can still be handed to the general diff with nothing half-applied.
+		// A row that kept its key is rewritten where it stands; the rest have to be matched
+		// against each other, and past a handful of those the general diff's map-and-LIS
+		// approach is the better tool.
+		let displaced = null, dCount = 0;
+		for (let k=0; k<missCount; k++) {
+			let ng = ngs[misses[k]], t = templates[k];
+			if (typeof t === 'string' || !itemClose(ng, t) || (keyed && ng.key !== keyOf(t))) {
+				if (!keyed || dCount === maxDisplacedMisses)
+					return false;
+				(displaced ??= [])[dCount++] = k;
+			}
+		}
+
+		// 2. Rewrite the rows that kept their key.  displaced holds indexes into misses in
+		// ascending order, so one pointer walks past them.
+		for (let k=0, d=0; k<missCount; k++) {
+			if (d < dCount && displaced[d] === k) {
+				d++;
+				continue;
+			}
+			let ng = ngs[misses[k]], t = templates[k];
+			if (itemSame(ng, t))
+				this.refreshSameItem(ng, t);
+			else
+				this.rewriteNodeGroup(ng, t);
+		}
+		if (dCount === 0)
+			return true;
+
+		// 3. Cross-match the displaced positions against each other by key: they all came from
+		// this same list, so a swap, a dragged row or a short shuffle finds its partners here.
+		// A claimed NodeGroup is nulled out of the snapshot so it can't be claimed twice.
+		let free = new Array(dCount);
+		for (let b=0; b<dCount; b++)
+			free[b] = ngs[misses[displaced[b]]];
+		let placed = new Array(dCount);
+		for (let a=0; a<dCount; a++) {
+			let t = templates[displaced[a]];
+			let key = keyOf(t);
+			if (key !== undefined)
+				for (let b=0; b<dCount; b++) {
+					let ng = free[b];
+					if (ng !== null && ng.key === key && itemClose(ng, t)) {
+						free[b] = null;
+						if (itemSame(ng, t))
+							this.refreshSameItem(ng, t);
+						else
+							this.rewriteNodeGroup(ng, t);
+						placed[a] = ng;
+						break;
+					}
+				}
+		}
+
+		// 4. Discard the old rows nothing claimed.  Keyed semantics require a new key to get new
+		// nodes, so these are never pooled.
+		for (let b=0; b<dCount; b++) {
+			let ng = free[b];
+			if (ng !== null) {
+				if (ng.startNode !== ng.endNode)
+					Util.saveOrphans(ng.getNodes());
+				else
+					ng.startNode.remove();
+			}
+		}
+
+		// 5. Put the displaced rows in place, right to left so each one's anchor is already final.
+		let wholeParent = this.wholeParent;
+		let parent = wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
+		for (let a=dCount-1; a>=0; a--) {
+			let p = misses[displaced[a]];
+			let ng = placed[a];
+			if (ng === undefined)
+				ng = this.createNew(templates[displaced[a]]);
+			ngs[p] = ng;
+			let anchor = p+1 < len ? ngs[p+1].startNode : (wholeParent ? null : this.nodeMarker);
+			if (ng.endNode.nextSibling !== anchor || ng.startNode.parentNode !== parent)
+				insertNodesBefore(parent, ng, anchor);
+		}
+
+		// 6. Node membership or order changed, so invalidate caches.
+		if (!this.parentNg.firstApply) {
+			this.nodesCache = null;
+			if (this.parentNg.parentPath)
+				this.parentNg.parentPath.clearNodesCache();
+		}
+
+		// Keep state used by the generic path from going stale.
+		if (this.nodeGroupsRendered)
+			this.nodeGroupsRendered = null;
+		if (this.nodeGroupsAttachedAvailable)
+			this.nodeGroupsAttachedAvailable = null;
+		return true;
 	}
 
 	/**
@@ -1887,7 +2304,8 @@ class PathToNodes extends Path {
 			let ng = oldNgs[start], t = newItems[start];
 			if (!itemSame(ng, t))
 				break;
-			this.refreshSameItem(ng, t);
+			if (ng.shell.needsRefresh)
+				this.refreshSameItem(ng, t);
 			newNgs[start] = ng;
 			start++;
 		}
@@ -1897,7 +2315,8 @@ class PathToNodes extends Path {
 			let ng = oldNgs[oldEnd-1], t = newItems[newEnd-1];
 			if (!itemSame(ng, t))
 				break;
-			this.refreshSameItem(ng, t);
+			if (ng.shell.needsRefresh)
+				this.refreshSameItem(ng, t);
 			newNgs[--newEnd] = ng;
 			oldEnd--;
 		}
@@ -1905,8 +2324,10 @@ class PathToNodes extends Path {
 		// 3. Aligned middle scan: keep unchanged NodeGroups, rewrite same-shape ones in place.
 		while (start < oldEnd && start < newEnd) {
 			let ng = oldNgs[start], t = newItems[start];
-			if (itemSame(ng, t)) // Can happen between changed rows, e.g. partial updates.
-				this.refreshSameItem(ng, t);
+			if (itemSame(ng, t)) { // Can happen between changed rows, e.g. partial updates.
+				if (ng.shell.needsRefresh)
+					this.refreshSameItem(ng, t);
+			}
 			else if (itemClose(ng, t))
 				this.rewriteNodeGroup(ng, t);
 			else
@@ -1997,23 +2418,11 @@ class PathToNodes extends Path {
 		let oldLen = oldNgs.length, newLen = newItems.length;
 		let newNgs = new Array(newLen);
 
-		// Resolve an item's key, caching the html->keyIndex lookup for same-template lists.
-		let keyHtml = null, keyIndex = -1;
-		const keyOf = t => {
-			if (t.key !== undefined) // JSX templates carry the key directly.
-				return t.key;
-			if (t.html !== keyHtml) {
-				keyHtml = t.html;
-				keyIndex = Shell.get(t.html, t.svgMode).keyIndex;
-			}
-			return keyIndex >= 0 ? t.exprs[keyIndex] : undefined;
-		};
-
 		//#IFDEV
 		{
 			let seen = new Set();
 			for (let t of newItems) {
-				let k = typeof t === 'string' ? undefined : keyOf(t);
+				let k = keyOf(t);
 				if (k === undefined)
 					console.warn('Unkeyed item in a keyed list; it will be rebuilt on every render:', t);
 				else if (seen.has(k))
@@ -2030,8 +2439,10 @@ class PathToNodes extends Path {
 		while (start < oldEnd && start < newEnd) {
 			let ng = oldNgs[start], t = newItems[start];
 			// An identical Template instance (h.map) implies an identical key, so skip key extraction.
-			if (ng.template === t)
-				this.refreshSameItem(ng, t);
+			if (ng.template === t) {
+				if (ng.shell.needsRefresh)
+					this.refreshSameItem(ng, t);
+			}
 			else if (typeof t === 'string' || ng.key !== keyOf(t) || !itemClose(ng, t))
 				break;
 			else if (itemSame(ng, t))
@@ -2045,8 +2456,10 @@ class PathToNodes extends Path {
 		// 2. Keep the matching suffix.
 		while (oldEnd > start && newEnd > start) {
 			let ng = oldNgs[oldEnd-1], t = newItems[newEnd-1];
-			if (ng.template === t)
-				this.refreshSameItem(ng, t);
+			if (ng.template === t) {
+				if (ng.shell.needsRefresh)
+					this.refreshSameItem(ng, t);
+			}
 			else if (typeof t === 'string' || ng.key !== keyOf(t) || !itemClose(ng, t))
 				break;
 			else if (itemSame(ng, t))
@@ -2074,10 +2487,12 @@ class PathToNodes extends Path {
 				let ok = true;
 				for (let i=start; i<newEnd; i++) {
 					let ng = oldNgs[i], t = newItems[i];
-					if (ng.template === t)
-						this.refreshSameItem(ng, t);
+					if (ng.template === t) {
+						if (ng.shell.needsRefresh)
+							this.refreshSameItem(ng, t);
+					}
 					else {
-						let k = typeof t === 'string' ? undefined : keyOf(t);
+						let k = keyOf(t);
 						if (k !== undefined && ng.key === k && itemClose(ng, t)) {
 							if (itemSame(ng, t))
 								this.refreshSameItem(ng, t);
@@ -2104,7 +2519,7 @@ class PathToNodes extends Path {
 						for (let a=0; a<d; a++) {
 							let p = displaced[a];
 							let t = newItems[p];
-							let k = typeof t === 'string' ? undefined : keyOf(t);
+							let k = keyOf(t);
 							if (k !== undefined)
 								for (let b=0; b<d; b++) {
 									if (used & (1<<b))
@@ -2188,28 +2603,56 @@ class PathToNodes extends Path {
 							(removals ??= []).push(ng);
 					}
 				}
-				else {
-					removals = oldNgs.slice(start, oldEnd);
-				}
+				// else: the whole old window goes away.  It isn't collected into an array here,
+				// because the fast clear below usually takes every one of them at once and the
+				// array would be built only to be thrown away.
+			}
+
+			// 3b. A large whole-parent list that is being fully replaced is emptied and refilled
+			// with its parent detached, so the browser's connected-tree bookkeeping (child-change
+			// notifications, tree-version bumps, MutationObserver interest walks, deferred
+			// accessibility and style consumers) runs once at reattach instead of once per row
+			// removed and once per row added.  Detaching before the clear, rather than after it,
+			// puts the removals on the cheap side of that line as well.  The gates: the whole
+			// region is being replaced, so nothing is kept and no focus can survive inside it;
+			// the parent is a plain element, since detaching a custom element would fire its
+			// disconnected/connectedCallback in the middle of a render and a subclass may run
+			// arbitrary logic there; the parent is in the document, since the notification storm
+			// only exists on a connected tree; and the list is long enough for the saving to beat
+			// the fixed cost of the detour and the extra MutationObserver records it creates.
+			let detachedFrom = null, reattachBefore = null;
+			if (wholeParent && start === 0 && newEnd === newLen && kept === 0 && newRemain > 500
+				&& parent.isConnected && parent.parentNode !== null
+				&& parent.localName.indexOf('-') === -1 && !parent.hasAttribute('is')) {
+				detachedFrom = parent.parentNode;
+				reattachBefore = parent.nextSibling;
+				parent.remove();
 			}
 
 			// 4. Remove unmatched old NodeGroups.  They're discarded, never pooled,
 			// so a later render with new keys always creates new nodes.
-			if (removals) {
-				// Materialize node caches of multi-node groups while attached, since detaching breaks sibling links.
-				for (let ng of removals)
-					if (ng.startNode !== ng.endNode)
-						ng.getNodes();
+			let removeAll = oldRemain !== 0 && newRemain === 0;
+			if (removals !== null || removeAll) {
+				// Fast clear when nothing is kept anywhere; the whole region is removals.  Trying
+				// it first means a cleared list skips the two passes below entirely: those exist
+				// to lift each group's nodes out one at a time, and emptying the parent has
+				// already taken all of them.
+				if (!(start === 0 && newEnd === newLen && kept === 0 && this.fastClear())) {
+					if (removeAll)
+						removals = oldNgs.slice(start, oldEnd);
 
-				// Fast clear when nothing is kept anywhere; the whole region is removals.
-				let cleared = start === 0 && newEnd === newLen && kept === 0 && this.fastClear();
-				if (!cleared)
+					// Materialize node caches of multi-node groups while attached, since detaching breaks sibling links.
+					for (let ng of removals)
+						if (ng.startNode !== ng.endNode)
+							ng.getNodes();
+
 					for (let ng of removals) {
 						if (ng.startNode !== ng.endNode)
 							Util.saveOrphans(ng.getNodes()); // Moves the nodes out of the DOM, into their own fragment.
 						else
 							ng.startNode.remove();
 					}
+				}
 			}
 
 			// 5. Insert new NodeGroups and move kept ones.
@@ -2221,33 +2664,6 @@ class PathToNodes extends Path {
 				// DocumentFragment would double the insert count for no benefit, since
 				// style/layout work is deferred until the next frame either way.
 				if (kept === 0) {
-
-					// When a large whole-parent list is fully replaced, detach the parent
-					// element first and reattach it once after the loop.  Every insert then
-					// happens on a disconnected subtree, so the browser's connected-tree
-					// bookkeeping (parent child-change notifications, tree-version bumps,
-					// MutationObserver interest walks, deferred accessibility/style consumers)
-					// runs once at reattach instead of once per row.  The full-region gate
-					// (start 0, newEnd === newLen, kept 0) means fastClear in step 4 already
-					// emptied the parent when it had old rows, so no focus can be inside it
-					// and anchor is null — appends behave identically while detached.  The
-					// size threshold keeps small lists on the direct path, where the fixed
-					// detach/reattach cost (and the extra MutationObserver records it
-					// creates) would outweigh the savings.  Custom-element parents (and
-					// customized built-ins) are excluded: detaching one would fire its
-					// disconnected/connectedCallback in the middle of this render, and a
-					// subclass may run arbitrary teardown/setup logic there.  Parents that
-					// are already outside the document skip the detour too — the
-					// notification storm only exists on connected trees.
-					let detachedFrom = null, reattachBefore = null;
-					if (wholeParent && start === 0 && newEnd === newLen && newRemain > 500
-						&& parent.isConnected && parent.parentNode !== null
-						&& parent.localName.indexOf('-') === -1 && !parent.hasAttribute('is')) {
-						detachedFrom = parent.parentNode;
-						reattachBefore = parent.nextSibling;
-						parent.remove();
-					}
-
 					for (let i=start; i<newEnd; i++) {
 						let ng = this.createNew(newItems[i]);
 						newNgs[i] = ng;
@@ -2262,9 +2678,6 @@ class PathToNodes extends Path {
 							node = next;
 						}
 					}
-
-					if (detachedFrom !== null)
-						detachedFrom.insertBefore(parent, reattachBefore);
 				}
 
 				// 5b. Mixed: iterate backwards so each item's anchor is already in place.
@@ -2290,6 +2703,9 @@ class PathToNodes extends Path {
 					}
 				}
 			}
+
+			if (detachedFrom !== null)
+				detachedFrom.insertBefore(parent, reattachBefore);
 
 			} // end if (!fastHandled)
 
@@ -2320,6 +2736,8 @@ class PathToNodes extends Path {
 		if (typeof item === 'string')
 			return new NodeGroup(textTemplate(item), this); // Text NodeGroups have no paths to apply.
 		let ng = new NodeGroup(item, this);
+		if (ng.shell.needsRefresh)
+			this.anyNeedsRefresh = true;
 		if (item.exprs.length || (ng.paths && ng.paths.length))
 			ng.applyExprs(item.exprs);
 		return ng;
@@ -2335,9 +2753,10 @@ class PathToNodes extends Path {
 	 * @param ng {NodeGroup}
 	 * @param t {Template|string} */
 	refreshSameItem(ng, t) {
-		if (ng.hasComponentPaths)
+		let shell = ng.shell;
+		if (shell.hasComponentPaths)
 			ng.applyExprs(t.exprs, false);
-		else if (ng.hasLivePropPaths && ng.pathsSingleExpr && typeof t !== 'string')
+		else if (shell.hasLivePropPaths && shell.pathsSingleExpr && typeof t !== 'string')
 			this.rewriteNodeGroup(ng, t);
 	}
 
@@ -2354,19 +2773,21 @@ class PathToNodes extends Path {
 		else {
 			// When every path consumes exactly one expression, paths align 1:1 with exprs,
 			// so only the expressions that changed need to be applied.
-			if (ng.pathsSingleExpr) {
+			if (ng.shell.pathsSingleExpr) {
 				// Stamped groups (paths === null) rewrite through the shared stampers and stay
 				// path-less, unless a child-node expression stopped being primitive.
 				if (ng.paths !== null || !ng.rewriteStamp(item)) {
 					let oldExprs = ng.template.exprs, newExprs = item.exprs;
 					let paths = ng.paths ?? ng.materializePaths();
-					for (let i = paths.length - 1; i >= 0; i--)
+					for (let i = paths.length - 1; i >= 0; i--) {
 						// Boolean live-HTML-property bindings are exempt from the unchanged-value
 						// skip — a click flips the property underneath the cached expression;
 						// applySingle() compares against the live node before writing.
-						if (!exprSame(oldExprs[i], newExprs[i])
-							|| (paths[i].isHtmlProperty && typeof newExprs[i] === 'boolean'))
-							paths[i].applySingle(newExprs[i]);
+						let oldExpr = oldExprs[i], newExpr = newExprs[i];
+						if ((oldExpr !== newExpr && !exprSame(oldExpr, newExpr))
+							|| (paths[i].isHtmlProperty && typeof newExpr === 'boolean'))
+							paths[i].applySingle(newExpr);
+					}
 				}
 
 				if (ng.styles)
@@ -2405,6 +2826,8 @@ class PathToNodes extends Path {
 		}
 
 		ng = new NodeGroup(item, this);
+		if (ng.shell.needsRefresh)
+			this.anyNeedsRefresh = true;
 		if (item.exprs.length || (ng.paths && ng.paths.length))
 			ng.applyExprs(item.exprs);
 		return ng;
@@ -2431,6 +2854,14 @@ class PathToNodes extends Path {
 
 		else if (typeof expr === 'function')
 			hasNodes = this.collectItems(expr(), items, hasNodes);
+
+		// A MappedList nested inside an array or returned from a function can't use the
+		// identity fast path, but it still renders; expand it through the per-item cache.
+		else if (expr instanceof MappedList) {
+			let subItems = expr.items, fn = expr.fn;
+			for (let i=0; i<subItems.length; i++)
+				items.push(fn(subItems[i]));
+		}
 
 		else if (expr instanceof NodeList) {
 			for (let node of expr)
@@ -2587,6 +3018,8 @@ class PathToNodes extends Path {
 		}
 		else {
 			result = new NodeGroup(template, this);
+			if (result.shell.needsRefresh)
+				this.anyNeedsRefresh = true;
 			result.applyExprs(template.exprs);
 		}
 
@@ -2708,11 +3141,54 @@ class PathToNodes extends Path {
 // Shared empty array for paths whose nodeGroups were never created.  Never mutated.
 const emptyNodeGroups = [];
 
+// How many changed h.map() positions applyMapped() collects before it stops to work out what
+// kind of change it is looking at (see the probe in applyMapped).  Below this every ordinary
+// edit — a selection, a partial update — is handled without asking.
+const missProbeThreshold = 256;
+
+// How many of those positions may need matching against each other before the general keyed
+// diff, with its key map and longest-increasing-subsequence, becomes the cheaper tool.  The
+// cross-match here is quadratic, which only pays while the number of moved rows is small.
+const maxDisplacedMisses = 16;
+
+// How far applyMapped() looks around a position to pick a shifted list's rows back up.  One
+// insertion or removal moves everything by one, which the first step finds; a handful at once
+// still lands inside this window, and past it the item map takes over.
+const shiftSearchDistance = 4;
+
+// How far ahead it looks to recognize a block of inserted rows, by finding the item that the
+// old row standing here now belongs to.  Wider than the search above because inserting a page
+// of rows at once is ordinary, and because this search only runs while the walk is still in
+// step and stops it dead the first time it fails — so its worst case is one pass of this many
+// comparisons per render, against building a map of every row in the list.
+const insertSearchDistance = 64;
+
 // Most detached NodeGroups kept per close key.  Bounds memory growth after very large
 // lists are cleared while keeping pooled rows for every typical re-create pattern.
 // Lowering this (e.g. to 1000) cuts retained memory ~7x after clearing a 10k-row list,
 // but makes re-creating such a list ~2x slower since most rows are built fresh.
 const maxPooledPerKey = 10000;
+
+
+// Cache for keyOf(): list rows share one html array, so the Shell lookup that finds where the
+// key=${} expression sits happens once per list rather than once per row.
+let lastKeyHtml = null, lastKeyIndex = -1;
+
+/**
+ * The list key of an item, or undefined when it has none.
+ * @param t {Template|string}
+ * @return {*} */
+function keyOf(t) {
+	if (typeof t === 'string')
+		return undefined;
+	if (t.key !== undefined) // JSX templates carry the key directly.
+		return t.key;
+	if (t.html !== lastKeyHtml) {
+		lastKeyHtml = t.html;
+		lastKeyIndex = Shell.get(t.html, t.svgMode).keyIndex;
+	}
+	return lastKeyIndex >= 0 ? t.exprs[lastKeyIndex] : undefined;
+}
 
 /**
  * @param text {string}
@@ -2748,6 +3224,21 @@ function itemClose(ng, item) {
 	if (typeof item === 'string')
 		return tpl.isText === true;
 	return tpl.html === item.html && tpl.svgMode === item.svgMode;
+}
+
+/**
+ * Is this item somewhere in the list the previous render drew, i.e. did it move rather than
+ * appear?  A plain scan rather than a map, because it runs once and usually answers on the way
+ * past.
+ * @param lastItems {Array}
+ * @param oldLen {int}
+ * @param item {*}
+ * @return {boolean} */
+function itemIsElsewhere(lastItems, oldLen, item) {
+	for (let i=0; i<oldLen; i++)
+		if (lastItems[i] === item)
+			return true;
+	return false;
 }
 
 /**
@@ -3099,6 +3590,13 @@ class Shell {
 	 * Lets NodeGroup.applyExprs() use a fast loop without allocating per-path expression arrays. */
 	pathsSingleExpr = false;
 
+	/** @type {boolean} True when a NodeGroup whose values are unchanged still has work to do:
+	 * components re-render so changes deeper in the tree surface, and live HTML properties are
+	 * rewritten because a click can flip them underneath the cached expression.  The list scans
+	 * check this before calling PathToNodes.refreshSameItem(), so the overwhelmingly common
+	 * unchanged row costs one field read instead of a call. */
+	needsRefresh = false;
+
 	/** @type {boolean} True if this Shell has any ids, styles, or scripts. */
 	hasEmbeds = false;
 
@@ -3147,9 +3645,18 @@ class Shell {
 	 * doesn't load the Path object to find its slot. */
 	stampSlot;
 
-	/** @type {?Path[]} The event stamper per op-3 path (carries delegatedKey and
-	 * eventName); null for other opcodes. */
+	/** @type {?Path[]} Per-path extra the stamp program needs: the event stamper for op 3
+	 * (it carries delegatedKey and eventName), the attribute name for op 4, null otherwise. */
 	stampAux;
+
+	/** @type {?string[]} The delegatable event names this shell binds, so a loop can register
+	 * their dispatchers once for the whole run of rows instead of testing every bound node. */
+	stampEventNames;
+
+	/** @type {?Uint8Array} Per-path flags the in-place rewrite loop needs, so it reads one byte
+	 * from a flat array instead of two properties from a Path object it otherwise wouldn't
+	 * touch.  Bit 1 = the path binds a live HTML property, bit 2 = it's a whole-parent child. */
+	stampFlags;
 
 	/**
 	 * Create the nodes but without filling in the expressions.
@@ -3275,12 +3782,17 @@ class Shell {
 							}
 
 							placeholdersUsed += parts.length - 1;
-							// In svgMode, setting typed SVG attributes (viewBox, r, etc.) with the placeholders
-							// stripped out makes the browser log parse errors, both here and when the fragment is cloned.
-							// Remove the attribute instead; apply() recreates it with the real values.
-							// Event attributes bound to a single expression are removed because they bind via
-							// addEventListener; leaving an empty onclick="" attribute violates a strict CSP when the event fires.
-							if (svgMode || (isEvent && !nonEmptyParts))
+							// An attribute whose whole value is one expression is removed from the shell:
+							// its stamped value is always the empty string, so every clone would carry a
+							// useless empty attribute that costs storage on creation and a slot in the
+							// element's attribute list forever, and apply() writes the real value anyway
+							// (a missing attribute reads back as '', so an empty expression still writes
+							// nothing).  Event attributes must be removed for the same reason plus a
+							// stricter one: an empty onclick="" violates a strict CSP when the event fires.
+							// In svgMode, setting typed SVG attributes (viewBox, r, etc.) with the
+							// placeholders stripped out makes the browser log parse errors, both here and
+							// when the fragment is cloned, so those are removed whether or not they're whole.
+							if (svgMode || !nonEmptyParts)
 								node.removeAttribute(attr.name);
 							else try {
 								node.setAttribute(attr.name, parts.join(''));
@@ -3432,6 +3944,7 @@ class Shell {
 			if (path.isHtmlProperty) // needs the full scan — no early break
 				this.hasLivePropPaths = true;
 		}
+		this.needsRefresh = this.hasComponentPaths || (this.hasLivePropPaths && this.pathsSingleExpr);
 
 		// Stampable shells create NodeGroups without allocating any Path objects:
 		// NodeGroup.applyStamp() writes expressions through these shared stamper paths,
@@ -3468,10 +3981,13 @@ class Shell {
 				this.stampOp = new Uint8Array(n);
 				this.stampSlot = new Uint16Array(n);
 				this.stampAux = new Array(n).fill(null);
+				this.stampFlags = new Uint8Array(n);
 
+				let eventNames = null;
 				for (let i=0; i<n; i++) {
 					let p = this.paths[i], sp = this.stampPaths[i];
 					this.stampSlot[i] = p.markerSlot;
+					this.stampFlags[i] = (sp.isHtmlProperty ? 1 : 0) | (sp.wholeParent ? 2 : 0);
 					if (p instanceof PathToKey)
 						this.stampOp[i] = 1;
 					else if (sp.wholeParent)
@@ -3479,8 +3995,20 @@ class Shell {
 					else if (sp instanceof PathToEvent && sp.delegatedKey !== undefined && !sp.attrValue) {
 						this.stampOp[i] = 3;
 						this.stampAux[i] = sp;
+						(eventNames ??= []).push(sp.eventName);
+					}
+
+					// A plain attribute holding one whole expression.  The shell no longer carries
+					// the attribute at all (see the placeholder handling above), so on a freshly
+					// cloned row the value is known to be absent and a string can be written
+					// without first reading back what's there.
+					else if (sp instanceof PathToAttribValue && !sp.attrValue && !sp.isHtmlProperty
+						&& !sp.isComponentAttrib) {
+						this.stampOp[i] = 4;
+						this.stampAux[i] = sp.attrName;
 					}
 				}
+				this.stampEventNames = eventNames;
 			}
 		}
 
@@ -3585,7 +4113,25 @@ class Shell {
 				return 0;
 			let s = slotOf.get(node);
 			if (s === undefined) {
-				ops.push(getSlot(node.parentNode), Array.prototype.indexOf.call(node.parentNode.childNodes, node));
+				// Two ways to reach a node, costing one pointer step each: walk forward from an
+				// already-resolved earlier sibling, or take the parent's firstChild and walk
+				// forward.  Sibling steps win whenever they're no more numerous, and they can
+				// also spare the parent a slot of its own — in a row of cells, resolving each
+				// <td> from the previous one is one step instead of firstChild plus its index.
+				let d = 0, from = -1;
+				for (let sib = node.previousSibling; sib; sib = sib.previousSibling) {
+					d++;
+					let ss = slotOf.get(sib);
+					if (ss !== undefined) {
+						from = ss;
+						break;
+					}
+				}
+				let index = Array.prototype.indexOf.call(node.parentNode.childNodes, node);
+				if (from >= 0 && d <= index + 1)
+					ops.push(from, -d); // A negative step count means "walk nextSibling from that slot".
+				else
+					ops.push(getSlot(node.parentNode), index);
 				s = nextSlot++;
 				slotOf.set(node, s);
 			}
@@ -3677,6 +4223,18 @@ const attribPlaceholder = 0xe000; // https://en.wikipedia.org/wiki/Private_Use_A
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
 
+/** Stand-in Shell for text NodeGroups, which are never parsed from html.  Its default field
+ * values (no components, no live properties, no single-expression paths) are exactly what the
+ * per-row code must see for a bare Text node, so ng.shell is never null. */
+const textShell = new Shell();
+
+// The Shell whose delegated dispatchers a root last registered, kept on the RootNodeGroup so
+// that a run of rows checks one field instead of asking at every bound node.  A Symbol rather
+// than a declared field, since only root NodeGroups ever carry it and a declared field would
+// cost a slot on every row.  The delegation mode isn't part of it: it comes from the root's
+// render options, which are fixed when the root is created.
+const lastStampedShellKey = Symbol('solariteStampedShell');
+
 /**
  * A group of Nodes instantiated from a Shell, with Expr's filled in.
  *
@@ -3710,15 +4268,11 @@ class NodeGroup {
 	 * matched by PathToNodes.applyKeyed().  Undefined for unkeyed NodeGroups. */
 	key;
 
-	/** @type {boolean} True if any of this NodeGroup's own paths is a PathToComponent. */
-	hasComponentPaths = false;
-
-	/** @type {boolean} True if any path binds a live HTML property (checked/value/selected) —
-	 * see Shell.hasLivePropPaths. */
-	hasLivePropPaths = false;
-
-	/** @type {boolean} True if every path consumes exactly one expression and none are components. */
-	pathsSingleExpr = false;
+	/** @type {Shell} The Shell this NodeGroup was cloned from, so the per-row code can read
+	 * hasComponentPaths/hasLivePropPaths/pathsSingleExpr and the stamp program off it instead
+	 * of copying them onto every instance and re-looking the Shell up on every apply.
+	 * Text NodeGroups get the shared empty textShell, which reports false for all of them. */
+	shell;
 
 	/** @type {boolean} True until applyExprs() finishes the first time.
 	 * While true, ancestor node caches can't reference this NodeGroup's nodes, so they don't need invalidation. */
@@ -3766,20 +4320,17 @@ class NodeGroup {
 		// If it's just a text node, skip a bunch of unnecessary steps.
 		// el can be an existing Text node to adopt, from PathToNodes' bare-text fast path.
 		if (template.isText) {
+			this.shell = textShell;
 			this.closeKey = template.getCloseKey();
 			this.startNode = this.endNode = el || Globals$1.doc.createTextNode(template.html[0]);
 		}
 
 		else {
 			// Get a cached version of the parsed and instantiated html, and Paths:
-			const shell = Shell.get(template.html, template.svgMode);
+			const shell = this.shell = Shell.get(template.html, template.svgMode);
 
 			// The shell caches the close key so each new template doesn't repeat the WeakMap lookup.
 			this.closeKey = shell.closeKey ??= template.getCloseKey();
-
-			this.hasComponentPaths = shell.hasComponentPaths;
-			this.hasLivePropPaths = shell.hasLivePropPaths;
-			this.pathsSingleExpr = shell.pathsSingleExpr;
 
 			// A lone root element is cloned directly, skipping a throwaway fragment wrapper.
 			// Only for child NodeGroups; RootNodeGroup's grafting expects a fragment.
@@ -3836,8 +4387,12 @@ class NodeGroup {
 	 * Dispatches expression handling to other functions depending on the path type.
 	 * @param exprs {(*|*[]|function|Template)[]}
 	 * @param includeNonComponents {boolean} False to only apply component paths,
-	 * used when the non-component exprs are known to be unchanged. */
-	applyExprs(exprs, includeNonComponents=true) {
+	 * used when the non-component exprs are known to be unchanged.
+	 * @param lastExprs {?Expr[]} The expressions applied last time, when the caller has them.
+	 * Paths that would provably do nothing with an unchanged expression are then skipped —
+	 * see Path.skipIfSame.  A root template's event bindings are the usual beneficiaries:
+	 * they are the same handlers on every render, and re-binding them costs a call apiece. */
+	applyExprs(exprs, includeNonComponents=true, lastExprs=null) {
 
 		/*#IFDEV*/
 		this.verify();
@@ -3847,14 +4402,18 @@ class NodeGroup {
 
 		// Fast path: every path consumes exactly one expression and none are components,
 		// so skip the bookkeeping that maps expressions to paths.
-		if (this.pathsSingleExpr) {
+		if (this.shell.pathsSingleExpr) {
 			if (includeNonComponents) {
 				if (paths === null) { // Created from a stampable shell; no paths yet.
 					this.applyStamp(exprs);
 					return;
 				}
-				for (let i = paths.length - 1; i >= 0; i--)
-					paths[i].applySingle(exprs[i]);
+				for (let i = paths.length - 1; i >= 0; i--) {
+					let path = paths[i];
+					if (lastExprs !== null && path.skipIfSame && lastExprs[i] === exprs[i])
+						continue;
+					path.applySingle(exprs[i]);
+				}
 
 				if (this.styles)
 					this.updateStyles();
@@ -3929,8 +4488,7 @@ class NodeGroup {
 	 * falls back to materializing real paths and applying normally.
 	 * @param exprs {Expr[]} */
 	applyStamp(exprs) {
-		let template = this.template;
-		let shell = Shell.get(template.html, template.svgMode);
+		let shell = this.shell;
 
 		// 1. Bail to real paths when any child-node expression isn't a primitive.
 		let nodesIdx = shell.nodesPathIdx;
@@ -3956,6 +4514,18 @@ class NodeGroup {
 		let opt = rootNg.options?.eventDelegation;
 		let delegateDoc = opt === 'document';
 		let delegateAll = opt === undefined || opt === true || delegateDoc;
+
+		// Register this shell's delegated dispatchers once for a whole run of rows.  They live on
+		// the root, not on the bound nodes, so asking per node — as the general binding path has
+		// to — would be a call and a set lookup for every handler in the list.
+		let names = shell.stampEventNames;
+		if (names !== null && delegateAll && rootNg[lastStampedShellKey] !== shell) {
+			for (let k=0; k<names.length; k++)
+				ensureDelegatedDispatcher(root, names[k], delegateDoc);
+			rootNg[lastStampedShellKey] = shell;
+		}
+
+		let firstApply = this.firstApply;
 		for (let i = ops.length - 1; i >= 0; i--) {
 			let v = exprs[i];
 			let o = ops[i];
@@ -3975,11 +4545,16 @@ class NodeGroup {
 				&& (typeof v === 'function' || (Array.isArray(v) && typeof v[0] === 'function'))) {
 				let sp = aux[i];
 				let node = slots[slotIdx[i]];
-				let dk = sp.delegatedKey;
-				if (node[dk] === undefined)
-					ensureDelegatedDispatcher(root, sp.eventName, delegateDoc);
-				node[dk] = v;
+				node[sp.delegatedKey] = v;
 				node[delegatedRootKey] = root;
+			}
+
+			// A plain attribute on a freshly cloned row: the shell left it off, so an empty
+			// value means there is simply nothing to write, and any other string can go
+			// straight in without reading the attribute back first.
+			else if (o === 4 && firstApply && typeof v === 'string') {
+				if (v !== '')
+					slots[slotIdx[i]].setAttribute(aux[i], v);
 			}
 
 			// The list key never touches the DOM.
@@ -4007,7 +4582,7 @@ class NodeGroup {
 	 * @return {boolean} False when a child-node expression isn't primitive; the caller
 	 * must then materialize paths and apply normally. */
 	rewriteStamp(template) {
-		let shell = Shell.get(template.html, template.svgMode);
+		let shell = this.shell;
 		let newExprs = template.exprs;
 		let nodesIdx = shell.nodesPathIdx;
 		for (let i=0; i<nodesIdx.length; i++) {
@@ -4017,25 +4592,29 @@ class NodeGroup {
 		}
 
 		let oldExprs = this.template.exprs;
-		let paths = shell.paths, stampers = shell.stampPaths;
+		let stampers = shell.stampPaths, slotIdx = shell.stampSlot, flags = shell.stampFlags;
 		let slots = this.stampSlotsCache; // Nodes are resolved only if something actually changed, then cached.
-		for (let i = paths.length - 1; i >= 0; i--) {
+		for (let i = stampers.length - 1; i >= 0; i--) {
 			// Live HTML properties (checked etc., boolean-valued) are exempt from the
 			// unchanged-value skip: a user's click flips the DOM property underneath the cached
 			// expression, and applySingle() compares against the live node before writing.
-			if (!exprSame(oldExprs[i], newExprs[i])
-				|| (stampers[i].isHtmlProperty && typeof newExprs[i] === 'boolean')) {
+			// The identity test is inline because most expressions are unchanged, and reaching
+			// exprSame() only to be told so costs more than the comparison itself.
+			let oldExpr = oldExprs[i], newExpr = newExprs[i];
+			let flag = flags[i];
+			if ((oldExpr !== newExpr && !exprSame(oldExpr, newExpr))
+				|| ((flag & 1) && typeof newExpr === 'boolean')) {
 				// .slice() is required: resolveStampSlots returns the Shell's SHARED scratch
 				// array, which the next row's resolve would overwrite.
 				if (slots === null)
 					slots = this.stampSlotsCache = this.resolveStampSlots(shell).slice();
 				let stamper = stampers[i];
-				let marker = slots[paths[i].markerSlot];
+				let marker = slots[slotIdx[i]]; // The flat slot array, so the Path isn't loaded.
 
 				// Fast path for a wholeParent text path whose child already exists (the common
 				// rewrite case): set its value directly, skipping applySingle's branching and
 				// textNode bookkeeping.  exprSame above already proved it changed.
-				if (stamper.wholeParent) {
+				if (flag & 2) {
 					let v = newExprs[i], tn = marker.firstChild;
 					if (typeof v === 'number')
 						v += '';
@@ -4074,9 +4653,18 @@ class NodeGroup {
 		let ops = shell.resolveOps;
 		// firstChild/nextSibling pointer walk; see setPathsFromFragment for why not childNodes[i].
 		for (let i=2, s=2; i<ops.length; i+=2, s++) {
-			let node = slots[ops[i]].firstChild;
-			for (let k=ops[i+1]; k>0; k--)
-				node = node.nextSibling;
+			let k = ops[i+1], node;
+			if (k < 0) { // Walk forward from an earlier sibling's slot.
+				node = slots[ops[i]];
+				do
+					node = node.nextSibling;
+				while (++k < 0);
+			}
+			else {
+				node = slots[ops[i]].firstChild;
+				for (; k>0; k--)
+					node = node.nextSibling;
+			}
 			slots[s] = node;
 		}
 		return slots;
@@ -4089,7 +4677,7 @@ class NodeGroup {
 	 * @param shell {?Shell}
 	 * @return {Path[]} */
 	materializePaths(shell=null) {
-		shell ??= Shell.get(this.template.html, this.template.svgMode);
+		shell ??= this.shell;
 		let slots = this.resolveStampSlots(shell);
 		let paths = shell.paths;
 		let pathLength = paths.length;
@@ -4183,10 +4771,21 @@ class NodeGroup {
 			// Resolve each node via firstChild/nextSibling pointer walks instead of
 			// childNodes[index]; the live NodeList indexing is markedly slower, and indices
 			// are small (markers are elements, often the first child after whitespace stripping).
+			// A negative step count means the program reaches this node from an earlier
+			// sibling's slot instead of from its parent (see Shell.buildResolveProgram).
 			for (; i<ops.length; i+=2, s++) {
-				let node = slots[ops[i]].firstChild;
-				for (let k=ops[i+1]; k>0; k--)
-					node = node.nextSibling;
+				let k = ops[i+1], node;
+				if (k < 0) {
+					node = slots[ops[i]];
+					do
+						node = node.nextSibling;
+					while (++k < 0);
+				}
+				else {
+					node = slots[ops[i]].firstChild;
+					for (; k>0; k--)
+						node = node.nextSibling;
+				}
 				slots[s] = node;
 			}
 			for (let i=0; i<pathLength; i++) {
@@ -4540,8 +5139,13 @@ class Template {
 		// If we didn't just create it, we need to render it.
 		if (this.html?.length === 1 && !this.html[0]) // An empty string.
 			el.innerHTML = ''; // Fast path for empty component.
-		else
-			ng.applyExprs(this.exprs);
+		else {
+			// A component renders the same template every time, so hand over the expressions it
+			// applied last time; paths that can prove an unchanged expression is a no-op skip.
+			let last = ng.template;
+			ng.applyExprs(this.exprs, true, last !== this && last.html === this.html ? last.exprs : null);
+			ng.template = this;
+		}
 
 		return el;
 	}
@@ -4571,9 +5175,13 @@ class Template {
 function templatesSame(a, b) {
 	if (a.html === b.html && a.svgMode === b.svgMode) {
 		let ae = a.exprs, be = b.exprs;
-		for (let i=0; i<ae.length; i++)
-			if (!exprSame(ae[i], be[i]))
+		// Most expressions are identical between renders, so test that here rather than paying
+		// a call into exprSame() to learn it.
+		for (let i=0; i<ae.length; i++) {
+			let x = ae[i], y = be[i];
+			if (x !== y && !exprSame(x, y))
 				return false;
+		}
 		return true;
 	}
 
@@ -4824,11 +5432,14 @@ function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 			let parent = htmlStrings, options = exprs[0];
 
 			// The closure is cached on the element so repeated renders don't recreate it.
-			if (options === undefined) {
-				let cached = parent[renderTemplateKey];
-				if (cached)
-					return cached;
-			}
+			// Options are cached with it: they only take effect when the element's
+			// RootNodeGroup is first created, so a later render passing different ones is
+			// ignored either way, and caching regardless of them saves an allocation on every
+			// render of a component that passes an options object — which is how render() is
+			// usually written.
+			let cached = parent[renderTemplateKey];
+			if (cached)
+				return cached;
 
 			// Return a tagged template function that applies the tagged template to parent.
 			let renderTemplate = (htmlStrings, ...exprs) => {
@@ -4840,8 +5451,7 @@ function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 				let template = new Template(htmlStrings, exprs);
 				return template.render(parent, options);
 			};
-			if (options === undefined)
-				parent[renderTemplateKey] = renderTemplate;
+			parent[renderTemplateKey] = renderTemplate;
 			return renderTemplate;
 		}
 	}
@@ -4886,14 +5496,6 @@ function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 		throw new Error('h() does not support argument of type: ' + (htmlStrings ? typeof htmlStrings : htmlStrings))
 }
 
-// h.map caches each item's Template keyed by the item's identity, so a re-render returns
-// the SAME Template instance for any item whose reference is unchanged.  The reconciler's
-// `ng.template === item` fast path (PathToNodes.applyKeyed/applyDiff) then skips rebuilding
-// and comparing that row.  A WeakMap is used instead of a symbol property so the idiomatic
-// immutable update `{...item, x}` yields a fresh object that ISN'T in the cache and re-renders;
-// a symbol property would be copied by spread and silently reuse the stale Template.
-const mapCache = new WeakMap();
-
 /**
  * Render a list, reusing each item's DOM for as long as the item is the SAME object.
  *
@@ -4910,26 +5512,15 @@ const mapCache = new WeakMap();
  *
  * ${h.map(this.rows, row => h`<tr key=${row.id}>${row.label}</tr>`)}
  *
+ * What comes back is a MappedList, not an array: it carries the items and the callback so
+ * the reconciler can match a row to its item by identity and call the callback only for the
+ * rows it can't match.  Put it straight into a template expression, as above; nested inside
+ * an array, or returned from a function, it expands to Templates just the same.
+ *
  * @param items {Array} The list to render.
  * @param fn {function(item:*):Template} Builds an item's Template; called only for new items.
- * @return {Template[]} */
-h.map = (items, fn) => {
-	let result = new Array(items.length);
-	for (let i=0; i<items.length; i++) {
-		let item = items[i];
-		if (item !== null && typeof item === 'object') {
-			let template = mapCache.get(item);
-			if (template === undefined) {
-				template = fn(item);
-				mapCache.set(item, template);
-			}
-			result[i] = template;
-		}
-		else
-			result[i] = fn(item);
-	}
-	return result;
-};
+ * @return {MappedList} */
+h.map = (items, fn) => new MappedList(items, fn);
 
 h.immutableMap = h.map;
 
@@ -5219,4 +5810,4 @@ class Solarite extends HTMLElementAutoDefine {
 }
 
 export default h;
-export { Fragment, Globals$1 as Globals, Solarite, Util as SolariteUtil, Template, assignAttributes, convertType, delve, getEventBinding, h, svg, toEl };
+export { Fragment, Globals$1 as Globals, MappedList, Solarite, Util as SolariteUtil, Template, assignAttributes, convertType, delve, getEventBinding, h, svg, toEl };
