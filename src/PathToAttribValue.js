@@ -2,6 +2,7 @@ import Path from "./Path.js";
 import Util from "./Util.js";
 import delve, {isDelvePath} from "./delve.js";
 import assert from "./assert.js";
+import {SelectorRef} from "./Selector.js";
 
 export default class PathToAttribValue extends Path {
 
@@ -130,6 +131,16 @@ export default class PathToAttribValue extends Path {
 
 		// Regular attribute
 		else {
+			// A selection binding (h.selector().when()) writes its own value and remembers this
+			// node, so a later change of selection reaches the attribute directly instead of
+			// going back through render().  The typeof test keeps ordinary string attributes —
+			// nearly all of them — from paying for the prototype check.
+			if (typeof expr === 'object' && expr instanceof SelectorRef) {
+				if (!this.isComponentAttrib)
+					expr.bind(node, this.attrName, this.parentNg.firstApply);
+				return;
+			}
+
 			// Cache this on Path.isHtmlProperty when Shell creates the props.
 			// Have Path.clone() copy .isHtmlProperty?
 			let isProp = this.isHtmlProperty;
@@ -210,6 +221,11 @@ export default class PathToAttribValue extends Path {
 		for (let i = 0; i < values.length; i++) {
 			result.push(values[i]);
 			if (i < values.length - 1) {
+				// A selection binding has to own the whole attribute, because its whole point is
+				// writing that attribute without re-rendering, which it can't do if the rest of
+				// the value comes from expressions it doesn't know about.
+				if (typeof exprs[i] === 'object' && exprs[i] instanceof SelectorRef)
+					throw new Error(`Solarite cannot use a selector inside the multi-part attribute ${this.attrName}="${values.join('${...}')}".  Give the selector the whole attribute value instead, and put the constant part in its on/off values.`);
 				let val = Util.makePrimitive(exprs[i]);
 				if (!Util.isFalsy(val))
 					result.push(val);

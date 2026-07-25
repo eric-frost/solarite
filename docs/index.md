@@ -708,6 +708,43 @@ Rules for `key`:
 
 `h.map()` and keys compose: `h.map()` skips rebuilding unchanged rows' templates, while keys control node identity and movement.
 
+#### Selection
+
+Highlighting the selected row of a table is a special case worth its own tool.  Storing the selected id as an ordinary field works, but it means every change of selection calls `render()`, and the reconciler then has to walk the list to discover that exactly two rows differ.  `h.selector()` skips that: each row's binding remembers the element it was written to, so changing the selection writes those two attributes and nothing else.
+
+```javascript
+class UserTable extends Solarite {
+    rows = [{id: 1, name: 'Alice'}, {id: 2, name: 'Bob'}];
+    selected = h.selector();
+
+    pick(row) {
+        this.selected.set(row.id);   // No render() call.
+    }
+
+    render() {
+        h(this)`
+        <user-table><table><tbody>
+            ${h.map(this.rows, row =>
+                h`<tr key=${row.id} class=${this.selected.when(row.id, 'active')}
+                    onclick=${[this.pick, row]}>
+                    <td>${row.name}</td>
+                </tr>`)}
+        </tbody></table></user-table>`;
+    }
+}
+```
+
+`when(key, on, off)` binds an attribute to whether that row's key is the selected one.  It gives the attribute the `on` value when it is and the `off` value when it isn't; `off` defaults to `''`, which leaves the element with no such attribute rather than an empty one.
+
+Rules for selectors:
+
+- `when()` must supply a whole attribute value.  Putting it inside a longer value (`class="row ${sel.when(...)}"`) or using it as element content throws, because a selector owns the attribute it writes — fold any constant part into the `on` and `off` values instead.
+- The selection lives on the selector, not on the rows, so it survives re-renders, follows a row through a reorder, and can be set for a key whose row hasn't been rendered yet — that row comes up already selected.
+- `set(null)` deselects.  There is nothing to release when rows go away: bindings for elements that have left the document are swept as the selection moves.  `selector.size` reports how many bindings are held, if you ever want to confirm that.
+- One selector holds one selection.  For several independent highlights, use several selectors.
+
+A selector is worth reaching for when a change of selection would otherwise re-render a long list.  For a short list, or for state that several parts of the template derive from, an ordinary field and a `render()` call are simpler and fast enough.
+
 ### Scoped Styles
 
 Solarite provides a powerful scoped styling system that allows components to define styles that apply only to themselves and their children.  Unlike Shadow DOM, this allows styles to be inherited from the rest of the document.

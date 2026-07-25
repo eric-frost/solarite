@@ -4,6 +4,7 @@ import toEl from "./toEl.js";
 import Util from "./Util.js";
 import {jsxToTemplate, Fragment} from "./jsx.js";
 import MappedList from "./MappedList.js";
+import Selector from "./Selector.js";
 
 /**
  * Convert strings to HTMLNodes.
@@ -205,4 +206,34 @@ export default function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 h.map = (items, fn) => new MappedList(items, fn);
 
 h.immutableMap = h.map;
+
+/**
+ * Create a selection that updates only the rows it affects.
+ *
+ * A highlight that moves from one row of a thousand to another changes two attributes.
+ * Expressing it as ordinary state means calling render() and letting the reconciler walk the
+ * list to rediscover that.  A selector writes those two attributes directly instead:
+ *
+ *	 class Table extends Solarite {
+ *		 selected = h.selector();
+ *
+ *		 pick(row) {
+ *			 this.selected.set(row.id);   // no render() call
+ *		 }
+ *
+ *		 render() {
+ *			 h(this)`<tbody>${h.map(this.rows, row =>
+ *				 h`<tr key=${row.id} class=${this.selected.when(row.id, 'danger')}
+ *					 onclick=${[this.pick, row]}>${row.label}</tr>`)}</tbody>`;
+ *		 }
+ *	 }
+ *
+ * when() must be a whole attribute value, not part of one and not element content, since it
+ * owns that attribute for as long as the row exists.  An off value of '' leaves no attribute
+ * behind at all.  Selection state lives on the selector, so it survives re-renders, and
+ * set() is safe to call whether or not the rows are currently rendered.
+ *
+ * @param key {*} The initially selected key, or null for none.
+ * @return {Selector} */
+h.selector = (key = null) => new Selector(key);
 
