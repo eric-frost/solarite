@@ -4,6 +4,27 @@ All notable changes to Solarite are documented here. This project follows [Keep 
 
 ## [Unreleased]
 
+### Added
+- **`h.selector()`** — a selection that updates only the rows it actually affects. Moving a highlight from one row of a thousand to another changes two attributes, but expressing that as ordinary component state means calling `render()` and letting the reconciler walk the list to rediscover it. A selector writes those two attributes directly instead, with no `render()` call and no walk:
+
+  ```js
+  class Table extends Solarite {
+      selected = h.selector();
+
+      pick(row) {
+          this.selected.set(row.id);   // no render() call
+      }
+
+      render() {
+          h(this)`<tbody>${h.map(this.rows, row =>
+              h`<tr key=${row.id} class=${this.selected.when(row.id, 'danger')}
+                  onclick=${[this.pick, row]}>${row.label}</tr>`)}</tbody>`;
+      }
+  }
+  ```
+
+  `when(key, on, off)` must be a whole attribute value — not part of one, and not element content; both throw with an explanation. An `off` value of `''` (the default) leaves no attribute at all rather than an empty one. The selection lives on the selector rather than on the rows, so it survives re-renders, follows a row through a reorder, and `set()` is safe to call whether or not those rows are currently on screen. Bindings for rows that no longer exist are swept as the selection moves, so nothing has to be released by hand; `selector.size` reports how many are held if you ever want to check.
+
 ### Changed
 - **Breaking:** `h.map()` returns a `MappedList` (the items plus the callback) rather than an array of templates, so the reconciler can recognize an unchanged row by the item it was built from. Put it straight into a template expression as before. It is iterable, so spreading it (`[...h.map(rows, fn)]`), nesting it inside an array, or returning it from a function all still work and expand to templates — but each of those builds every row, which is the work the identity shortcut exists to skip. A row is now reused for as long as its item is `===` to the one that built it, which means primitives compare by value where they previously rebuilt every render.
 - **Much faster list re-renders.** A same-length list in which only a few rows changed no longer scans the list at all: only the changed positions are built and patched, so a selection or a partial update costs work proportional to the change. A list that changed length follows the offset an insertion or removal creates instead of treating every later row as changed. The persistent per-item template cache is gone, replaced by a map built on demand from the rows a list already holds — it had been paying a write for every row of every list ever built, and holding each template alive for as long as the caller held the item.

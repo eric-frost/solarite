@@ -73,6 +73,13 @@ const terserOptions = {
 				'handleEvent', // Looked up by name by addEventListener(name, object).
 				'map', // Public API: h.map(), accessed by name in user code.
 				'immutableMap', // Public API: h.immutableMap(), alias of h.map().
+				// Public API: h.selector() and everything user code calls on what it returns.
+				'selector',
+				'when',
+				'set',
+				'key',
+				'size',
+				'value',
 				// RenderOptions properties come from user-code object literals:
 				'eventDelegation',
 				'ids',

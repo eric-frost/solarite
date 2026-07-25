@@ -1861,6 +1861,250 @@ Testimony.test('Solarite.map.fuzz', `Random list edits always produce the right 
 	run(false, 'r-927');
 });
 
+
+/**
+ * Build a 50-row table bound to a selector, for the tests below.
+ * @param tag {string} A unique custom element name.
+ * @param rowCount {int}
+ * @return {HTMLElement} */
+function selectorTable(tag, rowCount=50) {
+	class A extends Solarite {
+		rows = [];
+		sel = h.selector();
+		renders = 0;
+
+		render() {
+			this.renders++;
+			h(this)`<div>${h.map(this.rows, row =>
+				h`<p key=${row.id} class=${this.sel.when(row.id, 'danger')}>${row.label}</p>`)}</div>`
+		}
+	}
+	customElements.define(tag, A);
+	let a = new A();
+	for (let i=1; i<=rowCount; i++)
+		a.rows.push({id: i, label: 'r' + i});
+	document.body.append(a);
+	a.render();
+	return a;
+}
+
+Testimony.test('Solarite.selector.basic', `A selector writes only the two rows that change, with no render`, () => {
+	let a = selectorTable('r-940');
+	let ps = [...a.querySelectorAll('p')];
+	let rendersBefore = a.renders;
+
+	// Nothing selected yet, so no row carries the attribute at all.
+	assert.eq(a.querySelectorAll('[class]').length, 0);
+	assert.eq(a.sel.key, null);
+
+	a.sel.set(10);
+	assert.eq(a.sel.key, 10);
+	assert.eq(ps[9].getAttribute('class'), 'danger');
+	assert.eq(a.querySelectorAll('[class]').length, 1);
+	assert.eq(a.renders, rendersBefore); // The whole point: no re-render.
+
+	// Moving the selection clears the old row and sets the new one.
+	a.sel.set(20);
+	assert.eq(ps[9].hasAttribute('class'), false);
+	assert.eq(ps[19].getAttribute('class'), 'danger');
+	assert.eq(a.querySelectorAll('[class]').length, 1);
+
+	// Deselecting leaves nothing behind.
+	a.sel.set(null);
+	assert.eq(a.querySelectorAll('[class]').length, 0);
+	assert.eq(a.renders, rendersBefore);
+	a.remove();
+});
+
+Testimony.test('Solarite.selector.noEmptyAttribute', `An unselected row has no attribute, not an empty one`, () => {
+	let a = selectorTable('r-941', 3);
+	// key= is consumed for diffing and never reaches the DOM, so this is exactly the markup a
+	// hand-written implementation would produce — no empty class= on the unselected rows.
+	assert.eq(a.querySelector('div').innerHTML, '<p>r1</p><p>r2</p><p>r3</p>');
+
+	a.sel.set(2);
+	assert.eq(a.querySelector('div').innerHTML, '<p>r1</p><p class="danger">r2</p><p>r3</p>');
+
+	a.sel.set(null);
+	assert.eq(a.querySelector('div').innerHTML, '<p>r1</p><p>r2</p><p>r3</p>');
+	a.remove();
+});
+
+Testimony.test('Solarite.selector.survivesRender', `Selection survives a re-render and follows a moved row`, () => {
+	let a = selectorTable('r-942', 10);
+	a.sel.set(4);
+	let p4 = a.querySelectorAll('p')[3];
+	assert.eq(p4.getAttribute('class'), 'danger');
+
+	// A re-render that changes nothing must leave the selection alone.
+	a.render();
+	assert.eq(a.querySelectorAll('p')[3], p4);
+	assert.eq(p4.getAttribute('class'), 'danger');
+
+	// Reordering moves the row's node; the highlight rides along with it.
+	a.rows.reverse();
+	a.render();
+	let ps = [...a.querySelectorAll('p')];
+	assert.eq(ps[6], p4);
+	assert.eq(ps[6].getAttribute('class'), 'danger');
+	assert.eq(a.querySelectorAll('[class]').length, 1);
+
+	// And the selection can still be moved afterwards.
+	a.sel.set(9);
+	assert.eq(p4.hasAttribute('class'), false);
+	assert.eq(ps[1].getAttribute('class'), 'danger');
+	a.remove();
+});
+
+Testimony.test('Solarite.selector.rowRemoved', `Removing the selected row leaves no stale binding`, () => {
+	let a = selectorTable('r-943', 10);
+	a.sel.set(5);
+	let p5 = a.querySelectorAll('p')[4];
+
+	a.rows.splice(4, 1);
+	a.render();
+	assert.eq(a.querySelectorAll('p').length, 9);
+	assert.eq(a.querySelectorAll('[class]').length, 0);
+
+	// Selecting a still-present row must not resurrect the removed one.
+	a.sel.set(6);
+	assert.eq(a.querySelectorAll('p')[4].getAttribute('class'), 'danger');
+	assert.eq(a.querySelectorAll('[class]').length, 1);
+	assert.eq(p5.isConnected, false);
+	a.remove();
+});
+
+Testimony.test('Solarite.selector.newRowsAdopt', `A row rendered while its key is selected comes up highlighted`, () => {
+	let a = selectorTable('r-944', 3);
+
+	// Select a key that has no row yet.
+	a.sel.set(7);
+	assert.eq(a.querySelectorAll('[class]').length, 0);
+
+	a.rows.push({id: 7, label: 'r7'});
+	a.render();
+	assert.eq(a.querySelectorAll('p')[3].getAttribute('class'), 'danger');
+	assert.eq(a.querySelectorAll('[class]').length, 1);
+	a.remove();
+});
+
+Testimony.test('Solarite.selector.refIdentity', `when() returns the same ref for a key, so unchanged rows skip the write`, () => {
+	let sel = h.selector();
+	let a = sel.when(3, 'danger');
+	let b = sel.when(3, 'danger');
+	assert.eq(a, b);
+	assert(sel.when(4, 'danger') !== a);
+	assert.eq(a.value(), '');
+	sel.set(3);
+	assert.eq(a.value(), 'danger');
+	assert.eq(sel.when(4, 'danger').value(), '');
+});
+
+Testimony.test('Solarite.selector.onOffValues', `on and off can be any values, not just class names`, () => {
+	class A extends Solarite {
+		rows = [{id:1},{id:2}];
+		sel = h.selector(2);
+		render() {
+			h(this)`<div>${h.map(this.rows, row =>
+				h`<p key=${row.id} title=${this.sel.when(row.id, 'yes', 'no')}></p>`)}</div>`
+		}
+	}
+	customElements.define('r-945', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	assert.eq(a.querySelector('div').innerHTML, '<p title="no"></p><p title="yes"></p>');
+
+	a.sel.set(1);
+	assert.eq(a.querySelector('div').innerHTML, '<p title="yes"></p><p title="no"></p>');
+	a.remove();
+});
+
+Testimony.test('Solarite.selector.keyReuse', `A node reused under a new key stops answering to the old one`, () => {
+	// Non-keyed rows: the reconciler rewrites a <p> in place when the list shrinks, so the same
+	// element ends up bound to a different key.  The old key's ref must let go of it.
+	class A extends Solarite {
+		rows = [{id:1},{id:2},{id:3}];
+		sel = h.selector();
+		render() {
+			h(this)`<div>${h.map(this.rows, row =>
+				h`<p class=${this.sel.when(row.id, 'danger')}>${row.id + ''}</p>`)}</div>`
+		}
+	}
+	customElements.define('r-946', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+
+	a.rows = [{id:9}];
+	a.render();
+	assert.eq(a.querySelectorAll('p').length, 1);
+
+	// Key 1 used to own that first <p>.  Selecting it must not highlight the row now showing 9.
+	a.sel.set(1);
+	assert.eq(a.querySelectorAll('[class]').length, 0);
+
+	a.sel.set(9);
+	assert.eq(a.querySelector('p').getAttribute('class'), 'danger');
+	a.remove();
+});
+
+Testimony.test('Solarite.selector.sweep', `Refs for vanished rows don't accumulate forever`, () => {
+	let a = selectorTable('r-947', 0);
+
+	// Fill and empty the list many times with fresh ids, selecting each round so set() runs.
+	let id = 1;
+	for (let round=0; round<40; round++) {
+		a.rows = [];
+		for (let i=0; i<20; i++)
+			a.rows.push({id: id++, label: 'r'});
+		a.render();
+		a.sel.set(id - 1);
+		a.rows = [];
+		a.render();
+	}
+	a.sel.set(null);
+
+	// 800 keys were rendered and every one of those rows is gone.  Without the sweep the
+	// selector would be holding 800 refs, each pinning a detached <p>.
+	assert(a.sel.size < 200, `selector kept ${a.sel.size} refs for 0 live rows`);
+
+	// And it still works afterwards.
+	a.rows = [{id: 99999, label: 'x'}];
+	a.render();
+	a.sel.set(99999);
+	assert.eq(a.querySelector('p').getAttribute('class'), 'danger');
+	a.remove();
+});
+
+Testimony.test('Solarite.selector.deselect', `set(null) clears the highlight without a render`, () => {
+	let a = selectorTable('r-948', 5);
+	let rendersBefore = a.renders;
+	a.sel.set(3);
+	assert.eq(a.querySelectorAll('[class]').length, 1);
+
+	a.sel.set(null);
+	assert.eq(a.sel.key, null);
+	assert.eq(a.querySelectorAll('[class]').length, 0);
+	assert.eq(a.renders, rendersBefore);
+
+	// The bindings survive deselection, so reselecting still reaches the row without a render.
+	a.sel.set(3);
+	assert.eq(a.querySelectorAll('p')[2].getAttribute('class'), 'danger');
+	assert.eq(a.renders, rendersBefore);
+	a.remove();
+});
+
+Testimony.test('Solarite.selector.badPlacement', `A selector outside a whole attribute value throws a clear error`, () => {
+	let sel = h.selector();
+
+	// As element content.
+	assert.throws(() => h(document.createElement('div'))`<p>${sel.when(1, 'x')}</p>`);
+
+	// Inside a multi-part attribute value.
+	assert.throws(() => h(document.createElement('div'))`<p class="row ${sel.when(1, 'x')}"></p>`);
+});
+
 Testimony.test('Solarite.loop.paragraphs', () => {
 	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];

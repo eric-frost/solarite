@@ -47,6 +47,10 @@ declare namespace h {
 
 	/** Alias of h.map with a name that flags the immutability contract at the call site. */
 	function immutableMap<T>(items:T[], fn:(item:T) => Template): MappedList<T>;
+
+	/** A selection that writes only the two rows it affects, with no render() call.  Bind with
+	 *  when() as a whole attribute value; move it with set(). */
+	function selector<K = any>(key?: K | null): Selector<K>;
 }
 
 /** Tagged template literal for SVG markup and SVG child fragments. */
@@ -127,6 +131,38 @@ export class MappedList<T = any> {
 	fn: (item: T) => Template;
 	constructor(items: T[], fn: (item: T) => Template);
 	[Symbol.iterator](): IterableIterator<Template>;
+}
+
+/** What h.selector() returns.  Holds one selected key; when() binds an attribute to whether a
+ * row's key is that one, and set() moves the selection by writing only the rows that change. */
+export class Selector<K = any> {
+	constructor(key?: K | null);
+
+	/** The selected key, or null. */
+	readonly key: K | null;
+
+	/** How many keys this selector currently holds a binding for.  Settles near the live row
+	 *  count as bindings for vanished rows are swept; a number that keeps climbing means set()
+	 *  is never being called. */
+	readonly size: number;
+
+	/** Bind an attribute to whether key is selected.  Must be the whole attribute value;
+	 *  an off value of '' means the attribute is absent rather than empty. */
+	when(key: K, on: any, off?: any): SelectorRef<K>;
+
+	/** Move the selection, writing at most two attributes and calling no render().
+	 *  Pass null to deselect. */
+	set(key: K | null): void;
+}
+
+/** The value an attribute is bound to.  One per key per Selector, with a stable identity so an
+ * unchanged row skips the write on a re-render. */
+export class SelectorRef<K = any> {
+	readonly selector: Selector<K>;
+	readonly key: K;
+	readonly node: Node | null;
+	readonly attrName: string | null;
+	value(): any;
 }
 
 export class Template {

@@ -113,3 +113,50 @@ Testimony.test('Dist.map.keyed', `h.map and the keyed reconciler work in the min
 	assert.eq(a.querySelectorAll('tr').length, 0);
 	a.remove();
 });
+
+Testimony.test('Dist.selector', `h.selector survives property mangling in the minified build`, () => {
+	class DistSelectorTest extends SolariteMin {
+		rows = [];
+		sel = hMin.selector();
+		renders = 0;
+
+		render() {
+			this.renders++;
+			hMin(this)`<dist-selector-test><table><tbody>${hMin.map(this.rows, row =>
+				hMin`<tr key=${row.id} class=${this.sel.when(row.id, 'danger')}><td>${row.label}</td></tr>`)}
+			</tbody></table></dist-selector-test>`;
+		}
+	}
+	customElements.define('dist-selector-test', DistSelectorTest);
+	let a = new DistSelectorTest();
+	for (let i=1; i<=10; i++)
+		a.rows.push({id: i, label: 'r' + i});
+	document.body.append(a);
+	a.render();
+
+	// Nothing selected: no class attribute anywhere, matching a hand-written implementation.
+	assert.eq(a.querySelectorAll('[class]').length, 0);
+	let trs = [...a.querySelectorAll('tr')];
+	let rendersBefore = a.renders;
+
+	a.sel.set(4);
+	assert.eq(a.sel.key, 4);
+	assert.eq(trs[3].getAttribute('class'), 'danger');
+	assert.eq(a.querySelectorAll('[class]').length, 1);
+	assert.eq(a.renders, rendersBefore); // No render() was called.
+
+	a.sel.set(8);
+	assert.eq(trs[3].hasAttribute('class'), false);
+	assert.eq(trs[7].getAttribute('class'), 'danger');
+	assert.eq(a.querySelectorAll('[class]').length, 1);
+
+	// The highlight follows its row through a reorder.
+	a.rows.reverse();
+	a.render();
+	assert.eq(a.querySelectorAll('tr')[2], trs[7]);
+	assert.eq(trs[7].getAttribute('class'), 'danger');
+
+	a.sel.set(null);
+	assert.eq(a.querySelectorAll('[class]').length, 0);
+	a.remove();
+});

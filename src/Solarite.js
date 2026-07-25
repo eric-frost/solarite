@@ -12,6 +12,7 @@ export default h;
 export {default as delve} from './delve.js';
 export {default as Template} from './Template.js';
 export {default as MappedList} from './MappedList.js';
+export {default as Selector, SelectorRef} from './Selector.js';
 export {default as toEl} from './toEl.js';
 export {assignAttributes, convertType} from './assignAttributes.js';
 export {svg} from './h.js';
