@@ -13,6 +13,7 @@ export default class PathToEvent extends PathToAttribValue {
 
 	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
 		super(null, nodeMarker, attrName, attrValue);
+		this.skipIfSame = true;
 		this.eventName = attrName ? attrName.slice(2) : null;
 		this.delegatedKey = this.eventName !== null ? delegatedKeyFor(this.eventName) : undefined;
 	}

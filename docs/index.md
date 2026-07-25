@@ -628,7 +628,7 @@ When you push a new plant and call `render()`, Solarite appends a single `<span>
 
 #### Efficient List Items
 
-Normally each list item runs its `.map()` callback to build a template, and then Solarite compares that template against the live DOM to find what changed.  For very long lists, `h.map()` skips both steps for items that haven't changed: it reuses a row's DOM for as long as the row is the **same object**, using the object's identity as the dependency.  To change a row you replace it with a new object instead of mutating it in place.  This is the same contract Solid's `<For>` and React's keyed lists use, and it keeps the call site a plain list with no caching code:
+Normally each list item runs its `.map()` callback to build a template, and then Solarite compares that template against the live DOM to find what changed.  `h.map()` skips both steps for items that haven't changed: each row remembers the item it was built from, so a row whose item is the **same object** is recognized by one identity check — no template built, nothing compared, and its DOM left alone.  When a list of a thousand rows is re-rendered because two of them changed, only those two are looked at.  To change a row you replace it with a new object instead of mutating it in place.  This is the same contract Solid's `<For>` and React's keyed lists use, and it keeps the call site a plain list with no caching code:
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -662,7 +662,11 @@ When to use which:
 - Plain `.map()` rebuilds and re-diffs every row each render.  Use it when you mutate rows in place, or when lists are short enough that it doesn't matter.
 - `h.map()` / `h.immutableMap()` reuse a row's DOM while its object is unchanged.  Use it for long lists.  Mutating a row in place won't show, because its identity didn't change; replace the object instead.
 
-Each item passed to `h.map()` must be a distinct object, and an object should appear in only one list.  Non-object items (strings, numbers) are never cached and rebuild every render.
+Each item passed to `h.map()` must be a distinct object, and an object should appear in only one list.  A row is reused for as long as its item is `===` to the one that built it, so primitives (strings, numbers) compare by value.
+
+What this costs, roughly: changing a few rows of a long list is proportional to the number of rows you changed, not to the length of the list — as is a render where nothing changed at all. Inserting or removing rows is proportional to the number inserted or removed. Reordering rows (a sort, a reverse) is the one case that still walks the whole list, because every row has to be found in its new place.
+
+`h.map()` returns a `MappedList` rather than an array: it carries the items and the callback so the reconciler can match a row to its item by identity and call the callback only for rows it can't match.  Put it straight into a template expression, as above.  It can also be spread (`[...h.map(rows, fn)]`), nested inside an array, or returned from a function, and it expands to templates just the same — but that builds every row, which is the work the identity shortcut exists to skip.
 
 #### Keyed Lists
 

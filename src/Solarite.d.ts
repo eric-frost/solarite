@@ -40,11 +40,13 @@ declare function h(): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => No
 
 declare namespace h {
 	/** Render a list, reusing each item's DOM while the item is the SAME object; replace an item
-	 *  (don't mutate it) to re-render it.  fn runs only for new items.  No deps: identity is the dep. */
-	function map<T>(items:T[], fn:(item:T) => Template): Template[];
+	 *  (don't mutate it) to re-render it.  fn runs only for rows the reconciler can't match.
+	 *  No deps: identity is the dep.  Returns a MappedList, not an array — put it straight into
+	 *  a template expression; it's iterable if you really need the templates. */
+	function map<T>(items:T[], fn:(item:T) => Template): MappedList<T>;
 
 	/** Alias of h.map with a name that flags the immutability contract at the call site. */
-	function immutableMap<T>(items:T[], fn:(item:T) => Template): Template[];
+	function immutableMap<T>(items:T[], fn:(item:T) => Template): MappedList<T>;
 }
 
 /** Tagged template literal for SVG markup and SVG child fragments. */
@@ -116,6 +118,16 @@ export function assignAttributes(dest: HTMLElement, types?: Record<string, Funct
  * except 'false' and '0', so a bare attribute reads as true.  No converter returns the
  * string unchanged. */
 export function convertType(value: string, type?: Function): any;
+
+/** What h.map() returns: the source items plus the callback that builds one item's Template,
+ * so the reconciler can recognize an unchanged row by the item it was built from.  Iterating it
+ * yields the Templates, building each one, for code that needs an array. */
+export class MappedList<T = any> {
+	items: T[];
+	fn: (item: T) => Template;
+	constructor(items: T[], fn: (item: T) => Template);
+	[Symbol.iterator](): IterableIterator<Template>;
+}
 
 export class Template {
     exprs: any[];

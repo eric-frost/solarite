@@ -3,6 +3,7 @@ import Globals from "./Globals.js";
 import toEl from "./toEl.js";
 import Util from "./Util.js";
 import {jsxToTemplate, Fragment} from "./jsx.js";
+import MappedList from "./MappedList.js";
 
 /**
  * Convert strings to HTMLNodes.
@@ -113,11 +114,14 @@ export default function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 			let parent = htmlStrings, options = exprs[0];
 
 			// The closure is cached on the element so repeated renders don't recreate it.
-			if (options === undefined) {
-				let cached = parent[renderTemplateKey];
-				if (cached)
-					return cached;
-			}
+			// Options are cached with it: they only take effect when the element's
+			// RootNodeGroup is first created, so a later render passing different ones is
+			// ignored either way, and caching regardless of them saves an allocation on every
+			// render of a component that passes an options object — which is how render() is
+			// usually written.
+			let cached = parent[renderTemplateKey];
+			if (cached)
+				return cached;
 
 			// Return a tagged template function that applies the tagged template to parent.
 			let renderTemplate = (htmlStrings, ...exprs) => {
@@ -129,8 +133,7 @@ export default function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 				let template = new Template(htmlStrings, exprs);
 				return template.render(parent, options);
 			}
-			if (options === undefined)
-				parent[renderTemplateKey] = renderTemplate;
+			parent[renderTemplateKey] = renderTemplate;
 			return renderTemplate;
 		}
 	}
@@ -175,14 +178,6 @@ export default function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 		throw new Error('h() does not support argument of type: ' + (htmlStrings ? typeof htmlStrings : htmlStrings))
 }
 
-// h.map caches each item's Template keyed by the item's identity, so a re-render returns
-// the SAME Template instance for any item whose reference is unchanged.  The reconciler's
-// `ng.template === item` fast path (PathToNodes.applyKeyed/applyDiff) then skips rebuilding
-// and comparing that row.  A WeakMap is used instead of a symbol property so the idiomatic
-// immutable update `{...item, x}` yields a fresh object that ISN'T in the cache and re-renders;
-// a symbol property would be copied by spread and silently reuse the stale Template.
-const mapCache = new WeakMap();
-
 /**
  * Render a list, reusing each item's DOM for as long as the item is the SAME object.
  *
@@ -199,26 +194,15 @@ const mapCache = new WeakMap();
  *
  * ${h.map(this.rows, row => h`<tr key=${row.id}>${row.label}</tr>`)}
  *
+ * What comes back is a MappedList, not an array: it carries the items and the callback so
+ * the reconciler can match a row to its item by identity and call the callback only for the
+ * rows it can't match.  Put it straight into a template expression, as above; nested inside
+ * an array, or returned from a function, it expands to Templates just the same.
+ *
  * @param items {Array} The list to render.
  * @param fn {function(item:*):Template} Builds an item's Template; called only for new items.
- * @return {Template[]} */
-h.map = (items, fn) => {
-	let result = new Array(items.length);
-	for (let i=0; i<items.length; i++) {
-		let item = items[i];
-		if (item !== null && typeof item === 'object') {
-			let template = mapCache.get(item);
-			if (template === undefined) {
-				template = fn(item);
-				mapCache.set(item, template);
-			}
-			result[i] = template;
-		}
-		else
-			result[i] = fn(item);
-	}
-	return result;
-}
+ * @return {MappedList} */
+h.map = (items, fn) => new MappedList(items, fn);
 
 h.immutableMap = h.map;
 

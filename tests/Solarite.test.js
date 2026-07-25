@@ -1254,6 +1254,613 @@ Testimony.test('Solarite.map.immutableMapAlias', `h.immutableMap is the same fun
 	a.remove();
 });
 
+Testimony.test('Solarite.map.nested', `An h.map() nested in an array still renders`, () => {
+	class A extends Solarite {
+		rows = [{id: 1, label: 'Apple'}, {id: 2, label: 'Banana'}];
+
+		render() {
+			h(this)`${['<b>', h`<i>x</i>`, h.map(this.rows, row => h`<p>${row.label}</p>`), 'end']}`
+		}
+	}
+	customElements.define('r-914', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	assert.eq(getHtml(a), '<r-914>&lt;b&gt;<i>x</i><p>Apple</p><p>Banana</p>end</r-914>');
+
+	// A second render reuses the cached Templates and leaves the DOM alone.
+	let apple = a.querySelector('p');
+	a.render();
+	assert.eq(getHtml(a), '<r-914>&lt;b&gt;<i>x</i><p>Apple</p><p>Banana</p>end</r-914>');
+	assert.eq(a.querySelector('p'), apple);
+	a.remove();
+});
+
+Testimony.test('Solarite.map.strings', `An h.map() callback can return plain strings`, () => {
+	class A extends Solarite {
+		rows = [{id: 1, label: 'Apple'}, {id: 2, label: 'Banana'}];
+
+		render() {
+			h(this)`<div>${h.map(this.rows, row => row.label)}</div>`
+		}
+	}
+	customElements.define('r-915', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	assert.eq(getHtml(a), '<r-915><div>AppleBanana</div></r-915>');
+
+	a.rows = [a.rows[0], {...a.rows[1], label: 'Cherry'}];
+	a.render();
+	assert.eq(getHtml(a), '<r-915><div>AppleCherry</div></r-915>');
+	a.remove();
+});
+
+Testimony.test('Solarite.map.nonObjects', `A row is reused while its item is === to the one it was built from`, () => {
+	let calls = 0;
+	class A extends Solarite {
+		rows = ['Apple', 'Banana'];
+
+		render() {
+			h(this)`${h.map(this.rows, row => { calls++; return h`<p>${row}</p>` })}`
+		}
+	}
+	customElements.define('r-916', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	assert.eq(getHtml(a), '<r-916><p>Apple</p><p>Banana</p></r-916>');
+
+	// Strings compare equal by value, so an unchanged one keeps its row.
+	calls = 0;
+	a.render();
+	assert.eq(calls, 0);
+	assert.eq(getHtml(a), '<r-916><p>Apple</p><p>Banana</p></r-916>');
+
+	// A different string is a different item, so its row rebuilds.
+	a.rows = ['Apple', 'Cherry'];
+	a.render();
+	assert.eq(calls, 1);
+	assert.eq(getHtml(a), '<r-916><p>Apple</p><p>Cherry</p></r-916>');
+	a.remove();
+});
+
+Testimony.test('Solarite.map.shift', `Removing a row from the middle reuses every other row's Template`, () => {
+	let calls = 0;
+	class A extends Solarite {
+		rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}, {id: 3, label: 'c'}, {id: 4, label: 'd'}];
+
+		render() {
+			h(this)`${h.map(this.rows, row => { calls++; return h`<p key=${row.id}>${row.label}</p>` })}`
+		}
+	}
+	customElements.define('r-917', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	let [p1, p2, p3, p4] = [...a.children];
+
+	// Every later row shifts one position, so none of them match positionally; the
+	// per-item cache still supplies their Templates and their elements survive.
+	calls = 0;
+	a.rows.splice(1, 1);
+	a.render();
+	assert.eq(getHtml(a), '<r-917><p>a</p><p>c</p><p>d</p></r-917>');
+	assert.eq(calls, 0);
+	assert.eq(a.children[0], p1);
+	assert.eq(a.children[1], p3);
+	assert.eq(a.children[2], p4);
+
+	// And a later render still recognizes the shifted rows by identity.
+	calls = 0;
+	a.render();
+	assert.eq(calls, 0);
+	assert.eq(a.children[1], p3);
+	a.remove();
+});
+
+Testimony.test('Solarite.map.afterNodes', `An h.map() can replace a render that produced raw Nodes`, () => {
+	class A extends Solarite {
+		useNodes = true;
+		rows = [{id: 1, label: 'Apple'}];
+
+		render() {
+			h(this)`<div>${this.useNodes ? document.createElement('hr') : h.map(this.rows, row => h`<p>${row.label}</p>`)}</div>`
+		}
+	}
+	customElements.define('r-918', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	assert.eq(getHtml(a), '<r-918><div><hr></div></r-918>');
+
+	a.useNodes = false;
+	a.render();
+	assert.eq(getHtml(a), '<r-918><div><p>Apple</p></div></r-918>');
+
+	a.useNodes = true;
+	a.render();
+	assert.eq(getHtml(a), '<r-918><div><hr></div></r-918>');
+	a.remove();
+});
+
+Testimony.test('Solarite.map.growShrink', `An h.map() list can grow from and shrink to empty`, () => {
+	class A extends Solarite {
+		rows = [];
+
+		render() {
+			h(this)`<div>${h.map(this.rows, row => h`<p key=${row.id}>${row.label}</p>`)}</div>`
+		}
+	}
+	customElements.define('r-919', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	assert.eq(getHtml(a), '<r-919><div></div></r-919>');
+
+	a.rows = [{id: 1, label: 'a'}, {id: 2, label: 'b'}];
+	a.render();
+	assert.eq(getHtml(a), '<r-919><div><p>a</p><p>b</p></div></r-919>');
+
+	a.rows = [];
+	a.render();
+	assert.eq(getHtml(a), '<r-919><div></div></r-919>');
+
+	a.rows = [{id: 3, label: 'c'}];
+	a.render();
+	assert.eq(getHtml(a), '<r-919><div><p>c</p></div></r-919>');
+	a.remove();
+});
+
+Testimony.test('Solarite.map.patchSelect', `Changing one row rewrites only that row`, () => {
+	class A extends Solarite {
+		rows = [];
+		sel = null;
+		render() {
+			h(this)`<div>${h.map(this.rows, row =>
+				h`<p key=${row.id} class=${row.id === this.sel ? 'on' : ''}>${row.label}</p>`)}</div>`
+		}
+	}
+	customElements.define('r-920', A);
+	let a = new A();
+	a.rows = [];
+	for (let i=1; i<=50; i++)
+		a.rows.push({id: i, label: 'r' + i});
+	document.body.append(a);
+	a.render();
+	let ps = [...a.querySelectorAll('p')];
+
+	// Select row 10 the way the benchmark does: replace that row's object.
+	a.sel = 10;
+	a.rows[9] = {...a.rows[9]};
+	a.render();
+	assert.eq(a.querySelectorAll('p')[9].className, 'on');
+	assert.eq(a.querySelectorAll('p')[9], ps[9]); // Same element, rewritten in place.
+	assert.eq(a.querySelectorAll('p')[8], ps[8]);
+	assert.eq(a.querySelectorAll('p').length, 50);
+
+	// Move the selection: two rows change, everything else is untouched.
+	a.sel = 20;
+	a.rows[9] = {...a.rows[9]};
+	a.rows[19] = {...a.rows[19]};
+	a.render();
+	assert.eq(a.querySelectorAll('p')[9].className, '');
+	assert.eq(a.querySelectorAll('p')[19].className, 'on');
+	assert.eq(a.querySelectorAll('p')[19], ps[19]);
+	a.remove();
+});
+
+Testimony.test('Solarite.map.patchSwap', `Swapping two rows moves their nodes and nothing else`, () => {
+	class A extends Solarite {
+		rows = [];
+		render() {
+			h(this)`<div>${h.map(this.rows, row => h`<p key=${row.id}>${row.label}</p>`)}</div>`
+		}
+	}
+	customElements.define('r-921', A);
+	let a = new A();
+	for (let i=1; i<=50; i++)
+		a.rows.push({id: i, label: 'r' + i});
+	document.body.append(a);
+	a.render();
+	let ps = [...a.querySelectorAll('p')];
+
+	let temp = a.rows[1];
+	a.rows[1] = a.rows[48];
+	a.rows[48] = temp;
+	a.render();
+	let now = [...a.querySelectorAll('p')];
+	assert.eq(now.length, 50);
+	assert.eq(now[1], ps[48]); // The nodes moved with their keys.
+	assert.eq(now[48], ps[1]);
+	assert.eq(now[1].textContent, 'r49');
+	assert.eq(now[48].textContent, 'r2');
+	assert.eq(now[0], ps[0]);
+
+	// And swapping back restores the original order.
+	temp = a.rows[1];
+	a.rows[1] = a.rows[48];
+	a.rows[48] = temp;
+	a.render();
+	assert.eq(a.querySelectorAll('p')[1], ps[1]);
+	assert.eq(a.querySelectorAll('p')[1].textContent, 'r2');
+	a.remove();
+});
+
+Testimony.test('Solarite.map.patchUpdate', `A partial update rewrites just the changed rows`, () => {
+	class A extends Solarite {
+		rows = [];
+		render() {
+			h(this)`<div>${h.map(this.rows, row => h`<p key=${row.id}>${row.label}</p>`)}</div>`
+		}
+	}
+	customElements.define('r-922', A);
+	let a = new A();
+	for (let i=0; i<100; i++)
+		a.rows.push({id: i, label: 'r' + i});
+	document.body.append(a);
+	a.render();
+	let ps = [...a.querySelectorAll('p')];
+
+	for (let i=0; i<100; i+=10)
+		a.rows[i] = {...a.rows[i], label: a.rows[i].label + '!'};
+	a.render();
+	let now = [...a.querySelectorAll('p')];
+	for (let i=0; i<100; i++) {
+		assert.eq(now[i], ps[i]); // Every row kept its element.
+		assert.eq(now[i].textContent, 'r' + i + (i % 10 === 0 ? '!' : ''));
+	}
+	a.remove();
+});
+
+Testimony.test('Solarite.map.patchNewKey', `Replacing a row with a new key builds a new row`, () => {
+	class A extends Solarite {
+		rows = [];
+		render() {
+			h(this)`<div>${h.map(this.rows, row => h`<p key=${row.id}>${row.label}</p>`)}</div>`
+		}
+	}
+	customElements.define('r-923', A);
+	let a = new A();
+	for (let i=1; i<=20; i++)
+		a.rows.push({id: i, label: 'r' + i});
+	document.body.append(a);
+	a.render();
+	let ps = [...a.querySelectorAll('p')];
+
+	a.rows[5] = {id: 999, label: 'new'};
+	a.render();
+	let now = [...a.querySelectorAll('p')];
+	assert.eq(now.length, 20);
+	assert.eq(now[5].textContent, 'new');
+	assert(now[5] !== ps[5]); // A new key means a new element.
+	assert.eq(now[4], ps[4]);
+	assert.eq(now[6], ps[6]);
+	assert.eq(ps[5].parentNode, null); // The replaced row's element left the DOM.
+	a.remove();
+});
+
+Testimony.test('Solarite.map.patchManyMoves', `A big reorder still lands correctly`, () => {
+	class A extends Solarite {
+		rows = [];
+		render() {
+			h(this)`<div>${h.map(this.rows, row => h`<p key=${row.id}>${row.label}</p>`)}</div>`
+		}
+	}
+	customElements.define('r-924', A);
+	let a = new A();
+	for (let i=1; i<=40; i++)
+		a.rows.push({id: i, label: 'r' + i});
+	document.body.append(a);
+	a.render();
+	let byId = {};
+	for (let p of a.querySelectorAll('p'))
+		byId[p.textContent] = p;
+
+	a.rows.reverse(); // Every position changes, so this can't use the patch path.
+	a.render();
+	let now = [...a.querySelectorAll('p')];
+	assert.eq(now.length, 40);
+	for (let i=0; i<40; i++) {
+		assert.eq(now[i].textContent, 'r' + (40 - i));
+		assert.eq(now[i], byId['r' + (40 - i)]); // Nodes followed their keys.
+	}
+
+	// One more render with a mix of a move and an in-place change.
+	let t = a.rows[0];
+	a.rows[0] = a.rows[39];
+	a.rows[39] = t;
+	a.rows[10] = {...a.rows[10], label: 'changed'};
+	a.render();
+	now = [...a.querySelectorAll('p')];
+	assert.eq(now[0].textContent, 'r1');
+	assert.eq(now[39].textContent, 'r40');
+	assert.eq(now[10].textContent, 'changed');
+	a.remove();
+});
+
+Testimony.test('Solarite.map.patchComponentRows', `Rows holding components are still visited when nothing changed`, () => {
+	let childRenders = 0;
+
+	class Child extends Solarite {
+		label = '';
+
+		constructor(attribs) {
+			super(attribs);
+			Object.assign(this, attribs); // Field initializers have already run at this point.
+		}
+
+		render(attribs) {
+			if (attribs)
+				Object.assign(this, attribs);
+			childRenders++;
+			h(this)`<b>${this.label}</b>`
+		}
+	}
+	customElements.define('r-925-child', Child);
+
+	class A extends Solarite {
+		rows = [];
+		suffix = '';
+		render() {
+			h(this)`<div>${h.map(this.rows, row =>
+				h`<p key=${row.id}><r-925-child label=${row.label + this.suffix}></r-925-child></p>`)}</div>`
+		}
+	}
+	customElements.define('r-925', A);
+	let a = new A();
+	for (let i=1; i<=5; i++)
+		a.rows.push({id: i, label: 'r' + i});
+	document.body.append(a);
+	a.render();
+	assert.eq(a.querySelectorAll('b')[0].textContent, 'r1');
+
+	// Only the replaced row picks up the new suffix: h.map caches a row's template by the
+	// item's identity, so an unchanged row keeps the template built from the old outer state.
+	// Every row's component is still re-rendered, which is what surfaces changes inside it.
+	childRenders = 0;
+	a.suffix = '!';
+	a.rows[0] = {...a.rows[0]};
+	a.render();
+	assert.eq(a.querySelectorAll('b')[0].textContent, 'r1!');
+	assert.eq(a.querySelectorAll('b')[3].textContent, 'r4');
+	assert.eq(childRenders, 5); // Including the four rows whose items never changed.
+	a.remove();
+});
+
+Testimony.test('Solarite.map.spread', `An h.map() can still be spread into an array`, () => {
+	class A extends Solarite {
+		rows = [{id: 1, label: 'Apple'}, {id: 2, label: 'Banana'}];
+
+		render() {
+			h(this)`${[...h.map(this.rows, row => h`<p>${row.label}</p>`), h`<i>end</i>`]}`
+		}
+	}
+	customElements.define('r-928', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	assert.eq(getHtml(a), '<r-928><p>Apple</p><p>Banana</p><i>end</i></r-928>');
+	a.render();
+	assert.eq(getHtml(a), '<r-928><p>Apple</p><p>Banana</p><i>end</i></r-928>');
+	a.remove();
+});
+
+Testimony.test('Solarite.map.liveProps', `A checkbox a user flipped is restored from the model`, () => {
+	class A extends Solarite {
+		rows = [{id: 1, on: false}, {id: 2, on: true}, {id: 3, on: false}];
+
+		render() {
+			h(this)`<div>${h.map(this.rows, row =>
+				h`<p key=${row.id}><input type="checkbox" checked=${row.on}></p>`)}</div>`
+		}
+	}
+	customElements.define('r-930', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+
+	let boxes = [...a.querySelectorAll('input')];
+	assert.eq(boxes[0].checked, false);
+	assert.eq(boxes[1].checked, true);
+
+	// The user clicks one, so the DOM property no longer matches the expression that wrote it.
+	// A render with unchanged data must put it back — rows holding live properties are the
+	// reason the reconciler still visits rows whose values didn't change.
+	boxes[0].checked = true;
+	boxes[1].checked = false;
+	a.render();
+	assert.eq(a.querySelectorAll('input')[0].checked, false);
+	assert.eq(a.querySelectorAll('input')[1].checked, true);
+	assert.eq(a.querySelectorAll('input')[0], boxes[0]); // Same elements, just corrected.
+
+	// And a real change still lands.
+	a.rows[2] = {...a.rows[2], on: true};
+	a.render();
+	assert.eq(a.querySelectorAll('input')[2].checked, true);
+	a.remove();
+});
+
+Testimony.test('Solarite.map.svg', `h.map works with svg`+'`` '+`templates`, () => {
+	class A extends Solarite {
+		dots = [{id: 1, x: 10}, {id: 2, x: 20}, {id: 3, x: 30}];
+
+		render() {
+			h(this)`<svg width="100" height="20">${h.map(this.dots, dot =>
+				svg`<circle key=${dot.id} cx=${dot.x} cy="10" r="3"></circle>`)}</svg>`
+		}
+	}
+	customElements.define('r-929', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+
+	let circles = [...a.querySelectorAll('circle')];
+	assert.eq(circles.length, 3);
+	assert.eq(circles[1].getAttribute('cx'), '20');
+	assert.eq(circles[0].namespaceURI, 'http://www.w3.org/2000/svg');
+
+	// Patch one: same element, new attribute.
+	a.dots[1] = {...a.dots[1], x: 55};
+	a.render();
+	assert.eq(a.querySelectorAll('circle')[1], circles[1]);
+	assert.eq(a.querySelectorAll('circle')[1].getAttribute('cx'), '55');
+
+	// Swap two: elements move with their keys.
+	let t = a.dots[0];
+	a.dots[0] = a.dots[2];
+	a.dots[2] = t;
+	a.render();
+	assert.eq(a.querySelectorAll('circle')[0], circles[2]);
+	assert.eq(a.querySelectorAll('circle')[2], circles[0]);
+	a.remove();
+});
+
+Testimony.test('Solarite.map.fuzz', `Random list edits always produce the right DOM`, () => {
+
+	// A deterministic generator, so a failure can be reproduced by re-running the test.
+	let seed = 1234567;
+	const rnd = n => {
+		seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+		return seed % n;
+	};
+
+	let nextId = 1;
+	const mk = () => ({id: nextId++, label: 'L' + nextId, tall: rnd(4) === 0});
+
+	// `tall` rows render from a different template, so rows sometimes change shape as well as
+	// content — which the reconciler can't rewrite in place and has to rebuild.
+	const run = (keyed, tag) => {
+		const cls = keyed
+			? class extends Solarite {
+				rows = [];
+				render() {
+					h(this)`<div>${h.map(this.rows, row => row.tall
+						? h`<div key=${row.id}><b>${row.label}</b></div>`
+						: h`<p key=${row.id}>${row.label}</p>`)}</div>`
+				}
+			}
+			: class extends Solarite {
+				rows = [];
+				render() {
+					h(this)`<div>${h.map(this.rows, row => row.tall
+						? h`<div><b>${row.label}</b></div>`
+						: h`<p>${row.label}</p>`)}</div>`
+				}
+			};
+		customElements.define(tag, cls);
+		let a = new cls();
+		document.body.append(a);
+
+		let byKey = new Map();
+		const check = op => {
+			let host = a.firstElementChild;
+			let els = [...host.children];
+			assert.eq(els.length, a.rows.length);
+			for (let i=0; i<els.length; i++) {
+				let row = a.rows[i];
+				if (els[i].textContent !== row.label)
+					throw new Error(`${tag} after ${op}: position ${i} is "${els[i].textContent}", expected "${row.label}"`);
+				if (els[i].tagName !== (row.tall ? 'DIV' : 'P'))
+					throw new Error(`${tag} after ${op}: position ${i} is a <${els[i].tagName}>, expected ${row.tall ? 'DIV' : 'P'}`);
+
+				// Keyed lists keep a row's element for as long as its key is in the list — unless
+				// the row changed shape, which can only be done by building a new element.
+				if (keyed) {
+					let prev = byKey.get(row.id);
+					if (prev !== undefined && prev.isConnected && prev !== els[i]
+						&& prev.tagName === (row.tall ? 'DIV' : 'P'))
+						throw new Error(`${tag} after ${op}: key ${row.id} did not keep its element`);
+				}
+			}
+			byKey.clear();
+			for (let i=0; i<els.length; i++)
+				byKey.set(a.rows[i].id, els[i]);
+		};
+
+		for (let step=0; step<250; step++) {
+			let rows = a.rows, len = rows.length;
+			let op = rnd(10);
+			let name = op + '@' + len;
+			switch (op) {
+				case 0: { // Insert fresh rows somewhere — sometimes more than the reconciler
+					// looks ahead for when it tries to recognize an inserted block.
+					let at = rnd(len + 1), k = rnd(8) === 0 ? 1 + rnd(120) : 1 + rnd(4);
+					for (let i=0; i<k; i++)
+						rows.splice(at + i, 0, mk());
+					break;
+				}
+				case 1: { // Remove a few rows.
+					if (!len) break;
+					let at = rnd(len);
+					rows.splice(at, 1 + rnd(3));
+					break;
+				}
+				case 2: { // Move one row.
+					if (len < 2) break;
+					let from = rnd(len), to = rnd(len);
+					rows.splice(to, 0, rows.splice(from, 1)[0]);
+					break;
+				}
+				case 3: { // Swap two rows.
+					if (len < 2) break;
+					let i = rnd(len), j = rnd(len);
+					let t = rows[i];
+					rows[i] = rows[j];
+					rows[j] = t;
+					break;
+				}
+				case 4: { // Update some rows immutably, the h.map contract.
+					if (!len) break;
+					// Sometimes change more rows than the reconciler collects before it stops to
+					// work out what kind of change it is, so that decision gets exercised.
+					let k = rnd(6) === 0 ? len : 1 + rnd(Math.min(len, 20));
+					for (let i=0; i<k; i++) {
+						let at = rnd(len);
+						let flip = rnd(5) === 0; // Sometimes change the row's shape too.
+						rows[at] = {...rows[at], label: rows[at].label + '!',
+							tall: flip ? !rows[at].tall : rows[at].tall};
+					}
+					break;
+				}
+				case 5: rows.reverse(); break;
+				case 6: { // Shuffle.
+					for (let i=len-1; i>0; i--) {
+						let j = rnd(i + 1);
+						let t = rows[i];
+						rows[i] = rows[j];
+						rows[j] = t;
+					}
+					break;
+				}
+				case 7: a.rows = []; break;
+				case 8: { // Replace the whole list.
+					let n = rnd(8) === 0 ? 300 + rnd(400) : rnd(60);
+					let next = new Array(n);
+					for (let i=0; i<n; i++)
+						next[i] = mk();
+					a.rows = next;
+					break;
+				}
+				default: { // Grow or shrink to a random length, sometimes past the thresholds
+					// the reconciler switches strategy at.
+					let n = rnd(8) === 0 ? 300 + rnd(400) : rnd(60);
+					while (a.rows.length > n)
+						a.rows.pop();
+					while (a.rows.length < n)
+						a.rows.push(mk());
+				}
+			}
+			a.render();
+			check(name);
+		}
+		a.remove();
+	};
+
+	run(true, 'r-926');
+	run(false, 'r-927');
+});
+
 Testimony.test('Solarite.loop.paragraphs', () => {
 	class A extends Solarite {
 		fruits = ['Apple', 'Banana'];
@@ -3940,7 +4547,7 @@ Testimony.test('Solarite.component.attribsFromParentComponent', () => {
 	document.body.append(a); // calls render()
 
 	let b = a.querySelector('b-504');
-	assert.eq(getHtml(a), `<a-504><b-504 name="a" rows="">a:1|2|3|4</b-504></a-504>`);
+	assert.eq(getHtml(a), `<a-504><b-504 name="a">a:1|2|3|4</b-504></a-504>`);
 	assert.eq(construct, 1)
 	assert.eq(render, 1);
 	assert.eq(isChanged, true);
@@ -4023,7 +4630,7 @@ Testimony.test('Solarite.component.attribFunctions', 'Make sure we can pass func
 	let c = new C510();
 	document.body.append(c); // renders
 
-	assert.eq(getHtml(c), `<c-510><c-510-child get-content="">a1</c-510-child></c-510>`);
+	assert.eq(getHtml(c), `<c-510><c-510-child>a1</c-510-child></c-510>`);
 
 	c.remove();
 });
@@ -4295,12 +4902,12 @@ Testimony.test('Solarite.component.componentWithDynamicAttribsFromExpr', () => {
 	// Test 1
 	let a = new C521();
 	a.render();
-	assert.eq(`<c-521><c-521-child color="" message="" style="color: red">hibye</c-521-child></c-521>`, getHtml(a));
+	assert.eq(`<c-521><c-521-child style="color: red">hibye</c-521-child></c-521>`, getHtml(a));
 
 	// Test 2
 	message = {text: 'world'}
 	a.render();
-	assert.eq(`<c-521><c-521-child color="" message="" style="color: red">hiworld</c-521-child></c-521>`, getHtml(a));
+	assert.eq(`<c-521><c-521-child style="color: red">hiworld</c-521-child></c-521>`, getHtml(a));
 
 	renderCount=0;
 	a.render();
@@ -4402,17 +5009,17 @@ Testimony.test('Solarite.component.nestedExprConstructorArg', "Pass an object to
 
 	let a = new A527();
 	document.body.append(a);
-	assert.eq(getHtml(a), `<a-527>Users<b-527 user=""><div>Name:</div><div>John</div><div>Email:</div><div>john@example.com</div></b-527></a-527>`)
+	assert.eq(getHtml(a), `<a-527>Users<b-527><div>Name:</div><div>John</div><div>Email:</div><div>john@example.com</div></b-527></a-527>`)
 
 
 	a.user = {name: 'Fred', email: 'fred@example.com'};
 	a.render();
-	assert.eq(getHtml(a), `<a-527>Users<b-527 user=""><div>Name:</div><div>Fred</div><div>Email:</div><div>fred@example.com</div></b-527></a-527>`)
+	assert.eq(getHtml(a), `<a-527>Users<b-527><div>Name:</div><div>Fred</div><div>Email:</div><div>fred@example.com</div></b-527></a-527>`)
 
 
 	a.user.name = 'Barry'
 	a.render();
-	assert.eq(getHtml(a), `<a-527>Users<b-527 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-527></a-527>`)
+	assert.eq(getHtml(a), `<a-527>Users<b-527><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-527></a-527>`)
 
 	bRenderCount = 0
 	a.render();
@@ -4420,7 +5027,7 @@ Testimony.test('Solarite.component.nestedExprConstructorArg', "Pass an object to
 
 	a.title = 'Users2'
 	a.render();
-	assert.eq(getHtml(a), `<a-527>Users2<b-527 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-527></a-527>`)
+	assert.eq(getHtml(a), `<a-527>Users2<b-527><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-527></a-527>`)
 	assert.eq(bRenderCount, 2); // Make sure the child re-rendered.
 
 	a.remove();
@@ -4553,17 +5160,17 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 	let a = new A540();
 	a.render();
 	document.body.append(a);
-	assert.eq(getHtml(a), `<a-540>Users<b-540 user=""><div>Name:</div><div>John</div><div>Email:</div><div>john@example.com</div></b-540></a-540>`)
+	assert.eq(getHtml(a), `<a-540>Users<b-540><div>Name:</div><div>John</div><div>Email:</div><div>john@example.com</div></b-540></a-540>`)
 
 
 	a.user = {name: 'Fred', email: 'fred@example.com'};
 	a.render();
-	assert.eq(getHtml(a), `<a-540>Users<b-540 user=""><div>Name:</div><div>Fred</div><div>Email:</div><div>fred@example.com</div></b-540></a-540>`)
+	assert.eq(getHtml(a), `<a-540>Users<b-540><div>Name:</div><div>Fred</div><div>Email:</div><div>fred@example.com</div></b-540></a-540>`)
 
 
 	a.user.name = 'Barry'
 	a.render();
-	assert.eq(getHtml(a), `<a-540>Users<b-540 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-540></a-540>`)
+	assert.eq(getHtml(a), `<a-540>Users<b-540><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-540></a-540>`)
 
 	bRenderCount = 0
 	a.render();
@@ -4571,7 +5178,7 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 
 	a.title = 'Users2'
 	a.render();
-	assert.eq(getHtml(a), `<a-540>Users2<b-540 user=""><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-540></a-540>`)
+	assert.eq(getHtml(a), `<a-540>Users2<b-540><div>Name:</div><div>Barry</div><div>Email:</div><div>fred@example.com</div></b-540></a-540>`)
 	assert.eq(bRenderCount, 2) // render() is still called even when the changed flag is false.
 
 	a.remove();
@@ -4701,8 +5308,8 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 	document.body.append(table);
 	assert.eq(getHtml(table),
 		`<table-540><table><tbody>`+
-		`<tr is="tr-540" user=""><td>John</td><td>john@example.com</td></tr>` +
-		`<tr is="tr-540" user=""><td>Fred</td><td>fred@example.com</td></tr>` +
+		`<tr is="tr-540"><td>John</td><td>john@example.com</td></tr>` +
+		`<tr is="tr-540"><td>Fred</td><td>fred@example.com</td></tr>` +
 		`</tbody></table></table-540>`);
 	assert.eq(construct, 2); // because there are two tr's
 	assert.eq(render, 2);
@@ -4712,8 +5319,8 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 	table.render();
 	assert.eq(getHtml(table),
 		`<table-540><table><tbody>` +
-		`<tr is="tr-540" user=""><td>John</td><td>john@example.com</td></tr>` +
-		`<tr is="tr-540" user=""><td>Barry</td><td>fred@example.com</td></tr>` +
+		`<tr is="tr-540"><td>John</td><td>john@example.com</td></tr>` +
+		`<tr is="tr-540"><td>Barry</td><td>fred@example.com</td></tr>` +
 		`</tbody></table></table-540>`);
 	assert.eq(construct, 2);
 	assert.eq(render, 4);
@@ -4723,8 +5330,8 @@ Testimony.test('Solarite.component.nestedComponentTrLoop', () => {
 	table.render();
 	assert.eq(getHtml(table),
 		`<table-540><table><tbody>` +
-		`<tr is="tr-540" user=""><td>John</td><td>john@example.com</td></tr>` +
-		`<tr is="tr-540" user=""><td>Dave</td><td>dave@example.com</td></tr>` +
+		`<tr is="tr-540"><td>John</td><td>john@example.com</td></tr>` +
+		`<tr is="tr-540"><td>Dave</td><td>dave@example.com</td></tr>` +
 		`</tbody></table></table-540>`)
 	assert.eq(construct, 2);
 	assert.eq(render, 6);
