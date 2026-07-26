@@ -222,11 +222,20 @@ export default class PathToAttribValue extends Path {
 		for (let i = 0; i < values.length; i++) {
 			result.push(values[i]);
 			if (i < values.length - 1) {
+				//#IFDEV
 				// A selection binding has to own the whole attribute, because its whole point is
 				// writing that attribute without re-rendering, which it can't do if the rest of
-				// the value comes from expressions it doesn't know about.
+				// the value comes from expressions it doesn't know about.  Whether a selector sits
+				// inside a multi-part attribute is fixed by the shape of the template and never by
+				// the data, so this can only be an authoring mistake, and it always surfaces on the
+				// template's very first render -- exactly like the placement check in
+				// SelectorRef.bind().  That makes it safe to strip from the built file, where the
+				// throw is the only thing lost: makePrimitive() then turns the ref into '' and the
+				// attribute is written from its constant parts alone.  Stripping it also keeps a
+				// per-expression instanceof out of the multi-part attribute loop.
 				if (typeof exprs[i] === 'object' && exprs[i] instanceof SelectorRef)
 					throw new Error(`Solarite cannot use a selector inside the multi-part attribute ${this.attrName}="${values.join('${...}')}".  Give the selector the whole attribute value instead, and put the constant part in its on/off values.`);
+				//#ENDIF
 				let val = Util.makePrimitive(exprs[i]);
 				if (!Util.isFalsy(val))
 					result.push(val);
