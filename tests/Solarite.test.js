@@ -1988,16 +1988,29 @@ Testimony.test('Solarite.selector.newRowsAdopt', `A row rendered while its key i
 	a.remove();
 });
 
-Testimony.test('Solarite.selector.refIdentity', `when() returns the same ref for a key, so unchanged rows skip the write`, () => {
+Testimony.test('Solarite.selector.refIdentity', `when() returns one of two singletons, so a row's expression changes identity exactly when its selectedness does`, () => {
 	let sel = h.selector();
-	let a = sel.when(3, 'danger');
-	let b = sel.when(3, 'danger');
-	assert.eq(a, b);
-	assert(sel.when(4, 'danger') !== a);
-	assert.eq(a.value(), '');
+
+	// Every unselected key shares one object, so an unchanged row compares equal on a
+	// re-render and skips the write.  Allocating nothing per key is what makes a selector
+	// free to draw.
+	let off = sel.when(3, 'danger');
+	assert.eq(sel.when(3, 'danger'), off);
+	assert.eq(sel.when(4, 'danger'), off);
+	assert.eq(off.value(), '');
+
+	// Selecting 3 hands key 3 the other singleton, and only key 3.
 	sel.set(3);
-	assert.eq(a.value(), 'danger');
-	assert.eq(sel.when(4, 'danger').value(), '');
+	let on = sel.when(3, 'danger');
+	assert(on !== off);
+	assert.eq(on.value(), 'danger');
+	assert.eq(sel.when(4, 'danger'), off);
+	assert.eq(off.value(), '');
+
+	// The two singletons are stable across selections, not rebuilt each time.
+	sel.set(4);
+	assert.eq(sel.when(4, 'danger'), on);
+	assert.eq(sel.when(3, 'danger'), off);
 });
 
 Testimony.test('Solarite.selector.onOffValues', `on and off can be any values, not just class names`, () => {
@@ -2021,14 +2034,14 @@ Testimony.test('Solarite.selector.onOffValues', `on and off can be any values, n
 });
 
 Testimony.test('Solarite.selector.keyReuse', `A node reused under a new key stops answering to the old one`, () => {
-	// Non-keyed rows: the reconciler rewrites a <p> in place when the list shrinks, so the same
-	// element ends up bound to a different key.  The old key's ref must let go of it.
+	// The list shrinks to a single row carrying a key that has never been rendered.  Whatever
+	// the reconciler does with the old elements, the vanished key must stop reaching a row.
 	class A extends Solarite {
 		rows = [{id:1},{id:2},{id:3}];
 		sel = h.selector();
 		render() {
 			h(this)`<div>${h.map(this.rows, row =>
-				h`<p class=${this.sel.when(row.id, 'danger')}>${row.id + ''}</p>`)}</div>`
+				h`<p key=${row.id} class=${this.sel.when(row.id, 'danger')}>${row.id + ''}</p>`)}</div>`
 		}
 	}
 	customElements.define('r-946', A);
@@ -2049,8 +2062,15 @@ Testimony.test('Solarite.selector.keyReuse', `A node reused under a new key stop
 	a.remove();
 });
 
-Testimony.test('Solarite.selector.sweep', `Refs for vanished rows don't accumulate forever`, () => {
+Testimony.test('Solarite.selector.noPerRowState', `A selector accumulates nothing as rows come and go`, () => {
 	let a = selectorTable('r-947', 0);
+
+	// A selector's whole state is two singletons plus the attribute name and the list it was
+	// rendered into.  Nothing here is per key, so there is nothing that could grow with the
+	// number of rows drawn and nothing that could pin a removed row's element in memory.
+	// Capture the shape while the list is empty, then again after 800 rows have come and gone.
+	let shape = sel => Object.getOwnPropertyNames(sel).sort().join(',');
+	let before = shape(a.sel);
 
 	// Fill and empty the list many times with fresh ids, selecting each round so set() runs.
 	let id = 1;
@@ -2065,15 +2085,38 @@ Testimony.test('Solarite.selector.sweep', `Refs for vanished rows don't accumula
 	}
 	a.sel.set(null);
 
-	// 800 keys were rendered and every one of those rows is gone.  Without the sweep the
-	// selector would be holding 800 refs, each pinning a detached <p>.
-	assert(a.sel.size < 200, `selector kept ${a.sel.size} refs for 0 live rows`);
+	assert.eq(shape(a.sel), before);
+	for (let name of Object.getOwnPropertyNames(a.sel)) {
+		let v = a.sel[name];
+		assert(!(v instanceof Map) && !(v instanceof Set) && !Array.isArray(v),
+			`selector field ${name} is a collection, so it can accumulate per-row state`);
+	}
 
 	// And it still works afterwards.
 	a.rows = [{id: 99999, label: 'x'}];
 	a.render();
 	a.sel.set(99999);
 	assert.eq(a.querySelector('p').getAttribute('class'), 'danger');
+	a.remove();
+});
+
+Testimony.test('Solarite.selector.needsKeys', `set() on an unkeyed list says so instead of doing nothing`, () => {
+	// set() finds a row by its key, so a list with no key=${...} can never be reached.  Saying
+	// so is much kinder than silently leaving the highlight where it was.
+	class A extends Solarite {
+		rows = [{id:1},{id:2}];
+		sel = h.selector();
+		render() {
+			h(this)`<div>${h.map(this.rows, row =>
+				h`<p class=${this.sel.when(row.id, 'danger')}>${row.id + ''}</p>`)}</div>`
+		}
+	}
+	customElements.define('r-949', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+
+	assert.throws(() => a.sel.set(1), 'keyed');
 	a.remove();
 });
 
@@ -2093,6 +2136,15 @@ Testimony.test('Solarite.selector.deselect', `set(null) clears the highlight wit
 	assert.eq(a.querySelectorAll('p')[2].getAttribute('class'), 'danger');
 	assert.eq(a.renders, rendersBefore);
 	a.remove();
+});
+
+Testimony.test('Solarite.selector.notOnRowRoot', `A selector below the row's root element says so instead of writing the wrong node`, () => {
+	// set() reaches a row through its key and writes the row's own root element, so an
+	// attribute on a descendant would be read here and written somewhere else later.
+	let sel = h.selector();
+	let div = document.createElement('div');
+	assert.throws(() => h(div)`<div>${h.map([{id:1}, {id:2}], row =>
+		h`<p key=${row.id}><span class=${sel.when(row.id, 'danger')}></span></p>`)}</div>`, 'root element');
 });
 
 Testimony.test('Solarite.selector.badPlacement', `A selector outside a whole attribute value throws a clear error`, () => {

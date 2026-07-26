@@ -708,124 +708,116 @@ HtmlParser.Tag = 'Tag';
  * highlight from one row of a thousand to another changes two attributes, and asking the
  * reconciler about it means walking the whole list to discover that fact.
  *
- * A Selector short-circuits that.  Each row binds its attribute to a SelectorRef obtained
- * from when(), and the ref remembers the node it was written to.  Changing the selection
- * then writes those two nodes directly, with no render() call and no walk of the list.
+ * A Selector short-circuits that.  when() hands each row one of exactly two objects — the
+ * selected one or the unselected one — and set() reaches the two rows that change through
+ * the list they were rendered into, writing their attributes directly with no render() call.
  *
  * This is the same primitive as Solid's createSelector, adapted to a library that has no
- * signals: the ref, not a subscription, is what carries the binding.
+ * signals: the list, not a subscription, is what carries the binding.
+ *
+ * Because set() locates a row by its key, **the rows must be keyed** — the row template needs
+ * a key=${...} attribute.  set() throws on an unkeyed list rather than silently doing nothing.
  */
 
-// The ref currently bound to a node's attribute.  A node whose key changes gets a new ref,
-// and this expando is how the old one learns to stop pointing at it.
-const boundRefKey = Symbol('solariteSelectorRef');
-
 /**
- * The value an attribute is bound to.  One per key per Selector, created on demand by
- * Selector.when() and returned unchanged on every later call for that key — the stable
- * identity is what lets an unchanged row skip the write during a re-render.
+ * The value an attribute is bound to.  There are only ever **two** of these per Selector,
+ * both built in its constructor: one standing for "this row is the selected one" and one for
+ * "this row is not".  when() returns whichever of the two the row's key calls for.
  *
- * One of these is built for every row of a list, so it stays deliberately small: the on/off
- * values live on the Selector rather than being copied into each ref, since a selector drives
- * one attribute at one call site.
+ * Two singletons rather than one object per key is what makes a selector free to create.  A
+ * row of a freshly-drawn list with nothing selected gets the unselected singleton, whose
+ * value is the off value, so there is no allocation, no map entry and no DOM call — only the
+ * two stores that record where the list lives.  It also sharpens the re-render skip: a row's
+ * expression changes identity exactly when its selectedness changes, so
+ * NodeGroup.rewriteStamp() rewrites the rows that gained or lost the selection and no others.
  */
 class SelectorRef {
 
 	/** @type {Selector} */
 	selector;
 
-	/** @type {*} The key this ref answers for. */
-	key;
+	/** @type {boolean} True on the singleton that stands for the selected row. */
+	selected;
 
-	/** @type {?Node} The element whose attribute this ref writes, once it has been applied. */
-	node = null;
-
-	/** @type {?string} The attribute name, once this ref has been applied. */
-	attrName = null;
-
-	constructor(selector, key) {
+	constructor(selector, selected) {
 		this.selector = selector;
-		this.key = key;
+		this.selected = selected;
 	}
 
 	/** @return {*} The value this ref currently stands for. */
 	value() {
 		let s = this.selector;
-		return s.key === this.key ? s.onValue : s.offValue;
+		return this.selected ? s.onValue : s.offValue;
 	}
 
 	/**
-	 * Point this ref at an element's attribute and write the current value.
-	 * Called by PathToAttribValue when the ref appears as an attribute expression.
-	 * @param node {Node}
+	 * Write this ref's value to an element's attribute, and tell the selector where the list
+	 * is so that a later set() can find any row in it.
+	 *
+	 * Called by PathToAttribValue when the ref appears as an attribute expression.  It runs
+	 * once per row per render, so it is deliberately nothing but two stores and a write that
+	 * the common case skips.
+	 *
+	 * @param node {Node} The element carrying the attribute.
 	 * @param attrName {string}
-	 * @param fresh {boolean} True when the node is a just-cloned row being filled in for the
-	 * first time.  Such a node provably carries no attribute of this name yet and no earlier
-	 * ref, so the usual read-and-detach and the removeAttribute call — a DOM call per row of
-	 * the list, which is the whole cost of binding an unselected row — can both be skipped. */
-	bind(node, attrName, fresh) {
-		if (fresh !== true) {
-			// A row whose key changed gets a different ref for the same node.  Detach the old
-			// one, or a later selection change would write through it to a node it lost.
-			let prev = node[boundRefKey];
-			if (prev !== undefined && prev !== this)
-				prev.node = null;
-		}
-		node[boundRefKey] = this;
-		this.node = node;
-		this.attrName = attrName;
+	 * @param parentNg {NodeGroup} The row this attribute belongs to. */
+	bind(node, attrName, parentNg) {
+		
 
-		let v = this.value();
+		let s = this.selector;
+		s.attrName = attrName;
+		s.path = parentNg.parentPath;
+
+		let v = this.selected ? s.onValue : s.offValue;
+
 		// Matches PathToAttribValue.applySingle: an empty or falsy value leaves no attribute
 		// behind, so a selector never adds markup a hand-written implementation wouldn't have.
 		if (v === '' || v === false || v === null || v === undefined) {
-			if (fresh !== true)
+			// A just-cloned row provably carries no attribute of this name yet, so the
+			// removeAttribute — a DOM call for every row of the list — can be skipped.
+			if (parentNg.firstApply !== true)
 				node.removeAttribute(attrName);
 		}
 		else
 			node.setAttribute(attrName, v);
 	}
-
-	/** Write the current value to the bound node, if this ref still has one. */
-	write() {
-		let node = this.node;
-		if (node === null)
-			return;
-		let v = this.value();
-		if (v === '' || v === false || v === null || v === undefined)
-			node.removeAttribute(this.attrName);
-		else
-			node.setAttribute(this.attrName, v);
-	}
 }
 
 /**
- * Created by h.selector().  Holds one selected key and the refs bound to it.
+ * Created by h.selector().  Holds one selected key.
  *
- * Only attribute expressions can bind a ref; a ref used as element content throws, because
- * writing text through this path would need bookkeeping the two-node fast case doesn't want.
+ * Only attribute expressions can bind a selector; using one as element content throws,
+ * because writing text through this path would need bookkeeping the two-node fast case
+ * doesn't want.
  *
- * There is deliberately no way to drop the bindings by hand.  Doing so would leave the
- * selector unable to reach rows that are still on screen but won't be re-rendered, and the
- * sweep in set() already keeps the map bounded without anyone having to remember.
+ * The selector keeps **no per-row state at all** — no map of keys, nothing to sweep, and
+ * nothing that could pin a removed row's element in memory.  All it remembers is which
+ * attribute it drives and which list it was rendered into.
  */
 class Selector {
 
 	/** @type {*} The selected key, or null. */
 	#key = null;
 
-	/** @type {Map<*, SelectorRef>} */
-	#refs = new Map();
+	/** @type {SelectorRef} Returned by when() for the row whose key is selected. */
+	#on = new SelectorRef(this, true);
+
+	/** @type {SelectorRef} Returned by when() for every other row. */
+	#off = new SelectorRef(this, false);
 
 	/** @type {*} Value the bound attribute takes for the selected key.  Held here rather than
-	 * on each ref, so building a row's ref stays as small as possible. */
+	 * on each ref, so the two refs stay interchangeable between call sites. */
 	onValue;
 
 	/** @type {*} Value it takes for every other key. */
 	offValue = '';
 
-	/** @type {int} Size at which the next set() sweeps refs whose node is gone. */
-	#sweepAt = 64;
+	/** @type {?string} The attribute this selector drives, learned when a row binds. */
+	attrName = null;
+
+	/** @type {?PathToNodes} The list this selector's rows were rendered into, learned when a
+	 * row binds.  set() asks it for the NodeGroup holding a given key. */
+	path = null;
 
 	/** @param key {*} The initially selected key. */
 	constructor(key = null) {
@@ -838,17 +830,9 @@ class Selector {
 	}
 
 	/**
-	 * @return {int} How many keys this selector is currently holding a binding for.  Bindings
-	 * for rows that no longer exist are swept as the selection moves, so this settles near the
-	 * number of live rows; a number that keeps climbing means set() is never being called. */
-	get size() {
-		return this.#refs.size;
-	}
-
-	/**
 	 * Bind an attribute to whether key is the selected one.
 	 *
-	 *	 h`<tr class=${sel.when(row.id, 'danger')}>`
+	 *	 h`<tr key=${row.id} class=${sel.when(row.id, 'danger')}>`
 	 *
 	 * @param key {*} This row's key.
 	 * @param on {*} Value the attribute takes when key is selected.
@@ -857,10 +841,7 @@ class Selector {
 	when(key, on, off = '') {
 		this.onValue = on;
 		this.offValue = off;
-		let refs = this.#refs, ref = refs.get(key);
-		if (ref === undefined)
-			refs.set(key, ref = new SelectorRef(this, key));
-		return ref;
+		return key === this.#key ? this.#on : this.#off;
 	}
 
 	/**
@@ -872,23 +853,54 @@ class Selector {
 		if (old === key)
 			return;
 		this.#key = key;
-		let refs = this.#refs;
-		let a = refs.get(old);
-		if (a !== undefined)
-			a.write();
-		let b = refs.get(key);
-		if (b !== undefined)
-			b.write();
 
-		// A ref is kept for every key that has ever been rendered, so a list that is refilled
-		// with new ids would otherwise grow one entry per row forever.  Sweeping only when the
-		// map has doubled keeps that bounded at amortized constant cost per selection change.
-		if (refs.size >= this.#sweepAt) {
-			for (let [k, r] of refs)
-				if (r.node === null || !r.node.isConnected)
-					refs.delete(k);
-			this.#sweepAt = Math.max(64, refs.size * 2);
-		}
+		// Nothing has rendered a row yet, so there is no list to write into.  The new key
+		// still takes effect: rows drawn later come up already carrying the attribute.
+		if (this.path === null)
+			return;
+
+		this.#write(old, this.offValue);
+		this.#write(key, this.onValue);
+	}
+
+	/**
+	 * Find the row holding key and give its root element the value v.
+	 * @param key {*}
+	 * @param v {*} */
+	#write(key, v) {
+		if (key === null || key === undefined)
+			return;
+
+		let ngs = this.path.nodeGroups;
+		if (ngs === null || ngs.length === 0)
+			return;
+
+		if (ngs[0].key === undefined)
+			throw new Error('A selector can only be used on a keyed list, because set() finds ' +
+				'a row by its key.  Add key=${...} to the row template.');
+
+		// A linear scan over the rows.  The list is walked only when the selection actually
+		// moves — twice per user click, not once per row per render — so a thousand pointer
+		// comparisons here cost far less than the per-row index that would avoid them.
+		let ng = null;
+		for (let i = 0; i < ngs.length; i++)
+			if (ngs[i].key === key) {
+				ng = ngs[i];
+				break;
+			}
+		if (ng === null)
+			return;
+
+		// The selector owns an attribute on the row's own root element, which for a
+		// single-root row template is exactly the NodeGroup's startNode.
+		let node = ng.startNode;
+		if (node === null || node.nodeType !== 1)
+			return;
+
+		if (v === '' || v === false || v === null || v === undefined)
+			node.removeAttribute(this.attrName);
+		else
+			node.setAttribute(this.attrName, v);
 	}
 }
 
@@ -1017,13 +1029,14 @@ class PathToAttribValue extends Path {
 
 		// Regular attribute
 		else {
-			// A selection binding (h.selector().when()) writes its own value and remembers this
-			// node, so a later change of selection reaches the attribute directly instead of
-			// going back through render().  The typeof test keeps ordinary string attributes —
-			// nearly all of them — from paying for the prototype check.
+			// A selection binding (h.selector().when()) writes its own value and tells the
+			// selector which list this row belongs to, so a later change of selection reaches
+			// the attribute directly instead of going back through render().  The typeof test
+			// keeps ordinary string attributes — nearly all of them — from paying for the
+			// prototype check.
 			if (typeof expr === 'object' && expr instanceof SelectorRef) {
 				if (!this.isComponentAttrib)
-					expr.bind(node, this.attrName, this.parentNg.firstApply);
+					expr.bind(node, this.attrName, this.parentNg);
 				return;
 			}
 

@@ -233,6 +233,14 @@ h.immutableMap = h.map;
  * behind at all.  Selection state lives on the selector, so it survives re-renders, and
  * set() is safe to call whether or not the rows are currently rendered.
  *
+ * Two rules follow from how set() finds a row, and both throw a clear error rather than
+ * misbehaving quietly.  **The rows must be keyed** — set() locates a row by looking its key
+ * up in the list, so the row template needs a key=${...}.  And **the attribute must sit on
+ * the row's own root element**, the same one that carries the key, because that is the
+ * element set() writes.  Drawing a row costs nothing either way: when() hands back one of
+ * two shared objects rather than allocating anything per row, so a selector is free to
+ * render over a list of any size and only a change of selection does any work.
+ *
  * @param key {*} The initially selected key, or null for none.
  * @return {Selector} */
 h.selector = (key = null) => new Selector(key);

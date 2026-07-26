@@ -131,13 +131,14 @@ export default class PathToAttribValue extends Path {
 
 		// Regular attribute
 		else {
-			// A selection binding (h.selector().when()) writes its own value and remembers this
-			// node, so a later change of selection reaches the attribute directly instead of
-			// going back through render().  The typeof test keeps ordinary string attributes —
-			// nearly all of them — from paying for the prototype check.
+			// A selection binding (h.selector().when()) writes its own value and tells the
+			// selector which list this row belongs to, so a later change of selection reaches
+			// the attribute directly instead of going back through render().  The typeof test
+			// keeps ordinary string attributes — nearly all of them — from paying for the
+			// prototype check.
 			if (typeof expr === 'object' && expr instanceof SelectorRef) {
 				if (!this.isComponentAttrib)
-					expr.bind(node, this.attrName, this.parentNg.firstApply);
+					expr.bind(node, this.attrName, this.parentNg);
 				return;
 			}
 
