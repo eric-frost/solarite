@@ -155,14 +155,10 @@ let Util = {
 			// Don't clobber a non-element value.  For a simple (non-nested) id this covers two cases:
 			// an inherited/built-in property like `title` or `style`, or an own property that already
 			// holds a non-Node value.  A previously-bound element (a Node) is fine to re-assign.
-			if (!id.includes('.')) {
-				let existing = root[id];
-				let isInherited = (id in root) && !Object.hasOwn(root, id);
-				if (!existing?.nodeType && (existing != null || isInherited))
-					throw new Error(`${root.constructor.name}.${id} can't be a reference to ` +
-						`<${el.tagName.toLowerCase()} id="${id}"> because it would clobber an existing ` +
-						`${isInherited ? 'built-in ' : ''}property.  Rename the id or the property.`);
-			}
+			// This can only fail on a mistake in the component's own template, so a developer meets it
+			// the first time the component renders and never again at runtime.  It's therefore dev-only,
+			// and stripped from the minified build to keep the id binding small.
+			
 
 			delve(root, id.split(/\./g), el);
 		}
@@ -609,96 +605,94 @@ class Path {
 	
 }
 
+// The three contexts.  They're small integers instead of strings so that comparing them is cheap
+// and so that zero can mean "no context change" inside the parse() loop below.
+const Text$1 = 1, Tag = 2, Attribute = 3;
+
 class HtmlParser {
 	constructor() {
-		this.defaultState = {
-			context: HtmlParser.Text, // possible values: 'TEXT', 'TAG', 'ATTRIBUTE'
-			quote: null, // possible values: null, '"', "'"
-			buffer: '',
-			lastChar: null
-		};
-		this.state = {...this.defaultState};
+		this.reset();
 	}
 
+	/**
+	 * Throw away any half-parsed tag or attribute and start over in text context.
+	 * @return {int} The text context, so that parse(null) can hand it straight back to its caller. */
 	reset() {
-		this.state = {...this.defaultState};
-		return this.state.context;
+		this.quote = null; // The quote character that opened the attribute value we're inside of: null, '"', or "'".
+		this.buffer = ''; // The characters seen so far in the current tag name, attribute name, or attribute value.
+		return this.context = Text$1;
 	}
 
 	/**
 	 * Parse the next chunk of html, starting with the same context we left off with from the previous chunk.
 	 * @param html {string}
-	 * @param onContextChange {?function(html:string, index:int, prevContext:string, nextContext:string)}
+	 * @param onContextChange {?function(html:string, index:int, prevContext:int, nextContext:int)}
 	 *     Called every time the context changes, and again at the last context.
-	 * @return {('Attribute','Text','Tag')} The context at the end of html.  */
+	 * @return {int} One of HtmlParser.Text, HtmlParser.Tag, or HtmlParser.Attribute:  the context at the end of html. */
 	parse(html, onContextChange=null) {
 		if (html === null)
 			return this.reset();
 
+		// The whole parse runs on these three locals and copies them back to the instance at the end.
+		// A local is both smaller and faster than reaching through a property on every character.
+		let {context, quote, buffer} = this;
+
 		for (let i = 0; i < html.length; i++) {
 			const char = html[i];
-			switch (this.state.context) {
-				case HtmlParser.Text:
-					if (char === '<' && html[i + 1].match(/[/a-z!]/i)) { // Start of a tag or comment.
-						onContextChange?.(html, i, this.state.context, HtmlParser.Tag);
-						this.state.context = HtmlParser.Tag;
-						this.state.buffer = '';
-					}
-					break;
-				case HtmlParser.Tag:
-					if (char === '>') {
-						onContextChange?.(html, i+1, this.state.context, HtmlParser.Text);
-						this.state.context = HtmlParser.Text;
-						this.state.quote = null;
-						this.state.buffer = '';
-					}
-					else if (char === ' ' && !this.state.buffer) {
-						// No attribute name is present. Skipping the space.
-						continue;
-					}
-					else if (char === ' ' || char === '/' || char === '?') {
-						this.state.buffer = ''; // Reset the buffer when a delimiter or potential self-closing sign is found.
-					}
-					else if (char === '"' || char === "'" || char === '=') {
-						onContextChange?.(html, i, this.state.context, HtmlParser.Attribute);
-						this.state.context = HtmlParser.Attribute;
-						this.state.quote = char === '=' ? null : char;
-						this.state.buffer = '';
-					}
-					else
-						this.state.buffer += char;
-					break;
-				case HtmlParser.Attribute:
-					// Start an attribute quote.
-					if (!this.state.quote && !this.state.buffer.length && (char === '"' || char === "'")) {
-						this.state.quote = char;
-					}
-					else if (char === this.state.quote || (!this.state.quote && this.state.buffer.length)) {
-						onContextChange?.(html, i, this.state.context, HtmlParser.Tag);
-						this.state.context = HtmlParser.Tag;
-						this.state.quote = null;
-						this.state.buffer = '';
-					}
-					else if (!this.state.quote && char === '>') {
-						onContextChange?.(html, i+1, this.state.context, HtmlParser.Text);
-						this.state.context = HtmlParser.Text;
-						this.state.quote = null;
-						this.state.buffer = '';
-					}
-					else if (char !== ' ')
-						this.state.buffer += char;
+			let next = 0; // The context this character moves us into, or zero to stay in the one we're in.
 
-					break;
+			if (context === Text$1) {
+				if (char === '<' && html[i + 1].match(/[/a-z!]/i)) // Start of a tag or comment.
+					next = Tag;
+			}
+			else if (context === Tag) {
+				if (char === '>')
+					next = Text$1;
+
+				// A space, a self-closing slash, or the '?' of an xml declaration ends the attribute name we were
+				// collecting.  A run of spaces lands here too, but clearing an already empty buffer changes nothing.
+				else if (char === ' ' || char === '/' || char === '?')
+					buffer = '';
+
+				else if (char === '"' || char === "'" || char === '=')
+					next = Attribute;
+				else
+					buffer += char;
+			}
+			else {
+				// Start an attribute quote.
+				if (!quote && !buffer.length && (char === '"' || char === "'"))
+					quote = char;
+				else if (char === quote || (!quote && buffer.length))
+					next = Tag;
+				else if (!quote && char === '>')
+					next = Text$1;
+				else if (char !== ' ')
+					buffer += char;
+			}
+
+			// Every one of the context changes above shares this same bookkeeping.  Two details are folded in:
+			// text resumes *after* the '>' we just read, so its index is one past the current character, and the
+			// only path into an attribute is the '"', "'", or '=' we just read, where an '=' opens an unquoted value.
+			if (next) {
+				onContextChange?.(html, next === Text$1 ? i+1 : i, context, next);
+				context = next;
+				quote = next === Attribute && char !== '=' ? char : null;
+				buffer = '';
 			}
 		}
-		onContextChange?.(html, html.length, this.state.context, null);
-		return this.state.context;
+
+		this.context = context;
+		this.quote = quote;
+		this.buffer = buffer;
+		onContextChange?.(html, html.length, context, null);
+		return context;
 	}
 }
 
-HtmlParser.Attribute = 'Attribute';
-HtmlParser.Text = 'Text';
-HtmlParser.Tag = 'Tag';
+HtmlParser.Attribute = Attribute;
+HtmlParser.Text = Text$1;
+HtmlParser.Tag = Tag;
 
 /**
  * A key-scoped selection that updates only the rows it actually affects.
@@ -1116,11 +1110,7 @@ class PathToAttribValue extends Path {
 		for (let i = 0; i < values.length; i++) {
 			result.push(values[i]);
 			if (i < values.length - 1) {
-				// A selection binding has to own the whole attribute, because its whole point is
-				// writing that attribute without re-rendering, which it can't do if the rest of
-				// the value comes from expressions it doesn't know about.
-				if (typeof exprs[i] === 'object' && exprs[i] instanceof SelectorRef)
-					throw new Error(`Solarite cannot use a selector inside the multi-part attribute ${this.attrName}="${values.join('${...}')}".  Give the selector the whole attribute value instead, and put the constant part in its on/off values.`);
+				
 				let val = Util.makePrimitive(exprs[i]);
 				if (!Util.isFalsy(val))
 					result.push(val);
@@ -2326,18 +2316,72 @@ class PathToNodes extends Path {
 		if (dCount === 0)
 			return true;
 
-		// 3. Cross-match the displaced positions against each other by key: they all came from
-		// this same list, so a swap, a dragged row or a short shuffle finds its partners here.
-		// A claimed NodeGroup is nulled out of the snapshot so it can't be claimed twice.
-		let free = new Array(dCount);
-		for (let b=0; b<dCount; b++)
-			free[b] = ngs[misses[displaced[b]]];
-		let placed = new Array(dCount);
-		for (let a=0; a<dCount; a++) {
-			let t = templates[displaced[a]];
+		// 3. Hand the displaced rows to the shared placer.  displaced holds indexes into misses
+		// and templates, so misses is what maps a row to its position in the list.
+		let wholeParent = this.wholeParent;
+		this.placeDisplaced(displaced, misses, ngs, templates, ngs, len,
+			wholeParent ? null : this.nodeMarker,
+			wholeParent ? this.nodeMarker : this.nodeMarker.parentNode);
+
+		// 4. Node membership or order changed, so invalidate caches.
+		if (!this.parentNg.firstApply) {
+			this.nodesCache = null;
+			if (this.parentNg.parentPath)
+				this.parentNg.parentPath.clearNodesCache();
+		}
+
+		// Keep state used by the generic path from going stale.
+		if (this.nodeGroupsRendered)
+			this.nodeGroupsRendered = null;
+		if (this.nodeGroupsAttachedAvailable)
+			this.nodeGroupsAttachedAvailable = null;
+		return true;
+	}
+
+	/**
+	 * Settle a handful of rows that moved, appeared or vanished within one window of a list.
+	 *
+	 * Both small-reorder paths — the h.map() patch in applyMisses and the equal-length window in
+	 * applyKeyed — reach the same point: a few positions whose old NodeGroup no longer belongs
+	 * where it stands, everything around them already correct.  Since every candidate came from
+	 * this same window, a swap, a dragged row or a short shuffle finds its partners inside it, so
+	 * the rows are cross-matched against each other by key rather than through the general
+	 * diff's key map and longest-increasing-subsequence machinery.
+	 *
+	 * rows holds ascending indexes into items, which is the array each caller already has; when
+	 * those indexes are not themselves list positions, positions maps them across.  Doing the
+	 * indirection here rather than compacting it away in the caller keeps this off the allocation
+	 * path: neither caller builds an array it wasn't building already.  rows.length is small by
+	 * construction (at most maxDisplacedMisses), which is what makes the O(n²) cross-match
+	 * cheaper than building a map.
+	 *
+	 * @param rows {int[]} Ascending indexes of the rows to settle.
+	 * @param positions {int[]|null} Maps a row index to its list position, or null when the row
+	 *   indexes are already positions.
+	 * @param oldNgs {NodeGroup[]} Where each position's outgoing NodeGroup is read from.
+	 * @param items {(Template|string)[]} The new items, indexed by row index.
+	 * @param outNgs {NodeGroup[]} Receives the NodeGroup that ends up at each position.  May be
+	 *   the same array as oldNgs; the outgoing groups are snapshotted before anything is written.
+	 * @param boundary {int} First position past this window, where the anchor stops being
+	 *   outNgs[p+1] and becomes tailAnchor.
+	 * @param tailAnchor {Node|null} Anchor for a row placed at boundary-1.
+	 * @param parent {Node} Where the rows' nodes live. */
+	placeDisplaced(rows, positions, oldNgs, items, outNgs, boundary, tailAnchor, parent) {
+		let count = rows.length;
+
+		// 1. Cross-match the rows against each other by key.  A claimed NodeGroup is nulled out
+		// of the snapshot so it can't be claimed twice.
+		let free = new Array(count);
+		for (let b=0; b<count; b++) {
+			let i = rows[b];
+			free[b] = oldNgs[positions === null ? i : positions[i]];
+		}
+		let placed = new Array(count);
+		for (let a=0; a<count; a++) {
+			let t = items[rows[a]];
 			let key = keyOf(t);
 			if (key !== undefined)
-				for (let b=0; b<dCount; b++) {
+				for (let b=0; b<count; b++) {
 					let ng = free[b];
 					if (ng !== null && ng.key === key && itemClose(ng, t)) {
 						free[b] = null;
@@ -2351,9 +2395,9 @@ class PathToNodes extends Path {
 				}
 		}
 
-		// 4. Discard the old rows nothing claimed.  Keyed semantics require a new key to get new
+		// 2. Discard the old rows nothing claimed.  Keyed semantics require a new key to get new
 		// nodes, so these are never pooled.
-		for (let b=0; b<dCount; b++) {
+		for (let b=0; b<count; b++) {
 			let ng = free[b];
 			if (ng !== null) {
 				if (ng.startNode !== ng.endNode)
@@ -2363,33 +2407,18 @@ class PathToNodes extends Path {
 			}
 		}
 
-		// 5. Put the displaced rows in place, right to left so each one's anchor is already final.
-		let wholeParent = this.wholeParent;
-		let parent = wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
-		for (let a=dCount-1; a>=0; a--) {
-			let p = misses[displaced[a]];
+		// 3. Put the rows in place, right to left so each one's anchor is already final.
+		for (let a=count-1; a>=0; a--) {
+			let i = rows[a];
+			let p = positions === null ? i : positions[i];
 			let ng = placed[a];
 			if (ng === undefined)
-				ng = this.createNew(templates[displaced[a]]);
-			ngs[p] = ng;
-			let anchor = p+1 < len ? ngs[p+1].startNode : (wholeParent ? null : this.nodeMarker);
+				ng = this.createNew(items[i]);
+			outNgs[p] = ng;
+			let anchor = p+1 < boundary ? outNgs[p+1].startNode : tailAnchor;
 			if (ng.endNode.nextSibling !== anchor || ng.startNode.parentNode !== parent)
 				insertNodesBefore(parent, ng, anchor);
 		}
-
-		// 6. Node membership or order changed, so invalidate caches.
-		if (!this.parentNg.firstApply) {
-			this.nodesCache = null;
-			if (this.parentNg.parentPath)
-				this.parentNg.parentPath.clearNodesCache();
-		}
-
-		// Keep state used by the generic path from going stale.
-		if (this.nodeGroupsRendered)
-			this.nodeGroupsRendered = null;
-		if (this.nodeGroupsAttachedAvailable)
-			this.nodeGroupsAttachedAvailable = null;
-		return true;
 	}
 
 	/**
@@ -2606,57 +2635,15 @@ class PathToNodes extends Path {
 					newNgs[i] = ng;
 				}
 				if (ok) {
-					if (displaced !== null) {
-						let d = displaced.length;
-						let used = 0; // Bitmask of consumed old positions; d is at most 8.
-
-						// Cross-match each displaced new item to a displaced old NodeGroup by key.
-						for (let a=0; a<d; a++) {
-							let p = displaced[a];
-							let t = newItems[p];
-							let k = keyOf(t);
-							if (k !== undefined)
-								for (let b=0; b<d; b++) {
-									if (used & (1<<b))
-										continue;
-									let ng = oldNgs[displaced[b]];
-									if (ng.key === k && itemClose(ng, t)) {
-										used |= 1<<b;
-										if (itemSame(ng, t))
-											this.refreshSameItem(ng, t);
-										else
-											this.rewriteNodeGroup(ng, t);
-										newNgs[p] = ng;
-										break;
-									}
-								}
-						}
-
-						// Discard unmatched old NodeGroups — never pooled, as keyed semantics require.
-						for (let b=0; b<d; b++)
-							if (!(used & (1<<b))) {
-								let ng = oldNgs[displaced[b]];
-								if (ng.startNode !== ng.endNode)
-									Util.saveOrphans(ng.getNodes());
-								else
-									ng.startNode.remove();
-							}
-
-						// Create missing rows and move displaced ranges, right to left so each
-						// position's anchor is already in its final place.
-						for (let a=d-1; a>=0; a--) {
-							let p = displaced[a];
-							let ng = newNgs[p];
-							if (ng === undefined) {
-								ng = this.createNew(newItems[p]);
-								newNgs[p] = ng;
-							}
-							let anchor = p+1 < newEnd ? newNgs[p+1].startNode
-								: (newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker));
-							if (ng.endNode.nextSibling !== anchor || ng.startNode.parentNode !== parent)
-								insertNodesBefore(parent, ng, anchor);
-						}
-					}
+					// The windows are the same length, so a displaced row's index is already its
+					// position and no position map is needed.  The tail anchor is the suffix row
+					// just past this window, which placement never writes to — it only fills
+					// positions below newEnd — so it is computed once here instead of on every
+					// pass around the placement loop.
+					if (displaced !== null)
+						this.placeDisplaced(displaced, null, oldNgs, newItems, newNgs, newEnd,
+							newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker),
+							parent);
 					fastHandled = true;
 				}
 			}
@@ -3778,13 +3765,14 @@ class Shell {
 					// The reserved key attribute identifies this template within a keyed list.
 					// It's consumed here and never written to the DOM or passed to components.
 					if (attr.name === 'key') {
-						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
-						if (parts.length !== 2 || parts[0] !== '' || parts[1] !== '')
-							throw new Error(`The key attribute is reserved and must be a single expression: key=\${...}`);
-						if (node.parentNode !== this.fragment)
-							throw new Error(`The key attribute must be on a top-level element of its template.`);
-						if (this.keyIndex >= 0)
-							throw new Error(`A template can have only one key attribute.`);
+
+						// These three are template-authoring mistakes rather than runtime conditions.  A template's
+						// html comes from a tagged template literal's static strings, so a key attribute that passes
+						// these checks while developing passes them identically in production, on every render and
+						// for every user.  Checking only in development also avoids a regex split of the attribute
+						// value, which happens once per unique template.
+						
+
 						this.keyIndex = attr.value.charCodeAt(0) - attribPlaceholder;
 
 						let path = new PathToKey(null, node);
@@ -5508,6 +5496,14 @@ h.immutableMap = h.map;
  * owns that attribute for as long as the row exists.  An off value of '' leaves no attribute
  * behind at all.  Selection state lives on the selector, so it survives re-renders, and
  * set() is safe to call whether or not the rows are currently rendered.
+ *
+ * Two rules follow from how set() finds a row, and both throw a clear error rather than
+ * misbehaving quietly.  **The rows must be keyed** — set() locates a row by looking its key
+ * up in the list, so the row template needs a key=${...}.  And **the attribute must sit on
+ * the row's own root element**, the same one that carries the key, because that is the
+ * element set() writes.  Drawing a row costs nothing either way: when() hands back one of
+ * two shared objects rather than allocating anything per row, so a selector is free to
+ * render over a list of any size and only a change of selection does any work.
  *
  * @param key {*} The initially selected key, or null for none.
  * @return {Selector} */

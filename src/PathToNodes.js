@@ -513,18 +513,72 @@ export default class PathToNodes extends Path {
 		if (dCount === 0)
 			return true;
 
-		// 3. Cross-match the displaced positions against each other by key: they all came from
-		// this same list, so a swap, a dragged row or a short shuffle finds its partners here.
-		// A claimed NodeGroup is nulled out of the snapshot so it can't be claimed twice.
-		let free = new Array(dCount);
-		for (let b=0; b<dCount; b++)
-			free[b] = ngs[misses[displaced[b]]];
-		let placed = new Array(dCount);
-		for (let a=0; a<dCount; a++) {
-			let t = templates[displaced[a]];
+		// 3. Hand the displaced rows to the shared placer.  displaced holds indexes into misses
+		// and templates, so misses is what maps a row to its position in the list.
+		let wholeParent = this.wholeParent;
+		this.placeDisplaced(displaced, misses, ngs, templates, ngs, len,
+			wholeParent ? null : this.nodeMarker,
+			wholeParent ? this.nodeMarker : this.nodeMarker.parentNode);
+
+		// 4. Node membership or order changed, so invalidate caches.
+		if (!this.parentNg.firstApply) {
+			this.nodesCache = null;
+			if (this.parentNg.parentPath)
+				this.parentNg.parentPath.clearNodesCache();
+		}
+
+		// Keep state used by the generic path from going stale.
+		if (this.nodeGroupsRendered)
+			this.nodeGroupsRendered = null;
+		if (this.nodeGroupsAttachedAvailable)
+			this.nodeGroupsAttachedAvailable = null;
+		return true;
+	}
+
+	/**
+	 * Settle a handful of rows that moved, appeared or vanished within one window of a list.
+	 *
+	 * Both small-reorder paths — the h.map() patch in applyMisses and the equal-length window in
+	 * applyKeyed — reach the same point: a few positions whose old NodeGroup no longer belongs
+	 * where it stands, everything around them already correct.  Since every candidate came from
+	 * this same window, a swap, a dragged row or a short shuffle finds its partners inside it, so
+	 * the rows are cross-matched against each other by key rather than through the general
+	 * diff's key map and longest-increasing-subsequence machinery.
+	 *
+	 * rows holds ascending indexes into items, which is the array each caller already has; when
+	 * those indexes are not themselves list positions, positions maps them across.  Doing the
+	 * indirection here rather than compacting it away in the caller keeps this off the allocation
+	 * path: neither caller builds an array it wasn't building already.  rows.length is small by
+	 * construction (at most maxDisplacedMisses), which is what makes the O(n²) cross-match
+	 * cheaper than building a map.
+	 *
+	 * @param rows {int[]} Ascending indexes of the rows to settle.
+	 * @param positions {int[]|null} Maps a row index to its list position, or null when the row
+	 *   indexes are already positions.
+	 * @param oldNgs {NodeGroup[]} Where each position's outgoing NodeGroup is read from.
+	 * @param items {(Template|string)[]} The new items, indexed by row index.
+	 * @param outNgs {NodeGroup[]} Receives the NodeGroup that ends up at each position.  May be
+	 *   the same array as oldNgs; the outgoing groups are snapshotted before anything is written.
+	 * @param boundary {int} First position past this window, where the anchor stops being
+	 *   outNgs[p+1] and becomes tailAnchor.
+	 * @param tailAnchor {Node|null} Anchor for a row placed at boundary-1.
+	 * @param parent {Node} Where the rows' nodes live. */
+	placeDisplaced(rows, positions, oldNgs, items, outNgs, boundary, tailAnchor, parent) {
+		let count = rows.length;
+
+		// 1. Cross-match the rows against each other by key.  A claimed NodeGroup is nulled out
+		// of the snapshot so it can't be claimed twice.
+		let free = new Array(count);
+		for (let b=0; b<count; b++) {
+			let i = rows[b];
+			free[b] = oldNgs[positions === null ? i : positions[i]];
+		}
+		let placed = new Array(count);
+		for (let a=0; a<count; a++) {
+			let t = items[rows[a]];
 			let key = keyOf(t);
 			if (key !== undefined)
-				for (let b=0; b<dCount; b++) {
+				for (let b=0; b<count; b++) {
 					let ng = free[b];
 					if (ng !== null && ng.key === key && itemClose(ng, t)) {
 						free[b] = null;
@@ -538,9 +592,9 @@ export default class PathToNodes extends Path {
 				}
 		}
 
-		// 4. Discard the old rows nothing claimed.  Keyed semantics require a new key to get new
+		// 2. Discard the old rows nothing claimed.  Keyed semantics require a new key to get new
 		// nodes, so these are never pooled.
-		for (let b=0; b<dCount; b++) {
+		for (let b=0; b<count; b++) {
 			let ng = free[b];
 			if (ng !== null) {
 				if (ng.startNode !== ng.endNode)
@@ -550,33 +604,18 @@ export default class PathToNodes extends Path {
 			}
 		}
 
-		// 5. Put the displaced rows in place, right to left so each one's anchor is already final.
-		let wholeParent = this.wholeParent;
-		let parent = wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
-		for (let a=dCount-1; a>=0; a--) {
-			let p = misses[displaced[a]];
+		// 3. Put the rows in place, right to left so each one's anchor is already final.
+		for (let a=count-1; a>=0; a--) {
+			let i = rows[a];
+			let p = positions === null ? i : positions[i];
 			let ng = placed[a];
 			if (ng === undefined)
-				ng = this.createNew(templates[displaced[a]]);
-			ngs[p] = ng;
-			let anchor = p+1 < len ? ngs[p+1].startNode : (wholeParent ? null : this.nodeMarker);
+				ng = this.createNew(items[i]);
+			outNgs[p] = ng;
+			let anchor = p+1 < boundary ? outNgs[p+1].startNode : tailAnchor;
 			if (ng.endNode.nextSibling !== anchor || ng.startNode.parentNode !== parent)
 				insertNodesBefore(parent, ng, anchor);
 		}
-
-		// 6. Node membership or order changed, so invalidate caches.
-		if (!this.parentNg.firstApply) {
-			this.nodesCache = null;
-			if (this.parentNg.parentPath)
-				this.parentNg.parentPath.clearNodesCache();
-		}
-
-		// Keep state used by the generic path from going stale.
-		if (this.nodeGroupsRendered)
-			this.nodeGroupsRendered = null;
-		if (this.nodeGroupsAttachedAvailable)
-			this.nodeGroupsAttachedAvailable = null;
-		return true;
 	}
 
 	/**
@@ -806,57 +845,15 @@ export default class PathToNodes extends Path {
 					newNgs[i] = ng;
 				}
 				if (ok) {
-					if (displaced !== null) {
-						let d = displaced.length;
-						let used = 0; // Bitmask of consumed old positions; d is at most 8.
-
-						// Cross-match each displaced new item to a displaced old NodeGroup by key.
-						for (let a=0; a<d; a++) {
-							let p = displaced[a];
-							let t = newItems[p];
-							let k = keyOf(t);
-							if (k !== undefined)
-								for (let b=0; b<d; b++) {
-									if (used & (1<<b))
-										continue;
-									let ng = oldNgs[displaced[b]];
-									if (ng.key === k && itemClose(ng, t)) {
-										used |= 1<<b;
-										if (itemSame(ng, t))
-											this.refreshSameItem(ng, t);
-										else
-											this.rewriteNodeGroup(ng, t);
-										newNgs[p] = ng;
-										break;
-									}
-								}
-						}
-
-						// Discard unmatched old NodeGroups — never pooled, as keyed semantics require.
-						for (let b=0; b<d; b++)
-							if (!(used & (1<<b))) {
-								let ng = oldNgs[displaced[b]];
-								if (ng.startNode !== ng.endNode)
-									Util.saveOrphans(ng.getNodes());
-								else
-									ng.startNode.remove();
-							}
-
-						// Create missing rows and move displaced ranges, right to left so each
-						// position's anchor is already in its final place.
-						for (let a=d-1; a>=0; a--) {
-							let p = displaced[a];
-							let ng = newNgs[p];
-							if (ng === undefined) {
-								ng = this.createNew(newItems[p]);
-								newNgs[p] = ng;
-							}
-							let anchor = p+1 < newEnd ? newNgs[p+1].startNode
-								: (newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker));
-							if (ng.endNode.nextSibling !== anchor || ng.startNode.parentNode !== parent)
-								insertNodesBefore(parent, ng, anchor);
-						}
-					}
+					// The windows are the same length, so a displaced row's index is already its
+					// position and no position map is needed.  The tail anchor is the suffix row
+					// just past this window, which placement never writes to — it only fills
+					// positions below newEnd — so it is computed once here instead of on every
+					// pass around the placement loop.
+					if (displaced !== null)
+						this.placeDisplaced(displaced, null, oldNgs, newItems, newNgs, newEnd,
+							newEnd < newLen ? newNgs[newEnd].startNode : (wholeParent ? null : this.nodeMarker),
+							parent);
 					fastHandled = true;
 				}
 			}

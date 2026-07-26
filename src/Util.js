@@ -40,6 +40,10 @@ let Util = {
 			// Don't clobber a non-element value.  For a simple (non-nested) id this covers two cases:
 			// an inherited/built-in property like `title` or `style`, or an own property that already
 			// holds a non-Node value.  A previously-bound element (a Node) is fine to re-assign.
+			// This can only fail on a mistake in the component's own template, so a developer meets it
+			// the first time the component renders and never again at runtime.  It's therefore dev-only,
+			// and stripped from the minified build to keep the id binding small.
+			//#IFDEV
 			if (!id.includes('.')) {
 				let existing = root[id];
 				let isInherited = (id in root) && !Object.hasOwn(root, id);
@@ -48,6 +52,7 @@ let Util = {
 						`<${el.tagName.toLowerCase()} id="${id}"> because it would clobber an existing ` +
 						`${isInherited ? 'built-in ' : ''}property.  Rename the id or the property.`);
 			}
+			//#ENDIF
 
 			delve(root, id.split(/\./g), el);
 		}

@@ -191,6 +191,13 @@ export default class Shell {
 					// The reserved key attribute identifies this template within a keyed list.
 					// It's consumed here and never written to the DOM or passed to components.
 					if (attr.name === 'key') {
+
+						// These three are template-authoring mistakes rather than runtime conditions.  A template's
+						// html comes from a tagged template literal's static strings, so a key attribute that passes
+						// these checks while developing passes them identically in production, on every render and
+						// for every user.  Checking only in development also avoids a regex split of the attribute
+						// value, which happens once per unique template.
+						//#IFDEV
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length !== 2 || parts[0] !== '' || parts[1] !== '')
 							throw new Error(`The key attribute is reserved and must be a single expression: key=\${...}`);
@@ -198,6 +205,8 @@ export default class Shell {
 							throw new Error(`The key attribute must be on a top-level element of its template.`);
 						if (this.keyIndex >= 0)
 							throw new Error(`A template can have only one key attribute.`);
+						//#ENDIF
+
 						this.keyIndex = attr.value.charCodeAt(0) - attribPlaceholder;
 
 						let path = new PathToKey(null, node);

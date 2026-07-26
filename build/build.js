@@ -37,11 +37,13 @@ const terserOptions = {
 	ecma: 8, // Decreases size.
 	format: {
 		preamble: `// Solarite v${packageJson.version} | MIT | eric-frost.github.io/solarite`,
-		comments: false
+		comments: false,
+		wrap_func_args: false,
 	},
 	compress: { // https://github.com/terser/terser#compress-options
 		passes: 5, // 3 gives the same result as 5.
-		//hoist_funs: true, // Increases size
+		hoist_funs: true,
+		unsafe_symbols: true,
 		//hoist_vars: true, // Increases size
 		module: true, // Output is an ES module (always strict): enables extra optimizations.
 		toplevel: true, // Drop unused top-level functions/vars.
