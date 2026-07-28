@@ -1716,7 +1716,7 @@ Testimony.test('Solarite.map.svg', `h.map works with svg`+'`` '+`templates`, () 
 	a.remove();
 });
 
-Testimony.test('Solarite.map.fuzz', `Random list edits always produce the right DOM`, () => {
+Testimony.test('Solarite.map.fuzz', `Random list edits always produce the right DOM. This is a slow test.`, () => {
 
 	// A deterministic generator, so a failure can be reproduced by re-running the test.
 	let seed = 1234567;
@@ -3673,6 +3673,59 @@ Testimony.test('Solarite.embed.styleDynamicTag', () => {
 	style1 = h`<style>:host { color: orangered }</style>`
 	a.render();
 	assert.eq(getHtml(a), `<r-325 data-style="1"><style>r-325[data-style="1"] { color: orangered }</style>Text.</r-325>`)
+
+	a.remove();
+});
+
+Testimony.test('Solarite.embed.styleHostParens', () => {
+	class R327 extends Solarite {
+		render() {
+			h(this)`
+				<style>
+					:host(.sel) { color: rgb(0, 128, 0) }
+					:host(:focus-within) { outline: 1px solid red }
+					:host(:focus-within:not(.no-focus)) b { font-weight: bold }
+					:host { padding: 3px }
+				</style>
+				<b>Text that turns green when .sel is added.</b>
+			`;
+		}
+	}
+
+	let a = new R327();
+	document.body.append(a);
+
+	let css = a.querySelector('style').textContent.replace(/\s+/g, ' ').trim();
+	assert.eq(css,
+		`r-327[data-style="1"].sel { color: rgb(0, 128, 0) } ` +
+		`r-327[data-style="1"]:focus-within { outline: 1px solid red } ` +
+		`r-327[data-style="1"]:focus-within:not(.no-focus) b { font-weight: bold } ` +
+		`r-327[data-style="1"] { padding: 3px }`);
+
+	// A wrong rewrite fails silently: the browser discards an invalid selector without any
+	// console message. So also prove the rule was accepted by watching it apply.
+	a.classList.add('sel');
+	assert.eq(getComputedStyle(a).color, 'rgb(0, 128, 0)');
+
+	a.remove();
+});
+
+Testimony.test('Solarite.embed.styleHostSplit', () => {
+	// An expression can end a text node with ':host', leaving nothing after it for the
+	// rewriter's lookahead to see.
+	let sel = ':host';
+
+	class R328 extends Solarite {
+		render() {
+			h(this)`<style>${sel} { color: rgb(0, 0, 128) }</style>Text that should be navy.`;
+		}
+	}
+
+	let a = new R328();
+	document.body.append(a);
+
+	assert.eq(a.querySelector('style').textContent, `r-328[data-style="1"] { color: rgb(0, 0, 128) }`);
+	assert.eq(getComputedStyle(a).color, 'rgb(0, 0, 128)');
 
 	a.remove();
 });

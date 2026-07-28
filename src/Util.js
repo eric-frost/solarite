@@ -102,7 +102,19 @@ let Util = {
 		for (let child of style.childNodes) {
 			if (child.nodeType === 3) {
 				let oldText = child.textContent;
-				let newText = oldText.replace(/:host(?=[^a-z0-9_])/gi, `${tagName}${attribSelector}`)
+
+				// One pass rewrites both forms of the selector:
+				// 1.  The functional form ':host(X)' — the host element when it also matches X — unwraps
+				//     so X sits right after the scoped name:  tag[data-style="1"]X.  X may hold one
+				//     nested group like ':not(.open)'; deeper parentheses can't be paired by a regex,
+				//     so such an X is left as written rather than half-rewritten into a selector the
+				//     browser would discard silently.
+				// 2.  Plain ':host'.  The lookahead turns down longer names (':host-context') and '(',
+				//     which only follows ':host' when alternative 1 already gave up on it, and accepts
+				//     the end of the text node, where an expression may have split a dynamic style.
+				let newText = oldText.replace(
+					/:host(?:\(((?:[^()]|\([^()]*\))*)\)|(?![-a-z0-9_(]))/gi,
+					`${tagName}${attribSelector}$1`);
 				if (oldText !== newText)
 					child.textContent = newText;
 			}
