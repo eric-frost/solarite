@@ -275,13 +275,24 @@ let Util = {
 		return str.replace(/-([a-z])/g, g => g[1].toUpperCase());
 	},
 
+	/**
+	 * Register Class as a custom element, unless it's registered already.
+	 * @param Class {typeof HTMLElement}
+	 * @param tagName {?string} Name to register under.  Defaults to the dashed form of the class name.
+	 * @return {string} The tag name Class is registered under, whether we just registered it or it
+	 *     was already in the registry under some other name.  Callers that emit markup for the class
+	 *     use this instead of re-deriving the name, which guesses wrong for any class registered
+	 *     under a name that isn't camelToDashes(Class.name). */
 	defineClass(Class, tagName) {
-		if (!customElements[getName](Class)) { // If not previously defined.
-			tagName = tagName || Util.camelToDashes(Class.name);
-			if (!tagName.includes('-')) // Browsers require that web components always have a dash in the name.
-				tagName += '-element';
-			customElements[define](tagName, Class);
-		}
+		let defined = customElements[getName](Class);
+		if (defined) // Previously defined.
+			return defined;
+
+		tagName = tagName || Util.camelToDashes(Class.name);
+		if (!tagName.includes('-')) // Browsers require that web components always have a dash in the name.
+			tagName += '-element';
+		customElements[define](tagName, Class);
+		return tagName;
 	},
 
 	/**
@@ -565,7 +576,12 @@ class Path {
 	 * [[expr5], [expr6, expr7]] // arguments to second my-component constructor.
 	 * [expr5]                   // user attribute value.
 	 * [expr6, expr7]            // role attribute value. */
-	apply(exprs) {}
+	apply(exprs) {
+		//#IFDEBUG
+		assert(Array.isArray(exprs));
+		//#ENDIF
+		this.applySingle(exprs[0]);
+	}
 
 	/**
 	 * Fast path used by NodeGroup.applyExprs() when every path consumes exactly one expression.
@@ -574,6 +590,13 @@ class Path {
 	applySingle(expr) {}
 
 	getExpressionCount() { return 1 }
+
+	/**
+	 * The value a path hands to a component constructor, for the single-expression paths.
+	 * PathToAttribValue overrides this to join its surrounding static strings.
+	 * @param exprs {Expr[]}
+	 * @return {Expr} */
+	getValue(exprs) { return exprs[0] }
 
 
 	/**
@@ -631,13 +654,7 @@ class Path {
 			nodeBefore = childNodes[this.nodeBeforeIndex];
 		}
 
-		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
-
-		result.isComponentAttrib = this.isComponentAttrib;
-		result.wholeParent = this.wholeParent;
-
-		// TODO: Put this in PathToAttribValue.clone().
-		result.isHtmlProperty = this.isHtmlProperty;
+		let result = this.cloneWithNodes(nodeBefore, nodeMarker);
 
 		//#IFDEBUG
 		result.verify();
@@ -703,95 +720,6 @@ class Path {
 	}
 	//#ENDIF
 }
-
-// The three contexts.  They're small integers instead of strings so that comparing them is cheap
-// and so that zero can mean "no context change" inside the parse() loop below.
-const Text$1 = 1, Tag = 2, Attribute = 3;
-
-class HtmlParser {
-	constructor() {
-		this.reset();
-	}
-
-	/**
-	 * Throw away any half-parsed tag or attribute and start over in text context.
-	 * @return {int} The text context, so that parse(null) can hand it straight back to its caller. */
-	reset() {
-		this.quote = null; // The quote character that opened the attribute value we're inside of: null, '"', or "'".
-		this.buffer = ''; // The characters seen so far in the current tag name, attribute name, or attribute value.
-		return this.context = Text$1;
-	}
-
-	/**
-	 * Parse the next chunk of html, starting with the same context we left off with from the previous chunk.
-	 * @param html {string}
-	 * @param onContextChange {?function(html:string, index:int, prevContext:int, nextContext:int)}
-	 *     Called every time the context changes, and again at the last context.
-	 * @return {int} One of HtmlParser.Text, HtmlParser.Tag, or HtmlParser.Attribute:  the context at the end of html. */
-	parse(html, onContextChange=null) {
-		if (html === null)
-			return this.reset();
-
-		// The whole parse runs on these three locals and copies them back to the instance at the end.
-		// A local is both smaller and faster than reaching through a property on every character.
-		let {context, quote, buffer} = this;
-
-		for (let i = 0; i < html.length; i++) {
-			const char = html[i];
-			let next = 0; // The context this character moves us into, or zero to stay in the one we're in.
-
-			if (context === Text$1) {
-				if (char === '<' && html[i + 1].match(/[/a-z!]/i)) // Start of a tag or comment.
-					next = Tag;
-			}
-			else if (context === Tag) {
-				if (char === '>')
-					next = Text$1;
-
-				// A space, a self-closing slash, or the '?' of an xml declaration ends the attribute name we were
-				// collecting.  A run of spaces lands here too, but clearing an already empty buffer changes nothing.
-				else if (char === ' ' || char === '/' || char === '?')
-					buffer = '';
-
-				else if (char === '"' || char === "'" || char === '=')
-					next = Attribute;
-				else
-					buffer += char;
-			}
-			else {
-				// Start an attribute quote.
-				if (!quote && !buffer.length && (char === '"' || char === "'"))
-					quote = char;
-				else if (char === quote || (!quote && buffer.length))
-					next = Tag;
-				else if (!quote && char === '>')
-					next = Text$1;
-				else if (char !== ' ')
-					buffer += char;
-			}
-
-			// Every one of the context changes above shares this same bookkeeping.  Two details are folded in:
-			// text resumes *after* the '>' we just read, so its index is one past the current character, and the
-			// only path into an attribute is the '"', "'", or '=' we just read, where an '=' opens an unquoted value.
-			if (next) {
-				onContextChange?.(html, next === Text$1 ? i+1 : i, context, next);
-				context = next;
-				quote = next === Attribute && char !== '=' ? char : null;
-				buffer = '';
-			}
-		}
-
-		this.context = context;
-		this.quote = quote;
-		this.buffer = buffer;
-		onContextChange?.(html, html.length, context, null);
-		return context;
-	}
-}
-
-HtmlParser.Attribute = Attribute;
-HtmlParser.Text = Text$1;
-HtmlParser.Tag = Tag;
 
 /**
  * A key-scoped selection that updates only the rows it actually affects.
@@ -1665,13 +1593,10 @@ function jsxToTemplate(tag, props, children=[], key=undefined) {
 
 		// 2a. Custom element class => emit <tag-name ...props>children</tag-name>; PathToComponent
 		// instantiates it exactly like a tagged-template component.
-		if (tag.prototype instanceof HTMLElement) {
-			Util.defineClass(tag);
-			let tagName = customElements.getName ? customElements.getName(tag) : Util.camelToDashes(tag.name);
-			if (tagName && !tagName.includes('-'))
-				tagName += '-element';
-			return buildIntrinsic(tagName, props, children, key);
-		}
+		// defineClass() hands back the name it registered, or the name the class was already
+		// registered under, so we never have to guess it a second time.
+		if (tag.prototype instanceof HTMLElement)
+			return buildIntrinsic(Util.defineClass(tag), props, children, key);
 
 		// 2b. Plain function component: call it with props (+ children) and expect a Template back.
 		let p = {};
@@ -1764,15 +1689,6 @@ class PathToAttribs extends Path {
 	}
 
 	/**
-	 * @param exprs {Expr[][]} Only the first is used. */
-	apply(exprs) {
-		//#IFDEBUG
-		assert(Array.isArray(exprs));
-		//#ENDIF
-		this.applySingle(exprs[0]);
-	}
-
-	/**
 	 * @param expr {Expr} */
 	applySingle(expr) {
 		let node = this.nodeMarker;
@@ -1850,10 +1766,6 @@ class PathToAttribs extends Path {
 			value = styleToCss(value);
 		sub.applySingle(value);
 	}
-
-
-	getExpressionCount() { return 1 }
-	getValue(exprs) { return exprs[0]; }
 }
 
 /**
@@ -2007,18 +1919,6 @@ class PathToNodes extends Path {
 
 	constructor(nodeBefore, nodeMarker) {
 		super(nodeBefore, nodeMarker);
-	}
-
-	/**
-	 * Insert/replace the nodes created by a single expression.
-	 * Called by applyExprs()
-	 * @param exprs {Expr[]} Only the first is used.
-	 * @return {Node[]} New Nodes created. */
-	apply(exprs) {
-		//#IFDEBUG
-		assert(Array.isArray(exprs));
-		//#ENDIF
-		this.applySingle(exprs[0]);
 	}
 
 	/**
@@ -3551,12 +3451,6 @@ function reconcileNodes(parentNode, oldNodes, newNodes, before) {
  * matches NodeGroups to new templates by this key. */
 class PathToKey extends Path {
 
-	/**
-	 * @param exprs {Expr[]} Only the first is used. */
-	apply(exprs) {
-		this.parentNg.key = exprs[0];
-	}
-
 	applySingle(expr) {
 		this.parentNg.key = expr;
 	}
@@ -3737,15 +3631,10 @@ class PathToComponent extends Path {
 	 * @param pathOffset {int}
 	 * @return {Path} */
 	clone(newRoot, pathOffset=0) {
-		/*#IFDEBUG*/this.verify();/*#ENDIF*/
-		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
-		let result = new PathToComponent(null, nodeMarker);
+		// A component path's nodeBefore is always null (the constructor discards it), so the
+		// base clone() resolves only the nodeMarker and hands back a new PathToComponent.
+		let result = super.clone(newRoot, pathOffset);
 		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
-
-		//#IFDEBUG
-		result.verify();
-		//#ENDIF
-
 		return result;
 	}
 
@@ -4161,8 +4050,9 @@ class Shell {
 		}
 
 		this.findEmbeds();
-		this.buildResolveProgram();
 
+		// This scan must run before buildResolveProgram(), which skips shells with components
+		// and reads hasComponentPaths rather than walking the paths a second time.
 		this.pathsSingleExpr = true;
 		for (let path of this.paths) {
 			if (path instanceof PathToComponent) {
@@ -4175,6 +4065,8 @@ class Shell {
 				this.hasLivePropPaths = true;
 		}
 		this.needsRefresh = this.hasComponentPaths || (this.hasLivePropPaths && this.pathsSingleExpr);
+
+		this.buildResolveProgram();
 
 		// Stampable shells create NodeGroups without allocating any Path objects:
 		// NodeGroup.applyStamp() writes expressions through these shared stamper paths,
@@ -4255,33 +4147,82 @@ class Shell {
 	static addPlaceholders(htmlChunks) {
 		let result = [];
 
-		let htmlParser = new HtmlParser(); // Reset the context.
+		// Where the tokenizer is as it walks the chunks.  An expression can sit in the middle of an attribute
+		// value, so the context, the quote character that opened that value, and the characters collected so
+		// far all have to survive from one chunk to the next.
+		let context = Text$1;
+		let quote = null; // The quote character that opened the attribute value we're inside of: null, '"', or "'".
+		let buffer = ''; // The characters seen so far in the current tag name, attribute name, or attribute value.
+
 		for (let i = 0; i < htmlChunks.length; i++) {
-			let lastHtml = htmlChunks[i];
+			let html = htmlChunks[i];
 
 			// Append -solarite-placholder to web component tags, so we can pass args to them when they're instantiated.
 			let lastIndex = 0;
-			let context = htmlParser.parse(lastHtml, (html, index, prevContext/*, nextContext*/) => { // This function is called every time the html context changes.
-				if (lastIndex !== index) {
-					let token = html.slice(lastIndex, index);
+			for (let j = 0; j < html.length; j++) {
+				const char = html[j];
+				let next = 0; // The context this character moves us into, or zero to stay in the one we're in.
 
-					if (prevContext === HtmlParser.Tag) {
-						// Find Web Component tags and append -solarite-placeholder to their tag names
-						// This way we can gather their constructor arguments and their children before we call their constructor.
-						// Later, PathToComponent.apply() will replace them with the real components.
-						// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-						const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i; // a dash in the middle
-						token = token.replace(isWebComponentTagName, match => match + '-SOLARITE-PLACEHOLDER'); // caps to match other instances of this string, for better compression.
-					}
-
-					result.push(token);
+				if (context === Text$1) {
+					if (char === '<' && html[j + 1].match(/[/a-z!]/i)) // Start of a tag or comment.
+						next = Tag;
 				}
-				lastIndex = index;
-			});
+				else if (context === Tag) {
+					if (char === '>')
+						next = Text$1;
+
+					// A space, a self-closing slash, or the '?' of an xml declaration ends the attribute name we were
+					// collecting.  A run of spaces lands here too, but clearing an already empty buffer changes nothing.
+					else if (char === ' ' || char === '/' || char === '?')
+						buffer = '';
+
+					else if (char === '"' || char === "'" || char === '=')
+						next = Attribute;
+					else
+						buffer += char;
+				}
+				else {
+					// Start an attribute quote.
+					if (!quote && !buffer.length && (char === '"' || char === "'"))
+						quote = char;
+					else if (char === quote || (!quote && buffer.length))
+						next = Tag;
+					else if (!quote && char === '>')
+						next = Text$1;
+					else if (char !== ' ')
+						buffer += char;
+				}
+
+				// Every one of the context changes above shares this same bookkeeping.  Two details are folded in:
+				// text resumes *after* the '>' we just read, so its index is one past the current character, and the
+				// only path into an attribute is the '"', "'", or '=' we just read, where an '=' opens an unquoted value.
+				if (next) {
+					let index = next === Text$1 ? j+1 : j;
+					if (lastIndex !== index) {
+						let token = html.slice(lastIndex, index);
+						if (context === Tag)
+							token = token.replace(isWebComponentTagName, match => match + '-SOLARITE-PLACEHOLDER');
+						result.push(token);
+					}
+					lastIndex = index;
+
+					context = next;
+					quote = next === Attribute && char !== '=' ? char : null;
+					buffer = '';
+				}
+			}
+
+			// Whatever is left of the chunk after the last context change is one final token.
+			if (lastIndex !== html.length) {
+				let token = html.slice(lastIndex);
+				if (context === Tag)
+					token = token.replace(isWebComponentTagName, match => match + '-SOLARITE-PLACEHOLDER');
+				result.push(token);
+			}
 
 			// Insert placeholders
 			if (i < htmlChunks.length - 1) {
-				if (context === HtmlParser.Text)
+				if (context === Text$1)
 					result.push(commentPlaceholder); // Comment Placeholder. because we can't put text in between <tr> tags for example.
 				else
 					result.push(String.fromCharCode(attribPlaceholder + i));
@@ -4325,13 +4266,7 @@ class Shell {
 	 * Replaces per-path root-to-node walks in the hot NodeGroup creation path.
 	 * Skipped for shells with components, whose clone() has special attribPaths behavior. */
 	buildResolveProgram() {
-		let hasComponents = false;
-		for (let path of this.paths)
-			if (path instanceof PathToComponent) {
-				hasComponents = true;
-				break;
-			}
-		if (hasComponents || !this.paths.length)
+		if (this.hasComponentPaths || !this.paths.length)
 			return;
 
 		let ops = [];
@@ -4424,6 +4359,18 @@ class Shell {
 
 
 const commentPlaceholder = `<!--!✨!-->`;
+
+// The three html contexts the tokenizer in addPlaceholders() walks through.  They're small integers instead
+// of strings so that comparing them is cheap and so that zero can mean "no context change" inside its loop.
+const Text$1 = 1, Tag = 2, Attribute = 3;
+
+// A tag name with a dash in the middle, which is what makes an element a web component.  Every token collected
+// in tag context is checked against this, and a match gets -solarite-placeholder appended to its tag name.  That
+// way we can gather a component's constructor arguments and its children before we call its constructor; later
+// PathToComponent.apply() replaces the placeholder tag with the real component.  The suffix is written in caps
+// wherever it appears, so that the several copies of it in this project compress well.
+// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
+const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i;
 
 // Elements whose whitespace-only text children are never rendered.
 const tableTags = ['TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR'];
@@ -4970,12 +4917,6 @@ class NodeGroup {
 	}
 
 	/**
-	 * @returns {RootNodeGroup} */
-	getRootNodeGroup() {
-		return this.rootNg;
-	}
-
-	/**
 	 * Copy paths in fragment to this.paths.
 	 * @param fragment {DocumentFragment|HTMLElement}
 	 * @param shell {Shell}
@@ -5040,7 +4981,7 @@ class NodeGroup {
 			for (let [style, oldText] of this.styles) {
 				let newText = style.textContent;
 				if (oldText !== newText)
-					Util.bindStyles(style, this.getRootNodeGroup().root);
+					Util.bindStyles(style, this.rootNg.root);
 			}
 	}
 
@@ -5240,7 +5181,11 @@ class RootNodeGroup extends NodeGroup {
 
 			// Instantiate as a standalone element.
 			else {
-				let onlyChild = getSingleEl(shellFragment);
+				// Trimming the whitespace and comment nodes off both ends leaves a list of exactly
+				// one node only when the fragment has exactly one node worth keeping, which is the
+				// question being asked here.
+				let relevantNodes = Util.trimEmptyNodes(shellFragment.childNodes);
+				let onlyChild = relevantNodes.length === 1 ? relevantNodes[0] : null;
 				this.root = onlyChild || shellFragment; // We return the whole fragment when calling h() with a collection of nodes.
 				if (onlyChild)
 					startingPathDepth = 1;
@@ -5255,18 +5200,6 @@ class RootNodeGroup extends NodeGroup {
 	}
 }
 
-
-function getSingleEl(fragment) {
-	let nonempty = [];
-	for (let n of fragment.childNodes) {
-		if (n.nodeType === 1 || n.nodeType === 3 && n.textContent.trim().length) {
-			if (nonempty.length)
-				return null;
-			nonempty.push(n);
-		}
-	}
-	return nonempty[0];
-}
 
 /**
  * Does the fragment have one child that's an element matching the tagname of el?

@@ -1,6 +1,5 @@
 import Path from "./Path.js";
 import Util from "./Util.js";
-import assert from "./assert.js";
 import PathToAttribValue from "./PathToAttribValue.js";
 import PathToEvent from "./PathToEvent.js";
 import {JsxAttr, styleToCss} from "./jsx.js";
@@ -23,15 +22,6 @@ export default class PathToAttribs extends Path {
 		super(null, null);
 		this.nodeMarker = nodeMarker;
 		this.attrNames = new Set();
-	}
-
-	/**
-	 * @param exprs {Expr[][]} Only the first is used. */
-	apply(exprs) {
-		//#IFDEBUG
-		assert(Array.isArray(exprs));
-		//#ENDIF
-		this.applySingle(exprs[0]);
 	}
 
 	/**
@@ -112,8 +102,4 @@ export default class PathToAttribs extends Path {
 			value = styleToCss(value);
 		sub.applySingle(value);
 	}
-
-
-	getExpressionCount() { return 1 }
-	getValue(exprs) { return exprs[0]; }
 }

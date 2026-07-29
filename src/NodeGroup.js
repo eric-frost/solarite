@@ -527,12 +527,6 @@ export default class NodeGroup {
 	}
 
 	/**
-	 * @returns {RootNodeGroup} */
-	getRootNodeGroup() {
-		return this.rootNg;
-	}
-
-	/**
 	 * Copy paths in fragment to this.paths.
 	 * @param fragment {DocumentFragment|HTMLElement}
 	 * @param shell {Shell}
@@ -597,7 +591,7 @@ export default class NodeGroup {
 			for (let [style, oldText] of this.styles) {
 				let newText = style.textContent;
 				if (oldText !== newText)
-					Util.bindStyles(style, this.getRootNodeGroup().root);
+					Util.bindStyles(style, this.rootNg.root);
 			}
 	}
 

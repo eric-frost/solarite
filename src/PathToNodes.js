@@ -70,18 +70,6 @@ export default class PathToNodes extends Path {
 	}
 
 	/**
-	 * Insert/replace the nodes created by a single expression.
-	 * Called by applyExprs()
-	 * @param exprs {Expr[]} Only the first is used.
-	 * @return {Node[]} New Nodes created. */
-	apply(exprs) {
-		//#IFDEBUG
-		assert(Array.isArray(exprs));
-		//#ENDIF
-		this.applySingle(exprs[0]);
-	}
-
-	/**
 	 * Make the DOM between nodeBefore and nodeMarker match the value of expr.
 	 * This is the main entry point for rendering an expression's nodes, chosen from three strategies:
 	 * 1. A primitive expr updating (or creating) a single text node is handled inline with no allocations.

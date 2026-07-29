@@ -183,15 +183,10 @@ export default class PathToComponent extends Path {
 	 * @param pathOffset {int}
 	 * @return {Path} */
 	clone(newRoot, pathOffset=0) {
-		/*#IFDEBUG*/this.verify();/*#ENDIF*/
-		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
-		let result = new PathToComponent(null, nodeMarker);
+		// A component path's nodeBefore is always null (the constructor discards it), so the
+		// base clone() resolves only the nodeMarker and hands back a new PathToComponent.
+		let result = super.clone(newRoot, pathOffset);
 		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
-
-		//#IFDEBUG
-		result.verify();
-		//#ENDIF
-
 		return result;
 	}
 

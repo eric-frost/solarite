@@ -200,3 +200,23 @@ Testimony.test('Dist.jsxRuntimeSharesOneCopy', `dist/jsx-runtime.js must share t
 	assert.eq(txt.includes('#IFDEBUG'), false);
 	assert(txt.includes("from './Solarite.js'"));
 });
+
+Testimony.test('Dist.customElementsNotMangled', `Terser must not rename customElements methods it doesn't know`, async () => {
+	// build/build.js mangles properties with `builtins: false`, which spares names terser
+	// recognizes from its bundled DOM list.  That list predates CustomElementRegistry.getName,
+	// so a plain `customElements.getName(x)` gets renamed — it became `customElements.l(x)` in
+	// the shipped build until 2026-07-28.  The call was guarded (`customElements.l ? ... : ...`),
+	// so it never threw; it silently took the fallback forever, meaning a class registered under
+	// a tag that isn't its kebab-cased name resolved to the WRONG tag in the minified build only.
+	// Util.js dodges this with `let getName = 'getName'` and computed access, which terser leaves
+	// alone.  This test is the guard, because the failure is invisible at runtime and the
+	// unminified build behaves correctly, so no behavioural test can see it.
+	const src = await (await fetch('../dist/Solarite.min.js')).text();
+	let used = [...src.matchAll(/customElements\.([A-Za-z_$][\w$]*)/g)].map(m => m[1]);
+	assert(used.length > 0, 'expected the build to reference customElements at all');
+
+	// Every surviving name must be a real CustomElementRegistry method, not a mangled stub.
+	for (let name of new Set(used))
+		assert(typeof customElements[name] === 'function',
+			`customElements.${name} is not a real method — terser mangled it`);
+});

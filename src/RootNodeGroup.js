@@ -1,5 +1,6 @@
 import NodeGroup from './NodeGroup.js';
 import Globals from './Globals.js';
+import Util from './Util.js';
 
 /**
  * Has these properties not present on NodeGroup, assigned by instantiate():
@@ -80,7 +81,11 @@ export default class RootNodeGroup extends NodeGroup {
 
 			// Instantiate as a standalone element.
 			else {
-				let onlyChild = getSingleEl(shellFragment);
+				// Trimming the whitespace and comment nodes off both ends leaves a list of exactly
+				// one node only when the fragment has exactly one node worth keeping, which is the
+				// question being asked here.
+				let relevantNodes = Util.trimEmptyNodes(shellFragment.childNodes);
+				let onlyChild = relevantNodes.length === 1 ? relevantNodes[0] : null;
 				this.root = onlyChild || shellFragment; // We return the whole fragment when calling h() with a collection of nodes.
 				if (onlyChild)
 					startingPathDepth = 1;
@@ -95,18 +100,6 @@ export default class RootNodeGroup extends NodeGroup {
 	}
 }
 
-
-function getSingleEl(fragment) {
-	let nonempty = [];
-	for (let n of fragment.childNodes) {
-		if (n.nodeType === 1 || n.nodeType === 3 && n.textContent.trim().length) {
-			if (nonempty.length)
-				return null;
-			nonempty.push(n);
-		}
-	}
-	return nonempty[0];
-}
 
 /**
  * Does the fragment have one child that's an element matching the tagname of el?

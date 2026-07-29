@@ -4,12 +4,11 @@ import Testimony, {assert} from './Testimony.js';
 
 import h, {toEl, Solarite, Template, Globals, SolariteUtil, svg, getEventBinding, Fragment} from '../src/Solarite.js';
 import {jsxTemplate, jsxAttr, jsxEscape, jsx, jsxs} from '../src/jsx-runtime.js';
-import HtmlParser from '../src/HtmlParser.js';
 import NodeGroup from '../src/NodeGroup.js';
 import Shell from '../src/Shell.js';
 
 //import h, {toEl, Solarite, Template, Globals, SolariteUtil,
-// HtmlParser, NodeGroup, Shell} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
+// NodeGroup, Shell} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
 
 
 
@@ -279,18 +278,41 @@ Testimony.test('Solarite.NodeGroup.rawNodeWholeParent', () => {
 /*┌─────────────────╮
   | SolariteUtil    |
   └─────────────────╯*/
+// The html tokenizer lives inside Shell.addPlaceholders(), and the html context it is in at the end of each
+// chunk is what decides which placeholder goes in the gap between that chunk and the next:  a comment when the
+// expression is a child of some node, and a private-use character when it sits inside a tag or attribute value.
+// So feeding it the chunks below and reading back the placeholders tells us the context after every chunk.
 Testimony.test('Solarite.Util.htmlContext', () => {
-	let htmlContext = new HtmlParser();
-	assert.eq(htmlContext.parse('<div class="test'), HtmlParser.Attribute)
-	assert.eq(htmlContext.parse('">hello '), HtmlParser.Text);
-	assert.eq(htmlContext.parse('<span data-attr="hi > there"'), HtmlParser.Tag);
-	assert.eq(htmlContext.parse(` attr='`), HtmlParser.Attribute);
-	assert.eq(htmlContext.parse(`'`), HtmlParser.Tag);
-	assert.eq(htmlContext.parse(' attr='), HtmlParser.Attribute);
-	assert.eq(htmlContext.parse('a'), HtmlParser.Attribute);
-	assert.eq(htmlContext.parse(' '), HtmlParser.Tag);
-	assert.eq(htmlContext.parse(' attr='), HtmlParser.Attribute);
-	assert.eq(htmlContext.parse('>'), HtmlParser.Text);
+
+	// One letter per gap between chunks:  t for text context, a for anything else (tag or attribute).
+	let check = (chunks, contexts) =>
+		assert.eq(Shell.addPlaceholders(chunks), chunks.map((chunk, i) =>
+			i === contexts.length
+				? chunk
+				: chunk + (contexts[i] === 't' ? '<!--!✨!-->' : String.fromCharCode(0xe000 + i))
+		).join(''));
+
+	check([
+		'<div class="test',            // attribute:  the quote is still open
+		'">hello ',                    // text:       the tag closed
+		'<span data-attr="hi > there"', // tag:        the '>' was quoted, so it did not close the tag
+		` attr='`,                     // attribute
+		`'`,                           // tag:        the single quote closed the value
+		' attr=',                      // attribute:  an unquoted value
+		'a',                           // attribute
+		' ',                           // tag:        a space ends an unquoted value
+		' attr=',                      // attribute
+		'>'                            // text
+	], 'ataaaaaaa');
+
+	// Tag context and attribute context are told apart by more than the placeholder:  only a tag name read in
+	// tag context is a web component, so the one inside the quoted attribute value must be left alone.
+	assert.eq(Shell.addPlaceholders(['<my-el a="<other-el">']), '<my-el-SOLARITE-PLACEHOLDER a="<other-el">');
+
+	// The open quote has to survive the gap between two chunks, or the closing quote in the second chunk
+	// would be read as the start of a new attribute value instead of the end of this one.
+	assert.eq(Shell.addPlaceholders(['<my-el a="', '">']),
+		'<my-el-SOLARITE-PLACEHOLDER a="' + String.fromCharCode(0xe000) + '">');
 });
 
 Testimony.test('Solarite.Util.camelToDashes', () => {

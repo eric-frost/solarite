@@ -2,7 +2,6 @@ import assert from "./assert.js";
 import Path from "./Path.js";
 import Util from "./Util.js";
 import Globals from "./Globals.js";
-import HtmlParser from "./HtmlParser.js";
 import PathToEvent from "./PathToEvent.js";
 import PathToAttribValue from "./PathToAttribValue.js";
 import PathToAttribs from "./PathToAttribs.js";
@@ -407,8 +406,9 @@ export default class Shell {
 		}
 
 		this.findEmbeds();
-		this.buildResolveProgram();
 
+		// This scan must run before buildResolveProgram(), which skips shells with components
+		// and reads hasComponentPaths rather than walking the paths a second time.
 		this.pathsSingleExpr = true;
 		for (let path of this.paths) {
 			if (path instanceof PathToComponent) {
@@ -421,6 +421,8 @@ export default class Shell {
 				this.hasLivePropPaths = true;
 		}
 		this.needsRefresh = this.hasComponentPaths || (this.hasLivePropPaths && this.pathsSingleExpr);
+
+		this.buildResolveProgram();
 
 		// Stampable shells create NodeGroups without allocating any Path objects:
 		// NodeGroup.applyStamp() writes expressions through these shared stamper paths,
@@ -501,33 +503,82 @@ export default class Shell {
 	static addPlaceholders(htmlChunks) {
 		let result = [];
 
-		let htmlParser = new HtmlParser(); // Reset the context.
+		// Where the tokenizer is as it walks the chunks.  An expression can sit in the middle of an attribute
+		// value, so the context, the quote character that opened that value, and the characters collected so
+		// far all have to survive from one chunk to the next.
+		let context = Text;
+		let quote = null; // The quote character that opened the attribute value we're inside of: null, '"', or "'".
+		let buffer = ''; // The characters seen so far in the current tag name, attribute name, or attribute value.
+
 		for (let i = 0; i < htmlChunks.length; i++) {
-			let lastHtml = htmlChunks[i];
+			let html = htmlChunks[i];
 
 			// Append -solarite-placholder to web component tags, so we can pass args to them when they're instantiated.
 			let lastIndex = 0;
-			let context = htmlParser.parse(lastHtml, (html, index, prevContext/*, nextContext*/) => { // This function is called every time the html context changes.
-				if (lastIndex !== index) {
-					let token = html.slice(lastIndex, index);
+			for (let j = 0; j < html.length; j++) {
+				const char = html[j];
+				let next = 0; // The context this character moves us into, or zero to stay in the one we're in.
 
-					if (prevContext === HtmlParser.Tag) {
-						// Find Web Component tags and append -solarite-placeholder to their tag names
-						// This way we can gather their constructor arguments and their children before we call their constructor.
-						// Later, PathToComponent.apply() will replace them with the real components.
-						// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-						const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i; // a dash in the middle
-						token = token.replace(isWebComponentTagName, match => match + '-SOLARITE-PLACEHOLDER'); // caps to match other instances of this string, for better compression.
-					}
-
-					result.push(token);
+				if (context === Text) {
+					if (char === '<' && html[j + 1].match(/[/a-z!]/i)) // Start of a tag or comment.
+						next = Tag;
 				}
-				lastIndex = index;
-			});
+				else if (context === Tag) {
+					if (char === '>')
+						next = Text;
+
+					// A space, a self-closing slash, or the '?' of an xml declaration ends the attribute name we were
+					// collecting.  A run of spaces lands here too, but clearing an already empty buffer changes nothing.
+					else if (char === ' ' || char === '/' || char === '?')
+						buffer = '';
+
+					else if (char === '"' || char === "'" || char === '=')
+						next = Attribute;
+					else
+						buffer += char;
+				}
+				else {
+					// Start an attribute quote.
+					if (!quote && !buffer.length && (char === '"' || char === "'"))
+						quote = char;
+					else if (char === quote || (!quote && buffer.length))
+						next = Tag;
+					else if (!quote && char === '>')
+						next = Text;
+					else if (char !== ' ')
+						buffer += char;
+				}
+
+				// Every one of the context changes above shares this same bookkeeping.  Two details are folded in:
+				// text resumes *after* the '>' we just read, so its index is one past the current character, and the
+				// only path into an attribute is the '"', "'", or '=' we just read, where an '=' opens an unquoted value.
+				if (next) {
+					let index = next === Text ? j+1 : j;
+					if (lastIndex !== index) {
+						let token = html.slice(lastIndex, index);
+						if (context === Tag)
+							token = token.replace(isWebComponentTagName, match => match + '-SOLARITE-PLACEHOLDER');
+						result.push(token);
+					}
+					lastIndex = index;
+
+					context = next;
+					quote = next === Attribute && char !== '=' ? char : null;
+					buffer = '';
+				}
+			}
+
+			// Whatever is left of the chunk after the last context change is one final token.
+			if (lastIndex !== html.length) {
+				let token = html.slice(lastIndex);
+				if (context === Tag)
+					token = token.replace(isWebComponentTagName, match => match + '-SOLARITE-PLACEHOLDER');
+				result.push(token);
+			}
 
 			// Insert placeholders
 			if (i < htmlChunks.length - 1) {
-				if (context === HtmlParser.Text)
+				if (context === Text)
 					result.push(commentPlaceholder) // Comment Placeholder. because we can't put text in between <tr> tags for example.
 				else
 					result.push(String.fromCharCode(attribPlaceholder + i));
@@ -571,13 +622,7 @@ export default class Shell {
 	 * Replaces per-path root-to-node walks in the hot NodeGroup creation path.
 	 * Skipped for shells with components, whose clone() has special attribPaths behavior. */
 	buildResolveProgram() {
-		let hasComponents = false;
-		for (let path of this.paths)
-			if (path instanceof PathToComponent) {
-				hasComponents = true;
-				break;
-			}
-		if (hasComponents || !this.paths.length)
+		if (this.hasComponentPaths || !this.paths.length)
 			return;
 
 		let ops = [];
@@ -670,6 +715,18 @@ export default class Shell {
 
 
 const commentPlaceholder = `<!--!✨!-->`;
+
+// The three html contexts the tokenizer in addPlaceholders() walks through.  They're small integers instead
+// of strings so that comparing them is cheap and so that zero can mean "no context change" inside its loop.
+const Text = 1, Tag = 2, Attribute = 3;
+
+// A tag name with a dash in the middle, which is what makes an element a web component.  Every token collected
+// in tag context is checked against this, and a match gets -solarite-placeholder appended to its tag name.  That
+// way we can gather a component's constructor arguments and its children before we call its constructor; later
+// PathToComponent.apply() replaces the placeholder tag with the real component.  The suffix is written in caps
+// wherever it appears, so that the several copies of it in this project compress well.
+// Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
+const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i;
 
 // Elements whose whitespace-only text children are never rendered.
 const tableTags = ['TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR'];

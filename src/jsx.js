@@ -115,13 +115,10 @@ export function jsxToTemplate(tag, props, children=[], key=undefined) {
 
 		// 2a. Custom element class => emit <tag-name ...props>children</tag-name>; PathToComponent
 		// instantiates it exactly like a tagged-template component.
-		if (tag.prototype instanceof HTMLElement) {
-			Util.defineClass(tag);
-			let tagName = customElements.getName ? customElements.getName(tag) : Util.camelToDashes(tag.name);
-			if (tagName && !tagName.includes('-'))
-				tagName += '-element';
-			return buildIntrinsic(tagName, props, children, key);
-		}
+		// defineClass() hands back the name it registered, or the name the class was already
+		// registered under, so we never have to guess it a second time.
+		if (tag.prototype instanceof HTMLElement)
+			return buildIntrinsic(Util.defineClass(tag), props, children, key);
 
 		// 2b. Plain function component: call it with props (+ children) and expect a Template back.
 		let p = {};
