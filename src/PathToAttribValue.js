@@ -7,7 +7,7 @@ import {SelectorRef} from "./Selector.js";
 export default class PathToAttribValue extends Path {
 
 	/** @type {?string} Used only if type=AttribType.Value. */
-	attrName;
+	attribName;
 
 	/**
 	 * @type {?string[]} Used only if type=AttribType.Value. If null, use one expr to set the whole attribute value. */
@@ -15,16 +15,16 @@ export default class PathToAttribValue extends Path {
 
 	// isComponentAttrib and isHtmlProperty are declared on the Path base class.
 
-	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
+	constructor(nodeBefore, nodeMarker, attribName=null, attrValue=null) {
 		super(null, nodeMarker);
-		this.attrName = attrName;
+		this.attribName = attribName;
 		this.attrValue = attrValue;
 	}
 
 	/**
 	 * Set the value of an attribute.  This can be for any attribute, not just attributes named "value".
 	 * @param exprs {Expr[]} */
-	apply(exprs) {
+	applyAll(exprs) {
 		//#IFDEBUG
 		assert(Array.isArray(exprs));
 		//#ENDIF
@@ -38,14 +38,14 @@ export default class PathToAttribValue extends Path {
 			// Only update attributes if the value has changed.
 			// This is needed for setting input.value, .checked, option.selected, etc.
 			let oldVal = isProp
-				? node[this.attrName]
-				: node.getAttribute(this.attrName);
+				? node[this.attribName]
+				: node.getAttribute(this.attribName);
 			if (oldVal !== joinedValue) {
 				if (isProp)
-					node[this.attrName] = joinedValue;
-				else if (this.attrName === 'value' && node.hasAttribute('contenteditable'))
+					node[this.attribName] = joinedValue;
+				else if (this.attribName === 'value' && node.hasAttribute('contenteditable'))
 					node.innerHTML = joinedValue;
-				node.setAttribute(this.attrName, joinedValue);
+				node.setAttribute(this.attribName, joinedValue);
 			}
 		}
 		else
@@ -58,7 +58,7 @@ export default class PathToAttribValue extends Path {
 	applySingle(expr) {
 		// One expression surrounded by strings, e.g. class="a ${b} c".  Join through apply().
 		if (this.attrValue)
-			return this.apply([expr]);
+			return this.applyAll([expr]);
 
 		let node = this.nodeMarker;
 
@@ -79,12 +79,12 @@ export default class PathToAttribValue extends Path {
 			let [obj, path] = [expr[0], expr.slice(1)];
 
 			if (!obj)
-				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
+				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attribName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
 
 			let value = delve(obj, path);
 
 			// Special case to allow setting select-multiple value from an array
-			if (this.attrName === 'value' && node.type === 'select-multiple' && Array.isArray(value)) {
+			if (this.attribName === 'value' && node.type === 'select-multiple' && Array.isArray(value)) {
 				// Set the .selected property on the options having a value within value.
 				let strValues = value.map(v => v + '');
 				for (let option of node.options)
@@ -100,7 +100,7 @@ export default class PathToAttribValue extends Path {
 				const strValue = Util.isFalsy(value) ? '' : value;
 
 				// Special case for contenteditable
-				if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
+				if (this.attribName === 'value' && node.hasAttribute('contenteditable')) {
 					const existingValue = node.innerHTML;
 					if (strValue !== existingValue)
 						node.innerHTML = strValue;
@@ -109,24 +109,24 @@ export default class PathToAttribValue extends Path {
 
 					// If we don't have this condition, when we call render(), the browser will scroll to the currently
 					// selected item in a <select> and mess up manually scrolling to a different value.
-					if (strValue !== node[this.attrName])
-						node[this.attrName] = strValue;
+					if (strValue !== node[this.attribName])
+						node[this.attribName] = strValue;
 				}
 			}
 
 			// TODO: We need to remove any old listeners, like in bindEventAttribute.
 			// Does bindEvent() now handle that?
 			let func = () => {
-				let value = (this.attrName === 'value' || node.type === 'radio')
+				let value = (this.attribName === 'value' || node.type === 'radio')
 					? Util.getInputValue(node)
-					: node[this.attrName];
+					: node[this.attribName];
 				delve(obj, path, value);
 			}
 
 			// We use capture so we update the values before other events added by the user.
 			// TODO: Bind to scroll events also?
 			// What about resize events and width/height?
-			this.bindEvent(node, this.parentNg.getRootNode(), this.attrName, 'input', func, null, true);
+			this.bindEvent(node, this.parentNg.getRootEl(), this.attribName, 'input', func, null, true);
 		}
 
 		// Regular attribute
@@ -138,7 +138,7 @@ export default class PathToAttribValue extends Path {
 			// prototype check.
 			if (typeof expr === 'object' && expr instanceof SelectorRef) {
 				if (!this.isComponentAttrib)
-					expr.bind(node, this.attrName, this.parentNg);
+					expr.bind(node, this.attribName, this.parentNg);
 				return;
 			}
 
@@ -157,13 +157,13 @@ export default class PathToAttribValue extends Path {
 			// Values to toggle an attribute
 			if (expr === undefined || expr === false || expr === null) { // Util.isFalsy() inlined.
 				if (isProp)
-					node[this.attrName] = false;
-				node.removeAttribute(this.attrName);
+					node[this.attribName] = false;
+				node.removeAttribute(this.attribName);
 			}
 			else if (expr === true) {
 				if (isProp)
-					node[this.attrName] = true;
-				node.setAttribute(this.attrName, '');
+					node[this.attribName] = true;
+				node.setAttribute(this.attribName, '');
 			}
 
 			// A non-toggled attribute
@@ -172,25 +172,25 @@ export default class PathToAttribValue extends Path {
 				// This is needed for setting input.value, .checked, option.selected, etc.
 				// A missing attribute counts as '', so empty values don't write empty attributes.
 				let oldVal = isProp
-					? node[this.attrName]
-					: node.getAttribute(this.attrName) ?? '';
+					? node[this.attribName]
+					: node.getAttribute(this.attribName) ?? '';
 				if (oldVal !== expr) {
 
 					// <textarea value=${expr}></textarea>
 					// Without this branch we have no way to set the value of a textarea,
 					// since we also prohibit expressions that are a child of textarea.
 					if (isProp)
-						node[this.attrName] = expr;
+						node[this.attribName] = expr;
 
 						// Allow one-way binding to contenteditable value attribute.
 						// Contenteditables normally don't have a value attribute and have their content set via innerHTML.
 					// Solarite doesn't allow contenteditables to have expressions as their children.
-					else if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
+					else if (this.attribName === 'value' && node.hasAttribute('contenteditable')) {
 						node.innerHTML = expr;
 					}
 
 					// TODO: Putting an 'else' here would be more performant
-					node.setAttribute(this.attrName, expr);
+					node.setAttribute(this.attribName, expr);
 				}
 			}
 		}
@@ -233,7 +233,7 @@ export default class PathToAttribValue extends Path {
 				// attribute is written from its constant parts alone.  Stripping it also keeps a
 				// per-expression instanceof out of the multi-part attribute loop.
 				if (typeof exprs[i] === 'object' && exprs[i] instanceof SelectorRef)
-					throw new Error(`Solarite: a selector must own the whole ${this.attrName} attribute, not part of it.`);
+					throw new Error(`Solarite: a selector must own the whole ${this.attribName} attribute, not part of it.`);
 				let val = Util.makePrimitive(exprs[i]);
 				if (!Util.isFalsy(val))
 					result.push(val);
@@ -262,7 +262,7 @@ export default class PathToAttribValue extends Path {
 		// stripping it from the built file costs no diagnostic that the surviving throw in
 		// PathToEvent doesn't already give, with a better message.
 		if (typeof func !== 'function')
-			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
+			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attribName}=\${${func}}> because it's not a function.`);
 		//#ENDIF
 
 		// Delegated path: a bubbling event (when the root's options allow it, the default)
@@ -272,7 +272,7 @@ export default class PathToAttribValue extends Path {
 		// the property.  this.delegatedKey is set by the PathToEvent constructor only for
 		// delegatable event names, so this test also excludes non-bubbling events.
 		if (capture === false && this.delegatedKey !== undefined) {
-			let opt = this.parentNg.rootNg.options?.eventDelegation ?? true;
+			let opt = this.parentNg.rootNg.renderOptions?.eventDelegation ?? true;
 			let toDocument = opt === 'document';
 			if (opt !== false && (opt === true || toDocument || opt.includes(eventName))) {
 				let dk = this.delegatedKey;
@@ -328,7 +328,7 @@ export default class PathToAttribValue extends Path {
 				return;
 			}
 		}
-		binding.root = root;
+		binding.rootEl = root;
 		binding.args = args;
 	}
 }
@@ -450,7 +450,7 @@ function delegatedDispatcher(ev) {
 
 class EventBinding {
 	constructor(root, node, key, args) {
-		this.root = root;
+		this.rootEl = root;
 		this.node = node;
 		this.key = key;
 
@@ -464,10 +464,10 @@ class EventBinding {
 	'handleEvent'(event) {
 		let a = this.args;
 		switch (a.length) {
-			case 1: return a[0].call(this.root, event, this.node);
-			case 2: return a[0].call(this.root, a[1], event, this.node);
-			case 3: return a[0].call(this.root, a[1], a[2], event, this.node);
+			case 1: return a[0].call(this.rootEl, event, this.node);
+			case 2: return a[0].call(this.rootEl, a[1], event, this.node);
+			case 3: return a[0].call(this.rootEl, a[1], a[2], event, this.node);
 		}
-		return a[0].call(this.root, ...a.slice(1), event, this.node);
+		return a[0].call(this.rootEl, ...a.slice(1), event, this.node);
 	}
 }

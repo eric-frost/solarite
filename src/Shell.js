@@ -20,7 +20,7 @@ export default class Shell {
 
 	/**
 	 * @type {DocumentFragment|Text} DOM parent of the shell's nodes. */
-	fragment;
+	docFrag;
 
 	/** @type {Path[]} Paths to where expressions should go. */
 	paths = [];
@@ -132,7 +132,7 @@ export default class Shell {
 
 		// If no html tags or entities, just create a text node.
 		if (html.length === 1 && !html[0].match(/[<&]/)) {
-			this.fragment = Globals.doc.createTextNode(html[0]);
+			this.docFrag = Globals.doc.createTextNode(html[0]);
 			return;
 		}
 
@@ -150,29 +150,29 @@ export default class Shell {
 				let frag = Globals.doc.createDocumentFragment();
 				while (svgEl.firstChild)
 					frag.append(svgEl.firstChild);
-				this.fragment = frag;
+				this.docFrag = frag;
 			}
 			else {
 				template.innerHTML = htmlWithPlaceholders;
-				this.fragment = template.content;
+				this.docFrag = template.content;
 			}
 		}
 		else { // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
 			template.content.append(Globals.doc.createTextNode(''))
-			this.fragment = template.content;
+			this.docFrag = template.content;
 		}
 
 		// 1b. Remove whitespace-only text nodes inside table-structure elements.
 		// The parser foster-parents non-whitespace text out of tables, and whitespace-only
 		// text between cells/rows is never rendered, so removing it is invisible.
 		// Smaller fragments make cloning, path resolution, and insertion faster.
-		stripTableWhitespace(this.fragment);
+		stripTableWhitespace(this.docFrag);
 
 		// 2. Find placeholders
 		let node;
 		let toRemove = [];
 		let placeholdersUsed = 0;
-		const walker = Globals.doc.createTreeWalker(this.fragment, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
+		const walker = Globals.doc.createTreeWalker(this.docFrag, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
 		while (node = walker.nextNode()) {
 
 			// Remove previous elements after each iteration, so paths will still be calculated correctly.
@@ -199,7 +199,7 @@ export default class Shell {
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length !== 2 || parts[0] !== '' || parts[1] !== '')
 							throw new Error(`Solarite: key must be one whole expression, as key=\${...}.`);
-						if (node.parentNode !== this.fragment)
+						if (node.parentNode !== this.docFrag)
 							throw new Error(`Solarite: key must be on a top-level element of its template.`);
 						if (this.keyIndex >= 0)
 							throw new Error(`Solarite: a template can have only one key attribute.`);
@@ -343,11 +343,6 @@ export default class Shell {
 				}
 			}
 
-			// Comments become text nodes when inside textareas.
-			else if (node.nodeType === 3 && node.parentNode?.tagName === 'TEXTAREA' && node.textContent.includes('<!--!✨!-->'))
-				throw new Error(`Textarea can't have expressions inside them. Use <textarea value="\${...}"> instead.`);
-			
-			
 			// Sometimes users will comment out a block of html code that has expressions.
 			// Here we look for expressions in comments.
 			// We don't actually update them dynamically, but we still add paths for them.
@@ -361,29 +356,39 @@ export default class Shell {
 				}
 			}
 
-			// Replace comment placeholders inside script and style tags, which have become text nodes.
-			else if (node.nodeType === 3 && ['SCRIPT', 'STYLE'].includes(node.parentNode?.nodeName)) { // Node.TEXT_NODE
-				let parts = node.textContent.split(commentPlaceholder);
-				if (parts.length > 1) {
+			// A few elements have raw-text bodies, which the html parser reads as literal characters
+			// rather than as markup.  A comment placeholder written inside one therefore never becomes
+			// a comment node; it arrives here as ordinary text.  A textarea can't support expressions
+			// in its body at all, while script and style can, by splitting their text around each
+			// placeholder so that every expression gets a text node of its own to write into.
+			else if (node.nodeType === 3) { // Node.TEXT_NODE
+				let parentName = node.parentNode?.nodeName;
 
-					let placeholders = [];
-					for (let i = 0; i<parts.length; i++) {
-						let current = Globals.doc.createTextNode(parts[i]);
-						node.parentNode.insertBefore(current, node);
-						if (i > 0)
-							placeholders.push(current)
+				if (parentName === 'TEXTAREA' && node.textContent.includes(commentPlaceholder))
+					throw new Error(`Textarea can't have expressions inside them. Use <textarea value="\${...}"> instead.`);
+
+				else if (parentName === 'SCRIPT' || parentName === 'STYLE') {
+					let parts = node.textContent.split(commentPlaceholder);
+					if (parts.length > 1) {
+
+						// Every part is inserted before the original node, in order, so from the second
+						// part onward the text node made on the previous iteration is already sitting
+						// immediately before this one and serves as the new path's nodeBefore.
+						for (let i = 0; i<parts.length; i++) {
+							let current = Globals.doc.createTextNode(parts[i]);
+							node.parentNode.insertBefore(current, node);
+							if (i > 0) {
+								let path = new PathToNodes(current.previousSibling, current);
+								this.paths.push(path);
+								placeholdersUsed ++;
+
+								/*#IFDEBUG*/path.verify();/*#ENDIF*/
+							}
+						}
+
+						// Removing it here will mess up the treeWalker.
+						toRemove.push(node);
 					}
-
-					for (let i=0, node; node=placeholders[i]; i++) {
-						let path = new PathToNodes(node.previousSibling, node);
-						this.paths.push(path);
-						placeholdersUsed ++;
-
-						/*#IFDEBUG*/path.verify();/*#ENDIF*/
-					}
-
-					// Removing them here will mess up the treeWalker.
-					toRemove.push(node);
 				}
 			}
 		}
@@ -483,7 +488,7 @@ export default class Shell {
 					else if (sp instanceof PathToAttribValue && !sp.attrValue && !sp.isHtmlProperty
 						&& !sp.isComponentAttrib) {
 						this.stampOp[i] = 4;
-						this.stampAux[i] = sp.attrName;
+						this.stampAux[i] = sp.attribName;
 					}
 				}
 				this.stampEventNames = eventNames;
@@ -501,91 +506,64 @@ export default class Shell {
 	 * @param htmlChunks {string[]}
 	 * @returns {string} Html with the placeholders in place. */
 	static addPlaceholders(htmlChunks) {
-		let result = [];
+		let result = '';
 
 		// Where the tokenizer is as it walks the chunks.  An expression can sit in the middle of an attribute
-		// value, so the context, the quote character that opened that value, and the characters collected so
-		// far all have to survive from one chunk to the next.
-		let context = Text;
+		// value, so both of these have to survive from one chunk to the next.  Nothing else has to: an
+		// expression anywhere inside a tag gets the same attribute placeholder, so the machine only has to
+		// know whether it is inside a tag at all, and whether a quoted value is currently open.
+		let inTag = false; // True from the '<' that opens a tag or comment through the '>' that closes it.
 		let quote = null; // The quote character that opened the attribute value we're inside of: null, '"', or "'".
-		let buffer = ''; // The characters seen so far in the current tag name, attribute name, or attribute value.
 
 		for (let i = 0; i < htmlChunks.length; i++) {
 			let html = htmlChunks[i];
 
 			// Append -solarite-placholder to web component tags, so we can pass args to them when they're instantiated.
-			let lastIndex = 0;
+			let lastIndex = 0; // Start of the run of this chunk not yet copied into result.
 			for (let j = 0; j < html.length; j++) {
 				const char = html[j];
-				let next = 0; // The context this character moves us into, or zero to stay in the one we're in.
 
-				if (context === Text) {
-					if (char === '<' && html[j + 1].match(/[/a-z!]/i)) // Start of a tag or comment.
-						next = Tag;
-				}
-				else if (context === Tag) {
-					if (char === '>')
-						next = Text;
+				if (!inTag) {
+					if (char === '<' && html[j + 1].match(/[/a-z!]/i)) { // Start of a tag or comment.
+						inTag = true;
 
-					// A space, a self-closing slash, or the '?' of an xml declaration ends the attribute name we were
-					// collecting.  A run of spaces lands here too, but clearing an already empty buffer changes nothing.
-					else if (char === ' ' || char === '/' || char === '?')
-						buffer = '';
-
-					else if (char === '"' || char === "'" || char === '=')
-						next = Attribute;
-					else
-						buffer += char;
-				}
-				else {
-					// Start an attribute quote.
-					if (!quote && !buffer.length && (char === '"' || char === "'"))
-						quote = char;
-					else if (char === quote || (!quote && buffer.length))
-						next = Tag;
-					else if (!quote && char === '>')
-						next = Text;
-					else if (char !== ' ')
-						buffer += char;
-				}
-
-				// Every one of the context changes above shares this same bookkeeping.  Two details are folded in:
-				// text resumes *after* the '>' we just read, so its index is one past the current character, and the
-				// only path into an attribute is the '"', "'", or '=' we just read, where an '=' opens an unquoted value.
-				if (next) {
-					let index = next === Text ? j+1 : j;
-					if (lastIndex !== index) {
-						let token = html.slice(lastIndex, index);
-						if (context === Tag)
-							token = token.replace(isWebComponentTagName, match => match + '-SOLARITE-PLACEHOLDER');
-						result.push(token);
+						// A component suffix can only ever be added right here, at the '<' that opens the tag, so
+						// the name is matched on the spot with a sticky regex rather than collected into a buffer
+						// and matched later.  The greedy tag-name class can't run past the name, because every
+						// character that can follow a tag name is outside it.
+						isWebComponentTagName.lastIndex = j;
+						let match = isWebComponentTagName.exec(html);
+						if (match) {
+							let end = j + match[0].length;
+							result += html.slice(lastIndex, end) + '-SOLARITE-PLACEHOLDER';
+							lastIndex = end;
+						}
 					}
-					lastIndex = index;
-
-					context = next;
-					quote = next === Attribute && char !== '=' ? char : null;
-					buffer = '';
 				}
+
+				// Inside a tag, only two characters end anything: the quote that closes the value we're in, or,
+				// when we're not in one, the '>' that closes the tag.  Attribute names, '=', unquoted values and
+				// whitespace all need no handling at all.
+				else if (quote) {
+					if (char === quote)
+						quote = null;
+				}
+				else if (char === '"' || char === "'")
+					quote = char;
+				else if (char === '>')
+					inTag = false;
 			}
 
-			// Whatever is left of the chunk after the last context change is one final token.
-			if (lastIndex !== html.length) {
-				let token = html.slice(lastIndex);
-				if (context === Tag)
-					token = token.replace(isWebComponentTagName, match => match + '-SOLARITE-PLACEHOLDER');
-				result.push(token);
-			}
+			result += html.slice(lastIndex);
 
 			// Insert placeholders
-			if (i < htmlChunks.length - 1) {
-				if (context === Text)
-					result.push(commentPlaceholder) // Comment Placeholder. because we can't put text in between <tr> tags for example.
-				else
-					result.push(String.fromCharCode(attribPlaceholder + i));
-			}
+			if (i < htmlChunks.length - 1)
+				result += inTag
+					? String.fromCharCode(attribPlaceholder + i)
+					: commentPlaceholder; // Comment Placeholder. because we can't put text in between <tr> tags for example.
 		}
 
-		return result.join('');
+		return result;
 	}
 
 	/**
@@ -597,12 +575,12 @@ export default class Shell {
 	 * this.ids
 	 * this.staticComponents */
 	findEmbeds() {
-		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('script'), el => Path.get(el))
+		this.scripts = Array.prototype.map.call(this.docFrag.querySelectorAll('script'), el => Path.get(el))
 
 		// TODO: only find styles that have Paths in them?
-		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => Path.get(el))
+		this.styles = Array.prototype.map.call(this.docFrag.querySelectorAll('style'), el => Path.get(el))
 
-		let idEls = this.fragment.querySelectorAll('[id],[data-id]');
+		let idEls = this.docFrag.querySelectorAll('[id],[data-id]');
 
 		// Check for valid id names.
 		for (let el of idEls) {
@@ -627,7 +605,7 @@ export default class Shell {
 
 		let ops = [];
 		let slotOf = new Map();
-		let frag = this.fragment;
+		let frag = this.docFrag;
 		let nextSlot = 1;
 		let getSlot = node => {
 			if (node === frag)
@@ -706,7 +684,7 @@ export default class Shell {
 	// For debugging only:
 	verify() {
 		for (let path of this.paths) {
-			assert(this.fragment.contains(path.getParentNode()))
+			assert(this.docFrag.contains(path.getParentNode()))
 			path.verify();
 		}
 	}
@@ -716,17 +694,14 @@ export default class Shell {
 
 const commentPlaceholder = `<!--!✨!-->`;
 
-// The three html contexts the tokenizer in addPlaceholders() walks through.  They're small integers instead
-// of strings so that comparing them is cheap and so that zero can mean "no context change" inside its loop.
-const Text = 1, Tag = 2, Attribute = 3;
-
-// A tag name with a dash in the middle, which is what makes an element a web component.  Every token collected
-// in tag context is checked against this, and a match gets -solarite-placeholder appended to its tag name.  That
-// way we can gather a component's constructor arguments and its children before we call its constructor; later
-// PathToComponent.apply() replaces the placeholder tag with the real component.  The suffix is written in caps
-// wherever it appears, so that the several copies of it in this project compress well.
+// A tag name with a dash in the middle, which is what makes an element a web component.  addPlaceholders()
+// tests this at each '<' that opens a tag, and a match gets -solarite-placeholder appended to its tag name.
+// That way we can gather a component's constructor arguments and its children before we call its constructor;
+// later PathToComponent.applyAll() replaces the placeholder tag with the real component.  The suffix is written in
+// caps wherever it appears, so that the several copies of it in this project compress well.  It's sticky rather
+// than anchored so it can be tested at an offset within the chunk instead of against a sliced-out token.
 // Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i;
+const isWebComponentTagName = /<\/?[a-z][a-z0-9]*-[a-z0-9-]+/iy;
 
 // Elements whose whitespace-only text children are never rendered.
 const tableTags = ['TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR'];

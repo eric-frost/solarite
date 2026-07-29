@@ -314,8 +314,8 @@ let Util = {
 		return node.value; // String
 	},
 
-	isEvent(attrName) {
-		return attrName.startsWith('on') && attrName in Globals$1.div;
+	isEvent(attribName) {
+		return attribName.startsWith('on') && attribName in Globals$1.div;
 	},
 
 	/**
@@ -512,7 +512,7 @@ class Path {
 	 * [[expr5], [expr6, expr7]] // arguments to second my-component constructor.
 	 * [expr5]                   // user attribute value.
 	 * [expr6, expr7]            // role attribute value. */
-	apply(exprs) {
+	applyAll(exprs) {
 		
 		this.applySingle(exprs[0]);
 	}
@@ -558,7 +558,7 @@ class Path {
 	 * @param nodeMarker {Node}
 	 * @return {Path} */
 	cloneWithNodes(nodeBefore, nodeMarker) {
-		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
+		let result = new this.constructor(nodeBefore, nodeMarker, this.attribName, this.attrValue);
 		result.isComponentAttrib = this.isComponentAttrib;
 		result.wholeParent = this.wholeParent;
 		result.isHtmlProperty = this.isHtmlProperty;
@@ -677,9 +677,9 @@ class SelectorRef {
 	 * the common case skips.
 	 *
 	 * @param node {Node} The element carrying the attribute.
-	 * @param attrName {string}
+	 * @param attribName {string}
 	 * @param parentNg {NodeGroup} The row this attribute belongs to. */
-	bind(node, attrName, parentNg) {
+	bind(node, attribName, parentNg) {
 		// set() writes through the row's own root element, so an attribute anywhere deeper
 		// would be found at bind time and then written somewhere else at set() time.  Catching
 		// it here turns a silently misplaced attribute into a clear message; the check is
@@ -688,7 +688,7 @@ class SelectorRef {
 			throw new Error(`Solarite: a selector must be on the row's own root element.`);
 
 		let s = this.selector;
-		s.attrName = attrName;
+		s.attribName = attribName;
 		s.path = parentNg.parentPath;
 
 		let v = this.selected ? s.onValue : s.offValue;
@@ -699,10 +699,10 @@ class SelectorRef {
 			// A just-cloned row provably carries no attribute of this name yet, so the
 			// removeAttribute — a DOM call for every row of the list — can be skipped.
 			if (parentNg.firstApply !== true)
-				node.removeAttribute(attrName);
+				node.removeAttribute(attribName);
 		}
 		else
-			node.setAttribute(attrName, v);
+			node.setAttribute(attribName, v);
 	}
 }
 
@@ -736,7 +736,7 @@ class Selector {
 	offValue = '';
 
 	/** @type {?string} The attribute this selector drives, learned when a row binds. */
-	attrName = null;
+	attribName = null;
 
 	/** @type {?PathToNodes} The list this selector's rows were rendered into, learned when a
 	 * row binds.  set() asks it for the NodeGroup holding a given key. */
@@ -821,16 +821,16 @@ class Selector {
 			return;
 
 		if (v === '' || v === false || v === null || v === undefined)
-			node.removeAttribute(this.attrName);
+			node.removeAttribute(this.attribName);
 		else
-			node.setAttribute(this.attrName, v);
+			node.setAttribute(this.attribName, v);
 	}
 }
 
 class PathToAttribValue extends Path {
 
 	/** @type {?string} Used only if type=AttribType.Value. */
-	attrName;
+	attribName;
 
 	/**
 	 * @type {?string[]} Used only if type=AttribType.Value. If null, use one expr to set the whole attribute value. */
@@ -838,16 +838,16 @@ class PathToAttribValue extends Path {
 
 	// isComponentAttrib and isHtmlProperty are declared on the Path base class.
 
-	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
+	constructor(nodeBefore, nodeMarker, attribName=null, attrValue=null) {
 		super(null, nodeMarker);
-		this.attrName = attrName;
+		this.attribName = attribName;
 		this.attrValue = attrValue;
 	}
 
 	/**
 	 * Set the value of an attribute.  This can be for any attribute, not just attributes named "value".
 	 * @param exprs {Expr[]} */
-	apply(exprs) {
+	applyAll(exprs) {
 		
 
 		// Multiple expressions in one attribute value, e.g. class="a ${b} c ${d}"
@@ -859,14 +859,14 @@ class PathToAttribValue extends Path {
 			// Only update attributes if the value has changed.
 			// This is needed for setting input.value, .checked, option.selected, etc.
 			let oldVal = isProp
-				? node[this.attrName]
-				: node.getAttribute(this.attrName);
+				? node[this.attribName]
+				: node.getAttribute(this.attribName);
 			if (oldVal !== joinedValue) {
 				if (isProp)
-					node[this.attrName] = joinedValue;
-				else if (this.attrName === 'value' && node.hasAttribute('contenteditable'))
+					node[this.attribName] = joinedValue;
+				else if (this.attribName === 'value' && node.hasAttribute('contenteditable'))
 					node.innerHTML = joinedValue;
-				node.setAttribute(this.attrName, joinedValue);
+				node.setAttribute(this.attribName, joinedValue);
 			}
 		}
 		else
@@ -879,7 +879,7 @@ class PathToAttribValue extends Path {
 	applySingle(expr) {
 		// One expression surrounded by strings, e.g. class="a ${b} c".  Join through apply().
 		if (this.attrValue)
-			return this.apply([expr]);
+			return this.applyAll([expr]);
 
 		let node = this.nodeMarker;
 
@@ -900,12 +900,12 @@ class PathToAttribValue extends Path {
 			let [obj, path] = [expr[0], expr.slice(1)];
 
 			if (!obj)
-				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
+				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attribName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
 
 			let value = delve(obj, path);
 
 			// Special case to allow setting select-multiple value from an array
-			if (this.attrName === 'value' && node.type === 'select-multiple' && Array.isArray(value)) {
+			if (this.attribName === 'value' && node.type === 'select-multiple' && Array.isArray(value)) {
 				// Set the .selected property on the options having a value within value.
 				let strValues = value.map(v => v + '');
 				for (let option of node.options)
@@ -921,7 +921,7 @@ class PathToAttribValue extends Path {
 				const strValue = Util.isFalsy(value) ? '' : value;
 
 				// Special case for contenteditable
-				if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
+				if (this.attribName === 'value' && node.hasAttribute('contenteditable')) {
 					const existingValue = node.innerHTML;
 					if (strValue !== existingValue)
 						node.innerHTML = strValue;
@@ -930,24 +930,24 @@ class PathToAttribValue extends Path {
 
 					// If we don't have this condition, when we call render(), the browser will scroll to the currently
 					// selected item in a <select> and mess up manually scrolling to a different value.
-					if (strValue !== node[this.attrName])
-						node[this.attrName] = strValue;
+					if (strValue !== node[this.attribName])
+						node[this.attribName] = strValue;
 				}
 			}
 
 			// TODO: We need to remove any old listeners, like in bindEventAttribute.
 			// Does bindEvent() now handle that?
 			let func = () => {
-				let value = (this.attrName === 'value' || node.type === 'radio')
+				let value = (this.attribName === 'value' || node.type === 'radio')
 					? Util.getInputValue(node)
-					: node[this.attrName];
+					: node[this.attribName];
 				delve(obj, path, value);
 			};
 
 			// We use capture so we update the values before other events added by the user.
 			// TODO: Bind to scroll events also?
 			// What about resize events and width/height?
-			this.bindEvent(node, this.parentNg.getRootNode(), this.attrName, 'input', func, null, true);
+			this.bindEvent(node, this.parentNg.getRootEl(), this.attribName, 'input', func, null, true);
 		}
 
 		// Regular attribute
@@ -959,7 +959,7 @@ class PathToAttribValue extends Path {
 			// prototype check.
 			if (typeof expr === 'object' && expr instanceof SelectorRef) {
 				if (!this.isComponentAttrib)
-					expr.bind(node, this.attrName, this.parentNg);
+					expr.bind(node, this.attribName, this.parentNg);
 				return;
 			}
 
@@ -978,13 +978,13 @@ class PathToAttribValue extends Path {
 			// Values to toggle an attribute
 			if (expr === undefined || expr === false || expr === null) { // Util.isFalsy() inlined.
 				if (isProp)
-					node[this.attrName] = false;
-				node.removeAttribute(this.attrName);
+					node[this.attribName] = false;
+				node.removeAttribute(this.attribName);
 			}
 			else if (expr === true) {
 				if (isProp)
-					node[this.attrName] = true;
-				node.setAttribute(this.attrName, '');
+					node[this.attribName] = true;
+				node.setAttribute(this.attribName, '');
 			}
 
 			// A non-toggled attribute
@@ -993,25 +993,25 @@ class PathToAttribValue extends Path {
 				// This is needed for setting input.value, .checked, option.selected, etc.
 				// A missing attribute counts as '', so empty values don't write empty attributes.
 				let oldVal = isProp
-					? node[this.attrName]
-					: node.getAttribute(this.attrName) ?? '';
+					? node[this.attribName]
+					: node.getAttribute(this.attribName) ?? '';
 				if (oldVal !== expr) {
 
 					// <textarea value=${expr}></textarea>
 					// Without this branch we have no way to set the value of a textarea,
 					// since we also prohibit expressions that are a child of textarea.
 					if (isProp)
-						node[this.attrName] = expr;
+						node[this.attribName] = expr;
 
 						// Allow one-way binding to contenteditable value attribute.
 						// Contenteditables normally don't have a value attribute and have their content set via innerHTML.
 					// Solarite doesn't allow contenteditables to have expressions as their children.
-					else if (this.attrName === 'value' && node.hasAttribute('contenteditable')) {
+					else if (this.attribName === 'value' && node.hasAttribute('contenteditable')) {
 						node.innerHTML = expr;
 					}
 
 					// TODO: Putting an 'else' here would be more performant
-					node.setAttribute(this.attrName, expr);
+					node.setAttribute(this.attribName, expr);
 				}
 			}
 		}
@@ -1050,7 +1050,7 @@ class PathToAttribValue extends Path {
 				// attribute is written from its constant parts alone.  Stripping it also keeps a
 				// per-expression instanceof out of the multi-part attribute loop.
 				if (typeof exprs[i] === 'object' && exprs[i] instanceof SelectorRef)
-					throw new Error(`Solarite: a selector must own the whole ${this.attrName} attribute, not part of it.`);
+					throw new Error(`Solarite: a selector must own the whole ${this.attribName} attribute, not part of it.`);
 				let val = Util.makePrimitive(exprs[i]);
 				if (!Util.isFalsy(val))
 					result.push(val);
@@ -1080,7 +1080,7 @@ class PathToAttribValue extends Path {
 		// the property.  this.delegatedKey is set by the PathToEvent constructor only for
 		// delegatable event names, so this test also excludes non-bubbling events.
 		if (capture === false && this.delegatedKey !== undefined) {
-			let opt = this.parentNg.rootNg.options?.eventDelegation ?? true;
+			let opt = this.parentNg.rootNg.renderOptions?.eventDelegation ?? true;
 			let toDocument = opt === 'document';
 			if (opt !== false && (opt === true || toDocument || opt.includes(eventName))) {
 				let dk = this.delegatedKey;
@@ -1136,7 +1136,7 @@ class PathToAttribValue extends Path {
 				return;
 			}
 		}
-		binding.root = root;
+		binding.rootEl = root;
 		binding.args = args;
 	}
 }
@@ -1258,7 +1258,7 @@ function delegatedDispatcher(ev) {
 
 class EventBinding {
 	constructor(root, node, key, args) {
-		this.root = root;
+		this.rootEl = root;
 		this.node = node;
 		this.key = key;
 
@@ -1272,28 +1272,28 @@ class EventBinding {
 	'handleEvent'(event) {
 		let a = this.args;
 		switch (a.length) {
-			case 1: return a[0].call(this.root, event, this.node);
-			case 2: return a[0].call(this.root, a[1], event, this.node);
-			case 3: return a[0].call(this.root, a[1], a[2], event, this.node);
+			case 1: return a[0].call(this.rootEl, event, this.node);
+			case 2: return a[0].call(this.rootEl, a[1], event, this.node);
+			case 3: return a[0].call(this.rootEl, a[1], a[2], event, this.node);
 		}
-		return a[0].call(this.root, ...a.slice(1), event, this.node);
+		return a[0].call(this.rootEl, ...a.slice(1), event, this.node);
 	}
 }
 
 // TODO: Merge this into PathToAttribValue?
 class PathToEvent extends PathToAttribValue {
 
-	/** @type {string} The attrName without the "on" prefix. */
+	/** @type {string} The attribName without the "on" prefix. */
 	eventName;
 
 	/** @type {symbol|undefined} Expando key nodes store this event's delegated handler under.
 	 * Undefined for non-delegatable (non-bubbling) events; bindEvent() then binds directly. */
 	delegatedKey;
 
-	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
-		super(null, nodeMarker, attrName, attrValue);
+	constructor(nodeBefore, nodeMarker, attribName=null, attrValue=null) {
+		super(null, nodeMarker, attribName, attrValue);
 		this.skipIfSame = true;
-		this.eventName = attrName ? attrName.slice(2) : null;
+		this.eventName = attribName ? attribName.slice(2) : null;
 		this.delegatedKey = this.eventName !== null ? delegatedKeyFor(this.eventName) : undefined;
 	}
 
@@ -1304,14 +1304,14 @@ class PathToEvent extends PathToAttribValue {
 	 * onclick=${[this, 'doSomething', 'meow']}
 	 *
 	 * @param exprs {Expr[]} Only the first is used.*/
-	apply(exprs) {
+	applyAll(exprs) {
 		
 
 		// Tested by Solariate.events.classicWithExpr
 		// We have expressions within a string attribute value that's not a Solarite event.  E.g.
 		// <div onclick="alert(${1});"
 		if (this.attrValue?.length > 1) {
-			super.apply(exprs);
+			super.applyAll(exprs);
 			return;
 		}
 
@@ -1323,14 +1323,14 @@ class PathToEvent extends PathToAttribValue {
 	applySingle(expr) {
 		// Expressions within a string attribute value that's not a Solarite event.
 		if (this.attrValue?.length > 1)
-			return super.apply([expr]);
+			return super.applyAll([expr]);
 
 		// Don't bind events to component placeholders.
 		// PathToComponent will do the binding later when it instantiates the component.
 		if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
 			return;
 
-		let root = this.parentNg.rootNg.root;
+		let root = this.parentNg.rootNg.rootEl;
 
 		
 
@@ -1348,7 +1348,7 @@ class PathToEvent extends PathToAttribValue {
 			expr = null;
 		}
 		else
-			throw new Error(`Solarite: ${this.attrName}=\${...} is not a function.`);
+			throw new Error(`Solarite: ${this.attribName}=\${...} is not a function.`);
 
 		this.bindEvent(node, root, eventName, eventName, func, expr);
 	}
@@ -1650,7 +1650,7 @@ class PathToAttribs extends Path {
  * Maps a string key to multiple values.
  * Values are stored in arrays because pushing them is much faster than Set operations,
  * and deleteAny() needs no iterator allocation.
- * deleteAny() returns values first-in-first-out by advancing a head index (array.head)
+ * deleteAny() returns values first-in-first-out by advancing a head index (array.hd)
  * instead of calling shift(), which would be O(n). */
 class MultiValueMap {
 
@@ -1678,7 +1678,7 @@ class MultiValueMap {
 		let array = data[key];
 		if (!array)
 			data[key] = [value];
-		else if (array.length - (array.head || 0) < max)
+		else if (array.length - (array.hd || 0) < max)
 			array.push(value);
 	}
 
@@ -1692,13 +1692,13 @@ class MultiValueMap {
 		if (!array) // slower than pre-check.
 			return undefined;
 
-		let head = array.head || 0;
+		let head = array.hd || 0;
 		let result = array[head];
 		head++;
 		if (head >= array.length)
 			delete data[key];
 		else
-			array.head = head;
+			array.hd = head;
 
 		return result;
 	}
@@ -1773,14 +1773,6 @@ class PathToNodes extends Path {
 	textValue = null;
 
 
-
-	/**
-	 * Nodes that have been used during the current render().
-	 * Used with getNodeGroup() and freeNodeGroups() on the generic path; the positional diff
-	 * tracks in-use NodeGroups in this.nodeGroups instead.
-	 * Lazily created since most paths never use it.
-	 * @type {?NodeGroup[]} */
-	nodeGroupsRendered = null;
 
 	/**
 	 * Nodes that were added to the web component during the last render(), but are available to be used again.
@@ -1888,8 +1880,8 @@ class PathToNodes extends Path {
 
 		// A selection binding only knows how to write an attribute, so catch it here rather than
 		// letting it render as an empty string and leave the caller wondering where it went.
-		if (typeof expr === 'object' && expr !== null && expr instanceof SelectorRef)
-			throw new Error(`Solarite can only use a selector as a whole attribute value, as in <tr class=\${sel.when(id, 'danger')}>, not as element content.`);
+		if (expr instanceof SelectorRef)
+			throw new Error('Solarite: a selector must be a whole attribute value.');
 
 		// 1. h.map() hands over its source items and callback rather than built Templates, so a
 		// row whose item is unchanged is recognized without building or looking up a Template.
@@ -2246,8 +2238,6 @@ class PathToNodes extends Path {
 		}
 
 		// Keep state used by the generic path from going stale.
-		if (this.nodeGroupsRendered)
-			this.nodeGroupsRendered = null;
 		if (this.nodeGroupsAttachedAvailable)
 			this.nodeGroupsAttachedAvailable = null;
 		return true;
@@ -2441,8 +2431,6 @@ class PathToNodes extends Path {
 		this.nodeGroups = newNgs;
 
 		// Keep state used by the generic path from going stale.
-		if (this.nodeGroupsRendered)
-			this.nodeGroupsRendered = null;
 		if (this.nodeGroupsAttachedAvailable)
 			this.nodeGroupsAttachedAvailable = null;
 	}
@@ -2700,8 +2688,6 @@ class PathToNodes extends Path {
 		this.nodeGroups = newNgs;
 
 		// Keep state used by the generic path from going stale.
-		if (this.nodeGroupsRendered)
-			this.nodeGroupsRendered = null;
 		if (this.nodeGroupsAttachedAvailable)
 			this.nodeGroupsAttachedAvailable = null;
 	}
@@ -3002,15 +2988,13 @@ class PathToNodes extends Path {
 			result.applyExprs(template.exprs);
 		}
 
-		(this.nodeGroupsRendered ??= []).push(result);
-
 		
 		return result;
 	}
 
 
 	/**
-	 * Move everything from this.nodeGroupsRendered to this.nodeGroupsAttached and nodeGroupsDetached.
+	 * Move everything from this.nodeGroups to this.nodeGroupsAttached and nodeGroupsDetached.
 	 * Called at the beginning of applyGeneric() so it can have NodeGroups to use.
 	 * TODO: this could run as needed in getNodeGroup? */
 	freeNodeGroups() {
@@ -3020,7 +3004,7 @@ class PathToNodes extends Path {
 			let detached = (this.nodeGroupsDetachedAvailable ??= new MultiValueMap()).data;
 			for (let key in previouslyAttached) {
 				let src = previouslyAttached[key];
-				let from = src.head || 0; // Skip entries already consumed by deleteAny().
+				let from = src.hd || 0; // Skip entries already consumed by deleteAny().
 				let array = detached[key];
 				if (!array) {
 					array = detached[key] = from ? src.slice(from) : src;
@@ -3028,22 +3012,18 @@ class PathToNodes extends Path {
 						array.length = maxPooledPerKey;
 				}
 				else
-					for (let i=from, max=maxPooledPerKey + (array.head || 0); i<src.length && array.length < max; i++)
+					for (let i=from, max=maxPooledPerKey + (array.hd || 0); i<src.length && array.length < max; i++)
 						array.push(src[i]);
 			}
 		}
 
-		// Add nodes that were used during render() to nodeGroupsRendered.
-		// If the last render used the positional diff, the in-use NodeGroups are in
-		// this.nodeGroups instead of nodeGroupsRendered.
-		this.nodeGroupsAttachedAvailable = new MultiValueMap();
-		let nga = this.nodeGroupsAttachedAvailable;
-		let source = this.nodeGroupsRendered?.length ? this.nodeGroupsRendered : this.nodeGroups;
-		if (source)
-			for (let ng of source)
+		// Offer the NodeGroups the last render left in place for reuse.  Every path that renders
+		// NodeGroups — the positional diff, the keyed diff and applyGeneric alike — leaves them in
+		// this.nodeGroups, so that one array is always the set still standing in the DOM.
+		let nga = this.nodeGroupsAttachedAvailable = new MultiValueMap();
+		if (this.nodeGroups)
+			for (let ng of this.nodeGroups)
 				nga.add(ng.closeKey, ng);
-
-		this.nodeGroupsRendered = null;
 	}
 
 
@@ -3308,9 +3288,9 @@ class PathToComponent extends Path {
 	 * Call render() on the component pointed to by this Path.
 	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet.
 	 * @param exprs {Expr[][]} Expressions to evaluate for each attribute to pass to the constructor.
-	 * This is different than other Path.apply() functions which only receive Expr[] and not Expr[][].
+	 * This is different than other Path.applyAll() functions which only receive Expr[] and not Expr[][].
 	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute. */
-	apply(exprs) {
+	applyAll(exprs) {
 		
 
 		
@@ -3335,7 +3315,7 @@ class PathToComponent extends Path {
 			if (attribPath instanceof PathToEvent)
 				continue;
 			if (attribPath instanceof PathToAttribValue) {
-				let name = Util.dashesToCamel(attribPath.attrName);
+				let name = Util.dashesToCamel(attribPath.attribName);
 				
 				// Resolve two way bindimg path before we pass it to the component.
 				let value = attribPath.getValue(exprs[i]);
@@ -3380,7 +3360,7 @@ class PathToComponent extends Path {
 						this.deferredExprs = null;
 						// Skip if a newer render already instantiated or replaced the placeholder.
 						if (deferred && this.nodeMarker === el && el.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
-							this.apply(deferred);
+							this.applyAll(deferred);
 					});
 				}
 				Globals$1.currentSlotChildren = null;
@@ -3417,7 +3397,7 @@ class PathToComponent extends Path {
 			// 2c. If an id pointed at the placeholder, update it to point to the new element.
 			let id = newEl.getAttribute('data-id') || newEl.getAttribute('id');
 			if (id)
-				delve(this.parentNg.getRootNode(), id.split(/\./g), newEl);
+				delve(this.parentNg.getRootEl(), id.split(/\./g), newEl);
 
 			// 2d. Update paths to use replaced element.
 			let ng = this.parentNg;
@@ -3443,7 +3423,7 @@ class PathToComponent extends Path {
 			for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 				attribPath.parentNg = this.parentNg;
 				attribPath.nodeMarker = newEl;
-				attribPath.apply(exprs[i]);
+				attribPath.applyAll(exprs[i]);
 			}
 
 			// 2e. Swap it to the DOM.
@@ -3485,7 +3465,7 @@ class Shell {
 
 	/**
 	 * @type {DocumentFragment|Text} DOM parent of the shell's nodes. */
-	fragment;
+	docFrag;
 
 	/** @type {Path[]} Paths to where expressions should go. */
 	paths = [];
@@ -3595,7 +3575,7 @@ class Shell {
 
 		// If no html tags or entities, just create a text node.
 		if (html.length === 1 && !html[0].match(/[<&]/)) {
-			this.fragment = Globals$1.doc.createTextNode(html[0]);
+			this.docFrag = Globals$1.doc.createTextNode(html[0]);
 			return;
 		}
 
@@ -3613,29 +3593,29 @@ class Shell {
 				let frag = Globals$1.doc.createDocumentFragment();
 				while (svgEl.firstChild)
 					frag.append(svgEl.firstChild);
-				this.fragment = frag;
+				this.docFrag = frag;
 			}
 			else {
 				template.innerHTML = htmlWithPlaceholders;
-				this.fragment = template.content;
+				this.docFrag = template.content;
 			}
 		}
 		else { // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
 			template.content.append(Globals$1.doc.createTextNode(''));
-			this.fragment = template.content;
+			this.docFrag = template.content;
 		}
 
 		// 1b. Remove whitespace-only text nodes inside table-structure elements.
 		// The parser foster-parents non-whitespace text out of tables, and whitespace-only
 		// text between cells/rows is never rendered, so removing it is invisible.
 		// Smaller fragments make cloning, path resolution, and insertion faster.
-		stripTableWhitespace(this.fragment);
+		stripTableWhitespace(this.docFrag);
 
 		// 2. Find placeholders
 		let node;
 		let toRemove = [];
 		let placeholdersUsed = 0;
-		const walker = Globals$1.doc.createTreeWalker(this.fragment, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
+		const walker = Globals$1.doc.createTreeWalker(this.docFrag, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
 		while (node = walker.nextNode()) {
 
 			// Remove previous elements after each iteration, so paths will still be calculated correctly.
@@ -3662,7 +3642,7 @@ class Shell {
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length !== 2 || parts[0] !== '' || parts[1] !== '')
 							throw new Error(`Solarite: key must be one whole expression, as key=\${...}.`);
-						if (node.parentNode !== this.fragment)
+						if (node.parentNode !== this.docFrag)
 							throw new Error(`Solarite: key must be on a top-level element of its template.`);
 						if (this.keyIndex >= 0)
 							throw new Error(`Solarite: a template can have only one key attribute.`);
@@ -3803,11 +3783,6 @@ class Shell {
 				}
 			}
 
-			// Comments become text nodes when inside textareas.
-			else if (node.nodeType === 3 && node.parentNode?.tagName === 'TEXTAREA' && node.textContent.includes('<!--!✨!-->'))
-				throw new Error(`Textarea can't have expressions inside them. Use <textarea value="\${...}"> instead.`);
-			
-			
 			// Sometimes users will comment out a block of html code that has expressions.
 			// Here we look for expressions in comments.
 			// We don't actually update them dynamically, but we still add paths for them.
@@ -3821,29 +3796,39 @@ class Shell {
 				}
 			}
 
-			// Replace comment placeholders inside script and style tags, which have become text nodes.
-			else if (node.nodeType === 3 && ['SCRIPT', 'STYLE'].includes(node.parentNode?.nodeName)) { // Node.TEXT_NODE
-				let parts = node.textContent.split(commentPlaceholder);
-				if (parts.length > 1) {
+			// A few elements have raw-text bodies, which the html parser reads as literal characters
+			// rather than as markup.  A comment placeholder written inside one therefore never becomes
+			// a comment node; it arrives here as ordinary text.  A textarea can't support expressions
+			// in its body at all, while script and style can, by splitting their text around each
+			// placeholder so that every expression gets a text node of its own to write into.
+			else if (node.nodeType === 3) { // Node.TEXT_NODE
+				let parentName = node.parentNode?.nodeName;
 
-					let placeholders = [];
-					for (let i = 0; i<parts.length; i++) {
-						let current = Globals$1.doc.createTextNode(parts[i]);
-						node.parentNode.insertBefore(current, node);
-						if (i > 0)
-							placeholders.push(current);
+				if (parentName === 'TEXTAREA' && node.textContent.includes(commentPlaceholder))
+					throw new Error(`Textarea can't have expressions inside them. Use <textarea value="\${...}"> instead.`);
+
+				else if (parentName === 'SCRIPT' || parentName === 'STYLE') {
+					let parts = node.textContent.split(commentPlaceholder);
+					if (parts.length > 1) {
+
+						// Every part is inserted before the original node, in order, so from the second
+						// part onward the text node made on the previous iteration is already sitting
+						// immediately before this one and serves as the new path's nodeBefore.
+						for (let i = 0; i<parts.length; i++) {
+							let current = Globals$1.doc.createTextNode(parts[i]);
+							node.parentNode.insertBefore(current, node);
+							if (i > 0) {
+								let path = new PathToNodes(current.previousSibling, current);
+								this.paths.push(path);
+								placeholdersUsed ++;
+
+								
+							}
+						}
+
+						// Removing it here will mess up the treeWalker.
+						toRemove.push(node);
 					}
-
-					for (let i=0, node; node=placeholders[i]; i++) {
-						let path = new PathToNodes(node.previousSibling, node);
-						this.paths.push(path);
-						placeholdersUsed ++;
-
-						
-					}
-
-					// Removing them here will mess up the treeWalker.
-					toRemove.push(node);
 				}
 			}
 		}
@@ -3943,7 +3928,7 @@ class Shell {
 					else if (sp instanceof PathToAttribValue && !sp.attrValue && !sp.isHtmlProperty
 						&& !sp.isComponentAttrib) {
 						this.stampOp[i] = 4;
-						this.stampAux[i] = sp.attrName;
+						this.stampAux[i] = sp.attribName;
 					}
 				}
 				this.stampEventNames = eventNames;
@@ -3961,91 +3946,64 @@ class Shell {
 	 * @param htmlChunks {string[]}
 	 * @returns {string} Html with the placeholders in place. */
 	static addPlaceholders(htmlChunks) {
-		let result = [];
+		let result = '';
 
 		// Where the tokenizer is as it walks the chunks.  An expression can sit in the middle of an attribute
-		// value, so the context, the quote character that opened that value, and the characters collected so
-		// far all have to survive from one chunk to the next.
-		let context = Text$1;
+		// value, so both of these have to survive from one chunk to the next.  Nothing else has to: an
+		// expression anywhere inside a tag gets the same attribute placeholder, so the machine only has to
+		// know whether it is inside a tag at all, and whether a quoted value is currently open.
+		let inTag = false; // True from the '<' that opens a tag or comment through the '>' that closes it.
 		let quote = null; // The quote character that opened the attribute value we're inside of: null, '"', or "'".
-		let buffer = ''; // The characters seen so far in the current tag name, attribute name, or attribute value.
 
 		for (let i = 0; i < htmlChunks.length; i++) {
 			let html = htmlChunks[i];
 
 			// Append -solarite-placholder to web component tags, so we can pass args to them when they're instantiated.
-			let lastIndex = 0;
+			let lastIndex = 0; // Start of the run of this chunk not yet copied into result.
 			for (let j = 0; j < html.length; j++) {
 				const char = html[j];
-				let next = 0; // The context this character moves us into, or zero to stay in the one we're in.
 
-				if (context === Text$1) {
-					if (char === '<' && html[j + 1].match(/[/a-z!]/i)) // Start of a tag or comment.
-						next = Tag;
-				}
-				else if (context === Tag) {
-					if (char === '>')
-						next = Text$1;
+				if (!inTag) {
+					if (char === '<' && html[j + 1].match(/[/a-z!]/i)) { // Start of a tag or comment.
+						inTag = true;
 
-					// A space, a self-closing slash, or the '?' of an xml declaration ends the attribute name we were
-					// collecting.  A run of spaces lands here too, but clearing an already empty buffer changes nothing.
-					else if (char === ' ' || char === '/' || char === '?')
-						buffer = '';
-
-					else if (char === '"' || char === "'" || char === '=')
-						next = Attribute;
-					else
-						buffer += char;
-				}
-				else {
-					// Start an attribute quote.
-					if (!quote && !buffer.length && (char === '"' || char === "'"))
-						quote = char;
-					else if (char === quote || (!quote && buffer.length))
-						next = Tag;
-					else if (!quote && char === '>')
-						next = Text$1;
-					else if (char !== ' ')
-						buffer += char;
-				}
-
-				// Every one of the context changes above shares this same bookkeeping.  Two details are folded in:
-				// text resumes *after* the '>' we just read, so its index is one past the current character, and the
-				// only path into an attribute is the '"', "'", or '=' we just read, where an '=' opens an unquoted value.
-				if (next) {
-					let index = next === Text$1 ? j+1 : j;
-					if (lastIndex !== index) {
-						let token = html.slice(lastIndex, index);
-						if (context === Tag)
-							token = token.replace(isWebComponentTagName, match => match + '-SOLARITE-PLACEHOLDER');
-						result.push(token);
+						// A component suffix can only ever be added right here, at the '<' that opens the tag, so
+						// the name is matched on the spot with a sticky regex rather than collected into a buffer
+						// and matched later.  The greedy tag-name class can't run past the name, because every
+						// character that can follow a tag name is outside it.
+						isWebComponentTagName.lastIndex = j;
+						let match = isWebComponentTagName.exec(html);
+						if (match) {
+							let end = j + match[0].length;
+							result += html.slice(lastIndex, end) + '-SOLARITE-PLACEHOLDER';
+							lastIndex = end;
+						}
 					}
-					lastIndex = index;
-
-					context = next;
-					quote = next === Attribute && char !== '=' ? char : null;
-					buffer = '';
 				}
+
+				// Inside a tag, only two characters end anything: the quote that closes the value we're in, or,
+				// when we're not in one, the '>' that closes the tag.  Attribute names, '=', unquoted values and
+				// whitespace all need no handling at all.
+				else if (quote) {
+					if (char === quote)
+						quote = null;
+				}
+				else if (char === '"' || char === "'")
+					quote = char;
+				else if (char === '>')
+					inTag = false;
 			}
 
-			// Whatever is left of the chunk after the last context change is one final token.
-			if (lastIndex !== html.length) {
-				let token = html.slice(lastIndex);
-				if (context === Tag)
-					token = token.replace(isWebComponentTagName, match => match + '-SOLARITE-PLACEHOLDER');
-				result.push(token);
-			}
+			result += html.slice(lastIndex);
 
 			// Insert placeholders
-			if (i < htmlChunks.length - 1) {
-				if (context === Text$1)
-					result.push(commentPlaceholder); // Comment Placeholder. because we can't put text in between <tr> tags for example.
-				else
-					result.push(String.fromCharCode(attribPlaceholder + i));
-			}
+			if (i < htmlChunks.length - 1)
+				result += inTag
+					? String.fromCharCode(attribPlaceholder + i)
+					: commentPlaceholder; // Comment Placeholder. because we can't put text in between <tr> tags for example.
 		}
 
-		return result.join('');
+		return result;
 	}
 
 	/**
@@ -4057,12 +4015,12 @@ class Shell {
 	 * this.ids
 	 * this.staticComponents */
 	findEmbeds() {
-		this.scripts = Array.prototype.map.call(this.fragment.querySelectorAll('script'), el => Path.get(el));
+		this.scripts = Array.prototype.map.call(this.docFrag.querySelectorAll('script'), el => Path.get(el));
 
 		// TODO: only find styles that have Paths in them?
-		this.styles = Array.prototype.map.call(this.fragment.querySelectorAll('style'), el => Path.get(el));
+		this.styles = Array.prototype.map.call(this.docFrag.querySelectorAll('style'), el => Path.get(el));
 
-		let idEls = this.fragment.querySelectorAll('[id],[data-id]');
+		let idEls = this.docFrag.querySelectorAll('[id],[data-id]');
 
 		// Check for valid id names.
 		for (let el of idEls) {
@@ -4087,7 +4045,7 @@ class Shell {
 
 		let ops = [];
 		let slotOf = new Map();
-		let frag = this.fragment;
+		let frag = this.docFrag;
 		let nextSlot = 1;
 		let getSlot = node => {
 			if (node === frag)
@@ -4168,17 +4126,14 @@ class Shell {
 
 const commentPlaceholder = `<!--!✨!-->`;
 
-// The three html contexts the tokenizer in addPlaceholders() walks through.  They're small integers instead
-// of strings so that comparing them is cheap and so that zero can mean "no context change" inside its loop.
-const Text$1 = 1, Tag = 2, Attribute = 3;
-
-// A tag name with a dash in the middle, which is what makes an element a web component.  Every token collected
-// in tag context is checked against this, and a match gets -solarite-placeholder appended to its tag name.  That
-// way we can gather a component's constructor arguments and its children before we call its constructor; later
-// PathToComponent.apply() replaces the placeholder tag with the real component.  The suffix is written in caps
-// wherever it appears, so that the several copies of it in this project compress well.
+// A tag name with a dash in the middle, which is what makes an element a web component.  addPlaceholders()
+// tests this at each '<' that opens a tag, and a match gets -solarite-placeholder appended to its tag name.
+// That way we can gather a component's constructor arguments and its children before we call its constructor;
+// later PathToComponent.applyAll() replaces the placeholder tag with the real component.  The suffix is written in
+// caps wherever it appears, so that the several copies of it in this project compress well.  It's sticky rather
+// than anchored so it can be tested at an offset within the chunk instead of against a sliced-out token.
 // Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-const isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i;
+const isWebComponentTagName = /<\/?[a-z][a-z0-9]*-[a-z0-9-]+/iy;
 
 // Elements whose whitespace-only text children are never rendered.
 const tableTags = ['TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR'];
@@ -4352,7 +4307,7 @@ class NodeGroup {
 			// A lone root element is cloned directly, skipping a throwaway fragment wrapper.
 			// Only for child NodeGroups; RootNodeGroup's grafting expects a fragment.
 			if (shell.singleRoot && parentPath !== null) {
-				const clone = shell.fragment.firstChild.cloneNode(true);
+				const clone = shell.docFrag.firstChild.cloneNode(true);
 				this.startNode = this.endNode = clone;
 
 				// Stampable shells skip path creation entirely; the first applyExprs() routes
@@ -4361,7 +4316,7 @@ class NodeGroup {
 					this.setPathsFromFragment(clone, shell, 0, true);
 			}
 			else {
-				const shellFragment = shell.fragment.cloneNode(true);
+				const shellFragment = shell.docFrag.cloneNode(true);
 
 				if (shellFragment.nodeType === 11) { // DocumentFragment
 					this.startNode = shellFragment.firstChild;
@@ -4453,7 +4408,7 @@ class NodeGroup {
 		let exprIndex = exprs.length; // Update exprs at paths.
 		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
 		for (let i = paths.length - 1, path; path = paths[i]; i--) {
-			if (i===0 && path instanceof PathToComponent && path.nodeMarker === this.getRootNode())
+			if (i===0 && path instanceof PathToComponent && path.nodeMarker === this.getRootEl())
 				continue;
 
 			// Get the expressions associated with this path.
@@ -4465,10 +4420,10 @@ class NodeGroup {
 			// They use expressions from the paths that provide their attributes.
 			if (path instanceof PathToComponent) {
 				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
-				path.apply(attribExprs);
+				path.applyAll(attribExprs);
 			}
 			else if (includeNonComponents)
-				path.apply(pathExprs[i]);
+				path.applyAll(pathExprs[i]);
 		}
 
 		// If there's leftover expressions, there's probably an issue with the Shell that created this NodeGroup,
@@ -4519,8 +4474,8 @@ class NodeGroup {
 		let ops = shell.stampOp, slotIdx = shell.stampSlot, aux = shell.stampAux;
 		let stampers = shell.stampPaths;
 		let rootNg = this.rootNg;
-		let root = rootNg.root;
-		let opt = rootNg.options?.eventDelegation;
+		let root = rootNg.rootEl;
+		let opt = rootNg.renderOptions?.eventDelegation;
 		let delegateDoc = opt === 'document';
 		let delegateAll = opt === undefined || opt === true || delegateDoc;
 
@@ -4712,8 +4667,8 @@ class NodeGroup {
 	/**
 	 * Get the root element of the NodeGroup's RootNodeGroup.
 	 * @returns {HTMLElement|DocumentFragment} */
-	getRootNode() {
-		return this.rootNg.root;
+	getRootEl() {
+		return this.rootNg.rootEl;
 	}
 
 	/**
@@ -4781,7 +4736,7 @@ class NodeGroup {
 			for (let [style, oldText] of this.styles) {
 				let newText = style.textContent;
 				if (oldText !== newText)
-					Util.bindStyles(style, this.rootNg.root);
+					Util.bindStyles(style, this.rootNg.rootEl);
 			}
 	}
 
@@ -4791,9 +4746,9 @@ class NodeGroup {
 	 * @param pathOffset {int} */
 	activateEmbeds(root, shell, pathOffset=0) {
 
-		let rootEl = this.rootNg.root;
+		let rootEl = this.rootNg.rootEl;
 		if (rootEl) {
-			let options = this.rootNg.options;
+			let options = this.rootNg.renderOptions;
 
 			// ids
 			if (options?.ids !== false) {
@@ -4843,8 +4798,8 @@ class NodeGroup {
  * Has these properties not present on NodeGroup, assigned by instantiate():
  * They're not declared as fields because subclass field initializers run after the
  * super constructor and would overwrite the assigned values.
- * @property {HTMLElement} root - Root node at the top of the hierarchy.
- * @property {?object} options - RenderOptions */
+ * @property {HTMLElement} rootEl - Root node at the top of the hierarchy.
+ * @property {?object} renderOptions - RenderOptions */
 class RootNodeGroup extends NodeGroup {
 
 	/**
@@ -4853,19 +4808,19 @@ class RootNodeGroup extends NodeGroup {
 	 * Called by the NodeGroup constructor. */
 	instantiate(shell, shellFragment, el, options) {
 		let startingPathDepth = 0;
-		this.options = options;
+		this.renderOptions = options;
 		if (shellFragment instanceof Text) {
 			if (!el)
 				throw new Error('Cannot create a standalone text node');
 
-			this.root = el;
+			this.rootEl = el;
 			if (shellFragment.nodeValue.length)
-				this.root.append(shellFragment);
+				this.rootEl.append(shellFragment);
 		}
 
 		else {
 			if (el) {
-				this.root = el;
+				this.rootEl = el;
 
 				// Save slot
 				// 1. Globals.currentSlotChildren is set if this is called via PathToComponent.applyComponent() calls render()
@@ -4877,13 +4832,13 @@ class RootNodeGroup extends NodeGroup {
 				}
 
 				// If el should replace the root node of the fragment.
-				if (isReplaceEl(shellFragment, this.root.tagName)) {
-					this.root.append(...shellFragment.children[0].childNodes);
+				if (isReplaceEl(shellFragment, this.rootEl.tagName)) {
+					this.rootEl.append(...shellFragment.children[0].childNodes);
 
 					// Copy attributes
 					for (let attrib of shellFragment.children[0].attributes)
-						if (!this.root.hasAttribute(attrib.name))
-							this.root.setAttribute(attrib.name, attrib.value);
+						if (!this.rootEl.hasAttribute(attrib.name))
+							this.rootEl.setAttribute(attrib.name, attrib.value);
 
 					// Go one level deeper into all of shell's paths.
 					startingPathDepth = 1;
@@ -4892,7 +4847,7 @@ class RootNodeGroup extends NodeGroup {
 				else {
 					let isEmpty = shellFragment.childNodes.length === 1 && shellFragment.childNodes[0].nodeType === 3 && shellFragment.childNodes[0].textContent === '';
 					if (!isEmpty)
-						this.root.append(...shellFragment.childNodes);
+						this.rootEl.append(...shellFragment.childNodes);
 				}
 
 
@@ -4923,17 +4878,17 @@ class RootNodeGroup extends NodeGroup {
 				// question being asked here.
 				let relevantNodes = Util.trimEmptyNodes(shellFragment.childNodes);
 				let onlyChild = relevantNodes.length === 1 ? relevantNodes[0] : null;
-				this.root = onlyChild || shellFragment; // We return the whole fragment when calling h() with a collection of nodes.
+				this.rootEl = onlyChild || shellFragment; // We return the whole fragment when calling h() with a collection of nodes.
 				if (onlyChild)
 					startingPathDepth = 1;
 			}
 
-			this.setPathsFromFragment(this.root, shell, startingPathDepth);
-			this.activateEmbeds(this.root, shell, startingPathDepth);
+			this.setPathsFromFragment(this.rootEl, shell, startingPathDepth);
+			this.activateEmbeds(this.rootEl, shell, startingPathDepth);
 		}
-		this.startNode = this.endNode = this.root;
+		this.startNode = this.endNode = this.rootEl;
 
-		Globals$1.rootNodeGroups.set(this.root, this);
+		Globals$1.rootNodeGroups.set(this.rootEl, this);
 	}
 }
 
@@ -5016,7 +4971,7 @@ class Template {
 		if (!ng) {
 			ng = new RootNodeGroup(this, null, el, options);
 			if (!el) // null if it's a standalone elment.
-				el = ng.getRootNode();
+				el = ng.getRootEl();
 			Globals$1.rootNodeGroups.set(el, ng); // All tests still pass if this is commented out!
 		}
 

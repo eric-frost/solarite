@@ -45,14 +45,6 @@ export default class PathToNodes extends Path {
 
 
 	/**
-	 * Nodes that have been used during the current render().
-	 * Used with getNodeGroup() and freeNodeGroups() on the generic path; the positional diff
-	 * tracks in-use NodeGroups in this.nodeGroups instead.
-	 * Lazily created since most paths never use it.
-	 * @type {?NodeGroup[]} */
-	nodeGroupsRendered = null;
-
-	/**
 	 * Nodes that were added to the web component during the last render(), but are available to be used again.
 	 * Used with getNodeGroup() and freeNodeGroups(), keyed by close key.
 	 * Lazily created since most paths never use it.
@@ -158,8 +150,8 @@ export default class PathToNodes extends Path {
 
 		// A selection binding only knows how to write an attribute, so catch it here rather than
 		// letting it render as an empty string and leave the caller wondering where it went.
-		if (typeof expr === 'object' && expr !== null && expr instanceof SelectorRef)
-			throw new Error(`Solarite can only use a selector as a whole attribute value, as in <tr class=\${sel.when(id, 'danger')}>, not as element content.`);
+		if (expr instanceof SelectorRef)
+			throw new Error('Solarite: a selector must be a whole attribute value.');
 
 		// 1. h.map() hands over its source items and callback rather than built Templates, so a
 		// row whose item is unchanged is recognized without building or looking up a Template.
@@ -516,8 +508,6 @@ export default class PathToNodes extends Path {
 		}
 
 		// Keep state used by the generic path from going stale.
-		if (this.nodeGroupsRendered)
-			this.nodeGroupsRendered = null;
 		if (this.nodeGroupsAttachedAvailable)
 			this.nodeGroupsAttachedAvailable = null;
 		return true;
@@ -711,8 +701,6 @@ export default class PathToNodes extends Path {
 		this.nodeGroups = newNgs;
 
 		// Keep state used by the generic path from going stale.
-		if (this.nodeGroupsRendered)
-			this.nodeGroupsRendered = null;
 		if (this.nodeGroupsAttachedAvailable)
 			this.nodeGroupsAttachedAvailable = null;
 	}
@@ -983,8 +971,6 @@ export default class PathToNodes extends Path {
 		this.nodeGroups = newNgs;
 
 		// Keep state used by the generic path from going stale.
-		if (this.nodeGroupsRendered)
-			this.nodeGroupsRendered = null;
 		if (this.nodeGroupsAttachedAvailable)
 			this.nodeGroupsAttachedAvailable = null;
 	}
@@ -1285,15 +1271,13 @@ export default class PathToNodes extends Path {
 			result.applyExprs(template.exprs);
 		}
 
-		(this.nodeGroupsRendered ??= []).push(result);
-
 		/*#IFDEBUG*/assert(result.parentPath);/*#ENDIF*/
 		return result;
 	}
 
 
 	/**
-	 * Move everything from this.nodeGroupsRendered to this.nodeGroupsAttached and nodeGroupsDetached.
+	 * Move everything from this.nodeGroups to this.nodeGroupsAttached and nodeGroupsDetached.
 	 * Called at the beginning of applyGeneric() so it can have NodeGroups to use.
 	 * TODO: this could run as needed in getNodeGroup? */
 	freeNodeGroups() {
@@ -1303,7 +1287,7 @@ export default class PathToNodes extends Path {
 			let detached = (this.nodeGroupsDetachedAvailable ??= new MultiValueMap()).data;
 			for (let key in previouslyAttached) {
 				let src = previouslyAttached[key];
-				let from = src.head || 0; // Skip entries already consumed by deleteAny().
+				let from = src.hd || 0; // Skip entries already consumed by deleteAny().
 				let array = detached[key];
 				if (!array) {
 					array = detached[key] = from ? src.slice(from) : src;
@@ -1311,22 +1295,18 @@ export default class PathToNodes extends Path {
 						array.length = maxPooledPerKey;
 				}
 				else
-					for (let i=from, max=maxPooledPerKey + (array.head || 0); i<src.length && array.length < max; i++)
+					for (let i=from, max=maxPooledPerKey + (array.hd || 0); i<src.length && array.length < max; i++)
 						array.push(src[i]);
 			}
 		}
 
-		// Add nodes that were used during render() to nodeGroupsRendered.
-		// If the last render used the positional diff, the in-use NodeGroups are in
-		// this.nodeGroups instead of nodeGroupsRendered.
-		this.nodeGroupsAttachedAvailable = new MultiValueMap();
-		let nga = this.nodeGroupsAttachedAvailable;
-		let source = this.nodeGroupsRendered?.length ? this.nodeGroupsRendered : this.nodeGroups;
-		if (source)
-			for (let ng of source)
+		// Offer the NodeGroups the last render left in place for reuse.  Every path that renders
+		// NodeGroups — the positional diff, the keyed diff and applyGeneric alike — leaves them in
+		// this.nodeGroups, so that one array is always the set still standing in the DOM.
+		let nga = this.nodeGroupsAttachedAvailable = new MultiValueMap();
+		if (this.nodeGroups)
+			for (let ng of this.nodeGroups)
 				nga.add(ng.closeKey, ng);
-
-		this.nodeGroupsRendered = null;
 	}
 
 

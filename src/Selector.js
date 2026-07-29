@@ -57,9 +57,9 @@ export class SelectorRef {
 	 * the common case skips.
 	 *
 	 * @param node {Node} The element carrying the attribute.
-	 * @param attrName {string}
+	 * @param attribName {string}
 	 * @param parentNg {NodeGroup} The row this attribute belongs to. */
-	bind(node, attrName, parentNg) {
+	bind(node, attribName, parentNg) {
 		// set() writes through the row's own root element, so an attribute anywhere deeper
 		// would be found at bind time and then written somewhere else at set() time.  Catching
 		// it here turns a silently misplaced attribute into a clear message; the check is
@@ -68,7 +68,7 @@ export class SelectorRef {
 			throw new Error(`Solarite: a selector must be on the row's own root element.`);
 
 		let s = this.selector;
-		s.attrName = attrName;
+		s.attribName = attribName;
 		s.path = parentNg.parentPath;
 
 		let v = this.selected ? s.onValue : s.offValue;
@@ -79,10 +79,10 @@ export class SelectorRef {
 			// A just-cloned row provably carries no attribute of this name yet, so the
 			// removeAttribute — a DOM call for every row of the list — can be skipped.
 			if (parentNg.firstApply !== true)
-				node.removeAttribute(attrName);
+				node.removeAttribute(attribName);
 		}
 		else
-			node.setAttribute(attrName, v);
+			node.setAttribute(attribName, v);
 	}
 }
 
@@ -116,7 +116,7 @@ export default class Selector {
 	offValue = '';
 
 	/** @type {?string} The attribute this selector drives, learned when a row binds. */
-	attrName = null;
+	attribName = null;
 
 	/** @type {?PathToNodes} The list this selector's rows were rendered into, learned when a
 	 * row binds.  set() asks it for the NodeGroup holding a given key. */
@@ -201,8 +201,8 @@ export default class Selector {
 			return;
 
 		if (v === '' || v === false || v === null || v === undefined)
-			node.removeAttribute(this.attrName);
+			node.removeAttribute(this.attribName);
 		else
-			node.setAttribute(this.attrName, v);
+			node.setAttribute(this.attribName, v);
 	}
 }

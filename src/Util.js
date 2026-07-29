@@ -199,8 +199,8 @@ let Util = {
 		return node.value; // String
 	},
 
-	isEvent(attrName) {
-		return attrName.startsWith('on') && attrName in Globals.div;
+	isEvent(attribName) {
+		return attribName.startsWith('on') && attribName in Globals.div;
 	},
 
 	/**

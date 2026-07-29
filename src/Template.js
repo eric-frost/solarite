@@ -78,7 +78,7 @@ export default class Template {
 		if (!ng) {
 			ng = new RootNodeGroup(this, null, el, options);
 			if (!el) // null if it's a standalone elment.
-				el = ng.getRootNode();
+				el = ng.getRootEl();
 			Globals.rootNodeGroups.set(el, ng); // All tests still pass if this is commented out!
 		}
 

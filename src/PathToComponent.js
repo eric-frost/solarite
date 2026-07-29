@@ -24,9 +24,9 @@ export default class PathToComponent extends Path {
 	 * Call render() on the component pointed to by this Path.
 	 * And instantiate it (from a -solarite-placeholder element) if it hasn't been done yet.
 	 * @param exprs {Expr[][]} Expressions to evaluate for each attribute to pass to the constructor.
-	 * This is different than other Path.apply() functions which only receive Expr[] and not Expr[][].
+	 * This is different than other Path.applyAll() functions which only receive Expr[] and not Expr[][].
 	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute. */
-	apply(exprs) {
+	applyAll(exprs) {
 		//#IFDEBUG
 		assert(Array.isArray(exprs));
 		assert(!exprs.length || Array.isArray(exprs[0]));
@@ -56,7 +56,7 @@ export default class PathToComponent extends Path {
 			if (attribPath instanceof PathToEvent)
 				continue;
 			if (attribPath instanceof PathToAttribValue) {
-				let name = Util.dashesToCamel(attribPath.attrName);
+				let name = Util.dashesToCamel(attribPath.attribName);
 				
 				// Resolve two way bindimg path before we pass it to the component.
 				let value = attribPath.getValue(exprs[i]);
@@ -101,7 +101,7 @@ export default class PathToComponent extends Path {
 						this.deferredExprs = null;
 						// Skip if a newer render already instantiated or replaced the placeholder.
 						if (deferred && this.nodeMarker === el && el.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
-							this.apply(deferred);
+							this.applyAll(deferred);
 					});
 				}
 				Globals.currentSlotChildren = null;
@@ -138,7 +138,7 @@ export default class PathToComponent extends Path {
 			// 2c. If an id pointed at the placeholder, update it to point to the new element.
 			let id = newEl.getAttribute('data-id') || newEl.getAttribute('id');
 			if (id)
-				delve(this.parentNg.getRootNode(), id.split(/\./g), newEl);
+				delve(this.parentNg.getRootEl(), id.split(/\./g), newEl);
 
 			// 2d. Update paths to use replaced element.
 			let ng = this.parentNg;
@@ -164,7 +164,7 @@ export default class PathToComponent extends Path {
 			for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 				attribPath.parentNg = this.parentNg;
 				attribPath.nodeMarker = newEl;
-				attribPath.apply(exprs[i]);
+				attribPath.applyAll(exprs[i]);
 			}
 
 			// 2e. Swap it to the DOM.
