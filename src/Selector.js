@@ -62,10 +62,10 @@ export class SelectorRef {
 	bind(node, attribName, parentNg) {
 		// set() writes through the row's own root element, so an attribute anywhere deeper
 		// would be found at bind time and then written somewhere else at set() time.  Catching
-		// it here turns a silently misplaced attribute into a clear message; the check is
-		// stripped from the built file, so it costs a production render nothing.
+		// it here turns a silently misplaced attribute into a clear message.  It SHIPS: it is not
+		// in an #IFDEBUG block, and it must not be, because the failure it catches is silent.
 		if (parentNg.startNode !== node)
-			throw new Error(`Solarite: a selector must be on the row's own root element.`);
+			throw new Error(`Solarite: a selector must be on the row's root element.`);
 
 		let s = this.selector;
 		s.attribName = attribName;
@@ -179,8 +179,7 @@ export default class Selector {
 			return;
 
 		if (ngs[0].key === undefined)
-			throw new Error('A selector can only be used on a keyed list, because set() finds ' +
-				'a row by its key.  Add key=${...} to the row template.');
+			throw new Error('Solarite: a selector must be on a keyed list, as key=${...}.');
 
 		// A linear scan over the rows.  The list is walked only when the selection actually
 		// moves — twice per user click, not once per row per render — so a thousand pointer

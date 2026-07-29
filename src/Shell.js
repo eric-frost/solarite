@@ -198,11 +198,11 @@ export default class Shell {
 						// row \u2014 which is why they are affordable to keep.
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length !== 2 || parts[0] !== '' || parts[1] !== '')
-							throw new Error(`Solarite: key must be one whole expression, as key=\${...}.`);
+							throw new Error(`Solarite: key must be one whole expression.`);
 						if (node.parentNode !== this.docFrag)
-							throw new Error(`Solarite: key must be on a top-level element of its template.`);
+							throw new Error(`Solarite: key must be on a top-level element.`);
 						if (this.keyIndex >= 0)
-							throw new Error(`Solarite: a template can have only one key attribute.`);
+							throw new Error(`Solarite: duplicate key attribute.`);
 
 						this.keyIndex = attr.value.charCodeAt(0) - attribPlaceholder;
 
@@ -296,7 +296,7 @@ export default class Shell {
 			else if (node.nodeType === 8 && node.nodeValue === '!✨!') {
 
 				if (node?.parentNode?.closest && node?.parentNode?.closest('[contenteditable]'))
-					throw new Error(`Contenteditable can't have expressions inside them. Use <div contenteditable value="\${...}"> instead.`);
+					throw new Error(`Solarite: no \${...} inside contenteditable; use value="\${...}".`);
 
 				let parent = node.parentNode;
 
@@ -365,7 +365,7 @@ export default class Shell {
 				let parentName = node.parentNode?.nodeName;
 
 				if (parentName === 'TEXTAREA' && node.textContent.includes(commentPlaceholder))
-					throw new Error(`Textarea can't have expressions inside them. Use <textarea value="\${...}"> instead.`);
+					throw new Error(`Solarite: no \${...} inside textarea; use value="\${...}".`);
 
 				else if (parentName === 'SCRIPT' || parentName === 'STYLE') {
 					let parts = node.textContent.split(commentPlaceholder);
@@ -397,7 +397,7 @@ export default class Shell {
 		// Less than or equal because there can be one path to multiple expressions
 		// if those expressions are in the same attribute value.
 		if (placeholdersUsed !== html.length-1)
-			throw new Error(`Could not parse expressions in template.  Check for duplicate attributes or malformed html: ${html.join('${...}')}`);
+			throw new Error(`Solarite: bad html or duplicate attribute: ${html.join('${...}')}`);
 
 		for (let path of this.paths) {
 			// -1 when the path has no nodeBefore.  Assigned unconditionally so every shell path
@@ -580,16 +580,13 @@ export default class Shell {
 		// TODO: only find styles that have Paths in them?
 		this.styles = Array.prototype.map.call(this.docFrag.querySelectorAll('style'), el => Path.get(el))
 
-		let idEls = this.docFrag.querySelectorAll('[id],[data-id]');
-
-		// Check for valid id names.
-		for (let el of idEls) {
-			let id = el.getAttribute('data-id') || el.getAttribute('id')
-			if (Globals.div.hasOwnProperty(id))
-				throw new Error(`Solarite: id="${id}" would overwrite a built-in HTMLElement property.`)
-		}
-
-		this.ids = Array.prototype.map.call(idEls, el => Path.get(el))
+		// An id that would clobber a built-in element property is reported by Util.bindId(), which
+		// asks the real component object, with `in`, at the moment the binding happens.  The check
+		// that used to stand here asked Globals.div.hasOwnProperty(id) instead, and a freshly
+		// created element has no own properties at all — every DOM property an element exposes
+		// lives on its interface prototype — so that test could never be true and the error it
+		// guarded was never reachable.
+		this.ids = Array.prototype.map.call(this.docFrag.querySelectorAll('[id],[data-id]'), el => Path.get(el))
 
 		this.hasEmbeds = this.ids.length > 0 || this.styles.length > 0 || this.scripts.length > 0;
 	}

@@ -79,7 +79,11 @@ export default class Template {
 			ng = new RootNodeGroup(this, null, el, options);
 			if (!el) // null if it's a standalone elment.
 				el = ng.getRootEl();
-			Globals.rootNodeGroups.set(el, ng); // All tests still pass if this is commented out!
+
+			// RootNodeGroup.instantiate() ends by registering itself under its own rootEl, which
+			// is the element we were given, or -- when we were given none -- the very element
+			// getRootEl() just handed back.  Registering it a second time here stored the same
+			// group under the same key.
 		}
 
 		// Make sure the expresion count matches match the Path "hole" count.

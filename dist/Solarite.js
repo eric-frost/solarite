@@ -156,8 +156,9 @@ let Util = {
 			// an inherited/built-in property like `title` or `style`, or an own property that already
 			// holds a non-Node value.  A previously-bound element (a Node) is fine to re-assign.
 			// This can only fail on a mistake in the component's own template, so a developer meets it
-			// the first time the component renders and never again at runtime.  It's therefore dev-only,
-			// and stripped from the minified build to keep the id binding small.
+			// the first time the component renders and never again at runtime.  It nonetheless SHIPS,
+			// and deliberately: #IFDEBUG is stripped from dist/Solarite.js, which is what npm serves,
+			// so hiding it there would delete it for everyone rather than only for production.
 			if (!id.includes('.')) {
 				let existing = root[id];
 				let isInherited = (id in root) && !Object.hasOwn(root, id);
@@ -181,29 +182,29 @@ let Util = {
 	bindStyles(style, root) {
 
 		let tagName = root.tagName.toLowerCase();
-		let styleId, attribSelector;
+
+		// A global style is scoped by tag name alone, so it needs no attribute in the selector.
+		let attribSelector = '';
 
 		if (style.hasAttribute('global') || style.hasAttribute('data-global')) {
-			styleId = tagName;
-			attribSelector = '';
-			let doc = Globals$1.doc || root.ownerDocument || document;
-			if (!doc.head.querySelector(`style[data-style="${styleId}"]`)) {
-				doc.head.append(style);
-				style.setAttribute('data-style', styleId);
-			}
-			else // TODO: Make sure the style has no expressions.
+			let head = Globals$1.doc.head;
+			if (head.querySelector(`style[data-style="${tagName}"]`))
+				// TODO: Make sure the style has no expressions.
 				style.remove(); // already in the head.
+			else {
+				head.append(style);
+				style.setAttribute('data-style', tagName);
+			}
 		}
 		else {
 			let styleId = root.getAttribute('data-style');
 			if (!styleId) {
-				// Keep track of one style id for each class.
+				// Keep track of one style id for each class.  Reading the static walks up to a parent
+				// class's counter if this class has never been styled, but the assignment always lands
+				// on this class, so each class then counts on from where its parent left off.
 				// TODO: Put this outside the class in a map, so it doesn't conflict with static properties.
-				if (!root.constructor.styleId)
-					root.constructor.styleId = 1;
-				styleId = root.constructor.styleId++;
-
-				root.setAttribute('data-style', styleId);
+				let Class = root.constructor;
+				root.setAttribute('data-style', styleId = Class.styleId = (Class.styleId || 0) + 1);
 			}
 
 			attribSelector = `[data-style="${styleId}"]`;
@@ -534,24 +535,6 @@ class Path {
 
 
 	/**
-	 * Resolve nodeMarkerPath to new root. */
-	getNewNodeMarker(newRoot, pathOffset) {
-		let root = newRoot;
-		let path = this.nodeMarkerPath;
-		let pathLength = path.length - pathOffset;
-		for (let i=pathLength-1; i>0; i--) { // Resolve the path.
-			
-			root = root.childNodes[path[i]];
-		}
-		let childNodes = root.childNodes;
-
-		return pathLength
-			? childNodes[path[0]]
-			: newRoot;
-	}
-
-
-	/**
 	 * Copy this path, pointing it at already-resolved nodes.
 	 * Used by the Shell resolve-program fast path in NodeGroup.setPathsFromFragment().
 	 * @param nodeBefore {?Node}
@@ -577,7 +560,7 @@ class Path {
 		// nodeBeforeIndex counts within is the marker's own parent's childNodes.  An empty path
 		// leaves the marker as newRoot itself, and then that list is newRoot's children.
 		let nodeBefore;
-		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
+		let nodeMarker = Path.resolve(newRoot, this.nodeMarkerPath, pathOffset);
 		if (this.nodeBefore) {
 			let childNodes = (nodeMarker === newRoot ? newRoot : nodeMarker.parentNode).childNodes;
 			
@@ -608,10 +591,15 @@ class Path {
 	 * Note that the path is backward, with the outermost element at the end.
 	 * @param root {HTMLElement|Document|DocumentFragment|ParentNode}
 	 * @param path {int[]}
+	 * @param skip {int} How many of the outermost steps to leave off, for when root is
+	 *   already that many levels down from where the path was recorded.  An empty walk
+	 *   (skip === path.length) returns root itself.
 	 * @returns {Node|HTMLElement|HTMLStyleElement} */
-	static resolve(root, path) {
-		for (let i=path.length-1; i>=0; i--)
+	static resolve(root, path, skip=0) {
+		for (let i=path.length-1-skip; i>=0; i--) {
+			
 			root = root.childNodes[path[i]];
+		}
 		return root;
 	}
 
@@ -682,10 +670,10 @@ class SelectorRef {
 	bind(node, attribName, parentNg) {
 		// set() writes through the row's own root element, so an attribute anywhere deeper
 		// would be found at bind time and then written somewhere else at set() time.  Catching
-		// it here turns a silently misplaced attribute into a clear message; the check is
-		// stripped from the built file, so it costs a production render nothing.
+		// it here turns a silently misplaced attribute into a clear message.  It SHIPS: it is not
+		// in an #IFDEBUG block, and it must not be, because the failure it catches is silent.
 		if (parentNg.startNode !== node)
-			throw new Error(`Solarite: a selector must be on the row's own root element.`);
+			throw new Error(`Solarite: a selector must be on the row's root element.`);
 
 		let s = this.selector;
 		s.attribName = attribName;
@@ -799,8 +787,7 @@ class Selector {
 			return;
 
 		if (ngs[0].key === undefined)
-			throw new Error('A selector can only be used on a keyed list, because set() finds ' +
-				'a row by its key.  Add key=${...} to the row template.');
+			throw new Error('Solarite: a selector must be on a keyed list, as key=${...}.');
 
 		// A linear scan over the rows.  The list is walked only when the selection actually
 		// moves — twice per user click, not once per row per render — so a thousand pointer
@@ -900,7 +887,7 @@ class PathToAttribValue extends Path {
 			let [obj, path] = [expr[0], expr.slice(1)];
 
 			if (!obj)
-				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attribName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
+				throw new Error(`Solarite cannot bind ${this.attribName} to ${obj}.`);
 
 			let value = delve(obj, path);
 
@@ -1050,7 +1037,7 @@ class PathToAttribValue extends Path {
 				// attribute is written from its constant parts alone.  Stripping it also keeps a
 				// per-expression instanceof out of the multi-part attribute loop.
 				if (typeof exprs[i] === 'object' && exprs[i] instanceof SelectorRef)
-					throw new Error(`Solarite: a selector must own the whole ${this.attribName} attribute, not part of it.`);
+					throw new Error(`Solarite: a selector must own the whole ${this.attribName} attribute.`);
 				let val = Util.makePrimitive(exprs[i]);
 				if (!Util.isFalsy(val))
 					result.push(val);
@@ -1561,8 +1548,9 @@ class PathToAttribs extends Path {
 	jsxSubName;
 
 	constructor(nodeBefore, nodeMarker) {
-		super(null, null);
-		this.nodeMarker = nodeMarker;
+		// nodeBefore is discarded: an attribute path has no nodes of its own.  The marker goes
+		// straight through the base constructor rather than being stored a second time after it.
+		super(null, nodeMarker);
 		this.attrNames = new Set();
 	}
 
@@ -1881,7 +1869,7 @@ class PathToNodes extends Path {
 		// A selection binding only knows how to write an attribute, so catch it here rather than
 		// letting it render as an empty string and leave the caller wondering where it went.
 		if (expr instanceof SelectorRef)
-			throw new Error('Solarite: a selector must be a whole attribute value.');
+			throw new Error('Solarite: a selector must own the whole attribute.');
 
 		// 1. h.map() hands over its source items and callback rather than built Templates, so a
 		// row whose item is unchanged is recognized without building or looking up a Template.
@@ -3383,8 +3371,10 @@ class PathToComponent extends Path {
 			for (let name in attribs) {
 				let val = attribs[name];
 				let valType = typeof val;
+				// Only true and false can reach here, so the undefined/null halves of the
+				// falsy test this used to spell out could never have decided anything.
 				if (valType === 'boolean') {
-					if (val !== false && val !== undefined && val !== null) // Util.isFalsy() inlined
+					if (val)
 						newEl.setAttribute(name, '');
 				}
 
@@ -3641,11 +3631,11 @@ class Shell {
 						// row \u2014 which is why they are affordable to keep.
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length !== 2 || parts[0] !== '' || parts[1] !== '')
-							throw new Error(`Solarite: key must be one whole expression, as key=\${...}.`);
+							throw new Error(`Solarite: key must be one whole expression.`);
 						if (node.parentNode !== this.docFrag)
-							throw new Error(`Solarite: key must be on a top-level element of its template.`);
+							throw new Error(`Solarite: key must be on a top-level element.`);
 						if (this.keyIndex >= 0)
-							throw new Error(`Solarite: a template can have only one key attribute.`);
+							throw new Error(`Solarite: duplicate key attribute.`);
 
 						this.keyIndex = attr.value.charCodeAt(0) - attribPlaceholder;
 
@@ -3736,7 +3726,7 @@ class Shell {
 			else if (node.nodeType === 8 && node.nodeValue === '!✨!') {
 
 				if (node?.parentNode?.closest && node?.parentNode?.closest('[contenteditable]'))
-					throw new Error(`Contenteditable can't have expressions inside them. Use <div contenteditable value="\${...}"> instead.`);
+					throw new Error(`Solarite: no \${...} inside contenteditable; use value="\${...}".`);
 
 				let parent = node.parentNode;
 
@@ -3805,7 +3795,7 @@ class Shell {
 				let parentName = node.parentNode?.nodeName;
 
 				if (parentName === 'TEXTAREA' && node.textContent.includes(commentPlaceholder))
-					throw new Error(`Textarea can't have expressions inside them. Use <textarea value="\${...}"> instead.`);
+					throw new Error(`Solarite: no \${...} inside textarea; use value="\${...}".`);
 
 				else if (parentName === 'SCRIPT' || parentName === 'STYLE') {
 					let parts = node.textContent.split(commentPlaceholder);
@@ -3837,7 +3827,7 @@ class Shell {
 		// Less than or equal because there can be one path to multiple expressions
 		// if those expressions are in the same attribute value.
 		if (placeholdersUsed !== html.length-1)
-			throw new Error(`Could not parse expressions in template.  Check for duplicate attributes or malformed html: ${html.join('${...}')}`);
+			throw new Error(`Solarite: bad html or duplicate attribute: ${html.join('${...}')}`);
 
 		for (let path of this.paths) {
 			// -1 when the path has no nodeBefore.  Assigned unconditionally so every shell path
@@ -4020,16 +4010,13 @@ class Shell {
 		// TODO: only find styles that have Paths in them?
 		this.styles = Array.prototype.map.call(this.docFrag.querySelectorAll('style'), el => Path.get(el));
 
-		let idEls = this.docFrag.querySelectorAll('[id],[data-id]');
-
-		// Check for valid id names.
-		for (let el of idEls) {
-			let id = el.getAttribute('data-id') || el.getAttribute('id');
-			if (Globals$1.div.hasOwnProperty(id))
-				throw new Error(`Solarite: id="${id}" would overwrite a built-in HTMLElement property.`)
-		}
-
-		this.ids = Array.prototype.map.call(idEls, el => Path.get(el));
+		// An id that would clobber a built-in element property is reported by Util.bindId(), which
+		// asks the real component object, with `in`, at the moment the binding happens.  The check
+		// that used to stand here asked Globals.div.hasOwnProperty(id) instead, and a freshly
+		// created element has no own properties at all — every DOM property an element exposes
+		// lives on its interface prototype — so that test could never be true and the error it
+		// guarded was never reachable.
+		this.ids = Array.prototype.map.call(this.docFrag.querySelectorAll('[id],[data-id]'), el => Path.get(el));
 
 		this.hasEmbeds = this.ids.length > 0 || this.styles.length > 0 || this.scripts.length > 0;
 	}
@@ -4753,9 +4740,7 @@ class NodeGroup {
 			// ids
 			if (options?.ids !== false) {
 				for (let path of shell.ids) {
-					if (pathOffset)
-						path = path.slice(0, -pathOffset);
-					let el = Path.resolve(root, path);
+					let el = Path.resolve(root, path, pathOffset);
 					Util.bindId(rootEl, el);
 				}
 			}
@@ -4765,11 +4750,8 @@ class NodeGroup {
 				if (shell.styles.length)
 					this.styles = new Map();
 				for (let path of shell.styles) {
-					if (pathOffset)
-						path = path.slice(0, -pathOffset);
-
 					/** @type {HTMLStyleElement} */
-					let style = Path.resolve(root, path);
+					let style = Path.resolve(root, path, pathOffset);
 					if (rootEl.nodeType === 1) {
 						Util.bindStyles(style, rootEl);
 						this.styles.set(style, style.textContent);
@@ -4780,9 +4762,7 @@ class NodeGroup {
 			// scripts
 			if (options?.scripts !== false) {
 				for (let path of shell.scripts) {
-					if (pathOffset)
-						path = path.slice(0, -pathOffset);
-					let script = Path.resolve(root, path);
+					let script = Path.resolve(root, path, pathOffset);
 					// Indirect eval runs in global scope (correct for a <script> tag) and, unlike a direct
 					// eval, doesn't force terser to keep every top-level name in the bundle unmangled.
 					(0, eval)(script.textContent);
@@ -4811,7 +4791,7 @@ class RootNodeGroup extends NodeGroup {
 		this.renderOptions = options;
 		if (shellFragment instanceof Text) {
 			if (!el)
-				throw new Error('Cannot create a standalone text node');
+				throw new Error('Text node needs an element.');
 
 			this.rootEl = el;
 			if (shellFragment.nodeValue.length)
@@ -4972,7 +4952,11 @@ class Template {
 			ng = new RootNodeGroup(this, null, el, options);
 			if (!el) // null if it's a standalone elment.
 				el = ng.getRootEl();
-			Globals$1.rootNodeGroups.set(el, ng); // All tests still pass if this is commented out!
+
+			// RootNodeGroup.instantiate() ends by registering itself under its own rootEl, which
+			// is the element we were given, or -- when we were given none -- the very element
+			// getRootEl() just handed back.  Registering it a second time here stored the same
+			// group under the same key.
 		}
 
 		// Make sure the expresion count matches match the Path "hole" count.
@@ -5135,7 +5119,7 @@ function toEl(arg) {
 		let obj = arg;
 
 		if (obj.constructor.name !== 'Object')
-			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
+			throw new Error(`Solarite web component class ${obj.constructor?.name} must extend HTMLElement.`);
 
 		// Normal path
 		if (!Globals$1.objToEl.has(obj)) {
@@ -5316,10 +5300,10 @@ function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 	// Intercepts the main h(this)`...` function call inside render().
 	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (typeof htmlStrings === 'object' && Globals$1.objToEl.has(htmlStrings)) {
+		// The only thing that ever puts an object into objToEl is toEl(), and it rejects anything
+		// that isn't a plain object before it does so, so an object that reaches here has already
+		// been checked and re-checking it can never report anything.
 		let obj = htmlStrings;
-
-		if (obj.constructor.name !== 'Object')
-			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
 
 		// Jsx with h(this, <jsx>)
 		if (exprs[0] instanceof Template) {
@@ -5539,7 +5523,7 @@ class Solarite extends HTMLElementAutoDefine {
 
 		if (attribs) {
 			if (typeof attribs !== 'object')
-				throw new Error('First argument to custom element constructor must be an object.');
+				throw new Error('First argument must be an object.');
 
 			// 1. Populate attribs if it's an empty object.
 			if (!Object.keys(attribs).length) {

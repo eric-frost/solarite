@@ -151,10 +151,10 @@ export default function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 	// Intercepts the main h(this)`...` function call inside render().
 	// TODO: This path doesn't handle embeds like data-id="..."
 	else if (typeof htmlStrings === 'object' && Globals.objToEl.has(htmlStrings)) {
+		// The only thing that ever puts an object into objToEl is toEl(), and it rejects anything
+		// that isn't a plain object before it does so, so an object that reaches here has already
+		// been checked and re-checking it can never report anything.
 		let obj = htmlStrings;
-
-		if (obj.constructor.name !== 'Object')
-			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
 
 		// Jsx with h(this, <jsx>)
 		if (exprs[0] instanceof Template) {

@@ -19,8 +19,9 @@ export default class PathToAttribs extends Path {
 	jsxSubName;
 
 	constructor(nodeBefore, nodeMarker) {
-		super(null, null);
-		this.nodeMarker = nodeMarker;
+		// nodeBefore is discarded: an attribute path has no nodes of its own.  The marker goes
+		// straight through the base constructor rather than being stored a second time after it.
+		super(null, nodeMarker);
 		this.attrNames = new Set();
 	}
 
