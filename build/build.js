@@ -120,17 +120,17 @@ async function rollup(input, output, options) {
 async function terser(options) {
 	var code = Deno.readTextFileSync(outputDebug);
 
-	// Remove //#IFDEV blocks.
-	code = code.replace(/\/\/#IFDEV[\s\S]*?\/\/#ENDIF/gm, '');
-	code = code.replace(/\/\*#IFDEV\*\/[\s\S]*?\/\*#ENDIF\*\//gm, '');
+	// Remove //#IFDEBUG blocks.
+	code = code.replace(/\/\/#IFDEBUG[\s\S]*?\/\/#ENDIF/gm, '');
+	code = code.replace(/\/\*#IFDEBUG\*\/[\s\S]*?\/\*#ENDIF\*\//gm, '');
 
 	Deno.writeTextFileSync(output, code);
 
-	let idx = code.indexOf('#IFDEV')
+	let idx = code.indexOf('#IFDEBUG')
 	if (idx !== -1) {
 		console.log(idx);
 		console.log(code.slice(Math.max(idx-50, 0), idx+50));
-		throw new Error('Unmatched #IFDEV block');
+		throw new Error('Unmatched #IFDEBUG block');
 	}
 	idx = code.indexOf('#ENDIF');
 	if (idx !== -1) {

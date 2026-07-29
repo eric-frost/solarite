@@ -363,7 +363,7 @@ raceTeam.car.style.border = '1px solid green';
 // We don't need to call render() because we're editing the DOM Directly.
 ```
 
-Don't use an `id` that collides with a built-in `HTMLElement` property (like `title` or `style`), a class method, or a field that already holds a non-element value.  Solarite throws rather than silently clobbering it.
+Don't use an `id` that collides with a built-in `HTMLElement` property (like `title` or `style`), a class method, or a field that already holds a non-element value.  Solarite throws rather than silently clobbering it, but only when you run from the source files or from `Solarite-debug.js`; the check is a development aid and is compiled out of `Solarite.js` and `Solarite.min.js`, so render every template at least once during development to be sure you have seen it.
 
 ### Events
 
@@ -738,9 +738,10 @@ class UserTable extends Solarite {
 
 Rules for selectors:
 
-- `when()` must supply a whole attribute value.  Putting it inside a longer value (`class="row ${sel.when(...)}"`) or using it as element content throws, because a selector owns the attribute it writes — fold any constant part into the `on` and `off` values instead.
+- `when()` must supply a whole attribute value, on the row's own root element.  Putting it inside a longer value (`class="row ${sel.when(...)}"`), on an element deeper inside the row, or using it as element content all throw, because a selector owns the attribute it writes and finds it again through the row — fold any constant part into the `on` and `off` values instead.
+- The rows must be keyed (`key=${...}`), because `set()` locates a row by its key.
 - The selection lives on the selector, not on the rows, so it survives re-renders, follows a row through a reorder, and can be set for a key whose row hasn't been rendered yet — that row comes up already selected.
-- `set(null)` deselects.  There is nothing to release when rows go away: bindings for elements that have left the document are swept as the selection moves.  `selector.size` reports how many bindings are held, if you ever want to confirm that.
+- `set(null)` deselects.  Drawing a row costs nothing: `when()` returns one of two objects the selector owns, so a list with nothing selected holds no per-row state, and there is correspondingly nothing to release when rows go away.
 - One selector holds one selection.  For several independent highlights, use several selectors.
 
 A selector is worth reaching for when a change of selection would otherwise re-render a long list.  For a short list, or for state that several parts of the template derive from, an ordinary field and a `render()` call are simpler and fast enough.
@@ -754,7 +755,7 @@ When you include a `<style>` element in your component template, Solarite automa
 Internally, scoped styles become:
 
 1. A `data-style` attribute on the root element, with a number that increments for each instance of the component.
-2.  `:host` selectors rewritten to the tag name plus that identifier:  `fancy-text[data-style="1"]`.
+2.  `:host` selectors rewritten to the tag name plus that identifier:  `fancy-text[data-style="1"]`.  The functional form works too:  `:host(:focus-within)` becomes `fancy-text[data-style="1"]:focus-within`.
 
 ```javascript
 import h from './dist/Solarite.min.js';

@@ -53,7 +53,7 @@ export default class Template {
 
 		//this.trace = new Error().stack.split(/\n/g)
 
-		//#IFDEV
+		//#IFDEBUG
 		assert(Array.isArray(htmlStrings))
 		assert(Array.isArray(exprs))
 

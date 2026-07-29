@@ -25,7 +25,7 @@ export default class PathToAttribValue extends Path {
 	 * Set the value of an attribute.  This can be for any attribute, not just attributes named "value".
 	 * @param exprs {Expr[]} */
 	apply(exprs) {
-		//#IFDEV
+		//#IFDEBUG
 		assert(Array.isArray(exprs));
 		//#ENDIF
 
@@ -204,14 +204,14 @@ export default class PathToAttribValue extends Path {
 	 * @return {string} The joined values of the expressions, or the first expression if there are no strings. */
 	getValue(exprs) {
 
-		//#IFDEV
+		//#IFDEBUG
 		assert(Array.isArray(exprs));
 		//#ENDIF
 		//if (!Array.isArray(exprs))
 		//	return exprs;
 
 		if (!this.attrValue) {// If it's not multiple paths inside a single attribute, return first (and only) expression.
-			//#IFDEV
+			//#IFDEBUG
 			assert(exprs.length === 1);
 			//#ENDIF
 			return exprs[0];
@@ -222,7 +222,6 @@ export default class PathToAttribValue extends Path {
 		for (let i = 0; i < values.length; i++) {
 			result.push(values[i]);
 			if (i < values.length - 1) {
-				//#IFDEV
 				// A selection binding has to own the whole attribute, because its whole point is
 				// writing that attribute without re-rendering, which it can't do if the rest of
 				// the value comes from expressions it doesn't know about.  Whether a selector sits
@@ -234,8 +233,7 @@ export default class PathToAttribValue extends Path {
 				// attribute is written from its constant parts alone.  Stripping it also keeps a
 				// per-expression instanceof out of the multi-part attribute loop.
 				if (typeof exprs[i] === 'object' && exprs[i] instanceof SelectorRef)
-					throw new Error(`Solarite cannot use a selector inside the multi-part attribute ${this.attrName}="${values.join('${...}')}".  Give the selector the whole attribute value instead, and put the constant part in its on/off values.`);
-				//#ENDIF
+					throw new Error(`Solarite: a selector must own the whole ${this.attrName} attribute, not part of it.`);
 				let val = Util.makePrimitive(exprs[i]);
 				if (!Util.isFalsy(val))
 					result.push(val);
@@ -256,8 +254,16 @@ export default class PathToAttribValue extends Path {
 	/**
 	 * @param funcAndArgs {?Array} The [func, ...args] array from the template, or null if func stands alone. */
 	bindEvent(node, root, key, eventName, func, funcAndArgs, capture=false) {
+		//#IFDEBUG
+		// Both callers already guarantee a function, so this only catches a future third caller.
+		// PathToEvent.applySingle() rejects every shape a template can produce and names the
+		// offending value, and the two-way binding path above passes a closure it just made
+		// here, so nothing a page author writes can reach this line.  That makes it dev-only:
+		// stripping it from the built file costs no diagnostic that the surviving throw in
+		// PathToEvent doesn't already give, with a better message.
 		if (typeof func !== 'function')
 			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
+		//#ENDIF
 
 		// Delegated path: a bubbling event (when the root's options allow it, the default)
 		// stores its handler directly on the node as a per-event-type Symbol expando, with no

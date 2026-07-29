@@ -26,7 +26,7 @@ export default class PathToEvent extends PathToAttribValue {
 	 *
 	 * @param exprs {Expr[]} Only the first is used.*/
 	apply(exprs) {
-		//#IFDEV
+		//#IFDEBUG
 		assert(Array.isArray(exprs));
 		//#ENDIF
 
@@ -55,7 +55,7 @@ export default class PathToEvent extends PathToAttribValue {
 
 		let root = this.parentNg.rootNg.root
 
-		/*#IFDEV*/
+		/*#IFDEBUG*/
 		assert(root?.nodeType === 1);
 		/*#ENDIF*/
 
@@ -73,7 +73,7 @@ export default class PathToEvent extends PathToAttribValue {
 			expr = null;
 		}
 		else
-			throw new Error(`Invalid event binding: <${node.tagName.toLowerCase()} ${this.attrName}=\${${JSON.stringify(expr)}}>`);
+			throw new Error(`Solarite: ${this.attrName}=\${...} is not a function.`);
 
 		this.bindEvent(node, root, eventName, eventName, func, expr);
 	}
