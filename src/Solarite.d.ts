@@ -141,13 +141,9 @@ export class Selector<K = any> {
 	/** The selected key, or null. */
 	readonly key: K | null;
 
-	/** How many keys this selector currently holds a binding for.  Settles near the live row
-	 *  count as bindings for vanished rows are swept; a number that keeps climbing means set()
-	 *  is never being called. */
-	readonly size: number;
-
-	/** Bind an attribute to whether key is selected.  Must be the whole attribute value;
-	 *  an off value of '' means the attribute is absent rather than empty. */
+	/** Bind an attribute to whether key is the selected one.  Must supply the WHOLE attribute
+	 *  value, on the row's own root element, and the rows must be keyed — each of those throws
+	 *  otherwise.  An off value of '' (the default) leaves no attribute rather than an empty one. */
 	when(key: K, on: any, off?: any): SelectorRef<K>;
 
 	/** Move the selection, writing at most two attributes and calling no render().
@@ -155,13 +151,16 @@ export class Selector<K = any> {
 	set(key: K | null): void;
 }
 
-/** The value an attribute is bound to.  One per key per Selector, with a stable identity so an
- * unchanged row skips the write on a re-render. */
+/** What when() returns.  A Selector owns exactly TWO of these — one meaning "this row is the
+ * selected one" and one meaning "it isn't" — rather than one per key, so drawing a row costs no
+ * allocation.  The stable identity is also what lets an unchanged row skip its write on a
+ * re-render: a row's expression changes identity exactly when its selectedness does. */
 export class SelectorRef<K = any> {
 	readonly selector: Selector<K>;
-	readonly key: K;
-	readonly node: Node | null;
-	readonly attrName: string | null;
+
+	/** True for the selector's "selected" singleton, false for its "unselected" one. */
+	readonly selected: boolean;
+
 	value(): any;
 }
 
