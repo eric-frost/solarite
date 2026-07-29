@@ -41,8 +41,9 @@ let Util = {
 			// an inherited/built-in property like `title` or `style`, or an own property that already
 			// holds a non-Node value.  A previously-bound element (a Node) is fine to re-assign.
 			// This can only fail on a mistake in the component's own template, so a developer meets it
-			// the first time the component renders and never again at runtime.  It's therefore dev-only,
-			// and stripped from the minified build to keep the id binding small.
+			// the first time the component renders and never again at runtime.  It nonetheless SHIPS,
+			// and deliberately: #IFDEBUG is stripped from dist/Solarite.js, which is what npm serves,
+			// so hiding it there would delete it for everyone rather than only for production.
 			if (!id.includes('.')) {
 				let existing = root[id];
 				let isInherited = (id in root) && !Object.hasOwn(root, id);
@@ -66,29 +67,29 @@ let Util = {
 	bindStyles(style, root) {
 
 		let tagName = root.tagName.toLowerCase();
-		let styleId, attribSelector;
+
+		// A global style is scoped by tag name alone, so it needs no attribute in the selector.
+		let attribSelector = '';
 
 		if (style.hasAttribute('global') || style.hasAttribute('data-global')) {
-			styleId = tagName;
-			attribSelector = '';
-			let doc = Globals.doc || root.ownerDocument || document;
-			if (!doc.head.querySelector(`style[data-style="${styleId}"]`)) {
-				doc.head.append(style)
-				style.setAttribute('data-style', styleId);
-			}
-			else // TODO: Make sure the style has no expressions.
+			let head = Globals.doc.head;
+			if (head.querySelector(`style[data-style="${tagName}"]`))
+				// TODO: Make sure the style has no expressions.
 				style.remove(); // already in the head.
+			else {
+				head.append(style)
+				style.setAttribute('data-style', tagName);
+			}
 		}
 		else {
 			let styleId = root.getAttribute('data-style');
 			if (!styleId) {
-				// Keep track of one style id for each class.
+				// Keep track of one style id for each class.  Reading the static walks up to a parent
+				// class's counter if this class has never been styled, but the assignment always lands
+				// on this class, so each class then counts on from where its parent left off.
 				// TODO: Put this outside the class in a map, so it doesn't conflict with static properties.
-				if (!root.constructor.styleId)
-					root.constructor.styleId = 1;
-				styleId = root.constructor.styleId++;
-
-				root.setAttribute('data-style', styleId);
+				let Class = root.constructor;
+				root.setAttribute('data-style', styleId = Class.styleId = (Class.styleId || 0) + 1);
 			}
 
 			attribSelector = `[data-style="${styleId}"]`;

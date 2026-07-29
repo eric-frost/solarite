@@ -115,26 +115,6 @@ export default class Path {
 
 
 	/**
-	 * Resolve nodeMarkerPath to new root. */
-	getNewNodeMarker(newRoot, pathOffset) {
-		let root = newRoot;
-		let path = this.nodeMarkerPath;
-		let pathLength = path.length - pathOffset;
-		for (let i=pathLength-1; i>0; i--) { // Resolve the path.
-			//#IFDEBUG
-			assert(root.childNodes[path[i]]);
-			//#ENDIF
-			root = root.childNodes[path[i]];
-		}
-		let childNodes = root.childNodes;
-
-		return pathLength
-			? childNodes[path[0]]
-			: newRoot;
-	}
-
-
-	/**
 	 * Copy this path, pointing it at already-resolved nodes.
 	 * Used by the Shell resolve-program fast path in NodeGroup.setPathsFromFragment().
 	 * @param nodeBefore {?Node}
@@ -160,7 +140,7 @@ export default class Path {
 		// nodeBeforeIndex counts within is the marker's own parent's childNodes.  An empty path
 		// leaves the marker as newRoot itself, and then that list is newRoot's children.
 		let nodeBefore;
-		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
+		let nodeMarker = Path.resolve(newRoot, this.nodeMarkerPath, pathOffset);
 		if (this.nodeBefore) {
 			let childNodes = (nodeMarker === newRoot ? newRoot : nodeMarker.parentNode).childNodes;
 			//#IFDEBUG
@@ -195,10 +175,17 @@ export default class Path {
 	 * Note that the path is backward, with the outermost element at the end.
 	 * @param root {HTMLElement|Document|DocumentFragment|ParentNode}
 	 * @param path {int[]}
+	 * @param skip {int} How many of the outermost steps to leave off, for when root is
+	 *   already that many levels down from where the path was recorded.  An empty walk
+	 *   (skip === path.length) returns root itself.
 	 * @returns {Node|HTMLElement|HTMLStyleElement} */
-	static resolve(root, path) {
-		for (let i=path.length-1; i>=0; i--)
+	static resolve(root, path, skip=0) {
+		for (let i=path.length-1-skip; i>=0; i--) {
+			//#IFDEBUG
+			assert(root.childNodes[path[i]]);
+			//#ENDIF
 			root = root.childNodes[path[i]];
+		}
 		return root;
 	}
 

@@ -79,7 +79,7 @@ export default class PathToAttribValue extends Path {
 			let [obj, path] = [expr[0], expr.slice(1)];
 
 			if (!obj)
-				throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attribName}=\${[${expr.map(item => item ? `'${item}'` : item+'').join(', ')}]}>.`);
+				throw new Error(`Solarite cannot bind ${this.attribName} to ${obj}.`);
 
 			let value = delve(obj, path);
 
@@ -233,7 +233,7 @@ export default class PathToAttribValue extends Path {
 				// attribute is written from its constant parts alone.  Stripping it also keeps a
 				// per-expression instanceof out of the multi-part attribute loop.
 				if (typeof exprs[i] === 'object' && exprs[i] instanceof SelectorRef)
-					throw new Error(`Solarite: a selector must own the whole ${this.attribName} attribute, not part of it.`);
+					throw new Error(`Solarite: a selector must own the whole ${this.attribName} attribute.`);
 				let val = Util.makePrimitive(exprs[i]);
 				if (!Util.isFalsy(val))
 					result.push(val);

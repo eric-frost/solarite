@@ -99,7 +99,7 @@ export class Solarite extends HTMLElementAutoDefine {
 
 		if (attribs) {
 			if (typeof attribs !== 'object')
-				throw new Error('First argument to custom element constructor must be an object.');
+				throw new Error('First argument must be an object.');
 
 			// 1. Populate attribs if it's an empty object.
 			if (!Object.keys(attribs).length) {

@@ -19,7 +19,7 @@ export default class RootNodeGroup extends NodeGroup {
 		this.renderOptions = options;
 		if (shellFragment instanceof Text) {
 			if (!el)
-				throw new Error('Cannot create a standalone text node');
+				throw new Error('Text node needs an element.');
 
 			this.rootEl = el;
 			if (shellFragment.nodeValue.length)

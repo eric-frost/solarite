@@ -41,7 +41,7 @@ export default function toEl(arg) {
 		let obj = arg;
 
 		if (obj.constructor.name !== 'Object')
-			throw new Error(`Solarate Web Component class ${obj.constructor?.name} must extend HTMLElement.`);
+			throw new Error(`Solarite web component class ${obj.constructor?.name} must extend HTMLElement.`);
 
 		// Normal path
 		if (!Globals.objToEl.has(obj)) {

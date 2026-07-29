@@ -124,8 +124,10 @@ export default class PathToComponent extends Path {
 			for (let name in attribs) {
 				let val = attribs[name];
 				let valType = typeof val;
+				// Only true and false can reach here, so the undefined/null halves of the
+				// falsy test this used to spell out could never have decided anything.
 				if (valType === 'boolean') {
-					if (val !== false && val !== undefined && val !== null) // Util.isFalsy() inlined
+					if (val)
 						newEl.setAttribute(name, '');
 				}
 

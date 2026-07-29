@@ -928,7 +928,7 @@ Testimony.test('Solarite.expr.textareaChild', 'Make sure we throw if an expressi
 		error = e;
 	}
 	assert(error);
-	assert(error.message.includes(`Textarea can't have expressions`));
+	assert(error.message.includes(`no \${...} inside textarea`));
 });
 
 Testimony.test('Solarite.expr.textareaGrandchild', 'Make sure we throw if an expression is the child of a textarea.', () => {
@@ -953,7 +953,7 @@ Testimony.test('Solarite.expr.textareaGrandchild', 'Make sure we throw if an exp
 		error = e;
 	}
 	assert(error);
-	assert(error.message.includes(`Textarea can't have expressions`));
+	assert(error.message.includes(`no \${...} inside textarea`));
 });
 
 Testimony.test('Solarite.expr.contenteditableChild', 'Make sure we throw if an expression is the child of a contenteditable.', () => {
@@ -979,7 +979,7 @@ Testimony.test('Solarite.expr.contenteditableChild', 'Make sure we throw if an e
 		error = e;
 	}
 	assert(error);
-	assert(error.message.includes(`Contenteditable can't have expressions`));
+	assert(error.message.includes(`no \${...} inside contenteditable`));
 });
 
 Testimony.test('Solarite.expr.contenteditableGrandchild', 'Make sure we throw if an expression is the child of a contenteditable.', () => {
@@ -1005,7 +1005,7 @@ Testimony.test('Solarite.expr.contenteditableGrandchild', 'Make sure we throw if
 		error = e;
 	}
 	assert(error);
-	assert(error.message.includes(`Contenteditable can't have expressions`));
+	assert(error.message.includes(`no \${...} inside contenteditable`));
 });
 //endregion
 
@@ -2183,7 +2183,7 @@ Testimony.test('Solarite.attrib.unquotedValue', `An unquoted attribute value doe
 	// The template tokenizer used to treat an unquoted attribute value as running until the next
 	// quote, so a one-character value put the '>' inside it: `<td colspan=2>` left the parser
 	// still inside the tag, and the expression that followed could not be placed.  That threw
-	// "Could not parse expressions in template" on ordinary, valid HTML.  A longer value happened
+	// "bad html or duplicate attrib" on ordinary, valid HTML.  A longer value happened
 	// to work, and `colspan=${x}` worked too because the chunk boundary landed right after the
 	// '=', which is why this survived so long.
 	let el = document.createElement('div');
@@ -4058,7 +4058,7 @@ Testimony.test('Solarite.attrib.duplicate', 'Warn on duplicate attributes', () =
 	} catch (e) {
 		errorMessage = e.message;	}
 
-	assert(errorMessage.includes('malformed html'));
+	assert(errorMessage.includes('duplicate attrib'));
 });
 
 Testimony.test('Solarite.attrib.sparse', () => {

@@ -151,7 +151,7 @@ export default class PathToNodes extends Path {
 		// A selection binding only knows how to write an attribute, so catch it here rather than
 		// letting it render as an empty string and leave the caller wondering where it went.
 		if (expr instanceof SelectorRef)
-			throw new Error('Solarite: a selector must be a whole attribute value.');
+			throw new Error('Solarite: a selector must own the whole attribute.');
 
 		// 1. h.map() hands over its source items and callback rather than built Templates, so a
 		// row whose item is unchanged is recognized without building or looking up a Template.

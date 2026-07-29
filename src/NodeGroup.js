@@ -608,9 +608,7 @@ export default class NodeGroup {
 			// ids
 			if (options?.ids !== false) {
 				for (let path of shell.ids) {
-					if (pathOffset)
-						path = path.slice(0, -pathOffset);
-					let el = Path.resolve(root, path);
+					let el = Path.resolve(root, path, pathOffset);
 					Util.bindId(rootEl, el);
 				}
 			}
@@ -620,11 +618,8 @@ export default class NodeGroup {
 				if (shell.styles.length)
 					this.styles = new Map();
 				for (let path of shell.styles) {
-					if (pathOffset)
-						path = path.slice(0, -pathOffset);
-
 					/** @type {HTMLStyleElement} */
-					let style = Path.resolve(root, path);
+					let style = Path.resolve(root, path, pathOffset);
 					if (rootEl.nodeType === 1) {
 						Util.bindStyles(style, rootEl);
 						this.styles.set(style, style.textContent);
@@ -635,9 +630,7 @@ export default class NodeGroup {
 			// scripts
 			if (options?.scripts !== false) {
 				for (let path of shell.scripts) {
-					if (pathOffset)
-						path = path.slice(0, -pathOffset);
-					let script = Path.resolve(root, path);
+					let script = Path.resolve(root, path, pathOffset);
 					// Indirect eval runs in global scope (correct for a <script> tag) and, unlike a direct
 					// eval, doesn't force terser to keep every top-level name in the bundle unmangled.
 					(0, eval)(script.textContent)
