@@ -19,6 +19,12 @@ export {svg} from './h.js';
 export {getEventBinding} from './PathToAttribValue.js';
 export {Fragment} from './jsx.js';
 
+// Internals the JSX runtime needs, exported so dist/jsx-runtime.js can be built as a SEPARATE
+// module that shares this bundle rather than bundling its own copy.  They must be shared, not
+// duplicated: PathToAttribs tests `instanceof JsxAttr`, which fails across two copies of the
+// class.  Not part of the documented API — jsx-runtime is the supported entry point.
+export {jsxToTemplate as internalJsxToTemplate, JsxAttr as InternalJsxAttr} from './jsx.js';
+
 // Experimental:
 //--------------
 export {default as Globals} from './Globals.js';

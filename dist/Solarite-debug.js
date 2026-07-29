@@ -6080,4 +6080,4 @@ class Solarite extends HTMLElementAutoDefine {
 }
 
 export default h;
-export { Fragment, Globals$1 as Globals, MappedList, Selector, SelectorRef, Solarite, Util as SolariteUtil, Template, assignAttributes, convertType, delve, getEventBinding, h, svg, toEl };
+export { Fragment, Globals$1 as Globals, JsxAttr as InternalJsxAttr, MappedList, Selector, SelectorRef, Solarite, Util as SolariteUtil, Template, assignAttributes, convertType, delve, getEventBinding, h, jsxToTemplate as internalJsxToTemplate, svg, toEl };

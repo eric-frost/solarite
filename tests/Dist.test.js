@@ -160,3 +160,43 @@ Testimony.test('Dist.selector', `h.selector survives property mangling in the mi
 	assert.eq(a.querySelectorAll('[class]').length, 0);
 	a.remove();
 });
+
+Testimony.test('Dist.jsxRuntimeSharesOneCopy', `dist/jsx-runtime.js must share the main bundle's module instance`, async () => {
+	// A toolchain with jsxImportSource:"solarite" injects `import {jsx} from "solarite/jsx-runtime"`
+	// into every JSX file, alongside whatever the app imported from "solarite".  Both specifiers
+	// have to reach ONE module instance, because Globals holds the Shell cache, the connected
+	// WeakSet, elementClasses and htmlProps — two copies means two of each, silently.
+	// package.json used to point "." at dist/ and "./jsx-runtime" at src/, which are separate
+	// module trees, so every JSX project loaded Solarite twice and got the unstripped source
+	// (asserts live, ~15% slower) as its second copy.  This test is what keeps that from
+	// coming back: it compares identity, not behaviour, because two copies behave identically
+	// right up until they don't.
+	const main = await import('../dist/Solarite.js');
+	const jsxRt = await import('../dist/jsx-runtime.js');
+	const jsxDev = await import('../dist/jsx-dev-runtime.js');
+
+	// The shared class identity PathToAttribs depends on: it tests `instanceof JsxAttr`, which
+	// silently returns false across two copies of the class.
+	assert(jsxRt.jsxAttr('href', '/x') instanceof main.InternalJsxAttr);
+
+	// Fragment is a symbol in the main bundle; a second copy would mint a different one.
+	assert.eq(jsxRt.Fragment, main.Fragment);
+	assert.eq(jsxDev.Fragment, main.Fragment);
+	assert.eq(jsxDev.jsxDEVRuntime, jsxRt.jsxDEV);
+
+	// A Template built through the JSX runtime must be the same class the main bundle renders.
+	let t = jsxRt.jsx('b', {children: 'hi'});
+	assert(t instanceof main.Template);
+
+	// And it must actually render through the main bundle's h().
+	let el = document.createElement('div');
+	document.body.append(el);
+	main.default(el, jsxRt.jsx('b', {children: 'hi'}));
+	assert.eq(el.innerHTML.replace(/<!--.*?-->/g, ''), '<b>hi</b>');
+	el.remove();
+
+	// The debug build must not leak into the published entry points.
+	const txt = await (await fetch('../dist/jsx-runtime.js')).text();
+	assert.eq(txt.includes('#IFDEBUG'), false);
+	assert(txt.includes("from './Solarite.js'"));
+});
