@@ -91,7 +91,12 @@ export default class Path {
 	 * [[expr5], [expr6, expr7]] // arguments to second my-component constructor.
 	 * [expr5]                   // user attribute value.
 	 * [expr6, expr7]            // role attribute value. */
-	apply(exprs) {}
+	apply(exprs) {
+		//#IFDEBUG
+		assert(Array.isArray(exprs));
+		//#ENDIF
+		this.applySingle(exprs[0]);
+	}
 
 	/**
 	 * Fast path used by NodeGroup.applyExprs() when every path consumes exactly one expression.
@@ -100,6 +105,13 @@ export default class Path {
 	applySingle(expr) {}
 
 	getExpressionCount() { return 1 }
+
+	/**
+	 * The value a path hands to a component constructor, for the single-expression paths.
+	 * PathToAttribValue overrides this to join its surrounding static strings.
+	 * @param exprs {Expr[]}
+	 * @return {Expr} */
+	getValue(exprs) { return exprs[0] }
 
 
 	/**
@@ -157,13 +169,7 @@ export default class Path {
 			nodeBefore = childNodes[this.nodeBeforeIndex];
 		}
 
-		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
-
-		result.isComponentAttrib = this.isComponentAttrib;
-		result.wholeParent = this.wholeParent;
-
-		// TODO: Put this in PathToAttribValue.clone().
-		result.isHtmlProperty = this.isHtmlProperty;
+		let result = this.cloneWithNodes(nodeBefore, nodeMarker);
 
 		//#IFDEBUG
 		result.verify();

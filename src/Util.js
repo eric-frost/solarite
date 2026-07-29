@@ -155,13 +155,24 @@ let Util = {
 		return str.replace(/-([a-z])/g, g => g[1].toUpperCase());
 	},
 
+	/**
+	 * Register Class as a custom element, unless it's registered already.
+	 * @param Class {typeof HTMLElement}
+	 * @param tagName {?string} Name to register under.  Defaults to the dashed form of the class name.
+	 * @return {string} The tag name Class is registered under, whether we just registered it or it
+	 *     was already in the registry under some other name.  Callers that emit markup for the class
+	 *     use this instead of re-deriving the name, which guesses wrong for any class registered
+	 *     under a name that isn't camelToDashes(Class.name). */
 	defineClass(Class, tagName) {
-		if (!customElements[getName](Class)) { // If not previously defined.
-			tagName = tagName || Util.camelToDashes(Class.name)
-			if (!tagName.includes('-')) // Browsers require that web components always have a dash in the name.
-				tagName += '-element';
-			customElements[define](tagName, Class)
-		}
+		let defined = customElements[getName](Class);
+		if (defined) // Previously defined.
+			return defined;
+
+		tagName = tagName || Util.camelToDashes(Class.name)
+		if (!tagName.includes('-')) // Browsers require that web components always have a dash in the name.
+			tagName += '-element';
+		customElements[define](tagName, Class)
+		return tagName;
 	},
 
 	/**

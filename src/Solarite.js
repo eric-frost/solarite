@@ -34,7 +34,7 @@ export {default as SolariteUtil} from './Util.js';
 //--------------
 export {default as h} from './h.js'; // Named exports for h() are deprecated.
 
-// HtmlParser, NodeGroup, and Shell are internal; tests import them directly from their modules.
+// NodeGroup and Shell are internal; tests import them directly from their modules.
 
 
 

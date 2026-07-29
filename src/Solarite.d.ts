@@ -202,7 +202,7 @@ export const SolariteUtil: {
     bindStyles(style: HTMLStyleElement, root: HTMLElement): void;
     camelToDashes(str: string): string;
     dashesToCamel(str: string): string;
-    defineClass(Class: typeof HTMLElement, tagName?: string | null): void;
+    defineClass(Class: typeof HTMLElement, tagName?: string | null): string;
     isIterable(obj: any): boolean;
     trimEmptyNodes(nodes: NodeList | Node[]): Node[];
     [key: string]: any;
