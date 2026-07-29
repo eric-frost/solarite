@@ -127,7 +127,7 @@ export default class Shell {
 		if (!html)
 			return;
 
-		//#IFDEV
+		//#IFDEBUG
 		this._html = html.join('');
 		//#ENDIF
 
@@ -192,20 +192,18 @@ export default class Shell {
 					// It's consumed here and never written to the DOM or passed to components.
 					if (attr.name === 'key') {
 
-						// These three are template-authoring mistakes rather than runtime conditions.  A template's
-						// html comes from a tagged template literal's static strings, so a key attribute that passes
-						// these checks while developing passes them identically in production, on every render and
-						// for every user.  Checking only in development also avoids a regex split of the attribute
-						// value, which happens once per unique template.
-						//#IFDEV
+						// These three are template-authoring mistakes, and every one of them fails SILENTLY if
+						// it isn't caught: the reconciler would key rows on a garbage value and reuse the wrong
+						// DOM, with nothing reported.  So they ship, unlike the assertions elsewhere in this
+						// file.  The cost is one regex split per unique template \u2014 never per render, never per
+						// row \u2014 which is why they are affordable to keep.
 						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
 						if (parts.length !== 2 || parts[0] !== '' || parts[1] !== '')
-							throw new Error(`The key attribute is reserved and must be a single expression: key=\${...}`);
+							throw new Error(`Solarite: key must be one whole expression, as key=\${...}.`);
 						if (node.parentNode !== this.fragment)
-							throw new Error(`The key attribute must be on a top-level element of its template.`);
+							throw new Error(`Solarite: key must be on a top-level element of its template.`);
 						if (this.keyIndex >= 0)
-							throw new Error(`A template can have only one key attribute.`);
-						//#ENDIF
+							throw new Error(`Solarite: a template can have only one key attribute.`);
 
 						this.keyIndex = attr.value.charCodeAt(0) - attribPlaceholder;
 
@@ -263,12 +261,21 @@ export default class Shell {
 							// when the fragment is cloned, so those are removed whether or not they're whole.
 							if (svgMode || !nonEmptyParts)
 								node.removeAttribute(attr.name);
-							else try {
+
+							// setAttribute throws only when the template author wrote a name the browser
+							// refuses, such as one holding a space or a quote.  That name comes from a tagged
+							// template literal's static text, so it is a typo that surfaces the first time the
+							// template renders and can never appear later or for only some users.  Development
+							// therefore wraps the call to rethrow with the attribute name and the tag included,
+							// because the browser's own DOMException names neither and leaves the author
+							// hunting.  Production ships the bare call and lets that DOMException through: the
+							// friendlier wording is only worth its bytes to whoever can still fix the template.
+							else /*#IFDEBUG*/try {/*#ENDIF*/
 								node.setAttribute(attr.name, parts.join(''));
-							}
+							/*#IFDEBUG*/}
 							catch (e) {
 								throw new Error(`Error setting attribute "${attr.name}" on node <${node.tagName}>: ${e.message}`);
-							}
+							}/*#ENDIF*/
 						}
 					}
 				}
@@ -314,7 +321,7 @@ export default class Shell {
 						nodeBefore = Globals.doc.createComment('Path:'+this.paths.length);
 						node.parentNode.insertBefore(nodeBefore, node)
 					}
-					/*#IFDEV*/assert(nodeBefore);/*#ENDIF*/
+					/*#IFDEBUG*/assert(nodeBefore);/*#ENDIF*/
 
 					// Get the next node.
 					let nodeMarker;
@@ -329,7 +336,7 @@ export default class Shell {
 						nodeMarker = node;
 						nodeMarker.textContent = 'PathEnd:'+ this.paths.length;
 					}
-					/*#IFDEV*/assert(nodeMarker);/*#ENDIF*/
+					/*#IFDEBUG*/assert(nodeMarker);/*#ENDIF*/
 
 					let path = new PathToNodes(nodeBefore, nodeMarker);
 					this.paths.push(path);
@@ -373,7 +380,7 @@ export default class Shell {
 						this.paths.push(path);
 						placeholdersUsed ++;
 
-						/*#IFDEV*/path.verify();/*#ENDIF*/
+						/*#IFDEBUG*/path.verify();/*#ENDIF*/
 					}
 
 					// Removing them here will mess up the treeWalker.
@@ -481,7 +488,7 @@ export default class Shell {
 			}
 		}
 
-		/*#IFDEV*/this.verify();/*#ENDIF*/
+		/*#IFDEBUG*/this.verify();/*#ENDIF*/
 	}
 
 	/**
@@ -550,7 +557,7 @@ export default class Shell {
 		for (let el of idEls) {
 			let id = el.getAttribute('data-id') || el.getAttribute('id')
 			if (Globals.div.hasOwnProperty(id))
-				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement id property.`)
+				throw new Error(`Solarite: id="${id}" would overwrite a built-in HTMLElement property.`)
 		}
 
 		this.ids = Array.prototype.map.call(idEls, el => Path.get(el))
@@ -646,11 +653,11 @@ export default class Shell {
 		lastSvgMode = svgMode;
 		lastShell = result;
 
-		/*#IFDEV*/result.verify();/*#ENDIF*/
+		/*#IFDEBUG*/result.verify();/*#ENDIF*/
 		return result;
 	}
 
-	//#IFDEV
+	//#IFDEBUG
 	// For debugging only:
 	verify() {
 		for (let path of this.paths) {

@@ -69,7 +69,7 @@ export default class Path {
 	constructor(nodeBefore, nodeMarker) {
 		this.nodeBefore = nodeBefore;
 		this.nodeMarker = nodeMarker;
-		/*#IFDEV*/this.verify();/*#ENDIF*/
+		/*#IFDEBUG*/this.verify();/*#ENDIF*/
 	}
 
 	/**
@@ -103,14 +103,13 @@ export default class Path {
 
 
 	/**
-	 * Resolve nodeMarkerPath to new root.
-	 * TODO: Make clone() use this.*/
+	 * Resolve nodeMarkerPath to new root. */
 	getNewNodeMarker(newRoot, pathOffset) {
 		let root = newRoot;
 		let path = this.nodeMarkerPath;
 		let pathLength = path.length - pathOffset;
 		for (let i=pathLength-1; i>0; i--) { // Resolve the path.
-			//#IFDEV
+			//#IFDEBUG
 			assert(root.childNodes[path[i]]);
 			//#ENDIF
 			root = root.childNodes[path[i]];
@@ -142,30 +141,20 @@ export default class Path {
 	 * @param pathOffset {int}
 	 * @return {Path} */
 	clone(newRoot, pathOffset=0) {
-		/*#IFDEV*/this.verify();/*#ENDIF*/
+		/*#IFDEBUG*/this.verify();/*#ENDIF*/
 
-		// Resolve node paths.
-		let nodeMarker, nodeBefore;
-		let root = newRoot;
-		let path = this.nodeMarkerPath;
-		let pathLength = path.length - pathOffset;
-		for (let i=pathLength-1; i>0; i--) { // Resolve the path.
-			//#IFDEV
-			assert(root.childNodes[path[i]]);
-			//#ENDIF
-			root = root.childNodes[path[i]];
-		}
-		let childNodes = root.childNodes;
-
-		nodeMarker = pathLength
-			? childNodes[path[0]]
-			: newRoot;
+		// Resolve node paths.  nodeBefore is always a sibling of nodeMarker (Shell builds it from
+		// nodeMarker.previousSibling, or inserts a comment immediately before it), so the list
+		// nodeBeforeIndex counts within is the marker's own parent's childNodes.  An empty path
+		// leaves the marker as newRoot itself, and then that list is newRoot's children.
+		let nodeBefore;
+		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
 		if (this.nodeBefore) {
-			//#IFDEV
+			let childNodes = (nodeMarker === newRoot ? newRoot : nodeMarker.parentNode).childNodes;
+			//#IFDEBUG
 			assert(childNodes[this.nodeBeforeIndex]);
 			//#ENDIF
 			nodeBefore = childNodes[this.nodeBeforeIndex];
-
 		}
 
 		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
@@ -176,7 +165,7 @@ export default class Path {
 		// TODO: Put this in PathToAttribValue.clone().
 		result.isHtmlProperty = this.isHtmlProperty;
 
-		//#IFDEV
+		//#IFDEBUG
 		result.verify();
 		//#ENDIF
 
@@ -207,7 +196,7 @@ export default class Path {
 		return root;
 	}
 
-	//#IFDEV
+	//#IFDEBUG
 
 	/** @return {HTMLElement|ParentNode} */
 	getParentNode() {

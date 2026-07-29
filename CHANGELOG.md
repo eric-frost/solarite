@@ -23,7 +23,9 @@ All notable changes to Solarite are documented here. This project follows [Keep 
   }
   ```
 
-  `when(key, on, off)` must be a whole attribute value — not part of one, and not element content; both throw with an explanation. An `off` value of `''` (the default) leaves no attribute at all rather than an empty one. The selection lives on the selector rather than on the rows, so it survives re-renders, follows a row through a reorder, and `set()` is safe to call whether or not those rows are currently on screen. Bindings for rows that no longer exist are swept as the selection moves, so nothing has to be released by hand; `selector.size` reports how many are held if you ever want to check.
+  `when(key, on, off)` must supply a whole attribute value on the row's own root element — not part of a value, not an attribute further down the row, and not element content. Each of those throws with an explanation rather than failing quietly. An `off` value of `''` (the default) leaves no attribute at all rather than an empty one, so the markup matches a hand-written implementation's. The rows must be keyed, because `set()` finds a row by its key.
+
+  The selection lives on the selector rather than on the rows, so it survives re-renders, follows a row through a reorder, and can be set for a key whose row hasn't been rendered yet — that row comes up already selected. Drawing a row costs nothing: `when()` returns one of two objects the selector owns, so a list with nothing selected allocates no per-row state at all, and there is correspondingly nothing to release when rows go away.
 
 ### Changed
 - **Breaking:** `h.map()` returns a `MappedList` (the items plus the callback) rather than an array of templates, so the reconciler can recognize an unchanged row by the item it was built from. Put it straight into a template expression as before. It is iterable, so spreading it (`[...h.map(rows, fn)]`), nesting it inside an array, or returning it from a function all still work and expand to templates — but each of those builds every row, which is the work the identity shortcut exists to skip. A row is now reused for as long as its item is `===` to the one that built it, which means primitives compare by value where they previously rebuilt every render.
@@ -32,6 +34,9 @@ All notable changes to Solarite are documented here. This project follows [Keep 
 - **Re-rendering a component no longer re-binds event handlers that didn't change.** A root template's `onclick=${this.method}` bindings are the same handlers on every render, and re-binding them is provably a no-op, so they're skipped. Together with the list work, a `render()` where nothing at all changed is now several times cheaper.
 - An element's render closure is cached even when `render()` passes options, which is how it is usually written.
 - Two shapes that a benchmark wouldn't catch were measured and fixed along the way: a partial update of a very long list, and inserting rows into the middle or the front of one. Both used to fall off the fast path and build a lookup map of every row; the reconciler now works out whether a list was reordered (where such a map pays) or merely had its contents changed (where it doesn't).
+
+### Fixed
+- The functional `:host(...)` form now scopes correctly. The rewriter used to replace only the `:host` text and leave the parenthesized part behind, turning `:host(:focus-within)` into `my-tag[data-style="1"](:focus-within)` — an invalid selector, which a browser drops without a console message, so the rule silently never applied. `:host(X)` now becomes the scoped name with X appended: `my-tag[data-style="1"]:focus-within`. X may hold one nested group, as in `:host(:focus-within:not(.no-focus))`. A plain `:host` that ends a text node — possible when an expression supplies part of a dynamic style — is rewritten now too.
 
 ## [0.7.0] - 2026-07-04
 

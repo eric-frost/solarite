@@ -158,7 +158,12 @@ let Util = {
 			// This can only fail on a mistake in the component's own template, so a developer meets it
 			// the first time the component renders and never again at runtime.  It's therefore dev-only,
 			// and stripped from the minified build to keep the id binding small.
-			
+			if (!id.includes('.')) {
+				let existing = root[id];
+				let isInherited = (id in root) && !Object.hasOwn(root, id);
+				if (!existing?.nodeType && (existing != null || isInherited))
+					throw new Error(`Solarite: id="${id}" would overwrite an existing ${root.constructor.name} property.`);
+			}
 
 			delve(root, id.split(/\./g), el);
 		}
@@ -208,7 +213,19 @@ let Util = {
 		for (let child of style.childNodes) {
 			if (child.nodeType === 3) {
 				let oldText = child.textContent;
-				let newText = oldText.replace(/:host(?=[^a-z0-9_])/gi, `${tagName}${attribSelector}`);
+
+				// One pass rewrites both forms of the selector:
+				// 1.  The functional form ':host(X)' — the host element when it also matches X — unwraps
+				//     so X sits right after the scoped name:  tag[data-style="1"]X.  X may hold one
+				//     nested group like ':not(.open)'; deeper parentheses can't be paired by a regex,
+				//     so such an X is left as written rather than half-rewritten into a selector the
+				//     browser would discard silently.
+				// 2.  Plain ':host'.  The lookahead turns down longer names (':host-context') and '(',
+				//     which only follows ':host' when alternative 1 already gave up on it, and accepts
+				//     the end of the text node, where an expression may have split a dynamic style.
+				let newText = oldText.replace(
+					/:host(?:\(((?:[^()]|\([^()]*\))*)\)|(?![-a-z0-9_(]))/gi,
+					`${tagName}${attribSelector}$1`);
 				if (oldText !== newText)
 					child.textContent = newText;
 			}
@@ -229,17 +246,15 @@ let Util = {
 	 * 'UIForm' => 'ui-form'
 	 * 'A100' => 'a-100' */
 	camelToDashes(str) {
-		// Convert any capital letter that is preceded by a lowercase letter or number to lowercase and precede with a dash.
-		str = str.replace(/([a-z0-9])([A-Z])/g, '$1-$2');
-
-		// Convert any capital letter that is followed by a lowercase letter or number to lowercase and precede with a dash.
-		str = str.replace(/([A-Z])([A-Z][a-z])/g, '$1-$2');
-
-		// Convert any number that is preceded by a lowercase or uppercase letter to be preceded by a dash.
-		str = str.replace(/([a-zA-Z])([0-9])/g, '$1-$2');
-
-		// Convert all the remaining capital letters to lowercase.
-		return str.toLowerCase();
+		// One pass finds all three dash positions.  Each alternative matches only the character
+		// *before* the boundary and uses a lookahead for what follows, so the following character
+		// is never consumed and can still start the next boundary.  That's what lets the three
+		// rules interleave in a single scan the way three sequential replaces used to:
+		// 1.  a lowercase letter or digit before a capital ('ProperName').
+		// 2.  a capital before a capital+lowercase pair, i.e. the last capital of a run ('HTMLElement').
+		// 3.  a letter before a digit ('A100').
+		// '$&-' appends the dash after the matched character, then everything folds to lowercase.
+		return str.replace(/[a-z0-9](?=[A-Z])|[A-Z](?=[A-Z][a-z])|[a-zA-Z](?=\d)/g, '$&-').toLowerCase();
 	},
 
 	/**
@@ -326,16 +341,13 @@ let Util = {
 	 * @returns {Object} */
 	splitAttribs(str) {
 		let result = {};
-		let attrs = (str + '') // Split string into multiple attributes.
-			.split(/([\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|\S+))/g)
-			.map(text => text.trim())
-			.filter(text => text.length);
 
-		for (let attr of attrs) {
-			let [name, value] = attr.split(/\s*=\s*/); // split on first equals.
-			value = (value || '').replace(/^(['"])(.*)\1$/, '$2'); // trim value quotes if they match.
-			result[name] = value;
-		}
+		// One scan collects every name and its value.  The value is optional so a boolean attribute
+		// written on its own ('disabled') still lands in the result with an empty value, and the three
+		// value alternatives capture *inside* the quotes so no separate quote-trimming pass is needed.
+		// Whatever doesn't look like an attribute name is skipped rather than becoming a bogus key.
+		(str + '').replace(/([\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g,
+			(_, name, dq, sq, bare) => result[name] = dq ?? sq ?? bare ?? '');
 
 		return result;
 	},
@@ -373,19 +385,14 @@ let Util = {
 	 * @param nodes {Node[]|NodeList}
 	 * @returns {Node[]} */
 	trimEmptyNodes(nodes) {
-		const shouldTrimNode = node =>
-			node.nodeType !== Node.ELEMENT_NODE &&
-			(node.nodeType !== Node.TEXT_NODE || node.textContent.trim() === '');
+		// nodeType 1 is an element and 3 is a text node; the literals are what Node.ELEMENT_NODE
+		// and Node.TEXT_NODE are defined as, and they cost a fraction of the bytes.
+		let isEmpty = node => node.nodeType !== 1 && (node.nodeType !== 3 || !node.textContent.trim());
 
-		// Convert nodeList to an array for easier manipulation
-		const result = [...nodes];
-
-		// Trim from the start
-		while (result.length > 0 && shouldTrimNode(result[0]))
+		let result = [...nodes]; // A NodeList can't shift() or pop().
+		while (result.length && isEmpty(result[0]))
 			result.shift();
-
-		// Trim from the end
-		while (result.length > 0 && shouldTrimNode(result[result.length - 1]))
+		while (result.length && isEmpty(result[result.length - 1]))
 			result.pop();
 
 		return result;
@@ -506,8 +513,7 @@ class Path {
 
 
 	/**
-	 * Resolve nodeMarkerPath to new root.
-	 * TODO: Make clone() use this.*/
+	 * Resolve nodeMarkerPath to new root. */
 	getNewNodeMarker(newRoot, pathOffset) {
 		let root = newRoot;
 		let path = this.nodeMarkerPath;
@@ -545,24 +551,16 @@ class Path {
 	clone(newRoot, pathOffset=0) {
 		
 
-		// Resolve node paths.
-		let nodeMarker, nodeBefore;
-		let root = newRoot;
-		let path = this.nodeMarkerPath;
-		let pathLength = path.length - pathOffset;
-		for (let i=pathLength-1; i>0; i--) { // Resolve the path.
-			
-			root = root.childNodes[path[i]];
-		}
-		let childNodes = root.childNodes;
-
-		nodeMarker = pathLength
-			? childNodes[path[0]]
-			: newRoot;
+		// Resolve node paths.  nodeBefore is always a sibling of nodeMarker (Shell builds it from
+		// nodeMarker.previousSibling, or inserts a comment immediately before it), so the list
+		// nodeBeforeIndex counts within is the marker's own parent's childNodes.  An empty path
+		// leaves the marker as newRoot itself, and then that list is newRoot's children.
+		let nodeBefore;
+		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
 		if (this.nodeBefore) {
+			let childNodes = (nodeMarker === newRoot ? newRoot : nodeMarker.parentNode).childNodes;
 			
 			nodeBefore = childNodes[this.nodeBeforeIndex];
-
 		}
 
 		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
@@ -756,7 +754,12 @@ class SelectorRef {
 	 * @param attrName {string}
 	 * @param parentNg {NodeGroup} The row this attribute belongs to. */
 	bind(node, attrName, parentNg) {
-		
+		// set() writes through the row's own root element, so an attribute anywhere deeper
+		// would be found at bind time and then written somewhere else at set() time.  Catching
+		// it here turns a silently misplaced attribute into a clear message; the check is
+		// stripped from the built file, so it costs a production render nothing.
+		if (parentNg.startNode !== node)
+			throw new Error(`Solarite: a selector must be on the row's own root element.`);
 
 		let s = this.selector;
 		s.attrName = attrName;
@@ -1110,7 +1113,18 @@ class PathToAttribValue extends Path {
 		for (let i = 0; i < values.length; i++) {
 			result.push(values[i]);
 			if (i < values.length - 1) {
-				
+				// A selection binding has to own the whole attribute, because its whole point is
+				// writing that attribute without re-rendering, which it can't do if the rest of
+				// the value comes from expressions it doesn't know about.  Whether a selector sits
+				// inside a multi-part attribute is fixed by the shape of the template and never by
+				// the data, so this can only be an authoring mistake, and it always surfaces on the
+				// template's very first render -- exactly like the placement check in
+				// SelectorRef.bind().  That makes it safe to strip from the built file, where the
+				// throw is the only thing lost: makePrimitive() then turns the ref into '' and the
+				// attribute is written from its constant parts alone.  Stripping it also keeps a
+				// per-expression instanceof out of the multi-part attribute loop.
+				if (typeof exprs[i] === 'object' && exprs[i] instanceof SelectorRef)
+					throw new Error(`Solarite: a selector must own the whole ${this.attrName} attribute, not part of it.`);
 				let val = Util.makePrimitive(exprs[i]);
 				if (!Util.isFalsy(val))
 					result.push(val);
@@ -1131,8 +1145,7 @@ class PathToAttribValue extends Path {
 	/**
 	 * @param funcAndArgs {?Array} The [func, ...args] array from the template, or null if func stands alone. */
 	bindEvent(node, root, key, eventName, func, funcAndArgs, capture=false) {
-		if (typeof func !== 'function')
-			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attrName}=\${${func}}> because it's not a function.`);
+		
 
 		// Delegated path: a bubbling event (when the root's options allow it, the default)
 		// stores its handler directly on the node as a per-event-type Symbol expando, with no
@@ -1409,7 +1422,7 @@ class PathToEvent extends PathToAttribValue {
 			expr = null;
 		}
 		else
-			throw new Error(`Invalid event binding: <${node.tagName.toLowerCase()} ${this.attrName}=\${${JSON.stringify(expr)}}>`);
+			throw new Error(`Solarite: ${this.attrName}=\${...} is not a function.`);
 
 		this.bindEvent(node, root, eventName, eventName, func, expr);
 	}
@@ -2510,16 +2523,7 @@ class PathToNodes extends Path {
 				for (let i=start; i<newEnd; i++) {
 					let ng = this.createOrReuse(newItems[i]);
 					newNgs[i] = ng;
-					let node = ng.startNode, end = ng.endNode;
-					if (node === end) // Single-node NodeGroups are the common case in loops.
-						parent.insertBefore(node, anchor);
-					else while (true) {
-						let next = node.nextSibling;
-						parent.insertBefore(node, anchor);
-						if (node === end)
-							break;
-						node = next;
-					}
+					insertNodesBefore(parent, ng, anchor);
 				}
 			}
 
@@ -2749,16 +2753,7 @@ class PathToNodes extends Path {
 					for (let i=start; i<newEnd; i++) {
 						let ng = this.createNew(newItems[i]);
 						newNgs[i] = ng;
-						let node = ng.startNode, end = ng.endNode;
-						if (node === end)
-							parent.insertBefore(node, anchor);
-						else while (true) {
-							let next = node.nextSibling;
-							parent.insertBefore(node, anchor);
-							if (node === end)
-								break;
-							node = next;
-						}
+						insertNodesBefore(parent, ng, anchor);
 					}
 				}
 
@@ -3766,12 +3761,18 @@ class Shell {
 					// It's consumed here and never written to the DOM or passed to components.
 					if (attr.name === 'key') {
 
-						// These three are template-authoring mistakes rather than runtime conditions.  A template's
-						// html comes from a tagged template literal's static strings, so a key attribute that passes
-						// these checks while developing passes them identically in production, on every render and
-						// for every user.  Checking only in development also avoids a regex split of the attribute
-						// value, which happens once per unique template.
-						
+						// These three are template-authoring mistakes, and every one of them fails SILENTLY if
+						// it isn't caught: the reconciler would key rows on a garbage value and reuse the wrong
+						// DOM, with nothing reported.  So they ship, unlike the assertions elsewhere in this
+						// file.  The cost is one regex split per unique template \u2014 never per render, never per
+						// row \u2014 which is why they are affordable to keep.
+						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
+						if (parts.length !== 2 || parts[0] !== '' || parts[1] !== '')
+							throw new Error(`Solarite: key must be one whole expression, as key=\${...}.`);
+						if (node.parentNode !== this.fragment)
+							throw new Error(`Solarite: key must be on a top-level element of its template.`);
+						if (this.keyIndex >= 0)
+							throw new Error(`Solarite: a template can have only one key attribute.`);
 
 						this.keyIndex = attr.value.charCodeAt(0) - attribPlaceholder;
 
@@ -3829,12 +3830,18 @@ class Shell {
 							// when the fragment is cloned, so those are removed whether or not they're whole.
 							if (svgMode || !nonEmptyParts)
 								node.removeAttribute(attr.name);
-							else try {
+
+							// setAttribute throws only when the template author wrote a name the browser
+							// refuses, such as one holding a space or a quote.  That name comes from a tagged
+							// template literal's static text, so it is a typo that surfaces the first time the
+							// template renders and can never appear later or for only some users.  Development
+							// therefore wraps the call to rethrow with the attribute name and the tag included,
+							// because the browser's own DOMException names neither and leaves the author
+							// hunting.  Production ships the bare call and lets that DOMException through: the
+							// friendlier wording is only worth its bytes to whoever can still fix the template.
+							else 
 								node.setAttribute(attr.name, parts.join(''));
-							}
-							catch (e) {
-								throw new Error(`Error setting attribute "${attr.name}" on node <${node.tagName}>: ${e.message}`);
-							}
+							
 						}
 					}
 				}
@@ -4116,7 +4123,7 @@ class Shell {
 		for (let el of idEls) {
 			let id = el.getAttribute('data-id') || el.getAttribute('id');
 			if (Globals$1.div.hasOwnProperty(id))
-				throw new Error(`<${el.tagName.toLowerCase()} id="${id}"> can't override existing HTMLElement id property.`)
+				throw new Error(`Solarite: id="${id}" would overwrite a built-in HTMLElement property.`)
 		}
 
 		this.ids = Array.prototype.map.call(idEls, el => Path.get(el));
@@ -4261,6 +4268,38 @@ const textShell = new Shell();
 // cost a slot on every row.  The delegation mode isn't part of it: it comes from the root's
 // render options, which are fixed when the root is created.
 const lastStampedShellKey = Symbol('solariteStampedShell');
+
+/**
+ * Run a Shell's precomputed resolve program (see Shell.buildResolveProgram) into the shell's
+ * shared slots array, which the caller has already seeded with its starting node.
+ * Each node is reached with firstChild/nextSibling pointer walks instead of childNodes[index];
+ * the live NodeList indexing is markedly slower, and the indices are small (markers are
+ * elements, often the first child after whitespace stripping).  A negative step count means the
+ * program reaches this node by walking forward from an earlier sibling's slot instead of from
+ * its parent.
+ * @param slots {Node[]} The shell's shared scratch array; slot 0 is the fragment.
+ * @param ops {int[]} Flat [parentSlot, childIndex] pairs in dependency order.
+ * @param i {int} Index of the first op pair to run; earlier pairs are pre-seeded by the caller.
+ * @param s {int} Slot that pair fills.
+ * @return {Node[]} slots, so callers can resolve and use it in one expression. */
+function runResolveOps(slots, ops, i, s) {
+	for (; i<ops.length; i+=2, s++) {
+		let k = ops[i+1], node;
+		if (k < 0) {
+			node = slots[ops[i]];
+			do
+				node = node.nextSibling;
+			while (++k < 0);
+		}
+		else {
+			node = slots[ops[i]].firstChild;
+			for (; k>0; k--)
+				node = node.nextSibling;
+		}
+		slots[s] = node;
+	}
+	return slots;
+}
 
 /**
  * A group of Nodes instantiated from a Shell, with Expr's filled in.
@@ -4668,25 +4707,10 @@ class NodeGroup {
 	 * @return {Node[]} The shell's shared scratch slots array. */
 	resolveStampSlots(shell) {
 		let slots = shell.resolveSlots;
+		// A singleRoot shell's first op pair is always [0, 0], so slot 1 is the row's own root
+		// element and the program can start at the second pair.
 		slots[1] = this.startNode;
-		let ops = shell.resolveOps;
-		// firstChild/nextSibling pointer walk; see setPathsFromFragment for why not childNodes[i].
-		for (let i=2, s=2; i<ops.length; i+=2, s++) {
-			let k = ops[i+1], node;
-			if (k < 0) { // Walk forward from an earlier sibling's slot.
-				node = slots[ops[i]];
-				do
-					node = node.nextSibling;
-				while (++k < 0);
-			}
-			else {
-				node = slots[ops[i]].firstChild;
-				for (; k>0; k--)
-					node = node.nextSibling;
-			}
-			slots[s] = node;
-		}
-		return slots;
+		return runResolveOps(slots, shell.resolveOps, 2, 2);
 	}
 
 	/**
@@ -4697,16 +4721,7 @@ class NodeGroup {
 	 * @return {Path[]} */
 	materializePaths(shell=null) {
 		shell ??= this.shell;
-		let slots = this.resolveStampSlots(shell);
-		let paths = shell.paths;
-		let pathLength = paths.length;
-		let result = this.paths = new Array(pathLength);
-		for (let i=0; i<pathLength; i++) {
-			let p = paths[i];
-			let path = p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot]);
-			path.parentNg = this;
-			result[i] = path;
-		}
+		let result = this.clonePathsFromSlots(shell, this.resolveStampSlots(shell));
 
 		// A wholeParent child-node path that stamped a primitive left exactly one Text child.
 		for (let idx of shell.nodesPathIdx) {
@@ -4764,9 +4779,6 @@ class NodeGroup {
 	 * @param isRootClone {boolean} True when fragment is a direct clone of a singleRoot
 	 * shell's root element: it fills slot 1 itself and the first op pair is skipped. */
 	setPathsFromFragment(fragment, shell, startingPathDepth=0, isRootClone=false) {
-		let paths = shell.paths;
-		let pathLength = paths.length; // For faster iteration
-		let result = this.paths = new Array(pathLength);
 
 		// Fast path: run the shell's precomputed resolve program (see Shell.buildResolveProgram).
 		// Each Path.clone() would walk childNodes from the fragment root to its target node,
@@ -4778,48 +4790,45 @@ class NodeGroup {
 		// attribPaths behavior; pathOffset!==0 (root grafting) also uses the fallback.
 		let ops = shell.resolveOps;
 		if (ops && startingPathDepth === 0) {
-			let slots = shell.resolveSlots;
-			let i = 0, s = 1;
-			if (isRootClone) { // Slot 1 is the root element itself; skip its op pair.
-				slots[1] = fragment;
-				i = 2;
-				s = 2;
-			}
-			else
+			let slots;
+			if (isRootClone) // The root element is also this.startNode, so it seeds slot 1 itself.
+				slots = this.resolveStampSlots(shell);
+			else {
+				slots = shell.resolveSlots;
 				slots[0] = fragment;
-			// Resolve each node via firstChild/nextSibling pointer walks instead of
-			// childNodes[index]; the live NodeList indexing is markedly slower, and indices
-			// are small (markers are elements, often the first child after whitespace stripping).
-			// A negative step count means the program reaches this node from an earlier
-			// sibling's slot instead of from its parent (see Shell.buildResolveProgram).
-			for (; i<ops.length; i+=2, s++) {
-				let k = ops[i+1], node;
-				if (k < 0) {
-					node = slots[ops[i]];
-					do
-						node = node.nextSibling;
-					while (++k < 0);
-				}
-				else {
-					node = slots[ops[i]].firstChild;
-					for (; k>0; k--)
-						node = node.nextSibling;
-				}
-				slots[s] = node;
+				runResolveOps(slots, ops, 0, 1);
 			}
-			for (let i=0; i<pathLength; i++) {
-				let p = paths[i];
-				let path = p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot]);
-				path.parentNg = this;
-				result[i] = path;
-			}
+			this.clonePathsFromSlots(shell, slots);
 		}
-		else
+		else {
+			let paths = shell.paths;
+			let pathLength = paths.length; // For faster iteration
+			let result = this.paths = new Array(pathLength);
 			for (let i=0; i<pathLength; i++) {
 				let path = paths[i].clone(fragment, startingPathDepth);
 				path.parentNg = this;
 				result[i] = path;
 			}
+		}
+	}
+
+	/**
+	 * Copy the shell's Paths onto this NodeGroup's own nodes, taking each path's marker and
+	 * before-node from the slots the resolve program just filled.
+	 * @param shell {Shell}
+	 * @param slots {Node[]} The shell's shared scratch slots, already resolved.
+	 * @return {Path[]} */
+	clonePathsFromSlots(shell, slots) {
+		let paths = shell.paths;
+		let pathLength = paths.length;
+		let result = this.paths = new Array(pathLength);
+		for (let i=0; i<pathLength; i++) {
+			let p = paths[i];
+			let path = p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot]);
+			path.parentNg = this;
+			result[i] = path;
+		}
+		return result;
 	}
 
 	updateStyles() {

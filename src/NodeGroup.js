@@ -23,6 +23,38 @@ const textShell = new Shell();
 const lastStampedShellKey = Symbol('solariteStampedShell');
 
 /**
+ * Run a Shell's precomputed resolve program (see Shell.buildResolveProgram) into the shell's
+ * shared slots array, which the caller has already seeded with its starting node.
+ * Each node is reached with firstChild/nextSibling pointer walks instead of childNodes[index];
+ * the live NodeList indexing is markedly slower, and the indices are small (markers are
+ * elements, often the first child after whitespace stripping).  A negative step count means the
+ * program reaches this node by walking forward from an earlier sibling's slot instead of from
+ * its parent.
+ * @param slots {Node[]} The shell's shared scratch array; slot 0 is the fragment.
+ * @param ops {int[]} Flat [parentSlot, childIndex] pairs in dependency order.
+ * @param i {int} Index of the first op pair to run; earlier pairs are pre-seeded by the caller.
+ * @param s {int} Slot that pair fills.
+ * @return {Node[]} slots, so callers can resolve and use it in one expression. */
+function runResolveOps(slots, ops, i, s) {
+	for (; i<ops.length; i+=2, s++) {
+		let k = ops[i+1], node;
+		if (k < 0) {
+			node = slots[ops[i]];
+			do
+				node = node.nextSibling;
+			while (++k < 0);
+		}
+		else {
+			node = slots[ops[i]].firstChild;
+			for (; k>0; k--)
+				node = node.nextSibling;
+		}
+		slots[s] = node;
+	}
+	return slots;
+}
+
+/**
  * A group of Nodes instantiated from a Shell, with Expr's filled in.
  *
  * The range is determined by startNode and nodeMarker.
@@ -96,7 +128,7 @@ export default class NodeGroup {
 		this.rootNg = parentPath?.parentNg?.rootNg || this;
 		this.parentPath = parentPath;
 
-		/*#IFDEV*/assert(this.rootNg);/*#ENDIF*/
+		/*#IFDEBUG*/assert(this.rootNg);/*#ENDIF*/
 		this.template = template;
 
 		// JSX templates carry their list key on the Template (tagged templates instead set it via
@@ -143,7 +175,7 @@ export default class NodeGroup {
 			}
 		}
 
-		//#IFDEV
+		//#IFDEBUG
 		this.verify();
 		//#ENDIF
 	}
@@ -181,7 +213,7 @@ export default class NodeGroup {
 	 * they are the same handlers on every render, and re-binding them costs a call apiece. */
 	applyExprs(exprs, includeNonComponents=true, lastExprs=null) {
 
-		/*#IFDEV*/
+		/*#IFDEBUG*/
 		this.verify();
 		/*#ENDIF*/
 
@@ -247,7 +279,7 @@ export default class NodeGroup {
 
 		// If there's leftover expressions, there's probably an issue with the Shell that created this NodeGroup,
 		// and the number of paths not matching.
-		/*#IFDEV*/
+		/*#IFDEBUG*/
 		assert(exprIndex === 0);
 		/*#ENDIF*/
 
@@ -263,7 +295,7 @@ export default class NodeGroup {
 		}
 		this.firstApply = false;
 
-		/*#IFDEV*/
+		/*#IFDEBUG*/
 		this.verify();
 		/*#ENDIF*/
 	}
@@ -436,25 +468,10 @@ export default class NodeGroup {
 	 * @return {Node[]} The shell's shared scratch slots array. */
 	resolveStampSlots(shell) {
 		let slots = shell.resolveSlots;
+		// A singleRoot shell's first op pair is always [0, 0], so slot 1 is the row's own root
+		// element and the program can start at the second pair.
 		slots[1] = this.startNode;
-		let ops = shell.resolveOps;
-		// firstChild/nextSibling pointer walk; see setPathsFromFragment for why not childNodes[i].
-		for (let i=2, s=2; i<ops.length; i+=2, s++) {
-			let k = ops[i+1], node;
-			if (k < 0) { // Walk forward from an earlier sibling's slot.
-				node = slots[ops[i]];
-				do
-					node = node.nextSibling;
-				while (++k < 0);
-			}
-			else {
-				node = slots[ops[i]].firstChild;
-				for (; k>0; k--)
-					node = node.nextSibling;
-			}
-			slots[s] = node;
-		}
-		return slots;
+		return runResolveOps(slots, shell.resolveOps, 2, 2);
 	}
 
 	/**
@@ -465,16 +482,7 @@ export default class NodeGroup {
 	 * @return {Path[]} */
 	materializePaths(shell=null) {
 		shell ??= this.shell;
-		let slots = this.resolveStampSlots(shell);
-		let paths = shell.paths;
-		let pathLength = paths.length;
-		let result = this.paths = new Array(pathLength);
-		for (let i=0; i<pathLength; i++) {
-			let p = paths[i];
-			let path = p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot]);
-			path.parentNg = this;
-			result[i] = path;
-		}
+		let result = this.clonePathsFromSlots(shell, this.resolveStampSlots(shell));
 
 		// A wholeParent child-node path that stamped a primitive left exactly one Text child.
 		for (let idx of shell.nodesPathIdx) {
@@ -532,9 +540,6 @@ export default class NodeGroup {
 	 * @param isRootClone {boolean} True when fragment is a direct clone of a singleRoot
 	 * shell's root element: it fills slot 1 itself and the first op pair is skipped. */
 	setPathsFromFragment(fragment, shell, startingPathDepth=0, isRootClone=false) {
-		let paths = shell.paths;
-		let pathLength = paths.length; // For faster iteration
-		let result = this.paths = new Array(pathLength);
 
 		// Fast path: run the shell's precomputed resolve program (see Shell.buildResolveProgram).
 		// Each Path.clone() would walk childNodes from the fragment root to its target node,
@@ -546,48 +551,45 @@ export default class NodeGroup {
 		// attribPaths behavior; pathOffset!==0 (root grafting) also uses the fallback.
 		let ops = shell.resolveOps;
 		if (ops && startingPathDepth === 0) {
-			let slots = shell.resolveSlots;
-			let i = 0, s = 1;
-			if (isRootClone) { // Slot 1 is the root element itself; skip its op pair.
-				slots[1] = fragment;
-				i = 2;
-				s = 2;
-			}
-			else
+			let slots;
+			if (isRootClone) // The root element is also this.startNode, so it seeds slot 1 itself.
+				slots = this.resolveStampSlots(shell);
+			else {
+				slots = shell.resolveSlots;
 				slots[0] = fragment;
-			// Resolve each node via firstChild/nextSibling pointer walks instead of
-			// childNodes[index]; the live NodeList indexing is markedly slower, and indices
-			// are small (markers are elements, often the first child after whitespace stripping).
-			// A negative step count means the program reaches this node from an earlier
-			// sibling's slot instead of from its parent (see Shell.buildResolveProgram).
-			for (; i<ops.length; i+=2, s++) {
-				let k = ops[i+1], node;
-				if (k < 0) {
-					node = slots[ops[i]];
-					do
-						node = node.nextSibling;
-					while (++k < 0);
-				}
-				else {
-					node = slots[ops[i]].firstChild;
-					for (; k>0; k--)
-						node = node.nextSibling;
-				}
-				slots[s] = node;
+				runResolveOps(slots, ops, 0, 1);
 			}
-			for (let i=0; i<pathLength; i++) {
-				let p = paths[i];
-				let path = p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot]);
-				path.parentNg = this;
-				result[i] = path;
-			}
+			this.clonePathsFromSlots(shell, slots);
 		}
-		else
+		else {
+			let paths = shell.paths;
+			let pathLength = paths.length; // For faster iteration
+			let result = this.paths = new Array(pathLength);
 			for (let i=0; i<pathLength; i++) {
 				let path = paths[i].clone(fragment, startingPathDepth)
 				path.parentNg = this;
 				result[i] = path;
 			}
+		}
+	}
+
+	/**
+	 * Copy the shell's Paths onto this NodeGroup's own nodes, taking each path's marker and
+	 * before-node from the slots the resolve program just filled.
+	 * @param shell {Shell}
+	 * @param slots {Node[]} The shell's shared scratch slots, already resolved.
+	 * @return {Path[]} */
+	clonePathsFromSlots(shell, slots) {
+		let paths = shell.paths;
+		let pathLength = paths.length;
+		let result = this.paths = new Array(pathLength);
+		for (let i=0; i<pathLength; i++) {
+			let p = paths[i];
+			let path = p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot]);
+			path.parentNg = this;
+			result[i] = path;
+		}
+		return result;
 	}
 
 	updateStyles() {
@@ -650,7 +652,7 @@ export default class NodeGroup {
 		}
 	}
 
-	//#IFDEV
+	//#IFDEBUG
 	getParentNode() {
 		return this.startNode?.parentNode
 	}

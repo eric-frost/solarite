@@ -27,12 +27,12 @@ export default class PathToComponent extends Path {
 	 * This is different than other Path.apply() functions which only receive Expr[] and not Expr[][].
 	 * Because here we're receiving an array of arrays of expressions, one for each dynamic attribute. */
 	apply(exprs) {
-		//#IFDEV
+		//#IFDEBUG
 		assert(Array.isArray(exprs));
 		assert(!exprs.length || Array.isArray(exprs[0]));
 		//#ENDIF
 
-		//#IFDEV
+		//#IFDEBUG
 		assert(exprs.length === this.attribPaths.length);
 		//#ENDIF
 
@@ -183,12 +183,12 @@ export default class PathToComponent extends Path {
 	 * @param pathOffset {int}
 	 * @return {Path} */
 	clone(newRoot, pathOffset=0) {
-		/*#IFDEV*/this.verify();/*#ENDIF*/
+		/*#IFDEBUG*/this.verify();/*#ENDIF*/
 		let nodeMarker = this.getNewNodeMarker(newRoot, pathOffset);
 		let result = new PathToComponent(null, nodeMarker);
 		result.attribPaths = this.attribPaths.map(path => path.clone(newRoot, pathOffset));
 
-		//#IFDEV
+		//#IFDEBUG
 		result.verify();
 		//#ENDIF
 
@@ -197,7 +197,7 @@ export default class PathToComponent extends Path {
 
 	getExpressionCount() { return 0 }
 
-	//#IFDEV
+	//#IFDEBUG
 	verify() {
 		super.verify();
 		assert(this.nodeMarker.nodeType === Node.ELEMENT_NODE);

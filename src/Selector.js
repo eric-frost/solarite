@@ -60,16 +60,12 @@ export class SelectorRef {
 	 * @param attrName {string}
 	 * @param parentNg {NodeGroup} The row this attribute belongs to. */
 	bind(node, attrName, parentNg) {
-		//#IFDEV
 		// set() writes through the row's own root element, so an attribute anywhere deeper
 		// would be found at bind time and then written somewhere else at set() time.  Catching
 		// it here turns a silently misplaced attribute into a clear message; the check is
 		// stripped from the built file, so it costs a production render nothing.
 		if (parentNg.startNode !== node)
-			throw new Error(`A selector must drive an attribute on the row's own root element, ` +
-				`because set() reaches a row through its key.  Move ${attrName}=\${...} out to ` +
-				`the element that carries key=\${...}.`);
-		//#ENDIF
+			throw new Error(`Solarite: a selector must be on the row's own root element.`);
 
 		let s = this.selector;
 		s.attrName = attrName;

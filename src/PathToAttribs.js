@@ -28,7 +28,7 @@ export default class PathToAttribs extends Path {
 	/**
 	 * @param exprs {Expr[][]} Only the first is used. */
 	apply(exprs) {
-		//#IFDEV
+		//#IFDEBUG
 		assert(Array.isArray(exprs));
 		//#ENDIF
 		this.applySingle(exprs[0]);

@@ -3006,7 +3006,7 @@ Testimony.test('Solarite.keyed.component', `Keys work on component rows and aren
 Testimony.test('Solarite.keyed.staticKeyThrows', () => {
 	assert.throws(() => {
 		let ng = new NodeGroup(h`<p key="foo">hi</p>`);
-	}, 'The key attribute is reserved');
+	}, 'key must be one whole expression');
 });
 
 Testimony.test('Solarite.keyed.mixedKeyThrows', () => {
@@ -3014,7 +3014,7 @@ Testimony.test('Solarite.keyed.mixedKeyThrows', () => {
 		let t = h`<p key="a${1}b">hi</p>`;
 		let ng = new NodeGroup(t);
 		ng.applyExprs(t.exprs);
-	}, 'The key attribute is reserved');
+	}, 'key must be one whole expression');
 });
 
 Testimony.test('Solarite.keyed.nestedKeyThrows', () => {

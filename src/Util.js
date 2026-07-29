@@ -43,16 +43,12 @@ let Util = {
 			// This can only fail on a mistake in the component's own template, so a developer meets it
 			// the first time the component renders and never again at runtime.  It's therefore dev-only,
 			// and stripped from the minified build to keep the id binding small.
-			//#IFDEV
 			if (!id.includes('.')) {
 				let existing = root[id];
 				let isInherited = (id in root) && !Object.hasOwn(root, id);
 				if (!existing?.nodeType && (existing != null || isInherited))
-					throw new Error(`${root.constructor.name}.${id} can't be a reference to ` +
-						`<${el.tagName.toLowerCase()} id="${id}"> because it would clobber an existing ` +
-						`${isInherited ? 'built-in ' : ''}property.  Rename the id or the property.`);
+					throw new Error(`Solarite: id="${id}" would overwrite an existing ${root.constructor.name} property.`);
 			}
-			//#ENDIF
 
 			delve(root, id.split(/\./g), el);
 		}
@@ -135,17 +131,15 @@ let Util = {
 	 * 'UIForm' => 'ui-form'
 	 * 'A100' => 'a-100' */
 	camelToDashes(str) {
-		// Convert any capital letter that is preceded by a lowercase letter or number to lowercase and precede with a dash.
-		str = str.replace(/([a-z0-9])([A-Z])/g, '$1-$2');
-
-		// Convert any capital letter that is followed by a lowercase letter or number to lowercase and precede with a dash.
-		str = str.replace(/([A-Z])([A-Z][a-z])/g, '$1-$2');
-
-		// Convert any number that is preceded by a lowercase or uppercase letter to be preceded by a dash.
-		str = str.replace(/([a-zA-Z])([0-9])/g, '$1-$2');
-
-		// Convert all the remaining capital letters to lowercase.
-		return str.toLowerCase();
+		// One pass finds all three dash positions.  Each alternative matches only the character
+		// *before* the boundary and uses a lookahead for what follows, so the following character
+		// is never consumed and can still start the next boundary.  That's what lets the three
+		// rules interleave in a single scan the way three sequential replaces used to:
+		// 1.  a lowercase letter or digit before a capital ('ProperName').
+		// 2.  a capital before a capital+lowercase pair, i.e. the last capital of a run ('HTMLElement').
+		// 3.  a letter before a digit ('A100').
+		// '$&-' appends the dash after the matched character, then everything folds to lowercase.
+		return str.replace(/[a-z0-9](?=[A-Z])|[A-Z](?=[A-Z][a-z])|[a-zA-Z](?=\d)/g, '$&-').toLowerCase();
 	},
 
 	/**
@@ -232,16 +226,13 @@ let Util = {
 	 * @returns {Object} */
 	splitAttribs(str) {
 		let result = {};
-		let attrs = (str + '') // Split string into multiple attributes.
-			.split(/([\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|\S+))/g)
-			.map(text => text.trim())
-			.filter(text => text.length);
 
-		for (let attr of attrs) {
-			let [name, value] = attr.split(/\s*=\s*/); // split on first equals.
-			value = (value || '').replace(/^(['"])(.*)\1$/, '$2'); // trim value quotes if they match.
-			result[name] = value;
-		}
+		// One scan collects every name and its value.  The value is optional so a boolean attribute
+		// written on its own ('disabled') still lands in the result with an empty value, and the three
+		// value alternatives capture *inside* the quotes so no separate quote-trimming pass is needed.
+		// Whatever doesn't look like an attribute name is skipped rather than becoming a bogus key.
+		(str + '').replace(/([\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g,
+			(_, name, dq, sq, bare) => result[name] = dq ?? sq ?? bare ?? '');
 
 		return result;
 	},
@@ -279,19 +270,14 @@ let Util = {
 	 * @param nodes {Node[]|NodeList}
 	 * @returns {Node[]} */
 	trimEmptyNodes(nodes) {
-		const shouldTrimNode = node =>
-			node.nodeType !== Node.ELEMENT_NODE &&
-			(node.nodeType !== Node.TEXT_NODE || node.textContent.trim() === '');
+		// nodeType 1 is an element and 3 is a text node; the literals are what Node.ELEMENT_NODE
+		// and Node.TEXT_NODE are defined as, and they cost a fraction of the bytes.
+		let isEmpty = node => node.nodeType !== 1 && (node.nodeType !== 3 || !node.textContent.trim());
 
-		// Convert nodeList to an array for easier manipulation
-		const result = [...nodes]
-
-		// Trim from the start
-		while (result.length > 0 && shouldTrimNode(result[0]))
+		let result = [...nodes]; // A NodeList can't shift() or pop().
+		while (result.length && isEmpty(result[0]))
 			result.shift();
-
-		// Trim from the end
-		while (result.length > 0 && shouldTrimNode(result[result.length - 1]))
+		while (result.length && isEmpty(result[result.length - 1]))
 			result.pop();
 
 		return result;
@@ -309,7 +295,7 @@ export default Util;
 
 
 // For debugging only
-//#IFDEV
+//#IFDEBUG
 export function setIndent(items, level=1) {
 	if (typeof items === 'string')
 		items = items.split(/\r?\n/g)

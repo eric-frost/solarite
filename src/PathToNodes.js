@@ -75,7 +75,7 @@ export default class PathToNodes extends Path {
 	 * @param exprs {Expr[]} Only the first is used.
 	 * @return {Node[]} New Nodes created. */
 	apply(exprs) {
-		//#IFDEV
+		//#IFDEBUG
 		assert(Array.isArray(exprs));
 		//#ENDIF
 		this.applySingle(exprs[0]);
@@ -92,7 +92,7 @@ export default class PathToNodes extends Path {
 	 * @param expr {Expr} */
 	applySingle(expr) {
 
-		/*#IFDEV*/this.verify();/*#ENDIF*/
+		/*#IFDEBUG*/this.verify();/*#ENDIF*/
 
 		// Fast path for a single primitive expression, the most common case in loops.
 		let exprType = typeof expr;
@@ -177,7 +177,7 @@ export default class PathToNodes extends Path {
 		// row whose item is unchanged is recognized without building or looking up a Template.
 		if (expr instanceof MappedList) {
 			this.applyMapped(expr);
-			/*#IFDEV*/this.verify();/*#ENDIF*/
+			/*#IFDEBUG*/this.verify();/*#ENDIF*/
 			return;
 		}
 
@@ -216,7 +216,7 @@ export default class PathToNodes extends Path {
 		else
 			this.diffItems(newItems);
 
-		/*#IFDEV*/this.verify();/*#ENDIF*/
+		/*#IFDEBUG*/this.verify();/*#ENDIF*/
 	}
 
 	/**
@@ -707,16 +707,7 @@ export default class PathToNodes extends Path {
 				for (let i=start; i<newEnd; i++) {
 					let ng = this.createOrReuse(newItems[i]);
 					newNgs[i] = ng;
-					let node = ng.startNode, end = ng.endNode;
-					if (node === end) // Single-node NodeGroups are the common case in loops.
-						parent.insertBefore(node, anchor);
-					else while (true) {
-						let next = node.nextSibling;
-						parent.insertBefore(node, anchor);
-						if (node === end)
-							break;
-						node = next;
-					}
+					insertNodesBefore(parent, ng, anchor);
 				}
 			}
 
@@ -752,7 +743,7 @@ export default class PathToNodes extends Path {
 		let oldLen = oldNgs.length, newLen = newItems.length;
 		let newNgs = new Array(newLen);
 
-		//#IFDEV
+		//#IFDEBUG
 		{
 			let seen = new Set();
 			for (let t of newItems) {
@@ -959,16 +950,7 @@ export default class PathToNodes extends Path {
 					for (let i=start; i<newEnd; i++) {
 						let ng = this.createNew(newItems[i]);
 						newNgs[i] = ng;
-						let node = ng.startNode, end = ng.endNode;
-						if (node === end)
-							parent.insertBefore(node, anchor);
-						else while (true) {
-							let next = node.nextSibling;
-							parent.insertBefore(node, anchor);
-							if (node === end)
-								break;
-							node = next;
-						}
+						insertNodesBefore(parent, ng, anchor);
 					}
 				}
 
@@ -1194,7 +1176,7 @@ export default class PathToNodes extends Path {
 		/** @type {Node[]} */
 		let newNodes = [];
 		let oldNodeGroups = path.nodeGroups || emptyNodeGroups;
-		/*#IFDEV*/assert(!oldNodeGroups.includes(null))/*#ENDIF*/
+		/*#IFDEBUG*/assert(!oldNodeGroups.includes(null))/*#ENDIF*/
 
 		path.nodeGroups = [];
 		for (let item of items) {
@@ -1317,7 +1299,7 @@ export default class PathToNodes extends Path {
 
 		(this.nodeGroupsRendered ??= []).push(result);
 
-		/*#IFDEV*/assert(result.parentPath);/*#ENDIF*/
+		/*#IFDEBUG*/assert(result.parentPath);/*#ENDIF*/
 		return result;
 	}
 
@@ -1376,7 +1358,7 @@ export default class PathToNodes extends Path {
 		// This shaves about 5ms off the partialUpdate benchmark.
 		result = this.nodesCache;
 		if (result) {
-			//#IFDEV
+			//#IFDEBUG
 			//this.checkNodesCache();
 			//#ENDIF
 			return result
@@ -1399,7 +1381,7 @@ export default class PathToNodes extends Path {
 		return result;
 	}
 
-	//#IFDEV
+	//#IFDEBUG
 
 	get debug() {
 		return [
