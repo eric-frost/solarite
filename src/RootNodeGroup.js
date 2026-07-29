@@ -6,8 +6,8 @@ import Util from './Util.js';
  * Has these properties not present on NodeGroup, assigned by instantiate():
  * They're not declared as fields because subclass field initializers run after the
  * super constructor and would overwrite the assigned values.
- * @property {HTMLElement} root - Root node at the top of the hierarchy.
- * @property {?object} options - RenderOptions */
+ * @property {HTMLElement} rootEl - Root node at the top of the hierarchy.
+ * @property {?object} renderOptions - RenderOptions */
 export default class RootNodeGroup extends NodeGroup {
 
 	/**
@@ -16,19 +16,19 @@ export default class RootNodeGroup extends NodeGroup {
 	 * Called by the NodeGroup constructor. */
 	instantiate(shell, shellFragment, el, options) {
 		let startingPathDepth = 0;
-		this.options = options;
+		this.renderOptions = options;
 		if (shellFragment instanceof Text) {
 			if (!el)
 				throw new Error('Cannot create a standalone text node');
 
-			this.root = el;
+			this.rootEl = el;
 			if (shellFragment.nodeValue.length)
-				this.root.append(shellFragment);
+				this.rootEl.append(shellFragment);
 		}
 
 		else {
 			if (el) {
-				this.root = el;
+				this.rootEl = el;
 
 				// Save slot
 				// 1. Globals.currentSlotChildren is set if this is called via PathToComponent.applyComponent() calls render()
@@ -40,13 +40,13 @@ export default class RootNodeGroup extends NodeGroup {
 				}
 
 				// If el should replace the root node of the fragment.
-				if (isReplaceEl(shellFragment, this.root.tagName)) {
-					this.root.append(...shellFragment.children[0].childNodes);
+				if (isReplaceEl(shellFragment, this.rootEl.tagName)) {
+					this.rootEl.append(...shellFragment.children[0].childNodes);
 
 					// Copy attributes
 					for (let attrib of shellFragment.children[0].attributes)
-						if (!this.root.hasAttribute(attrib.name))
-							this.root.setAttribute(attrib.name, attrib.value);
+						if (!this.rootEl.hasAttribute(attrib.name))
+							this.rootEl.setAttribute(attrib.name, attrib.value);
 
 					// Go one level deeper into all of shell's paths.
 					startingPathDepth = 1;
@@ -55,7 +55,7 @@ export default class RootNodeGroup extends NodeGroup {
 				else {
 					let isEmpty = shellFragment.childNodes.length === 1 && shellFragment.childNodes[0].nodeType === 3 && shellFragment.childNodes[0].textContent === '';
 					if (!isEmpty)
-						this.root.append(...shellFragment.childNodes);
+						this.rootEl.append(...shellFragment.childNodes);
 				}
 
 
@@ -86,17 +86,17 @@ export default class RootNodeGroup extends NodeGroup {
 				// question being asked here.
 				let relevantNodes = Util.trimEmptyNodes(shellFragment.childNodes);
 				let onlyChild = relevantNodes.length === 1 ? relevantNodes[0] : null;
-				this.root = onlyChild || shellFragment; // We return the whole fragment when calling h() with a collection of nodes.
+				this.rootEl = onlyChild || shellFragment; // We return the whole fragment when calling h() with a collection of nodes.
 				if (onlyChild)
 					startingPathDepth = 1;
 			}
 
-			this.setPathsFromFragment(this.root, shell, startingPathDepth);
-			this.activateEmbeds(this.root, shell, startingPathDepth);
+			this.setPathsFromFragment(this.rootEl, shell, startingPathDepth);
+			this.activateEmbeds(this.rootEl, shell, startingPathDepth);
 		}
-		this.startNode = this.endNode = this.root;
+		this.startNode = this.endNode = this.rootEl;
 
-		Globals.rootNodeGroups.set(this.root, this);
+		Globals.rootNodeGroups.set(this.rootEl, this);
 	}
 }
 

@@ -4,17 +4,17 @@ import PathToAttribValue, {delegatedKeyFor} from "./PathToAttribValue.js";
 // TODO: Merge this into PathToAttribValue?
 export default class PathToEvent extends PathToAttribValue {
 
-	/** @type {string} The attrName without the "on" prefix. */
+	/** @type {string} The attribName without the "on" prefix. */
 	eventName;
 
 	/** @type {symbol|undefined} Expando key nodes store this event's delegated handler under.
 	 * Undefined for non-delegatable (non-bubbling) events; bindEvent() then binds directly. */
 	delegatedKey;
 
-	constructor(nodeBefore, nodeMarker, attrName=null, attrValue=null) {
-		super(null, nodeMarker, attrName, attrValue);
+	constructor(nodeBefore, nodeMarker, attribName=null, attrValue=null) {
+		super(null, nodeMarker, attribName, attrValue);
 		this.skipIfSame = true;
-		this.eventName = attrName ? attrName.slice(2) : null;
+		this.eventName = attribName ? attribName.slice(2) : null;
 		this.delegatedKey = this.eventName !== null ? delegatedKeyFor(this.eventName) : undefined;
 	}
 
@@ -25,7 +25,7 @@ export default class PathToEvent extends PathToAttribValue {
 	 * onclick=${[this, 'doSomething', 'meow']}
 	 *
 	 * @param exprs {Expr[]} Only the first is used.*/
-	apply(exprs) {
+	applyAll(exprs) {
 		//#IFDEBUG
 		assert(Array.isArray(exprs));
 		//#ENDIF
@@ -34,7 +34,7 @@ export default class PathToEvent extends PathToAttribValue {
 		// We have expressions within a string attribute value that's not a Solarite event.  E.g.
 		// <div onclick="alert(${1});"
 		if (this.attrValue?.length > 1) {
-			super.apply(exprs);
+			super.applyAll(exprs);
 			return;
 		}
 
@@ -46,14 +46,14 @@ export default class PathToEvent extends PathToAttribValue {
 	applySingle(expr) {
 		// Expressions within a string attribute value that's not a Solarite event.
 		if (this.attrValue?.length > 1)
-			return super.apply([expr]);
+			return super.applyAll([expr]);
 
 		// Don't bind events to component placeholders.
 		// PathToComponent will do the binding later when it instantiates the component.
 		if (this.isComponentAttrib && this.nodeMarker.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
 			return;
 
-		let root = this.parentNg.rootNg.root
+		let root = this.parentNg.rootNg.rootEl
 
 		/*#IFDEBUG*/
 		assert(root?.nodeType === 1);
@@ -73,7 +73,7 @@ export default class PathToEvent extends PathToAttribValue {
 			expr = null;
 		}
 		else
-			throw new Error(`Solarite: ${this.attrName}=\${...} is not a function.`);
+			throw new Error(`Solarite: ${this.attribName}=\${...} is not a function.`);
 
 		this.bindEvent(node, root, eventName, eventName, func, expr);
 	}

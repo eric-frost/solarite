@@ -17,8 +17,8 @@ window.getHtml = (item, includeComments=false) => {
 	if (!item)
 		return item;
 
-	if (item.fragment)
-		item = item.fragment; // Shell
+	if (item.docFrag)
+		item = item.docFrag; // Shell
 	if (item instanceof DocumentFragment)
 		item = [...item.childNodes]
 
@@ -2177,6 +2177,33 @@ Testimony.test('Solarite.selector.badPlacement', `A selector outside a whole att
 
 	// Inside a multi-part attribute value.
 	assert.throws(() => h(document.createElement('div'))`<p class="row ${sel.when(1, 'x')}"></p>`);
+});
+
+Testimony.test('Solarite.attrib.unquotedValue', `An unquoted attribute value doesn't swallow the tag's closing >`, () => {
+	// The template tokenizer used to treat an unquoted attribute value as running until the next
+	// quote, so a one-character value put the '>' inside it: `<td colspan=2>` left the parser
+	// still inside the tag, and the expression that followed could not be placed.  That threw
+	// "Could not parse expressions in template" on ordinary, valid HTML.  A longer value happened
+	// to work, and `colspan=${x}` worked too because the chunk boundary landed right after the
+	// '=', which is why this survived so long.
+	let el = document.createElement('div');
+	h(el)`<table><tr><td colspan=2>${'hello'}</td></tr></table>`;
+	assert.eq(el.querySelector('td').getAttribute('colspan'), '2');
+	assert.eq(el.querySelector('td').textContent, 'hello');
+
+	// Several unquoted values in one tag, and one followed by a bare attribute.
+	let el2 = document.createElement('div');
+	h(el2)`<div id=a class=b hidden>${'x'}</div>`;
+	assert.eq(el2.querySelector('div').id, 'a');
+	assert.eq(el2.querySelector('div').className, 'b');
+	assert.eq(el2.querySelector('div').hasAttribute('hidden'), true);
+	assert.eq(el2.querySelector('div').textContent, 'x');
+
+	// A '>' inside a QUOTED value must still not end the tag.
+	let el3 = document.createElement('div');
+	h(el3)`<div title="a>b">${'y'}</div>`;
+	assert.eq(el3.querySelector('div').getAttribute('title'), 'a>b');
+	assert.eq(el3.querySelector('div').textContent, 'y');
 });
 
 Testimony.test('Solarite.loop.paragraphs', () => {

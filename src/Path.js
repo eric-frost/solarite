@@ -91,7 +91,7 @@ export default class Path {
 	 * [[expr5], [expr6, expr7]] // arguments to second my-component constructor.
 	 * [expr5]                   // user attribute value.
 	 * [expr6, expr7]            // role attribute value. */
-	apply(exprs) {
+	applyAll(exprs) {
 		//#IFDEBUG
 		assert(Array.isArray(exprs));
 		//#ENDIF
@@ -141,7 +141,7 @@ export default class Path {
 	 * @param nodeMarker {Node}
 	 * @return {Path} */
 	cloneWithNodes(nodeBefore, nodeMarker) {
-		let result = new this.constructor(nodeBefore, nodeMarker, this.attrName, this.attrValue);
+		let result = new this.constructor(nodeBefore, nodeMarker, this.attribName, this.attrValue);
 		result.isComponentAttrib = this.isComponentAttrib;
 		result.wholeParent = this.wholeParent;
 		result.isHtmlProperty = this.isHtmlProperty;

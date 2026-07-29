@@ -154,7 +154,7 @@ export default class NodeGroup {
 			// A lone root element is cloned directly, skipping a throwaway fragment wrapper.
 			// Only for child NodeGroups; RootNodeGroup's grafting expects a fragment.
 			if (shell.singleRoot && parentPath !== null) {
-				const clone = shell.fragment.firstChild.cloneNode(true);
+				const clone = shell.docFrag.firstChild.cloneNode(true);
 				this.startNode = this.endNode = clone;
 
 				// Stampable shells skip path creation entirely; the first applyExprs() routes
@@ -163,7 +163,7 @@ export default class NodeGroup {
 					this.setPathsFromFragment(clone, shell, 0, true);
 			}
 			else {
-				const shellFragment = shell.fragment.cloneNode(true);
+				const shellFragment = shell.docFrag.cloneNode(true);
 
 				if (shellFragment.nodeType === 11) { // DocumentFragment
 					this.startNode = shellFragment.firstChild;
@@ -259,7 +259,7 @@ export default class NodeGroup {
 		let exprIndex = exprs.length; // Update exprs at paths.
 		let pathExprs = new Array(paths.length); // Store all the expressions that map to a single path.  Only paths to attribute values can have more than one.
 		for (let i = paths.length - 1, path; path = paths[i]; i--) {
-			if (i===0 && path instanceof PathToComponent && path.nodeMarker === this.getRootNode())
+			if (i===0 && path instanceof PathToComponent && path.nodeMarker === this.getRootEl())
 				continue;
 
 			// Get the expressions associated with this path.
@@ -271,10 +271,10 @@ export default class NodeGroup {
 			// They use expressions from the paths that provide their attributes.
 			if (path instanceof PathToComponent) {
 				let attribExprs = pathExprs.slice(i+1, i+1 + path.attribPaths.length); // +1 b/c we move forward from the component path.
-				path.apply(attribExprs);
+				path.applyAll(attribExprs);
 			}
 			else if (includeNonComponents)
-				path.apply(pathExprs[i]);
+				path.applyAll(pathExprs[i]);
 		}
 
 		// If there's leftover expressions, there's probably an issue with the Shell that created this NodeGroup,
@@ -329,8 +329,8 @@ export default class NodeGroup {
 		let ops = shell.stampOp, slotIdx = shell.stampSlot, aux = shell.stampAux;
 		let stampers = shell.stampPaths;
 		let rootNg = this.rootNg;
-		let root = rootNg.root;
-		let opt = rootNg.options?.eventDelegation;
+		let root = rootNg.rootEl;
+		let opt = rootNg.renderOptions?.eventDelegation;
 		let delegateDoc = opt === 'document';
 		let delegateAll = opt === undefined || opt === true || delegateDoc;
 
@@ -522,8 +522,8 @@ export default class NodeGroup {
 	/**
 	 * Get the root element of the NodeGroup's RootNodeGroup.
 	 * @returns {HTMLElement|DocumentFragment} */
-	getRootNode() {
-		return this.rootNg.root;
+	getRootEl() {
+		return this.rootNg.rootEl;
 	}
 
 	/**
@@ -591,7 +591,7 @@ export default class NodeGroup {
 			for (let [style, oldText] of this.styles) {
 				let newText = style.textContent;
 				if (oldText !== newText)
-					Util.bindStyles(style, this.rootNg.root);
+					Util.bindStyles(style, this.rootNg.rootEl);
 			}
 	}
 
@@ -601,9 +601,9 @@ export default class NodeGroup {
 	 * @param pathOffset {int} */
 	activateEmbeds(root, shell, pathOffset=0) {
 
-		let rootEl = this.rootNg.root;
+		let rootEl = this.rootNg.rootEl;
 		if (rootEl) {
-			let options = this.rootNg.options;
+			let options = this.rootNg.renderOptions;
 
 			// ids
 			if (options?.ids !== false) {
