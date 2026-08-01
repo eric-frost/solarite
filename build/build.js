@@ -37,6 +37,7 @@ const terserOptions = {
 	ecma: 8, // Decreases size.
 	format: {
 		preamble: `// Solarite v${packageJson.version} | MIT | eric-frost.github.io/solarite`,
+		ascii_only: true,
 		comments: false,
 		wrap_func_args: false,
 	},
@@ -58,6 +59,9 @@ const terserOptions = {
 		unsafe_proto: true,
 		unsafe_regexp: true,
 		unsafe_undefined: true,
+		// Comma-chaining statements saves minified bytes but costs gzipped ones: the commas
+		// produce more distinct byte sequences than repeated '};' lines, and gzip is what ships.
+		sequences: false,
 	},
 	mangle: { // https://github.com/terser/terser#mangle-options
 		//eval: true, // We use reserved words to not mangle names used in eval.
