@@ -63,7 +63,7 @@ export class SelectorRef {
 		// set() writes through the row's own root element, so an attribute anywhere deeper
 		// would be found at bind time and then written somewhere else at set() time.  Catching
 		// it here turns a silently misplaced attribute into a clear message.  It SHIPS: it is not
-		// in an #IFDEBUG block, and it must not be, because the failure it catches is silent.
+		// in a debug-strip block, and it must not be, because the failure it catches is silent.
 		if (parentNg.startNode !== node)
 			throw new Error(`Solarite: a selector must be on the row's root element.`);
 

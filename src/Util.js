@@ -42,8 +42,8 @@ let Util = {
 			// holds a non-Node value.  A previously-bound element (a Node) is fine to re-assign.
 			// This can only fail on a mistake in the component's own template, so a developer meets it
 			// the first time the component renders and never again at runtime.  It nonetheless SHIPS,
-			// and deliberately: #IFDEBUG is stripped from dist/Solarite.js, which is what npm serves,
-			// so hiding it there would delete it for everyone rather than only for production.
+			// and deliberately: debug-strip blocks are removed from dist/Solarite.js, which is what
+			// npm serves, so hiding it there would delete it for everyone, not only for production.
 			if (!id.includes('.')) {
 				let existing = root[id];
 				let isInherited = (id in root) && !Object.hasOwn(root, id);
