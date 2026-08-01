@@ -5404,11 +5404,10 @@ function convertType(value, type) {
 		return new Date(value);
 	if (type === Boolean)
 		return !['false', '0'].includes(value);
-	if (type === Number)
-		return Number(value);
-	if (type === String)
-		return String(value);
-	if (type) // custom string=>value function
+	// Number and String need no cases of their own: they're plain functions, so the custom
+	// branch below calls them correctly.  Date and Boolean are the ones that can't fall through
+	// (Date without `new` returns a string; Boolean('false') is true).
+	if (type) // Number, String, or a custom string=>value function
 		return type(value);
 	return value;
 }
