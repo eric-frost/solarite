@@ -162,8 +162,8 @@ let Util = {
 			// holds a non-Node value.  A previously-bound element (a Node) is fine to re-assign.
 			// This can only fail on a mistake in the component's own template, so a developer meets it
 			// the first time the component renders and never again at runtime.  It nonetheless SHIPS,
-			// and deliberately: #IFDEBUG is stripped from dist/Solarite.js, which is what npm serves,
-			// so hiding it there would delete it for everyone rather than only for production.
+			// and deliberately: debug-strip blocks are removed from dist/Solarite.js, which is what
+			// npm serves, so hiding it there would delete it for everyone, not only for production.
 			if (!id.includes('.')) {
 				let existing = root[id];
 				let isInherited = (id in root) && !Object.hasOwn(root, id);
@@ -774,7 +774,7 @@ class SelectorRef {
 		// set() writes through the row's own root element, so an attribute anywhere deeper
 		// would be found at bind time and then written somewhere else at set() time.  Catching
 		// it here turns a silently misplaced attribute into a clear message.  It SHIPS: it is not
-		// in an #IFDEBUG block, and it must not be, because the failure it catches is silent.
+		// in a debug-strip block, and it must not be, because the failure it catches is silent.
 		if (parentNg.startNode !== node)
 			throw new Error(`Solarite: a selector must be on the row's root element.`);
 
