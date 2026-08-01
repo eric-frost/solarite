@@ -3510,7 +3510,7 @@ class PathToComponent extends Path {
 				this.deferredExprs = exprs;
 				if (!this.whenDefinedPending) {
 					this.whenDefinedPending = true;
-					console.warn(`Solarite: <${tagName}> is not defined; deferring until customElements.define('${tagName}', ...).`);
+					console.warn(`Solarite: <${tagName}> is not defined yet; waiting for customElements.define().`);
 					customElements.whenDefined(tagName).then(() => {
 						this.whenDefinedPending = false;
 						let deferred = this.deferredExprs;
