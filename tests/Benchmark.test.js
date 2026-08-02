@@ -38,6 +38,32 @@ function buildData(count = rowCount) {
 
 
 
+import {assert} from "./Testimony.js";
+
+Testimony.test('Benchmark.entriesStayNoteFree', `The benchmark entries must never regrow an implementation-note trigger`, async () => {
+	// The js-framework-benchmark maintainer hand-attaches "implementation notes" to entries
+	// whose APP code uses shortcuts, and solarite carried two until mid-2026: #801 for passing
+	// eventDelegation explicitly, #1261 for h.memo's per-item caching.  Both were earned by a
+	// single line in main.js, both took an upstream request to remove, and both would be
+	// re-earned the same way.  This test fails the suite the moment either entry file grows one
+	// of the exact triggers again, so the mistake is caught here instead of on the public board.
+	//
+	// Framework INTERNALS are exempt from notes ("Frameworks themselves are free to use event
+	// delegation"), so this scans only the entry app code, not src/.
+	const triggers = [
+		['eventDelegation', '#801: delegation must come from the framework default, never an explicit option in the entry'],
+		['h.memo',          '#1261: per-item caching in app code; the identity contract of h.map is the framework-layer replacement'],
+		['h.immutableMap',  'same mechanism as h.map and fine in apps, but the entries use h.map so any change here deserves a look'],
+		['requestAnimationFrame', '#796: explicit rAF in entry code'],
+	];
+	for (const file of ['/benchmarks/solarite-keyed/main.js', '/benchmarks/solarite/main.js']) {
+		const src = await (await fetch(file)).text();
+		assert(src.length > 1000, file + ' fetched');
+		for (const [needle, why] of triggers)
+			assert(!src.includes(needle), `${file} contains "${needle}" — ${why}`);
+	}
+});
+
 Testimony.test('Benchmark.vanilla._createRows',  `Create ${rowCount} rows`, () => {
 
 	// Setup performance monitoring
