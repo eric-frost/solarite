@@ -4153,6 +4153,92 @@ Testimony.test('Solarite.attrib.toggleFunction', () => {
 	assert.eq(getHtml(a), `<r-465><div></div></r-465>`)
 });
 
+Testimony.test('Solarite.attrib.removeEmpty', 'Every empty value removes an ordinary attribute', () => {
+
+	let val = 'red';
+
+	class R466 extends Solarite {
+		render() {
+			h(this)`<div class=${val}></div>`;
+		}
+	}
+
+	let a = new R466();
+	a.render();
+	let div = a.querySelector('div');
+	assert.eq(div.getAttribute('class'), 'red');
+
+	// Each of these removes the attribute outright, rather than leaving class="" behind.
+	// Starting from a real value each time is the case that used to write an empty attribute.
+	for (let empty of [undefined, false, null, '']) {
+		val = 'red';
+		a.render();
+		val = empty;
+		a.render();
+		assert.eq(div.hasAttribute('class'), false, `class=\${${JSON.stringify(empty) ?? 'undefined'}} left an attribute`);
+	}
+
+	// A function expression returning an empty value skips makePrimitive(), so it's a separate path.
+	class R467 extends Solarite {
+		render() {
+			h(this)`<div class=${() => val}></div>`;
+		}
+	}
+	let b = new R467();
+	val = 'red';
+	b.render();
+	let bDiv = b.querySelector('div');
+	assert.eq(bDiv.getAttribute('class'), 'red');
+	for (let empty of [undefined, false, null, '']) {
+		val = 'red';
+		b.render();
+		val = empty;
+		b.render();
+		assert.eq(bDiv.hasAttribute('class'), false, `class=\${()=>${JSON.stringify(empty) ?? 'undefined'}} left an attribute`);
+	}
+
+	// Zero is a real value and must survive.
+	val = 0;
+	a.render();
+	assert.eq(a.querySelector('div').getAttribute('class'), '0');
+});
+
+Testimony.test('Solarite.attrib.emptyProperty', 'An empty value clears an html property instead of writing "false"', () => {
+
+	let val = 'abc';
+	let checked = true;
+
+	class R468 extends Solarite {
+		render() {
+			h(this)`<div><input data-id="text" value=${val}><input data-id="box" type="checkbox" checked=${checked}></div>`;
+		}
+	}
+
+	let a = new R468();
+	a.render();
+	assert.eq(a.text.value, 'abc');
+	assert.eq(a.box.checked, true);
+
+	// A string-valued property must end up empty, not holding the text "false".
+	for (let empty of [undefined, false, null, '']) {
+		val = 'abc';
+		a.render();
+		val = empty;
+		a.render();
+		assert.eq(a.text.value, '', `value=\${${JSON.stringify(empty) ?? 'undefined'}} did not clear the input`);
+	}
+
+	// A boolean-valued property still goes false.
+	checked = false;
+	a.render();
+	assert.eq(a.box.checked, false);
+
+	// And '' on a property is an ordinary value, so the input is still usable afterwards.
+	val = 'xyz';
+	a.render();
+	assert.eq(a.text.value, 'xyz');
+});
+
 Testimony.test('Solarite.attrib.pseudoRoot', () => {
 	let title = 'Hello'
 	class R470 extends Solarite {
