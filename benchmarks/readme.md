@@ -5,6 +5,7 @@ These are implementations for krausest's https://github.com/krausest/js-framewor
 - `solarite/` - The non-keyed implementation. Merged upstream as `frameworks/non-keyed/solarite`.
 - `solarite-keyed/` - The keyed implementation. Same app, but the row template uses `key=${row.id}` and the title says keyed.
 - `vanilla3/` - A vanilla-js reference implementation used for local comparison.
+- `real-world/` - Solarite-only coverage for nested components, scoped styles, forms, SVG, raw Nodes, and long keyed reorders. It reports each workload separately rather than inventing a composite score.
 - `results/` - Historical local benchmark results.
 
 Each implementation's `Solarite.min.js` is a symlink to `../../dist/Solarite.min.js`, so run `bash build/build.bat` after changing `src/` and both entries pick up the new build.
@@ -27,6 +28,8 @@ Start the server with `npm start` from the benchmark repo root, then open:
 - http://localhost:8080/frameworks/keyed/solarite/
 
 Append `?benchmark=10` to run the built-in 10x benchmark loop (cold/warm/best reporting in the console).
+
+Open `http://solarite.loc/benchmarks/real-world/` for the broader application suite, or append `?runs=12` to run it immediately. Each sample includes synchronous Solarite work plus a forced layout. Compare revisions back-to-back in the same browser session; the numbers are not absolute performance claims and are not part of js-framework-benchmark.
 
 ## Commands
 
