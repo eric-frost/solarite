@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Solarite real-application benchmarks</title>
+	<style>
+		:root { color-scheme: light dark; font: 15px/1.45 system-ui, sans-serif; }
+		body { margin: 0 auto; max-width: 1100px; padding: 24px; }
+		button { font: inherit; padding: 8px 14px; }
+		table { border-collapse: collapse; margin-top: 20px; width: 100%; }
+		th, td { border-bottom: 1px solid #8886; padding: 8px; text-align: right; }
+		th:first-child, td:first-child { text-align: left; }
+		#sandbox { contain: layout style; height: 260px; margin-top: 24px; overflow: auto; }
+		.note { color: #777; max-width: 72ch; }
+	</style>
+</head>
+<body>
+	<h1>Solarite real-application benchmarks</h1>
+	<p class="note">Each sample includes Solarite's synchronous work and a forced layout. The first sample is reported separately from the warm median. Run old and new builds in the same browser session before comparing them.</p>
+	<label>Runs <input id="runs" type="number" min="2" max="100" value="12"></label>
+	<button id="run" type="button">Run benchmarks</button>
+	<span id="status"></span>
+	<table>
+		<thead><tr><th>Scenario</th><th>Cold</th><th>Warm median</th><th>Warm p90</th></tr></thead>
+		<tbody id="results"></tbody>
+	</table>
+	<div id="sandbox"></div>
+	<script type="module" src="main.js"></script>
+</body>
+</html>

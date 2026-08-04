@@ -358,3 +358,35 @@ Testimony.testIframe(
 	'<iframe src="/benchmarks/vanilla3/index.html?benchmark=10" style="width: 100%; height: 500px; border: 1px solid #ccc;"></iframe>',
 	runIframeBenchmark(10)
 );
+
+Testimony.testIframe(
+	'Benchmark.realWorld._suite',
+	'Run representative component, form, SVG, Node, and reorder benchmarks',
+	{ timeout: 60000 },
+	'<iframe src="/benchmarks/real-world/index.html?runs=5" style="width: 100%; height: 500px; border: 1px solid #ccc;"></iframe>',
+	async context => {
+		let results = null;
+		let error = null;
+		window.onRealWorldBenchmarkComplete = value => results = value;
+		window.onRealWorldBenchmarkError = value => error = value;
+
+		let start = Date.now();
+		while (!results && !error && Date.now() - start < 55000)
+			await new Promise(resolve => setTimeout(resolve, 50));
+
+		delete window.onRealWorldBenchmarkComplete;
+		delete window.onRealWorldBenchmarkError;
+		if (error)
+			throw new Error(error);
+		if (!results)
+			throw new Error('Real-application benchmark timed out.');
+		context.assert.eq(results.length, 7);
+		for (let result of results) {
+			context.assert(result.cold >= 0, result.name + ' has a cold result');
+			context.assert(result.median >= 0, result.name + ' has a warm median');
+			context.assert.eq(result.samples.length, 5);
+		}
+		return results.map(result =>
+			`${result.name}: ${result.median.toFixed(2)}ms`).join('; ');
+	}
+);
