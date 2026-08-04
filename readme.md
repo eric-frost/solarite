@@ -1,8 +1,8 @@
 # Solarite
 
-Solarite makes native web components fast to update, with no build step and no signals. You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed. It's tiny (13.5KB min+gzip) and runs straight in the browser as a standard ES module.
+Solarite makes native web components fast to update, with no build step and no signals. You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed. It's small (12.4KB with Brotli) and runs straight in the browser as a standard ES module.
 
-**[Documentation & live examples →](https://vorticode.github.io/solarite/)**
+**[Documentation & live examples →](https://eric-frost.github.io/solarite/)**
 
 ## Install
 
@@ -14,7 +14,7 @@ Or use it with no build step at all, straight from a CDN:
 
 ```javascript
 import h, {Solarite} from
-  'https://cdn.jsdelivr.net/npm/solarite@0.7.0/dist/Solarite.min.js';
+  'https://cdn.jsdelivr.net/npm/solarite@0.8.0/dist/Solarite.min.js';
 ```
 
 ## Example
@@ -40,18 +40,18 @@ document.body.append(new Counter());
 
 ## Why Solarite?
 
-It's one of the fastest UI libraries measured: a score of **1.08** on the [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/current.html) — about 8% slower than hand-written vanilla JavaScript — while staying tiny and build-free.
+It's one of the fastest UI libraries measured: a score of **1.10** on the [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/current.html) — about 10% slower than hand-written vanilla JavaScript — while staying tiny and build-free.
 
 ### Compared to Lit
 
-Lit is the best-known way to build web components. Here's where Solarite differs:
+[Lit](https://lit.dev/) is a popular library for building web components. Here's where Solarite differs:
 
 - **Scoped CSS without Shadow DOM.** Solarite scopes each component's `<style>` in the light DOM, so global stylesheets, form participation, and third-party CSS still reach your elements. There's no Shadow DOM boundary to work around.
 - **No reactivity system to learn.** No signals, no `@property` decorators, no reactive controllers. Mutate plain JavaScript objects and arrays of any depth, then call `render()`. Updates happen exactly when you ask for them.
-- **Truly build-free.** Ship the ES module as-is. Optional JSX plugins exist for Babel, esbuild, and Vite, but nothing requires a compiler.
-- **Closer to vanilla speed.** Solarite sits near the top of the benchmark, ahead of most signal-based and virtual-DOM libraries.
+- **Truly build-free.** You can optionally use the Solarite JSX plugins for Babel, esbuild, and Vite, but Solarite is still elegant to use in vanilla JS with a single import statement.
+- **Closer to vanilla speed.** Solarite sits near the top of the [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/current.html), ahead of most signal-based and virtual-DOM libraries.
 
-The trade-off is deliberate: Solarite re-renders when you call `render()` rather than tracking dependencies automatically. Explicit updates, no hidden reactivity — a design choice, not a missing feature.
+The trade-off is deliberate: Solarite re-renders when you call `render()` rather than tracking dependencies automatically.
 
 ## License
 
