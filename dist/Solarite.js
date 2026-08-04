@@ -962,10 +962,20 @@ class PathToAttribValue extends Path {
 			else
 				expr = Util.makePrimitive(expr);
 
-			// Values to toggle an attribute
-			if (expr === undefined || expr === false || expr === null) { // Util.isFalsy() inlined.
-				if (isProp)
-					node[this.attribName] = false;
+			// Values that remove an attribute.  The empty string is included so that an attribute
+			// disappears whenever its expression is empty, instead of only when it happened to be
+			// absent already.  makePrimitive() above turns null into '', so plain null lands here
+			// too; the explicit null test still matters for a function expression returning null,
+			// which skips makePrimitive.
+			// An html property is exempt: on those, '' is a real value meaning "empty", as when
+			// clearing an <input>, so it belongs on the assignment path below.
+			if (expr === undefined || expr === false || expr === null || (expr === '' && !isProp)) {
+				if (isProp) {
+					// Clear the property with a value of its own type.  Assigning false to a string
+					// property such as input.value would put the text "false" in the field.
+					let old = node[this.attribName];
+					node[this.attribName] = typeof old === 'boolean' ? false : '';
+				}
 				node.removeAttribute(this.attribName);
 			}
 			else if (expr === true) {
@@ -978,7 +988,7 @@ class PathToAttribValue extends Path {
 			else {
 				// Only update attributes if the value has changed.
 				// This is needed for setting input.value, .checked, option.selected, etc.
-				// A missing attribute counts as '', so empty values don't write empty attributes.
+				// Non-property attributes never reach here with '', since that removes above.
 				let oldVal = isProp
 					? node[this.attribName]
 					: node.getAttribute(this.attribName) ?? '';
