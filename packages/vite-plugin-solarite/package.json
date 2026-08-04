@@ -29,5 +29,8 @@
   },
   "peerDependenciesMeta": {
     "solarite": { "optional": true }
+  },
+  "scripts": {
+    "test": "node test.js"
   }
 }
