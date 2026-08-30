@@ -5,6 +5,7 @@ All notable changes to Solarite are documented here. This project follows [Keep 
 ## [Unreleased]
 
 ### Fixed
+- A customized built-in — a component written as `<div is="my-panel">` rather than `<my-panel>` — is now constructed once instead of twice, and one that renders from its constructor no longer nests that first render inside its own `<slot>`. The browser was upgrading the placeholder Solarite parses the template into, because an element's `is` is recorded internally and survives both removing the attribute and cloning the element; Solarite now rebuilds those elements while building the template so the placeholder stays inert. The visible symptom only appeared when rendering into an element already in the page, which is why it could pass a test and fail in the browser.
 - A component declared with children inside another template no longer renders an empty `<slot>` when its own constructor builds a second component. Solarite passes those children to the new component through one shared variable, and any component created in between — typically by a field initializer, such as a toolbar that owns a menu — used to overwrite it, so the children vanished with no error and nothing in the console. The hand-off is now saved and restored around each component's construction and carries the constructor it was meant for, so an unrelated component created in the middle leaves it alone. Customized built-ins (`<div is="my-panel">`) receive their slot children correctly too.
 
 ## [0.8.0] - 2026-08-02

@@ -21,8 +21,17 @@ function reset() {
 		connected: new WeakSet(),
 
 		/**
-		 * Set by NodeGroup.instantiateComponent()
-		 * Used by RootNodeGroup.getSlotChildren(). */
+		 * A hand-off in flight from PathToComponent.applyAll(), which parks the child nodes
+		 * declared inside a component's tag here just before constructing it, to that
+		 * component's RootNodeGroup.instantiate(), which puts them in its <slot>.  Null when
+		 * no hand-off is pending.
+		 *
+		 * It is addressed by Constructor rather than by tag name because a customized
+		 * built-in has no usable tag at the moment it is consumed:  a <tr is="my-row">
+		 * reports a tagName of TR, and its 'is' attribute is not written until after the
+		 * constructor -- which may already have rendered -- has returned.
+		 *
+		 * @type {?{Constructor:Function, nodes:Node[]}} */
 		currentSlotChildren: null,
 
 		div: document.createElement("div"),
@@ -3504,106 +3513,120 @@ class PathToComponent extends Path {
 			}
 		}
 
-		// 2. Instantiate component on first time.
-		let isAttrib = el.getAttribute('_is');
-		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER') || isAttrib) {
+		// Constructing a component runs arbitrary user code -- field initializers, the
+		// constructor body, render() -- and that code can build more components, re-entering
+		// this method and overwriting the hand-off parked below.  Saving the caller's value
+		// here and restoring it in the finally makes the JS call stack the stack this hand-off
+		// needs, and unlike an explicit stack it cannot leak if construction throws.
+		let prevSlotChildren = Globals$1.currentSlotChildren;
+		try {
+			// 2. Instantiate component on first time.
+			let isAttrib = el.getAttribute('_is');
+			if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER') || isAttrib) {
 
 
-			// 2a. Instantiate component
-			let tagName = (isAttrib || el.tagName.slice(0, -21)).toLowerCase(); // Remove -SOLARITE-PLACEHOLDER
-			let Constructor = customElements.get(tagName);
+				// 2a. Instantiate component
+				let tagName = (isAttrib || el.tagName.slice(0, -21)).toLowerCase(); // Remove -SOLARITE-PLACEHOLDER
+				let Constructor = customElements.get(tagName);
 
-			// Not defined yet (e.g. the module is being lazily imported): keep the placeholder
-			// and instantiate when the definition lands, like a native custom-element upgrade.
-			// deferredExprs always holds the LATEST exprs so re-renders while undefined win.
-			if (!Constructor) {
-				this.deferredExprs = exprs;
-				if (!this.whenDefinedPending) {
-					this.whenDefinedPending = true;
-					console.warn(`Solarite: <${tagName}> is not defined yet; waiting for customElements.define().`);
-					customElements.whenDefined(tagName).then(() => {
-						this.whenDefinedPending = false;
-						let deferred = this.deferredExprs;
-						this.deferredExprs = null;
-						// Skip if a newer render already instantiated or replaced the placeholder.
-						if (deferred && this.nodeMarker === el && el.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
-							this.applyAll(deferred);
-					});
-				}
-				Globals$1.currentSlotChildren = null;
-				return;
-			}
-
-			Globals$1.currentSlotChildren = [...el.childNodes]; // TODO: Does this need to be a stack?
-			let newEl = new Constructor(attribs);
-
-			// 2b. Copy attributes over.
-			if (isAttrib) {
-				newEl.setAttribute('is', isAttrib);
-			//	el.removeAttribute('_is');
-			}
-			for (let attrib of el.attributes)
-				if (attrib.name !== '_is')
-					newEl.setAttribute(attrib.name, attrib.value);
-
-			// Set dynamic attributes if they are primitive types.
-			for (let name in attribs) {
-				let val = attribs[name];
-				let valType = typeof val;
-				// Only true and false can reach here, so the undefined/null halves of the
-				// falsy test this used to spell out could never have decided anything.
-				if (valType === 'boolean') {
-					if (val)
-						newEl.setAttribute(name, '');
+				// Not defined yet (e.g. the module is being lazily imported): keep the placeholder
+				// and instantiate when the definition lands, like a native custom-element upgrade.
+				// deferredExprs always holds the LATEST exprs so re-renders while undefined win.
+				if (!Constructor) {
+					this.deferredExprs = exprs;
+					if (!this.whenDefinedPending) {
+						this.whenDefinedPending = true;
+						console.warn(`Solarite: <${tagName}> is not defined yet; waiting for customElements.define().`);
+						customElements.whenDefined(tagName).then(() => {
+							this.whenDefinedPending = false;
+							let deferred = this.deferredExprs;
+							this.deferredExprs = null;
+							// Skip if a newer render already instantiated or replaced the placeholder.
+							if (deferred && this.nodeMarker === el && el.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
+								this.applyAll(deferred);
+						});
+					}
+					return;
 				}
 
-				// If type is a non-boolean primitive, set the attribute value.
-				else if (valType==='string' || valType === 'number' || valType==='bigint')
-					newEl.setAttribute(name, val);
+				// Hand the children declared inside the component's tag to the RootNodeGroup that
+				// its render() is about to create.  There is no other channel: the children have
+				// to be parked before new Constructor(), because a Solarite constructor may call
+				// this.render() itself, and the element that would otherwise carry them does not
+				// exist yet.
+				Globals$1.currentSlotChildren = {Constructor, nodes: [...el.childNodes]};
+				let newEl = new Constructor(attribs);
+
+				// 2b. Copy attributes over.
+				if (isAttrib) {
+					newEl.setAttribute('is', isAttrib);
+				//	el.removeAttribute('_is');
+				}
+				for (let attrib of el.attributes)
+					if (attrib.name !== '_is')
+						newEl.setAttribute(attrib.name, attrib.value);
+
+				// Set dynamic attributes if they are primitive types.
+				for (let name in attribs) {
+					let val = attribs[name];
+					let valType = typeof val;
+					// Only true and false can reach here, so the undefined/null halves of the
+					// falsy test this used to spell out could never have decided anything.
+					if (valType === 'boolean') {
+						if (val)
+							newEl.setAttribute(name, '');
+					}
+
+					// If type is a non-boolean primitive, set the attribute value.
+					else if (valType==='string' || valType === 'number' || valType==='bigint')
+						newEl.setAttribute(name, val);
+				}
+
+
+				// 2c. If an id pointed at the placeholder, update it to point to the new element.
+				let id = newEl.getAttribute('data-id') || newEl.getAttribute('id');
+				if (id)
+					delve(this.parentNg.getRootEl(), id.split(/\./g), newEl);
+
+				// 2d. Update paths to use replaced element.
+				let ng = this.parentNg;
+				this.nodeMarker = newEl;
+				for (let path of ng.paths) {
+					if (path.nodeMarker === el)
+						path.nodeMarker = newEl;
+					if (path.nodeBefore === el)
+						path.nodeBefore = newEl;
+				}
+				if (ng.startNode === el)
+					ng.startNode = newEl;
+				if (ng.endNode === el)
+					ng.endNode = newEl;
+
+				// 2f. Call render() if it wasn't called by the constructor.
+				// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
+				// Because that path renders it without the attribute expressions.
+				if (typeof newEl.render === 'function' && !Globals$1.rendered.has(newEl))
+					newEl.render(attribs, true);
+
+				// 2g. Update attribute paths to use the new element and re-apply them.
+				for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
+					attribPath.parentNg = this.parentNg;
+					attribPath.nodeMarker = newEl;
+					attribPath.applyAll(exprs[i]);
+				}
+
+				// 2e. Swap it to the DOM.
+				el.replaceWith(newEl);
 			}
 
+			// 2f. Render
+			else if (typeof el.render === 'function')
+				el.render(attribs, changed);
 
-			// 2c. If an id pointed at the placeholder, update it to point to the new element.
-			let id = newEl.getAttribute('data-id') || newEl.getAttribute('id');
-			if (id)
-				delve(this.parentNg.getRootEl(), id.split(/\./g), newEl);
-
-			// 2d. Update paths to use replaced element.
-			let ng = this.parentNg;
-			this.nodeMarker = newEl;
-			for (let path of ng.paths) {
-				if (path.nodeMarker === el)
-					path.nodeMarker = newEl;
-				if (path.nodeBefore === el)
-					path.nodeBefore = newEl;
-			}
-			if (ng.startNode === el)
-				ng.startNode = newEl;
-			if (ng.endNode === el)
-				ng.endNode = newEl;
-
-			// 2f. Call render() if it wasn't called by the constructor.
-			// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
-			// Because that path renders it without the attribute expressions.
-			if (typeof newEl.render === 'function' && !Globals$1.rendered.has(newEl))
-				newEl.render(attribs, true);
-
-			// 2g. Update attribute paths to use the new element and re-apply them.
-			for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
-				attribPath.parentNg = this.parentNg;
-				attribPath.nodeMarker = newEl;
-				attribPath.applyAll(exprs[i]);
-			}
-
-			// 2e. Swap it to the DOM.
-			el.replaceWith(newEl);
 		}
-
-		// 2f. Render
-		else if (typeof el.render === 'function')
-			el.render(attribs, changed);
-
-		Globals$1.currentSlotChildren = null;
+		finally {
+			Globals$1.currentSlotChildren = prevSlotChildren;
+		}
 	}
 
 	/**
@@ -3792,6 +3815,9 @@ class Shell {
 		// Smaller fragments make cloning, path resolution, and insertion faster.
 		stripTableWhitespace(this.docFrag);
 
+		// 1c. Neutralize `is` so the browser can't upgrade a placeholder out from under us.
+		renameIsAttribs(this.docFrag);
+
 		// 2. Find placeholders
 		let node;
 		let toRemove = [];
@@ -3805,7 +3831,7 @@ class Shell {
 			
 			// Replace attributes
 			if (node.nodeType === 1) {
-				const hasIs = node.hasAttribute('is');
+				const hasIs = node.hasAttribute('_is'); // Renamed from `is` in step 1c.
 				const isComponent = (hasIs || node.tagName.includes('-'));
 				const componentAttribPaths = [];
 
@@ -3909,10 +3935,6 @@ class Shell {
 					path.attribPaths = componentAttribPaths;
 					this.paths.splice(this.paths.length - componentAttribPaths.length, 0, path); // Insert before its componentAttribPaths
 
-					if (hasIs) {
-						node.setAttribute('_is', node.getAttribute('is'));
-						node.removeAttribute('is');
-					}
 				}
 			}
 
@@ -3929,7 +3951,7 @@ class Shell {
 				// Components and slots are excluded because they move their children
 				// during instantiation, which would orphan the expression's region.
 				if (parent.nodeType === 1 && !node.previousSibling && !node.nextSibling
-					&& !parent.tagName.includes('-') && parent.tagName !== 'SLOT' && !parent.hasAttribute('is')) {
+					&& !parent.tagName.includes('-') && parent.tagName !== 'SLOT' && !parent.hasAttribute('_is')) {
 					let path = new PathToNodes(null, parent);
 					path.wholeParent = true;
 					this.paths.push(path);
@@ -4340,6 +4362,38 @@ function stripTableWhitespace(el) {
 		else if (isTable && child.nodeType === 3 && !child.nodeValue.trim())
 			child.remove();
 		child = next;
+	}
+}
+
+/**
+ * Rename every `is` attribute to `_is`, rebuilding the element to do it.
+ *
+ * A component written as a dashed tag is neutralized in the shell by renaming the TAG
+ * (`<my-tag>` becomes `<my-tag-SOLARITE-PLACEHOLDER>`), so the browser never recognizes the
+ * placeholder and never upgrades it.  A customized built-in cannot be neutralized that way,
+ * because its tag has to stay real:  a `<tr is="my-row">` that is not a `<tr>` is thrown out
+ * by the parser's table rules.  So its ATTRIBUTE is renamed instead.
+ *
+ * Renaming the attribute in place is not enough.  `is` is also recorded in an internal slot on
+ * the element, which removeAttribute() cannot clear and cloneNode() copies, so a placeholder
+ * that was parsed with `is` stays a customized built-in as far as the browser is concerned.
+ * Every clone of it is upgraded the moment it enters a document with a browsing context —
+ * running the component's constructor on the placeholder, before PathToComponent has
+ * instantiated the real element or evaluated the attribute expressions meant for it.  A
+ * constructor that renders then renders the placeholder, whose children are the ones the user
+ * declared, and those get handed to the real instance as if they were slot content.
+ *
+ * Building a fresh element and moving everything across is the only way to drop that slot.
+ * It happens once per unique template, because Shells are cached, and never per render.
+ *
+ * @param docFrag {DocumentFragment} */
+function renameIsAttribs(docFrag) {
+	for (let el of docFrag.querySelectorAll('[is]')) {
+		let clean = el.ownerDocument.createElement(el.tagName);
+		for (let attrib of el.attributes)
+			clean.setAttribute(attrib.name === 'is' ? '_is' : attrib.name, attrib.value);
+		clean.append(...el.childNodes);
+		el.replaceWith(clean);
 	}
 }
 
@@ -5075,13 +5129,30 @@ class RootNodeGroup extends NodeGroup {
 			if (el) {
 				this.rootEl = el;
 
-				// Save slot
-				// 1. Globals.currentSlotChildren is set if this is called via PathToComponent.applyComponent() calls render()
-				// 2. el.childNodes is set if render() is called manually for the first time.
+				// Save the children that belong in this component's <slot>, from one of two places:
+				// 1. A hand-off parked by PathToComponent.applyAll() just before it constructed
+				//    us, when this component was declared inside another template.  It carries
+				//    the Constructor it was meant for, so an unrelated component built in the
+				//    meantime -- a field initializer creating a menu, say -- leaves it alone.
+				// 2. el.childNodes, when render() is called manually for the first time.
+				// An addressed hand-off wins even when its node list is empty:  a component
+				// declared as <my-tag></my-tag> is asking for an empty slot, not for whatever
+				// its own constructor happened to put in the element.
+				//
+				// The hand-off is deliberately NOT cleared on read.  A component that builds
+				// another instance of its OWN class while constructing cannot be told apart
+				// from itself by any address, so both match; the inner one takes the nodes and
+				// this outer one takes them straight back, which is the only thing that makes
+				// that case work.
+				let handOff = Globals$1.currentSlotChildren;
+				let mySlotNodes = handOff?.Constructor === el.constructor
+					? handOff.nodes
+					: (el.childNodes.length ? [...el.childNodes] : null);
+
 				let slotChildren;
-				if (Globals$1.currentSlotChildren || el.childNodes.length) {
+				if (mySlotNodes) {
 					slotChildren = Globals$1.doc.createDocumentFragment();
-					slotChildren.append(...(Globals$1.currentSlotChildren || el.childNodes));
+					slotChildren.append(...mySlotNodes);
 				}
 
 				// If el should replace the root node of the fragment.
