@@ -220,3 +220,35 @@ Testimony.test('Dist.customElementsNotMangled', `Terser must not rename customEl
 		assert(typeof customElements[name] === 'function',
 			`customElements.${name} is not a real method — terser mangled it`);
 });
+
+Testimony.test('Dist.slotHandOff', `Slot children survive property mangling`, () => {
+	// RootNodeGroup.instantiate() decides whether a pending slot hand-off is addressed to the
+	// component it is rendering by reading el.constructor -- a name the BROWSER owns, so it
+	// only survives because build.js lists 'constructor' in mangle.reserved.  If that entry
+	// is ever dropped, this is the test that notices: the source build keeps working while
+	// every slot silently empties in the minified one.
+	class DistSlotIcon extends SolariteMin {
+		render() { hMin(this)`<dist-slot-icon>i</dist-slot-icon>`; }
+	}
+	customElements.define('dist-slot-icon', DistSlotIcon);
+
+	class DistSlotMenu extends SolariteMin {
+		constructor() { super(); this.render(); }
+		render() { hMin(this)`<dist-slot-menu><dist-slot-icon></dist-slot-icon></dist-slot-menu>`; }
+	}
+	customElements.define('dist-slot-menu', DistSlotMenu);
+
+	class DistSlotBar extends SolariteMin {
+		menu = new DistSlotMenu();
+		render() { hMin(this)`<dist-slot-bar><slot></slot></dist-slot-bar>`; }
+	}
+	customElements.define('dist-slot-bar', DistSlotBar);
+
+	let div = document.createElement('div');
+	document.body.append(div);
+	hMin(div)`<div><dist-slot-bar><button>one</button></dist-slot-bar></div>`;
+
+	assert.eq(div.querySelector('slot').innerHTML, `<button>one</button>`);
+
+	div.remove();
+});

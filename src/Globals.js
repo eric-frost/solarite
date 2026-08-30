@@ -11,8 +11,17 @@ function reset() {
 		connected: new WeakSet(),
 
 		/**
-		 * Set by NodeGroup.instantiateComponent()
-		 * Used by RootNodeGroup.getSlotChildren(). */
+		 * A hand-off in flight from PathToComponent.applyAll(), which parks the child nodes
+		 * declared inside a component's tag here just before constructing it, to that
+		 * component's RootNodeGroup.instantiate(), which puts them in its <slot>.  Null when
+		 * no hand-off is pending.
+		 *
+		 * It is addressed by Constructor rather than by tag name because a customized
+		 * built-in has no usable tag at the moment it is consumed:  a <tr is="my-row">
+		 * reports a tagName of TR, and its 'is' attribute is not written until after the
+		 * constructor -- which may already have rendered -- has returned.
+		 *
+		 * @type {?{Constructor:Function, nodes:Node[]}} */
 		currentSlotChildren: null,
 
 		div: document.createElement("div"),
