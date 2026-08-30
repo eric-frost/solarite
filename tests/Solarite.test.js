@@ -3490,6 +3490,90 @@ Testimony.test('Solarite.delegation.nested', `Nested components each delegate wi
 	a.remove();
 });
 
+
+// The four tests below reproduce the delegated-dispatch defects that
+// agents/tasks/draft/jit-event-delegation.md is meant to fix.  They all fail today.
+// Each asserts what the browser itself does, which is also what Solarite produces when
+// delegation is turned off with eventDelegation:false -- delegation is meant to be an
+// optimization, not a change in semantics.  The "Today:" comments record the wrong value.
+
+Testimony.test('Solarite.delegation.stopPropagationVsRealListener', `A delegated handler's stopPropagation stops a real listener on an ancestor.`, () => {
+
+	// A delegated handler doesn't run until the event reaches the component ROOT, by which
+	// time an ancestor's addEventListener has already run, so stopPropagation() is too late
+	// to stop it.  A confirm button that stops propagation to keep its container from also
+	// acting finds that the container acted anyway.
+	let order = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	h(el)`<div><button onclick=${e => {order.push('button'); e.stopPropagation()}}>x</button></div>`;
+	el.firstChild.addEventListener('click', () => order.push('div'));
+
+	el.querySelector('button').click();
+
+	assert.eq(order.join(), 'button'); // Today: 'div,button'.
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.realListenerStopsDelegated', `An ancestor's stopPropagation must not cancel a handler below it.`, () => {
+
+	// The same ordering seen from the other side.  The button's handler should already have
+	// run by the time the ancestor's does, so stopping propagation up there is too late to
+	// silence it.  Today the event never reaches the root dispatcher and the button's
+	// handler is skipped entirely.
+	let order = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	h(el)`<div><button onclick=${() => order.push('button')}>x</button></div>`;
+	el.firstChild.addEventListener('click', e => {order.push('div'); e.stopPropagation()});
+
+	el.querySelector('button').click();
+
+	assert.eq(order.join(), 'button,div'); // Today: 'div'.
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.syntheticNonBubbling', `A synthetic event that doesn't bubble still reaches a delegated handler.`, () => {
+
+	// new Event('input') defaults to bubbles:false, so it never reaches a root-level
+	// dispatcher.  Anything replaying recorded events, or a test driving a control
+	// directly, hits this and sees the handler silently do nothing.
+	let count = 0;
+	let el = document.createElement('div');
+	document.body.append(el);
+	h(el)`<input oninput=${() => count++}>`;
+
+	el.firstChild.dispatchEvent(new Event('input'));
+
+	assert.eq(count, 1); // Today: 0.
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.reparented', `A node moved outside its component keeps its delegated handlers.`, () => {
+
+	// Moving a rendered node elsewhere in the page -- docking a toolbar, portaling a menu --
+	// takes it off the path to its component root, so the root dispatcher never sees its
+	// events.  Today the only cure is the eventDelegation:'document' opt-in that every such
+	// component has to remember to pass.  Solarite.delegation.documentOptionOffByDefault
+	// above pins that current behavior and so contradicts this test on purpose: whichever
+	// fix lands must delete or invert that one.
+	let count = 0;
+	let el = document.createElement('div');
+	document.body.append(el);
+	h(el)`<button onkeyup=${() => count++}>x</button>`;
+
+	let button = el.firstChild;
+	document.body.append(button); // Now a sibling of el instead of a descendant.
+	button.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}));
+
+	assert.eq(count, 1); // Today: 0.
+
+	button.remove();
+	el.remove();
+});
 //endregion
 
 
@@ -5901,6 +5985,7 @@ Testimony.test('Solarite.slots.slotless', `Add children even when no slots prese
 
 	div.remove();
 });
+
 //endregion
 
 
