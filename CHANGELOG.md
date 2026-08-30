@@ -2,6 +2,11 @@
 
 All notable changes to Solarite are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/). While the version is below 1.0, minor releases may include breaking changes; these are called out below.
 
+## [Unreleased]
+
+### Fixed
+- A component declared with children inside another template no longer renders an empty `<slot>` when its own constructor builds a second component. Solarite passes those children to the new component through one shared variable, and any component created in between — typically by a field initializer, such as a toolbar that owns a menu — used to overwrite it, so the children vanished with no error and nothing in the console. The hand-off is now saved and restored around each component's construction and carries the constructor it was meant for, so an unrelated component created in the middle leaves it alone. Customized built-ins (`<div is="my-panel">`) receive their slot children correctly too.
+
 ## [0.8.0] - 2026-08-02
 
 ### Added

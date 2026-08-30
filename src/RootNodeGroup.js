@@ -30,13 +30,30 @@ export default class RootNodeGroup extends NodeGroup {
 			if (el) {
 				this.rootEl = el;
 
-				// Save slot
-				// 1. Globals.currentSlotChildren is set if this is called via PathToComponent.applyComponent() calls render()
-				// 2. el.childNodes is set if render() is called manually for the first time.
+				// Save the children that belong in this component's <slot>, from one of two places:
+				// 1. A hand-off parked by PathToComponent.applyAll() just before it constructed
+				//    us, when this component was declared inside another template.  It carries
+				//    the Constructor it was meant for, so an unrelated component built in the
+				//    meantime -- a field initializer creating a menu, say -- leaves it alone.
+				// 2. el.childNodes, when render() is called manually for the first time.
+				// An addressed hand-off wins even when its node list is empty:  a component
+				// declared as <my-tag></my-tag> is asking for an empty slot, not for whatever
+				// its own constructor happened to put in the element.
+				//
+				// The hand-off is deliberately NOT cleared on read.  A component that builds
+				// another instance of its OWN class while constructing cannot be told apart
+				// from itself by any address, so both match; the inner one takes the nodes and
+				// this outer one takes them straight back, which is the only thing that makes
+				// that case work.
+				let handOff = Globals.currentSlotChildren;
+				let mySlotNodes = handOff?.Constructor === el.constructor
+					? handOff.nodes
+					: (el.childNodes.length ? [...el.childNodes] : null);
+
 				let slotChildren;
-				if (Globals.currentSlotChildren || el.childNodes.length) {
+				if (mySlotNodes) {
 					slotChildren = Globals.doc.createDocumentFragment();
-					slotChildren.append(...(Globals.currentSlotChildren || el.childNodes));
+					slotChildren.append(...mySlotNodes);
 				}
 
 				// If el should replace the root node of the fragment.

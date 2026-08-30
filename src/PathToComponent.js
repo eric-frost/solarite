@@ -78,106 +78,120 @@ export default class PathToComponent extends Path {
 			}
 		}
 
-		// 2. Instantiate component on first time.
-		let isAttrib = el.getAttribute('_is');
-		if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER') || isAttrib) {
+		// Constructing a component runs arbitrary user code -- field initializers, the
+		// constructor body, render() -- and that code can build more components, re-entering
+		// this method and overwriting the hand-off parked below.  Saving the caller's value
+		// here and restoring it in the finally makes the JS call stack the stack this hand-off
+		// needs, and unlike an explicit stack it cannot leak if construction throws.
+		let prevSlotChildren = Globals.currentSlotChildren;
+		try {
+			// 2. Instantiate component on first time.
+			let isAttrib = el.getAttribute('_is');
+			if (el.tagName.endsWith('-SOLARITE-PLACEHOLDER') || isAttrib) {
 
 
-			// 2a. Instantiate component
-			let tagName = (isAttrib || el.tagName.slice(0, -21)).toLowerCase(); // Remove -SOLARITE-PLACEHOLDER
-			let Constructor = customElements.get(tagName);
+				// 2a. Instantiate component
+				let tagName = (isAttrib || el.tagName.slice(0, -21)).toLowerCase(); // Remove -SOLARITE-PLACEHOLDER
+				let Constructor = customElements.get(tagName);
 
-			// Not defined yet (e.g. the module is being lazily imported): keep the placeholder
-			// and instantiate when the definition lands, like a native custom-element upgrade.
-			// deferredExprs always holds the LATEST exprs so re-renders while undefined win.
-			if (!Constructor) {
-				this.deferredExprs = exprs;
-				if (!this.whenDefinedPending) {
-					this.whenDefinedPending = true;
-					console.warn(`Solarite: <${tagName}> is not defined yet; waiting for customElements.define().`);
-					customElements.whenDefined(tagName).then(() => {
-						this.whenDefinedPending = false;
-						let deferred = this.deferredExprs;
-						this.deferredExprs = null;
-						// Skip if a newer render already instantiated or replaced the placeholder.
-						if (deferred && this.nodeMarker === el && el.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
-							this.applyAll(deferred);
-					});
-				}
-				Globals.currentSlotChildren = null;
-				return;
-			}
-
-			Globals.currentSlotChildren = [...el.childNodes]; // TODO: Does this need to be a stack?
-			let newEl = new Constructor(attribs);
-
-			// 2b. Copy attributes over.
-			if (isAttrib) {
-				newEl.setAttribute('is', isAttrib);
-			//	el.removeAttribute('_is');
-			}
-			for (let attrib of el.attributes)
-				if (attrib.name !== '_is')
-					newEl.setAttribute(attrib.name, attrib.value);
-
-			// Set dynamic attributes if they are primitive types.
-			for (let name in attribs) {
-				let val = attribs[name];
-				let valType = typeof val;
-				// Only true and false can reach here, so the undefined/null halves of the
-				// falsy test this used to spell out could never have decided anything.
-				if (valType === 'boolean') {
-					if (val)
-						newEl.setAttribute(name, '');
+				// Not defined yet (e.g. the module is being lazily imported): keep the placeholder
+				// and instantiate when the definition lands, like a native custom-element upgrade.
+				// deferredExprs always holds the LATEST exprs so re-renders while undefined win.
+				if (!Constructor) {
+					this.deferredExprs = exprs;
+					if (!this.whenDefinedPending) {
+						this.whenDefinedPending = true;
+						console.warn(`Solarite: <${tagName}> is not defined yet; waiting for customElements.define().`);
+						customElements.whenDefined(tagName).then(() => {
+							this.whenDefinedPending = false;
+							let deferred = this.deferredExprs;
+							this.deferredExprs = null;
+							// Skip if a newer render already instantiated or replaced the placeholder.
+							if (deferred && this.nodeMarker === el && el.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
+								this.applyAll(deferred);
+						});
+					}
+					return;
 				}
 
-				// If type is a non-boolean primitive, set the attribute value.
-				else if (valType==='string' || valType === 'number' || valType==='bigint')
-					newEl.setAttribute(name, val);
+				// Hand the children declared inside the component's tag to the RootNodeGroup that
+				// its render() is about to create.  There is no other channel: the children have
+				// to be parked before new Constructor(), because a Solarite constructor may call
+				// this.render() itself, and the element that would otherwise carry them does not
+				// exist yet.
+				Globals.currentSlotChildren = {Constructor, nodes: [...el.childNodes]};
+				let newEl = new Constructor(attribs);
+
+				// 2b. Copy attributes over.
+				if (isAttrib) {
+					newEl.setAttribute('is', isAttrib);
+				//	el.removeAttribute('_is');
+				}
+				for (let attrib of el.attributes)
+					if (attrib.name !== '_is')
+						newEl.setAttribute(attrib.name, attrib.value);
+
+				// Set dynamic attributes if they are primitive types.
+				for (let name in attribs) {
+					let val = attribs[name];
+					let valType = typeof val;
+					// Only true and false can reach here, so the undefined/null halves of the
+					// falsy test this used to spell out could never have decided anything.
+					if (valType === 'boolean') {
+						if (val)
+							newEl.setAttribute(name, '');
+					}
+
+					// If type is a non-boolean primitive, set the attribute value.
+					else if (valType==='string' || valType === 'number' || valType==='bigint')
+						newEl.setAttribute(name, val);
+				}
+
+
+				// 2c. If an id pointed at the placeholder, update it to point to the new element.
+				let id = newEl.getAttribute('data-id') || newEl.getAttribute('id');
+				if (id)
+					delve(this.parentNg.getRootEl(), id.split(/\./g), newEl);
+
+				// 2d. Update paths to use replaced element.
+				let ng = this.parentNg;
+				this.nodeMarker = newEl;
+				for (let path of ng.paths) {
+					if (path.nodeMarker === el)
+						path.nodeMarker = newEl;
+					if (path.nodeBefore === el)
+						path.nodeBefore = newEl;
+				}
+				if (ng.startNode === el)
+					ng.startNode = newEl;
+				if (ng.endNode === el)
+					ng.endNode = newEl;
+
+				// 2f. Call render() if it wasn't called by the constructor.
+				// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
+				// Because that path renders it without the attribute expressions.
+				if (typeof newEl.render === 'function' && !Globals.rendered.has(newEl))
+					newEl.render(attribs, true);
+
+				// 2g. Update attribute paths to use the new element and re-apply them.
+				for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
+					attribPath.parentNg = this.parentNg;
+					attribPath.nodeMarker = newEl;
+					attribPath.applyAll(exprs[i]);
+				}
+
+				// 2e. Swap it to the DOM.
+				el.replaceWith(newEl);
 			}
 
+			// 2f. Render
+			else if (typeof el.render === 'function')
+				el.render(attribs, changed);
 
-			// 2c. If an id pointed at the placeholder, update it to point to the new element.
-			let id = newEl.getAttribute('data-id') || newEl.getAttribute('id');
-			if (id)
-				delve(this.parentNg.getRootEl(), id.split(/\./g), newEl);
-
-			// 2d. Update paths to use replaced element.
-			let ng = this.parentNg;
-			this.nodeMarker = newEl;
-			for (let path of ng.paths) {
-				if (path.nodeMarker === el)
-					path.nodeMarker = newEl;
-				if (path.nodeBefore === el)
-					path.nodeBefore = newEl;
-			}
-			if (ng.startNode === el)
-				ng.startNode = newEl;
-			if (ng.endNode === el)
-				ng.endNode = newEl;
-
-			// 2f. Call render() if it wasn't called by the constructor.
-			// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
-			// Because that path renders it without the attribute expressions.
-			if (typeof newEl.render === 'function' && !Globals.rendered.has(newEl))
-				newEl.render(attribs, true);
-
-			// 2g. Update attribute paths to use the new element and re-apply them.
-			for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
-				attribPath.parentNg = this.parentNg;
-				attribPath.nodeMarker = newEl;
-				attribPath.applyAll(exprs[i]);
-			}
-
-			// 2e. Swap it to the DOM.
-			el.replaceWith(newEl);
 		}
-
-		// 2f. Render
-		else if (typeof el.render === 'function')
-			el.render(attribs, changed);
-
-		Globals.currentSlotChildren = null;
+		finally {
+			Globals.currentSlotChildren = prevSlotChildren;
+		}
 	}
 
 	/**

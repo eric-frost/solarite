@@ -5986,6 +5986,149 @@ Testimony.test('Solarite.slots.slotless', `Add children even when no slots prese
 	div.remove();
 });
 
+Testimony.test('Solarite.slots.nestedConstruction', `A component that builds another component keeps its own slot children.`, () => {
+
+	// Solarite hands slot children to a new component through the single
+	// Globals.currentSlotChildren global.  Here the outer template gives a <button> to
+	// <s-40-bar>, but s-40-bar's field initializer constructs and renders an <s-40-menu>
+	// first, and the <s-40-icon> nested in that menu's template nulls the global on its way
+	// out.  By the time s-40-bar renders itself there is nothing left for its slot.
+	class S40Icon extends Solarite {
+		render() { h(this)`<s-40-icon>i</s-40-icon>`; }
+	}
+	S40Icon.define();
+
+	class S40Menu extends Solarite {
+		constructor() { super(); this.render(); } // Renders before s-40-bar renders itself.
+		render() { h(this)`<s-40-menu><s-40-icon></s-40-icon></s-40-menu>`; }
+	}
+	S40Menu.define();
+
+	class S40Bar extends Solarite {
+		menu = new S40Menu(); // Field initializers run while the hand-off is still pending.
+		render() { h(this)`<s-40-bar><slot></slot></s-40-bar>`; }
+	}
+	S40Bar.define();
+
+	let div = document.createElement('div');
+	document.body.append(div);
+	h(div)`<div><s-40-bar><button>one</button></s-40-bar></div>`;
+
+	assert.eq(getHtml(div.querySelector('slot')), `<slot><button>one</button></slot>`);
+	assert.eq(getHtml(div.querySelector('s-40-bar').menu), `<s-40-menu><s-40-icon>i</s-40-icon></s-40-menu>`);
+
+	div.remove();
+});
+
+Testimony.test('Solarite.slots.nestedConstructionUndefinedTag', `Waiting on customElements.define() doesn't discard another component's slot children.`, () => {
+
+	// The same hand-off, lost at the other exit.  PathToComponent.applyAll() returns early
+	// when a tag isn't defined yet -- the normal case for a lazily imported module -- and
+	// that early return nulls Globals.currentSlotChildren too, so a component whose children
+	// are still parked there renders an empty slot.  Expect a console warning about
+	// <s-41-later>; it is the code path under test.
+	class S41Menu extends Solarite {
+		constructor() { super(); this.render(); }
+		render() { h(this)`<s-41-menu><s-41-later></s-41-later></s-41-menu>`; }
+	}
+	S41Menu.define();
+
+	class S41Bar extends Solarite {
+		menu = new S41Menu();
+		render() { h(this)`<s-41-bar><slot></slot></s-41-bar>`; }
+	}
+	S41Bar.define();
+
+	let div = document.createElement('div');
+	document.body.append(div);
+	h(div)`<div><s-41-bar><button>one</button></s-41-bar></div>`;
+
+	assert.eq(getHtml(div.querySelector('slot')), `<slot><button>one</button></slot>`);
+
+	div.remove();
+});
+
+Testimony.test('Solarite.slots.selfNestedConstruction', `A component that builds another instance of its own class keeps its slot children.`, () => {
+
+	// The one case the hand-off cannot address: both instances are the same class, so the
+	// inner one matches too and takes the children.  It works only because the hand-off is
+	// not cleared when it is read, letting the outer instance take them straight back.
+	// Anything that makes the read consume-once breaks this, which is why it has a test.
+	let depth = 0;
+	class S42Node extends Solarite {
+		constructor() {
+			super();
+			if (depth++ === 0)
+				this.child = new S42Node();
+			this.render();
+		}
+		render() { h(this)`<s-42-node><slot></slot></s-42-node>`; }
+	}
+	S42Node.define();
+
+	let div = document.createElement('div');
+	document.body.append(div);
+	h(div)`<div><s-42-node><button>one</button></s-42-node></div>`;
+
+	let outer = div.querySelector('s-42-node');
+	assert.eq(getHtml(outer.querySelector('slot')), `<slot><button>one</button></slot>`);
+	assert.eq(getHtml(outer.child.querySelector('slot')), `<slot></slot>`);
+
+	div.remove();
+});
+
+Testimony.test('Solarite.slots.customizedBuiltIn', `A customized built-in declared with children puts them in its slot.`, () => {
+
+	// A customized built-in reports the tagName of the element it extends, so this component
+	// is 's-44-panel' but its element says DIV.  A hand-off addressed by tag name could never
+	// reach it; addressing by Constructor is what makes this work.
+	class S44Panel extends HTMLDivElement {
+		render() { h(this)`<h3>title</h3><slot></slot>`; }
+	}
+	customElements.define('s-44-panel', S44Panel, {extends: 'div'});
+
+	let div = document.createElement('div');
+	document.body.append(div);
+	h(div)`<div><div is="s-44-panel"><button>one</button></div></div>`;
+
+	assert.eq(getHtml(div.querySelector('slot')), `<slot><button>one</button></slot>`);
+
+	div.remove();
+});
+
+Testimony.test('Solarite.slots.constructorThrows', `A component whose constructor throws doesn't strand the slot hand-off.`, () => {
+
+	// The restore is in a finally precisely so a throw mid-construction can't leave a stale
+	// hand-off parked for whatever renders next.  Without it the next component to render
+	// would inherit these children.
+	class S43Bad extends Solarite {
+		constructor() {
+			super();
+			throw new Error('boom');
+		}
+		render() { h(this)`<s-43-bad></s-43-bad>`; }
+	}
+	S43Bad.define();
+
+	class S43Good extends Solarite {
+		render() { h(this)`<s-43-good><slot></slot></s-43-good>`; }
+	}
+	S43Good.define();
+
+	let div = document.createElement('div');
+	document.body.append(div);
+	assert.throws(() => h(div)`<div><s-43-bad><button>stranded</button></s-43-bad></div>`);
+
+	// A later, unrelated component must not inherit the children of the one that blew up.
+	let div2 = document.createElement('div');
+	document.body.append(div2);
+	h(div2)`<div><s-43-good></s-43-good></div>`;
+	assert.eq(getHtml(div2.querySelector('slot')), `<slot></slot>`);
+
+	div.remove();
+	div2.remove();
+});
+
 //endregion
 
 
