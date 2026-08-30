@@ -168,6 +168,9 @@ export default class Shell {
 		// Smaller fragments make cloning, path resolution, and insertion faster.
 		stripTableWhitespace(this.docFrag);
 
+		// 1c. Neutralize `is` so the browser can't upgrade a placeholder out from under us.
+		renameIsAttribs(this.docFrag);
+
 		// 2. Find placeholders
 		let node;
 		let toRemove = [];
@@ -181,7 +184,7 @@ export default class Shell {
 			
 			// Replace attributes
 			if (node.nodeType === 1) {
-				const hasIs = node.hasAttribute('is');
+				const hasIs = node.hasAttribute('_is'); // Renamed from `is` in step 1c.
 				const isComponent = (hasIs || node.tagName.includes('-'));
 				const componentAttribPaths = [];
 
@@ -285,10 +288,6 @@ export default class Shell {
 					path.attribPaths = componentAttribPaths;
 					this.paths.splice(this.paths.length - componentAttribPaths.length, 0, path); // Insert before its componentAttribPaths
 
-					if (hasIs) {
-						node.setAttribute('_is', node.getAttribute('is'));
-						node.removeAttribute('is');
-					}
 				}
 			}
 
@@ -305,7 +304,7 @@ export default class Shell {
 				// Components and slots are excluded because they move their children
 				// during instantiation, which would orphan the expression's region.
 				if (parent.nodeType === 1 && !node.previousSibling && !node.nextSibling
-					&& !parent.tagName.includes('-') && parent.tagName !== 'SLOT' && !parent.hasAttribute('is')) {
+					&& !parent.tagName.includes('-') && parent.tagName !== 'SLOT' && !parent.hasAttribute('_is')) {
 					let path = new PathToNodes(null, parent);
 					path.wholeParent = true;
 					this.paths.push(path);
@@ -716,6 +715,38 @@ function stripTableWhitespace(el) {
 		else if (isTable && child.nodeType === 3 && !child.nodeValue.trim())
 			child.remove();
 		child = next;
+	}
+}
+
+/**
+ * Rename every `is` attribute to `_is`, rebuilding the element to do it.
+ *
+ * A component written as a dashed tag is neutralized in the shell by renaming the TAG
+ * (`<my-tag>` becomes `<my-tag-SOLARITE-PLACEHOLDER>`), so the browser never recognizes the
+ * placeholder and never upgrades it.  A customized built-in cannot be neutralized that way,
+ * because its tag has to stay real:  a `<tr is="my-row">` that is not a `<tr>` is thrown out
+ * by the parser's table rules.  So its ATTRIBUTE is renamed instead.
+ *
+ * Renaming the attribute in place is not enough.  `is` is also recorded in an internal slot on
+ * the element, which removeAttribute() cannot clear and cloneNode() copies, so a placeholder
+ * that was parsed with `is` stays a customized built-in as far as the browser is concerned.
+ * Every clone of it is upgraded the moment it enters a document with a browsing context —
+ * running the component's constructor on the placeholder, before PathToComponent has
+ * instantiated the real element or evaluated the attribute expressions meant for it.  A
+ * constructor that renders then renders the placeholder, whose children are the ones the user
+ * declared, and those get handed to the real instance as if they were slot content.
+ *
+ * Building a fresh element and moving everything across is the only way to drop that slot.
+ * It happens once per unique template, because Shells are cached, and never per render.
+ *
+ * @param docFrag {DocumentFragment} */
+function renameIsAttribs(docFrag) {
+	for (let el of docFrag.querySelectorAll('[is]')) {
+		let clean = el.ownerDocument.createElement(el.tagName);
+		for (let attrib of el.attributes)
+			clean.setAttribute(attrib.name === 'is' ? '_is' : attrib.name, attrib.value);
+		clean.append(...el.childNodes);
+		el.replaceWith(clean);
 	}
 }
 

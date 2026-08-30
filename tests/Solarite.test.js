@@ -6096,6 +6096,79 @@ Testimony.test('Solarite.slots.customizedBuiltIn', `A customized built-in declar
 	div.remove();
 });
 
+Testimony.test('Solarite.slots.customizedBuiltInConstructorRender', `A customized built-in that renders in its constructor keeps its slot children.`, () => {
+
+	// A dashed component tag is neutralized in the shell by renaming the TAG, so the browser
+	// never upgrades the placeholder.  A customized built-in can't use that trick, because
+	// its tag has to stay real -- a <tr is="x"> that isn't a <tr> is thrown out by the
+	// parser's table rules -- so Shell.js:288-290 renames its ATTRIBUTE to '_is' instead.
+	// That isn't enough: 'is' is also recorded in the element's internal is-value slot, which
+	// removeAttribute() can't clear and cloneNode() copies.  Every clone of the placeholder
+	// still counts as a customized built-in, so the browser upgrades it as soon as it enters
+	// a live document, and PathToComponent.applyAll() then builds a SECOND instance.
+	//
+	// When the constructor renders, it renders the placeholder -- which still holds the
+	// children the user declared -- and applyAll() hands that output to the real instance as
+	// if it were declared children, nesting the component's own first render inside its own
+	// slot.
+	//
+	// The bug was INTERMITTENT, which is why both halves are asserted here.  Nothing is
+	// upgraded until insertion into a live document, so rendering into a detached root always
+	// produced the right answer while rendering into a connected one produced the wrong one.
+	// A fixture built detached would have passed against the broken code.
+	class S45Panel extends HTMLDivElement {
+		constructor() {
+			super();
+			this.render();
+		}
+		render() { h(this)`<h3>title</h3><slot></slot>`; }
+	}
+	customElements.define('s-45-panel', S45Panel, {extends: 'div'});
+
+	// Connected before rendering: the placeholder clone enters a live document, so this is
+	// the arrangement that used to upgrade it early.
+	let connected = document.createElement('div');
+	document.body.append(connected);
+	h(connected)`<div><div is="s-45-panel"><button>one</button></div></div>`;
+	assert.eq(getHtml(connected.querySelector('slot')), `<slot><button>one</button></slot>`);
+
+	// Detached while rendering, connected afterwards.  Must agree with the above.
+	let detached = document.createElement('div');
+	h(detached)`<div><div is="s-45-panel"><button>one</button></div></div>`;
+	document.body.append(detached);
+	assert.eq(getHtml(detached.querySelector('slot')), `<slot><button>one</button></slot>`);
+
+	connected.remove();
+	detached.remove();
+});
+
+Testimony.test('Solarite.slots.customizedBuiltInConstructedOnce', `A customized built-in is constructed once, not twice.`, () => {
+
+	// The shell's placeholder for a customized built-in used to keep its internal is-value
+	// even after Shell.js removed the 'is' attribute, so the browser upgraded every clone on
+	// insertion and PathToComponent.applyAll() then built a second instance and replaced it.
+	// That was invisible whenever the constructor did nothing -- the discarded instance never
+	// rendered -- but it ran user code twice on every render.
+	let constructed = 0;
+	class S46Row extends HTMLDivElement {
+		constructor() {
+			super();
+			constructed++;
+		}
+		render() { h(this)`<b>row</b><slot></slot>`; }
+	}
+	customElements.define('s-46-row', S46Row, {extends: 'div'});
+
+	let div = document.createElement('div');
+	document.body.append(div);
+	h(div)`<div><div is="s-46-row"><button>one</button></div></div>`;
+
+	assert.eq(constructed, 1);
+	assert.eq(getHtml(div.querySelector('slot')), `<slot><button>one</button></slot>`);
+
+	div.remove();
+});
+
 Testimony.test('Solarite.slots.constructorThrows', `A component whose constructor throws doesn't strand the slot hand-off.`, () => {
 
 	// The restore is in a finally precisely so a throw mid-construction can't leave a stale
