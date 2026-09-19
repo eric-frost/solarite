@@ -125,6 +125,12 @@ function isDelvePath(arr) {
 // d means "don't create"
 let d = {};
 
+/**
+ * Prefix that asks for a handler to bypass event delegation: `<button native:onclick=\${...}>`
+ * is bound with addEventListener at render time, taking its normal place in the browser's own
+ * dispatch order.  Shared by Util.isEvent() and PathToEvent, which strips it. */
+const nativeEventPrefix = 'native:';
+
 let Util = {
 
 	/**
@@ -324,7 +330,14 @@ let Util = {
 		return node.value; // String
 	},
 
+	/**
+	 * True for an attribute name that binds an event: `onclick`, or `native:onclick` for a
+	 * handler that is registered with addEventListener when the template renders instead of
+	 * being delegated.  Only names an element really exposes as on* handlers count, so an
+	 * attribute like `online` is never mistaken for one. */
 	isEvent(attribName) {
+		if (attribName.startsWith(nativeEventPrefix))
+			attribName = attribName.slice(nativeEventPrefix.length);
 		return attribName.startsWith('on') && attribName in Globals$1.div;
 	},
 
@@ -1081,17 +1094,20 @@ class PathToAttribValue extends Path {
 
 		// Delegated path: a bubbling event (when the root's options allow it, the default)
 		// stores its handler directly on the node as a per-event-type Symbol expando, with no
-		// EventBinding object and no addEventListener call.  The root-level dispatcher reads
-		// these expandos while walking up from the event target.  Re-renders just overwrite
-		// the property.  this.delegatedKey is set by the PathToEvent constructor only for
-		// delegatable event names, so this test also excludes non-bubbling events.
+		// EventBinding object and no addEventListener call.  When an event of that type
+		// starts, jitDispatcher() attaches a real listener to each node on its path that
+		// carries the expando, so the browser runs the handler at the node's own turn.
+		// Re-renders just overwrite the property.  this.delegatedKey is set by the PathToEvent
+		// constructor only for delegatable event names, so this test also excludes
+		// non-bubbling events and native:on* bindings.
 		if (capture === false && this.delegatedKey !== undefined) {
 			let opt = this.parentNg.rootNg.renderOptions?.eventDelegation ?? true;
-			let toDocument = opt === 'document';
-			if (opt !== false && (opt === true || toDocument || opt.includes(eventName))) {
+			// true delegates everything, an array only the events it names, and any other
+			// value (such as the retired 'document' string) counts as true.
+			if (opt !== false && (!Array.isArray(opt) || opt.includes(eventName))) {
 				let dk = this.delegatedKey;
 				if (node[dk] === undefined) // First binding of this type on this node.
-					ensureDelegatedDispatcher(root, eventName, toDocument);
+					ensureDelegatedDispatcher(root, eventName);
 				// Array-form bindings (onclick=${[fn, arg]}, the hot per-row case) store the
 				// template's own [func, ...args] array; a plain function is stored bare.
 				// Either way, nothing is allocated.
@@ -1163,7 +1179,7 @@ function getEventBinding(node, key) {
 	return b instanceof EventBinding ? (b.key === key ? b : undefined) : b[key];
 }
 
-// Bubbling events that one root-level listener can dispatch.  Same set Solid.js delegates.
+// Bubbling events the just-in-time dispatcher handles.  Same set Solid.js delegates.
 const delegatableEvents = new Set(['beforeinput', 'click', 'contextmenu', 'dblclick', 'focusin', 'focusout',
 	'input', 'keydown', 'keyup', 'mousedown', 'mousemove', 'mouseout', 'mouseover', 'mouseup',
 	'pointerdown', 'pointermove', 'pointerout', 'pointerover', 'pointerup', 'touchend', 'touchmove', 'touchstart']);
@@ -1187,79 +1203,142 @@ function delegatedKeyFor(eventName) {
 // Exported so NodeGroup.applyStamp()'s compiled stamp program can write it directly.
 const delegatedRootKey = Symbol('solariteDelegatedRoot');
 
-// Per-root-element Set of event types that already have a delegated dispatcher registered.
+// Set of event types that already have the dispatcher registered, kept on each root element
+// and on each document.
 const delegatedTypesKey = Symbol('solariteDelegatedTypes');
 
 /**
- * Register the delegated dispatcher for eventName on root if it isn't already.
- * Shared by bindEvent()'s delegated branch and NodeGroup.applyStamp()'s stamp program.
+ * Register the just-in-time dispatcher for eventName on root and on root's document, once
+ * each.  Shared by bindEvent()'s delegated branch and NodeGroup.applyStamp()'s stamp program.
  *
- * With andDocument (the eventDelegation:'document' render option), the dispatcher is also
- * registered on the document, once per event type: a bound node that gets re-parented
- * OUTSIDE its root (e.g. a toolbar a dock parks in its own chrome) bubbles past the root's
- * listener, and only a document-level listener can still reach its handler.  The
- * delegatedDoneKey marker keeps the two dispatchers from double-running the same event.
+ * Both registrations are needed.  The document's listener is what still reaches a bound node
+ * after another component re-parents it outside its root (a toolbar a dock parks in its own
+ * chrome).  The root's listener is what reaches what the document cannot see: a component
+ * that isn't in the document at all, nodes inside a closed shadow root, and a synthetic
+ * event dispatched inside any shadow root without composed:true, which never leaves it.
  * @param root {HTMLElement}
- * @param eventName {string}
- * @param andDocument {boolean} */
-function ensureDelegatedDispatcher(root, eventName, andDocument=false) {
+ * @param eventName {string} */
+function ensureDelegatedDispatcher(root, eventName) {
 	let types = root[delegatedTypesKey];
 	if (types === undefined)
 		types = root[delegatedTypesKey] = new Set();
 	if (!types.has(eventName)) {
 		types.add(eventName);
-		root.addEventListener(eventName, delegatedDispatcher);
-	}
-	if (andDocument) {
-		let doc = root.ownerDocument ?? document;
+		root.addEventListener(eventName, jitDispatcher, true);
+
+		let doc = root.ownerDocument;
 		let docTypes = doc[delegatedTypesKey];
 		if (docTypes === undefined)
 			docTypes = doc[delegatedTypesKey] = new Set();
 		if (!docTypes.has(eventName)) {
 			docTypes.add(eventName);
-			doc.addEventListener(eventName, delegatedDispatcher);
+			doc.addEventListener(eventName, jitDispatcher, true);
 		}
 	}
 }
 
-// Marks an event the innermost root dispatcher has already walked, so an outer root's
-// listener (when components are nested) skips it instead of dispatching the bindings again.
+// Set on an event by the first dispatcher to walk it, holding the length of the path it saw,
+// so the dispatchers on nested roots further down don't repeat the walk.  A root inside a
+// closed shadow root sees a longer path than the document did, because composedPath() hides
+// a closed tree from listeners outside it, and that mismatch is what makes it walk again.
 const delegatedDoneKey = Symbol('solariteDelegated');
 
 /**
- * The per-root listener for each delegated event type.  The first (innermost) root the
- * bubbling event reaches walks from the event target upward, invoking delegated handlers
- * stored on the nodes along the way; outer roots then see the done-marker and skip.
- * Each node carries the root its handlers run with as `this` (see delegatedRootKey), so
- * handlers in an outer component still run with the correct component.  event.currentTarget
- * is patched to the node whose handler is running, and restored after.  stopPropagation()
- * inside a handler ends the walk, mirroring native bubbling. */
-function delegatedDispatcher(ev) {
-	if (ev[delegatedDoneKey])
-		return;
-	ev[delegatedDoneKey] = true;
-	let dk = delegatedKeys[ev.type];
-	let current = ev.target;
-	Object.defineProperty(ev, 'currentTarget', {configurable: true, get() { return current }});
-	while (current) {
-		let a = current[dk];
-		if (a !== undefined) {
-			let root = current[delegatedRootKey];
-			if (typeof a === 'function')
-				a.call(root, ev, current);
-			else
-				switch (a.length) {
-					case 1: a[0].call(root, ev, current); break;
-					case 2: a[0].call(root, a[1], ev, current); break;
-					case 3: a[0].call(root, a[1], a[2], ev, current); break;
-					default: a[0].call(root, ...a.slice(1), ev, current);
-				}
-			if (ev.cancelBubble)
-				break;
-		}
-		current = current.parentNode;
+ * One shared bubble-phase listener per event type, attached to a node only for the duration
+ * of one event.  The browser invokes it at the node's own turn in propagation, and it reads
+ * the node's handler THEN rather than when it was attached, so a handler that an earlier
+ * listener in the same dispatch replaced or removed is honored.
+ * @type {Object<string, {handleEvent: function(Event)}>} */
+const trampolines = {};
+
+/**
+ * @param type {string}
+ * @return {{handleEvent: function(Event)}} */
+function trampolineFor(type) {
+	let tramp = trampolines[type];
+	if (tramp === undefined) {
+		let dk = delegatedKeys[type];
+		tramp = trampolines[type] = {
+			// Quoted so the minifier's property mangling doesn't rename it, since the browser looks it up by name.
+			'handleEvent'(ev) {
+				let node = ev.currentTarget;
+				let a = node[dk];
+				if (a === undefined) // Unbound by an earlier handler in this same dispatch.
+					return;
+				let root = node[delegatedRootKey];
+				if (typeof a === 'function')
+					a.call(root, ev, node);
+				else
+					switch (a.length) {
+						case 1: a[0].call(root, ev, node); break;
+						case 2: a[0].call(root, a[1], ev, node); break;
+						case 3: a[0].call(root, a[1], a[2], ev, node); break;
+						default: a[0].call(root, ...a.slice(1), ev, node);
+					}
+			}
+		};
 	}
-	delete ev.currentTarget; // Restore the native getter from the prototype.
+	return tramp;
+}
+
+// Nodes still carrying a trampoline, per event type, and the one timer that clears them.
+const pending = {};
+let sweepTimer = 0;
+
+/**
+ * Remove every trampoline attached since the last sweep.  Runs as a task, which is always
+ * after every dispatch in progress has finished.  A microtask would not be: for a real click
+ * the browser runs a microtask checkpoint between listeners, so a microtask sweep would strip
+ * the trampolines before the event reached the first of them.  The sweep is housekeeping
+ * only; a trampoline left in place is harmless, because jitDispatcher() re-attaches it and
+ * the trampoline reads its handler fresh. */
+function sweep() {
+	sweepTimer = 0;
+	for (let type in pending) {
+		let nodes = pending[type];
+		if (nodes.length !== 0) {
+			pending[type] = [];
+			let tramp = trampolines[type];
+			for (let i=0; i<nodes.length; i++)
+				nodes[i].removeEventListener(type, tramp);
+		}
+	}
+}
+
+/**
+ * The capture-phase listener registered per delegated event type on every root and on the
+ * document.  It runs before the event reaches anything, walks the event's path, and attaches
+ * the type's trampoline to each node holding a delegated handler.  The browser then finishes
+ * the dispatch natively, so those handlers interleave correctly with listeners anyone else
+ * registered, stopPropagation() works in both directions, currentTarget is right, and the
+ * event needn't bubble.
+ *
+ * Each attach removes the trampoline first.  One left from an earlier event in this same task
+ * would otherwise keep its old place in the node's listener list, ahead of listeners added
+ * since; removing and re-adding puts it last, so the rule holds without exception: a
+ * delegated handler runs after every listener its element had when the event started. */
+function jitDispatcher(ev) {
+	let path = ev.composedPath();
+	if (ev[delegatedDoneKey] === path.length)
+		return;
+	ev[delegatedDoneKey] = path.length;
+
+	let type = ev.type;
+	let dk = delegatedKeys[type];
+	let tramp = trampolineFor(type);
+	let list = pending[type];
+	if (list === undefined)
+		list = pending[type] = [];
+	for (let i=0; i<path.length; i++) {
+		let node = path[i];
+		if (node[dk] !== undefined) {
+			node.removeEventListener(type, tramp);
+			node.addEventListener(type, tramp);
+			list.push(node);
+		}
+	}
+	if (list.length !== 0 && sweepTimer === 0)
+		sweepTimer = setTimeout(sweep);
 }
 
 class EventBinding {
@@ -1296,11 +1375,24 @@ class PathToEvent extends PathToAttribValue {
 	 * Undefined for non-delegatable (non-bubbling) events; bindEvent() then binds directly. */
 	delegatedKey;
 
+	/** @type {boolean} True for `native:onclick`: the handler is registered with addEventListener
+	 * when the template renders, so it runs at its element's own turn in the browser's dispatch
+	 * order instead of being delegated to the component root. */
+	native;
+
 	constructor(nodeBefore, nodeMarker, attribName=null, attrValue=null) {
 		super(null, nodeMarker, attribName, attrValue);
 		this.skipIfSame = true;
-		this.eventName = attribName ? attribName.slice(2) : null;
-		this.delegatedKey = this.eventName !== null ? delegatedKeyFor(this.eventName) : undefined;
+		let name = attribName;
+		this.native = name !== null && name.startsWith(nativeEventPrefix);
+		if (this.native)
+			name = name.slice(nativeEventPrefix.length);
+		this.eventName = name ? name.slice(2) : null;
+
+		// A native binding leaves delegatedKey undefined.  That is the single switch both
+		// bindEvent() and the compiled stamp program test to choose the direct
+		// addEventListener path, so nothing else has to know about the prefix.
+		this.delegatedKey = (this.eventName !== null && !this.native) ? delegatedKeyFor(this.eventName) : undefined;
 	}
 
 	/**
@@ -4526,17 +4618,17 @@ class NodeGroup {
 		let stampers = shell.stampPaths;
 		let rootNg = this.rootNg;
 		let root = rootNg.rootEl;
+		// Any value other than false or an array of event names means delegate everything.
 		let opt = rootNg.renderOptions?.eventDelegation;
-		let delegateDoc = opt === 'document';
-		let delegateAll = opt === undefined || opt === true || delegateDoc;
+		let delegateAll = opt !== false && !Array.isArray(opt);
 
 		// Register this shell's delegated dispatchers once for a whole run of rows.  They live on
-		// the root, not on the bound nodes, so asking per node — as the general binding path has
-		// to — would be a call and a set lookup for every handler in the list.
+		// the root and the document, not on the bound nodes, so asking per node — as the general
+		// binding path has to — would be a call and a set lookup for every handler in the list.
 		let names = shell.stampEventNames;
 		if (names !== null && delegateAll && rootNg[lastStampedShellKey] !== shell) {
 			for (let k=0; k<names.length; k++)
-				ensureDelegatedDispatcher(root, names[k], delegateDoc);
+				ensureDelegatedDispatcher(root, names[k]);
 			rootNg[lastStampedShellKey] = shell;
 		}
 

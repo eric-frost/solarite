@@ -10,17 +10,19 @@ export interface RenderOptions {
     ids?: boolean;
     render?: boolean;
 
-    /** Defaults to true: bubbling events (click, input, etc.) dispatch from one listener on
-     * the component's root element instead of addEventListener per element - much faster
-     * creation and teardown of large lists.  Pass false to bind every event directly, or an
-     * array to delegate only the listed event names.  Pass 'document' to also register the
-     * dispatcher on the document, so handlers keep firing on nodes that get re-parented
-     * outside the component (e.g. a toolbar a dock parks in its own chrome).  Non-bubbling
-     * events always bind directly.  Note: delegated handlers run when the event bubbles to
-     * the root (or document), so stopPropagation() in a manually added listener on an element
-     * in between suppresses them, and such manual listeners fire first.  A programmatically
-     * dispatched non-bubbling event won't reach delegated handlers. */
-    eventDelegation?: boolean | string[] | 'document';
+    /**
+     * Delegate bubbling events (default true).  A handler is stored on its element instead of
+     * registered with addEventListener, and when an event of that type starts, a capture-phase
+     * listener on the component root and the document attaches a real listener to each element
+     * on the event's path that has one; the browser then dispatches normally.  Much faster
+     * creation and teardown of large lists, with native ordering, stopPropagation(),
+     * currentTarget, non-bubbling events and moved elements all behaving as with
+     * addEventListener.  The one difference: a delegated handler is attached when the event
+     * starts, so it runs after listeners other code added to the same element.  Prefix an
+     * attribute with native: (native:onclick) to bind just that handler at render time.
+     * Pass false to bind every event directly, or an array to delegate only the listed event
+     * names.  Non-bubbling events always bind directly. */
+    eventDelegation?: boolean | string[];
 }
 
 /**

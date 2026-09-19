@@ -1,6 +1,12 @@
 import Globals from "./Globals.js";
 import delve from "./delve.js";
 
+/**
+ * Prefix that asks for a handler to bypass event delegation: `<button native:onclick=\${...}>`
+ * is bound with addEventListener at render time, taking its normal place in the browser's own
+ * dispatch order.  Shared by Util.isEvent() and PathToEvent, which strips it. */
+export const nativeEventPrefix = 'native:';
+
 let Util = {
 
 	/**
@@ -200,7 +206,14 @@ let Util = {
 		return node.value; // String
 	},
 
+	/**
+	 * True for an attribute name that binds an event: `onclick`, or `native:onclick` for a
+	 * handler that is registered with addEventListener when the template renders instead of
+	 * being delegated.  Only names an element really exposes as on* handlers count, so an
+	 * attribute like `online` is never mistaken for one. */
 	isEvent(attribName) {
+		if (attribName.startsWith(nativeEventPrefix))
+			attribName = attribName.slice(nativeEventPrefix.length);
 		return attribName.startsWith('on') && attribName in Globals.div;
 	},
 

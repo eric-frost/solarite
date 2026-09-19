@@ -1,5 +1,6 @@
 import assert from "./assert.js";
 import PathToAttribValue, {delegatedKeyFor} from "./PathToAttribValue.js";
+import {nativeEventPrefix} from "./Util.js";
 
 // TODO: Merge this into PathToAttribValue?
 export default class PathToEvent extends PathToAttribValue {
@@ -11,11 +12,24 @@ export default class PathToEvent extends PathToAttribValue {
 	 * Undefined for non-delegatable (non-bubbling) events; bindEvent() then binds directly. */
 	delegatedKey;
 
+	/** @type {boolean} True for `native:onclick`: the handler is registered with addEventListener
+	 * when the template renders, so it runs at its element's own turn in the browser's dispatch
+	 * order instead of being delegated to the component root. */
+	native;
+
 	constructor(nodeBefore, nodeMarker, attribName=null, attrValue=null) {
 		super(null, nodeMarker, attribName, attrValue);
 		this.skipIfSame = true;
-		this.eventName = attribName ? attribName.slice(2) : null;
-		this.delegatedKey = this.eventName !== null ? delegatedKeyFor(this.eventName) : undefined;
+		let name = attribName;
+		this.native = name !== null && name.startsWith(nativeEventPrefix);
+		if (this.native)
+			name = name.slice(nativeEventPrefix.length);
+		this.eventName = name ? name.slice(2) : null;
+
+		// A native binding leaves delegatedKey undefined.  That is the single switch both
+		// bindEvent() and the compiled stamp program test to choose the direct
+		// addEventListener path, so nothing else has to know about the prefix.
+		this.delegatedKey = (this.eventName !== null && !this.native) ? delegatedKeyFor(this.eventName) : undefined;
 	}
 
 	/**
