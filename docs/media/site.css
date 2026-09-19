@@ -1,0 +1,105 @@
+@font-face { font-family: Fira Code; src: url('FiraCode400.woff2') format('woff2'); font-display: swap }
+@font-face { font-family: Jost; src: url('jost-latin-variable.woff2') format('woff2'); font-weight: 100 900; font-display: swap }
+@font-face { font-family: Archivo; src: url('archivo-latin-variable.woff2') format('woff2'); font-weight: 100 900; font-display: swap }
+/* Blue, white, and black, after jsonlogic.com and jsonnet.org.  The amber sun mark is the only warm color. */
+/* Shared by the homepage and the documentation: colours, type, the black header and footer, buttons, and the blue band.
+   --wrap is the content width.  --split and --arrow divide it into the homepage's source column, the gap that holds
+   its arrow, and its result column.  --border is what the documentation's playground draws its divider with. */
+:root { --border: 1px solid var(--line); --wrap: min(1160px, 100vw - 96px); --split: .57; --arrow: 64px; color-scheme: light; --blue: #1f6bc6; --link: #1a5fb4; --sky: #e2effe; --ink: #1c2530; --muted: #56616f; --line: #dae2ec; --wash: #f3f7fb; --night: #0b0f14; --sun: #ffc24d; --cyan: #8fe3ff; --page: #fff; --card: #fff; --string: #b3261e; --bar: #b7c9de; --axis: #b9c6d6; --gutter: #a3adb9; --mono: 'Fira Code', monospace; --heading: Jost, 'Open Sans', 'Noto Sans', 'Segoe UI', sans-serif; font-family: 'Open Sans', 'Noto Sans', 'Segoe UI', system-ui, sans-serif; color: var(--ink); background: var(--page); scroll-behavior: smooth }
+/* Dark mode is switched on only by the moon button, never by the system setting; see docs/js/site.js.  The blue bands deepen and
+   the white surfaces turn to slate.  The `dark` attribute is the one the documentation and its code editor already use. */
+html[dark] { color-scheme: dark; --page: #0b1017; --card: #101823; --ink: #e4ebf3; --muted: #9babbd; --line: #243142; --wash: #0f1722; --link: #74b4ff; --blue: #4d9bff; --string: #ff9c8f; --bar: #3d4f66; --axis: #3a4a5e; --gutter: #5d6c7e;
+  .blueprint { background-image: url('sunburst.svg'), linear-gradient(#1a57a5, #113b73) }
+}
+* { box-sizing: border-box }
+body { margin: 0; font-size: 16px; line-height: 1.6 }
+p, h1, h2, h3, pre, ol, figure { margin: 0 }
+a { color: var(--link); text-decoration: none }
+a:hover { text-decoration: underline }
+button { font: inherit; color: inherit; cursor: pointer }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px }
+code, pre { font-family: var(--mono) }
+h1, h2, h3 { font-family: var(--heading); font-weight: 600; line-height: 1.2 }
+h2 { font-size: 28px }
+.slashes { color: #8fb9ea; margin-right: 4px }
+.wrap { width: var(--wrap); margin-inline: auto }
+section[id] { scroll-margin-top: 24px }
+/* Code as the playground shows it before its editor has loaded (docs/js/ui/StaticCode.js).  The colours, the type, and
+   the numbered gutter are the editor's own, so nothing moves or changes colour when the editor takes over. */
+.static-code { --k: #00f; --v: #038; --s: #60b; --f: #18a; --t: #210; --g: #e00; --a: #600; --av: #f50; --c: #080; margin: 0; padding: 8px 0 4px; overflow: auto; outline: none; counter-reset: line; font: 13px/18.2px var(--mono); white-space: pre; tab-size: 2; color: #000;
+  .l { padding: 0 2px 0 6px }
+  .l::before { counter-increment: line; content: counter(line); display: inline-block; width: 17px; margin-right: 17px; text-align: right; color: var(--gutter) }
+  .k { color: var(--k); font-weight: 700 }
+  .v { color: var(--v) }
+  .s { color: var(--s) }
+  .f { color: var(--f) }
+  .t { color: var(--t) }
+  .g { color: var(--g) }
+  .a { color: var(--a) }
+  .av { color: var(--av) }
+  .c { color: var(--c) }
+}
+
+/* The editor's theme asks for a font that isn't shipped and so falls back to whatever monospace the visitor has.  The
+   site's own code font keeps the editor identical to the static code it replaces, and to every other code sample. */
+play-ground :is(.cm-scroller, .cm-content, .cm-gutters, .cm-line) { font-family: var(--mono) !important }
+html[dark] .static-code { --k: #26f; --v: #469; --s: #75f; --f: #598; --t: #987; --g: #b32; --a: #885b22; --av: #d60; --c: #585; color: #aaa }
+
+/* The blue bands carry a drafting grid drawn around a sun in the top right corner: rings and rays instead of squares. */
+.blueprint { color: #fff; background: url('sunburst.svg') right top no-repeat, linear-gradient(#1f69c4, #1757aa) }
+.button { display: inline-flex; align-items: center; gap: 14px; padding: 11px 20px; border: 1px solid #fff; border-radius: 4px; background: #fff; color: #1a5fb4; font-weight: 700; font-size: 15px; transition: background .15s;
+  &:hover { background: var(--sky); text-decoration: none }
+  &.ghost { gap: 9px; border-color: #ffffff8c; background: none; color: #fff }
+  &.ghost:hover { border-color: #fff; background: #ffffff1f }
+  small { font-size: 13px; font-weight: 400; color: var(--sky) }
+  svg { width: 15px; height: 15px }
+}
+.actions { display: flex; flex-wrap: wrap; gap: 12px }
+.site-header, .site-footer { background: var(--night); color: #fff;
+  .wrap { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 24px; min-height: 60px }
+  nav { display: flex; align-items: center; gap: 30px; font-size: 14px }
+  nav a { color: #c9d4e0 }
+  nav a:hover { color: #fff; text-decoration: none }
+}
+#dark-toggle { display: grid; place-items: center; width: 32px; height: 32px; margin: -6px -8px -6px -6px; padding: 0; border: 0; border-radius: 50%; background: none; color: #c9d4e0;
+  svg { width: 17px; height: 17px }
+  &:hover { color: #fff; background: #ffffff1a }
+  &[aria-pressed=true] { color: var(--sun) }
+}
+.brand { display: inline-flex; align-items: center; gap: 9px; font: 600 25px var(--heading); color: #fff;
+  svg { width: 26px; height: 26px; color: var(--sun); animation: sun-turn 14s linear infinite paused }
+
+  /* The sun turns slowly while the pointer is over the link, mark or name, and rests where it stopped. */
+  &:hover svg, &:focus-visible svg { animation-play-state: running }
+  &:hover { text-decoration: none }
+}
+@keyframes sun-turn { to { transform: rotate(360deg) } }
+.eyebrow { font: 12px/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--sky) }
+.site-footer .brand { font-size: 21px;
+  svg { width: 22px; height: 22px }
+}
+.skip-link { position: absolute; left: 16px; top: -100px; z-index: 5; padding: 10px; background: #fff;
+  &:focus { top: 10px }
+}
+
+@media (max-width: 1100px) {
+  :root { --wrap: calc(100vw - 64px) }
+  .blueprint { background-position: right -150px top -150px, 0 0 }
+}
+@media (max-width: 767px) {
+  :root { --wrap: calc(100vw - 40px) }
+  .site-header nav, .site-footer nav { gap: 16px; font-size: 13px }
+  .site-footer .wrap { padding-block: 14px }
+}
+@media (max-width: 370px) {
+  .site-header nav, .site-footer nav { gap: 10px; font-size: 12px }
+  #dark-toggle { width: 26px; margin-inline: -2px -4px }
+  .site-header .brand { gap: 6px; font-size: 21px;
+    svg { width: 21px; height: 21px }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { scroll-behavior: auto }
+  .brand svg { animation: none }
+  * { transition: none !important }
+}

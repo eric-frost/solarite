@@ -1,0 +1,44 @@
+/* The original artwork stays visible without JavaScript.  Once enhanced, only the sun's construction marks
+   move into inline SVG; its position, opacity, and finished geometry match the original background. */
+.blueprint { position: relative; isolation: isolate; overflow: clip;
+  > .wrap { position: relative; z-index: 1 }
+}
+.draft-sun { display: none; position: absolute; z-index: 1; width: 168px; height: 168px; right: -14px; top: -14px; pointer-events: none }
+.effects-ready {
+  .blueprint { background-image: url('sunburst-grid.svg'), linear-gradient(#1f69c4, #1757aa) }
+  .draft-sun { display: block }
+}
+html[dark].effects-ready .blueprint { background-image: url('sunburst-grid.svg'), linear-gradient(#1a57a5, #113b73) }
+
+/* Without WebGL, a duplicate of the same grid catches the light: only the lines brighten, as in the shader. */
+.blueprint-light { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .5s ease;
+  background: url('sunburst-grid.svg') right top no-repeat;
+  mask-image: radial-gradient(ellipse 420px 320px at var(--light-x, 70%) var(--light-y, 25%), #000 0%, transparent 78%);
+  &.lit { opacity: 1 }
+}
+.closing .blueprint-light, .docs-band .blueprint-light { background-position: right -150px top -150px }
+.blueprint-glass { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none }
+.glass-ready {
+  > .blueprint-glass { opacity: 1 }
+  > .blueprint-light { display: none }
+}
+
+/* This highlight sits precisely over the existing arrow; it never occupies layout space or intercepts input. */
+play-ground .preview-flow { position: absolute; z-index: 2; pointer-events: none; overflow: hidden;
+  left: calc((100% - var(--arrow)) * var(--split) + (var(--arrow) - 34px) / 2); top: 56px; width: 34px; height: 24px;
+  clip-path: polygon(0 29%, 59% 29%, 59% 0, 100% 50%, 59% 100%, 59% 71%, 0 71%);
+  i { display: block; width: 100%; height: 100%; transform: translateX(-110%);
+    background: linear-gradient(90deg, transparent, #fff 45%, #fff 55%, transparent) }
+}
+.benchmark .bar i { transform-origin: left center }
+
+@media (max-width: 1100px) {
+  .effects-ready .draft-sun { display: none }
+  .blueprint-light { background-position: right -150px top -150px }
+}
+@media (max-width: 767px) {
+  play-ground .preview-flow { left: calc(50% - 17px); top: 334px; transform: rotate(90deg) }
+}
+@media (prefers-reduced-motion: reduce), (pointer: coarse) {
+  .blueprint-light, .blueprint-glass { display: none }
+}

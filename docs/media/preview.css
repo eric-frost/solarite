@@ -1,0 +1,39 @@
+/* What every live example in the documentation looks like before its own styles: the same type, colours, and rounded
+   controls as the result card on the homepage.  Every rule is a bare element selector, the weakest there is, so an
+   example's own scoped styles always win. */
+@font-face { font-family: Fira Code; src: url('FiraCode400.woff2') format('woff2'); font-display: swap }
+* { box-sizing: border-box }
+html { color-scheme: light; color: #1c2530; font: 14px/1.5 'Open Sans', 'Noto Sans', 'Segoe UI', system-ui, sans-serif }
+body { margin: 0; padding: 16px 18px; background: transparent }
+h1, h2, h3, h4 { margin: 0 0 10px; line-height: 1.25 }
+h1 { font-size: 22px }
+h2 { font-size: 20px }
+h3 { font-size: 18px }
+h4 { font-size: 15px }
+p { margin: 0 0 10px }
+ul, ol { margin: 0 0 10px; padding-left: 22px }
+a { color: #1a5fb4 }
+input, select, textarea { margin: 2px 0; max-width: 100%; font: inherit; color: inherit }
+input:not([type=checkbox], [type=radio], [type=range], [type=color], [type=file]), select, textarea { padding: 6px 9px; border: 1px solid #c3cfdc; border-radius: 4px; background: #fff }
+input[type=checkbox], input[type=radio] { accent-color: #1f6bc6 }
+button { margin: 2px 0; padding: 6px 12px; border: 1px solid #b4c2d2; border-radius: 4px; background: #f3f7fb; color: #1a5fb4; font: inherit; font-size: 13px; cursor: pointer }
+button:hover { border-color: #1f6bc6; background: #e8f0f9 }
+:focus-visible { outline: 2px solid #1f6bc6; outline-offset: 2px }
+code, pre { font-family: 'Fira Code', monospace; font-size: 12px }
+pre { margin: 10px 0 0; padding: 10px 12px; border: 1px solid #dae2ec; border-radius: 4px; background: #f3f7fb; color: #1a5fb4; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere }
+table { border-collapse: collapse; margin-bottom: 10px }
+th, td { padding: 5px 10px; border: 1px solid #dae2ec; text-align: left }
+th { background: #f3f7fb }
+hr { border: 0; border-top: 1px solid #dae2ec; margin: 12px 0 }
+
+/* The page sets `dark` on this document when its moon button is pressed. */
+html[dark] { color-scheme: dark; color: #e4ebf3 }
+html[dark] a { color: #74b4ff }
+html[dark] :is(input:not([type=checkbox], [type=radio], [type=range], [type=color], [type=file]), select, textarea) { border-color: #33445a; background: #0b1017 }
+html[dark] :is(input[type=checkbox], input[type=radio]) { accent-color: #4d9bff }
+html[dark] button { border-color: #3a4a5e; background: #16202d; color: #74b4ff }
+html[dark] button:hover { border-color: #4d9bff; background: #1b2838 }
+html[dark] pre { border-color: #243142; background: #0b1017; color: #74b4ff }
+html[dark] :is(th, td) { border-color: #243142 }
+html[dark] th { background: #16202d }
+html[dark] hr { border-color: #243142 }
