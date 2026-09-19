@@ -1145,7 +1145,7 @@ You can also write the component inside a template, using the `is` attribute the
 h(this)`<table><tr is="line-item" user=${user}></tr></table>`
 ```
 
-The value of `is` has to be written out literally.  Solarite reads it while it parses the template into its reusable form, which happens once, before any expression has a value, so `<tr is=${name}>` cannot work:  running from the source files or from `Solarite-debug.js` fails an assertion, and the check is compiled out of the production build, which gives you the wrong element instead.  Decide which element you are extending when you write the template.  If you need to choose a component at runtime, branch between two templates rather than making the name an expression.
+The value of `is` cannot be an expression, so `<tr is=${name}>` will not work.
 
 ### Manual DOM Operations
 
