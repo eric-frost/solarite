@@ -1,0 +1,27 @@
+@font-face { font-family: Fira Code; src: url('FiraCode400.woff2') format('woff2'); font-display: swap }
+@font-face { font-family: Jost; src: url('jost-latin-variable.woff2') format('woff2'); font-weight: 100 900; font-display: swap }
+* { box-sizing: border-box }
+html { background: #fff; color: #1c2530; font: 14px/1.5 'Open Sans', 'Noto Sans', 'Segoe UI', system-ui, sans-serif }
+body { margin: 0; padding: 26px 30px }
+shopping-list { display: block; max-width: 400px; margin: auto }
+h3 { font: 600 23px/1.2 Jost, sans-serif; margin: 0 0 16px }
+label { display: flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 7px; padding: 8px 12px; border: 1px solid #dae2ec; border-radius: 4px }
+label:focus-within { border-color: #1f6bc6 }
+input[type=checkbox] { accent-color: #1f6bc6; flex-shrink: 0; width: 16px; height: 16px; margin: 0; cursor: pointer }
+input:not([type=checkbox]) { width: 100%; min-width: 0; padding: 3px 0; border: 0; background: none; color: inherit; font: inherit; outline: none }
+label:has(:checked) input:not([type=checkbox]) { color: #7d8896; text-decoration: line-through }
+input[type=checkbox]:focus-visible, button:focus-visible { outline: 2px solid #1f6bc6; outline-offset: 3px }
+button { width: 100%; min-height: 40px; margin-top: 10px; padding: 9px; border: 1px dashed #b4c2d2; border-radius: 4px; background: none; color: #1a5fb4; font: inherit; font-size: 13px; cursor: pointer }
+button:hover { border-color: #1f6bc6; background: #f3f7fb }
+pre { margin: 14px 0 0; padding: 10px 12px; border: 1px solid #dae2ec; border-radius: 4px; background: #f3f7fb; color: #1a5fb4; font: 12px/1.7 'Fira Code', monospace; white-space: pre-wrap; overflow-wrap: anywhere }
+@media (max-width: 350px) { body { padding: 22px 18px } }
+
+/* The page sets `dark` on this document when its moon button is pressed. */
+html[dark] { color-scheme: dark; background: #101823; color: #e4ebf3 }
+html[dark] label { border-color: #2a394c }
+html[dark] label:focus-within { border-color: #4d9bff }
+html[dark] input[type=checkbox] { accent-color: #4d9bff }
+html[dark] label:has(:checked) input:not([type=checkbox]) { color: #7f8ea0 }
+html[dark] button { border-color: #3a4a5e; color: #74b4ff }
+html[dark] button:hover { border-color: #4d9bff; background: #16202d }
+html[dark] pre { border-color: #243142; background: #0b1017; color: #74b4ff }

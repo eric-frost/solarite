@@ -1,11 +1,9 @@
 ---
-title:  Solarite JS Library
-sidebar:  true
-append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="module" src="docs/js/documentation.js"></script><link rel="stylesheet" href="docs/media/documentation.css"><link rel="stylesheet" href="docs/media/eternium.css"><link rel="icon" href="docs/media/solarite-machine.webp" type="image/webp"><script async defer src="https://buttons.github.io/buttons.js"></script>
-
+title: Solarite documentation
+description: How to build native web components with Solarite: rendering, attributes, events, two-way binding, loops, scoped styles, slots, child components, and JSX.
 ---
 
-<!-- To convert documentation to html: (1) Open in Typora.  (2) Select the GitHub theme, or go to Settings -> Export -> Html -> Theme -> Github. (3) In that same Export -> Html panel, check "Read and overwrite export settings from YAML front matters" so the sidebar/append-head values above are used. (4) Then go to File -> Export -> Export as html with styles to index.html. -->
+<!-- docs/index.html is generated from this file by build/docs.js, which build/build.bat runs.  Don't edit it by hand. -->
 
 <!-- Playgrounds that don't have a lowercase language name will not have a preview. -->
 
@@ -95,14 +93,9 @@ For the best development experience, use an IDE like [WebStorm](https://www.jetb
 
 ## Performance
 
-Solarite is **faster than almost every well-known framework**, according to the [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/current.html).  Its score of 1.10 means it's about 10% slower than hand-written vanilla JavaScript.  Benchmarks were run on a Ryzen 7 3700X with 16GB RAM on Kubuntu 26.04.
+Solarite is **faster than almost every well-known framework** in the official [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/current.html) results.  Its score of 1.07 is close to the 1.01 of hand-written vanilla JavaScript.  Lower is better: a score of 1.00 would mean being the fastest entry in every test.  The table shows selected entries from the results of Aug 12, 2026.
 
-<div class="bench-wide"><img src="docs/js-framework-benchmark.png" alt="js-framework-benchmark"></div>
-<style>
-.bench-wide { position:relative; left:50%; width:100vw; margin-left:-50vw; overflow-x:auto; -webkit-overflow-scrolling:touch; box-sizing:border-box; padding:0 16px; }
-.bench-wide img { display:block; margin:0 auto; width:auto; max-width:none; height:min(60vh, 560px); }
-@media screen and (width >= 1085px) { .bench-wide { left:0; margin-left:-30px; width:calc(100vw - 200px); } }
-</style>
+<div class="bench-wide"><img src="js-framework-benchmark.png" alt="js-framework-benchmark results table"></div>
 
 ## Core Concepts
 
@@ -416,7 +409,7 @@ There is one visible difference from a regular listener, and it only matters whe
 
 When that order matters, prefix the attribute with `native:`, as in `<button native:onclick=${...}>`.  Solarite then registers just that handler with `addEventListener` while the template renders, so it takes its normal place among the element's listeners, and the rest of the component stays delegated.  Everything else is the same: the `(event, element)` arguments, `this`, and the `[fn, ...args]` array form.  In JSX write it the same way, `<button native:onclick={...}>`.
 
-```javascript
+```JavaScript
 // A library adds its own keydown listener to this textarea after render.
 // With native:, the template's handler was registered first, so it runs first.
 h(this)`
@@ -703,7 +696,7 @@ Rules for `key`:
 
 Highlighting the selected row of a table is a special case worth its own tool.  Storing the selected id as an ordinary field works, but it means every change of selection calls `render()`, and the reconciler then has to walk the list to discover that exactly two rows differ.  `h.selector()` skips that: each row's binding remembers the element it was written to, so changing the selection writes those two attributes and nothing else.
 
-```javascript
+```JavaScript
 class UserTable extends Solarite {
     rows = [{id: 1, name: 'Alice'}, {id: 2, name: 'Bob'}];
     selected = h.selector();
@@ -996,7 +989,7 @@ customElements.define('my-timer', MyTimer);
 
 Now all three produce the same result, a `duration` of `7` (a number) and an `autoStart` of `true` (a boolean):
 
-```javascript
+```JavaScript
 // With new.  Values keep their types and are assigned from fields.
 let timer = new MyTimer({duration: 7, autoStart: true});
 
@@ -1154,7 +1147,7 @@ document.body.append(table);
 
 You can also write the component inside a template, using the `is` attribute the same way you would write its tag name.  Attributes still become constructor arguments, and children declared inside it still fill its `<slot>`:
 
-```javascript
+```JavaScript
 h(this)`<table><tr is="line-item" user=${user}></tr></table>`
 ```
 
@@ -1275,6 +1268,7 @@ import h from 'solarite';
 
 class MyButton extends HTMLElement {
   count = 0;
+  connectedCallback() { this.render(); }
   render() {
     h(this, <button onclick={() => { this.count++; this.render(); }}>
       {this.count} times
@@ -1282,6 +1276,7 @@ class MyButton extends HTMLElement {
   }
 }
 customElements.define('my-button', MyButton);
+document.body.append(new MyButton());
 ```
 
 A piece of JSX produces a Solarite `Template` — the same render-ready value an `h` tagged template returns, which you hand to `h(this, ...)` to render. So everything else in Solarite — `render()`, lists, events, two-way binding, child components — works exactly the same way.
@@ -1332,6 +1327,17 @@ await esbuild.build({
 ```jsonc
 // tsconfig.json
 { "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "solarite" } }
+```
+
+**Without a bundler** — compiled JSX imports `solarite/jsx-runtime`, which a browser can only find through an import map. Point it at the runtime that matches the build you import, `jsx-runtime.min.js` for `Solarite.min.js`, so the page loads one copy of Solarite. Two copies don't recognise each other's templates, and Solarite warns in the console if it finds itself loaded twice.
+
+```Html
+<script type="importmap">
+{"imports": {
+  "solarite": "./dist/Solarite.min.js",
+  "solarite/jsx-runtime": "./dist/jsx-runtime.min.js"
+}}
+</script>
 ```
 
 ### Speed

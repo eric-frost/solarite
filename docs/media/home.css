@@ -1,0 +1,158 @@
+/* The homepage only.  Everything shared with the documentation is in site.css. */
+.hero { display: grid; grid-template-columns: calc((100% - var(--arrow)) * var(--split)) 1fr; gap: var(--arrow); align-items: end; padding-block: 60px 50px }
+/* Two small capital lines in Archivo, then "Just Simplicity" as a hairline in Jost, sized to fill the source column:
+   the line is 5.02 times as wide as its font size, so dividing the column width by 5.2 leaves a little air. */
+.hero h1 { font-size: calc((var(--wrap) - var(--arrow)) * var(--split) / 5.2); font-weight: 400;
+  > span, > em { display: block }
+  > span { font: 600 .35em/1.3 Archivo, var(--heading); letter-spacing: .05em; text-transform: uppercase }
+  > em { font: 200 1em/1.02 var(--heading); letter-spacing: -.025em; color: var(--cyan); margin-top: .04em }
+
+  /* While the pointer is over the heading, "Simplicity" lifts away, streaking and fading as it goes, and "Solarite"
+     rises into its place the same way in reverse.  Same font, same line, same starting point.  The second word is
+     drawn by CSS from an attribute, so the heading's real text, for screen readers, search engines, and copying,
+     stays "Just Simplicity".  The rules above are limited to the heading's own children so they leave this alone.
+
+     The blur is motion blur, up and down only, which CSS's own blur() can't do.  It comes from two SVG filters in
+     index.html whose strength docs/js/home.js sets frame by frame, and it is only applied while a swap is under way
+     (.swapping), so the words are never softened at rest.  Without the script the words still rise and fade. */
+  .swap { position: relative; display: inline-block }
+  .swap > span, .swap::after { display: inline-block; transition: transform .2s cubic-bezier(.3, .7, .2, 1), opacity .13s ease }
+  .swap::after { content: attr(data-alt); position: absolute; left: 0; top: 0; transform: translateY(.38em); opacity: 0 }
+  &:hover .swap > span { transform: translateY(-.38em); opacity: 0 }
+  &:hover .swap::after { transform: none; opacity: 1; transition-delay: .035s }
+  &.swapping .swap > span { filter: url(#rise-out) }
+  &.swapping .swap::after { filter: url(#rise-in) }
+}
+.hero-intro { padding-bottom: 14px;
+  p { font-size: 19px; line-height: 1.55; max-width: 460px; margin-bottom: 24px }
+  code { font-size: .9em; background: #ffffff24; padding: 2px 6px; border-radius: 3px }
+}
+/* Ways to get it: small tabs over one line that can be copied. */
+.install { margin-top: 22px; max-width: 520px; font-size: 13px;
+  [role=tablist] { display: flex; gap: 2px }
+  [role=tab] { padding: 5px 11px 4px; border: 0; border-radius: 4px 4px 0 0; background: none; color: var(--sky); font-size: 13px }
+  [role=tab]:hover { color: #fff }
+  [role=tab][aria-selected=true] { background: #0b0f1459; color: #fff }
+}
+.install-line { display: flex; align-items: center; border-radius: 0 4px 4px 4px; background: #0b0f1459;
+  code { flex: 1; min-width: 0; padding: 9px 12px; font-size: 12px; color: #fff; white-space: nowrap; overflow-x: auto; scrollbar-width: none }
+  button { flex: none; width: 36px; align-self: stretch; border: 0; border-left: 1px solid #ffffff26; background: none; color: var(--sky); font-size: 15px }
+  button:hover { color: #fff }
+}
+
+/* The example sits on the blue as two white cards joined by an arrow, like the Jsonnet homepage. */
+.example { padding-bottom: 72px }
+.example-tabs { display: flex; align-items: flex-end; justify-content: space-between; width: calc((100% - var(--arrow)) * var(--split));
+  [role=tablist] { display: flex; gap: 3px }
+  [role=tab] { border: 0; border-radius: 4px 4px 0 0; padding: 13px 18px 9px; font: 600 16px/1 var(--heading); background: #0b0f1466; color: var(--sky) }
+  [role=tab]:hover { background: #0b0f1499; color: #fff }
+  [role=tab][aria-selected=true] { background: var(--card); color: var(--ink) }
+  [role=tab]:disabled { cursor: wait }
+}
+#reset-demo { border: 0; background: none; color: var(--sky); font-size: 14px; padding: 6px 2px; margin-bottom: 3px;
+  &:hover { color: #fff }
+  &:disabled { cursor: wait }
+  span { margin-left: 4px }
+}
+.loading-note { padding: 40px; background: var(--card); color: var(--muted); border-radius: 0 4px 4px 4px }
+play-ground { position: relative; display: flex; align-items: flex-start; gap: var(--arrow); padding: 0; border: 0; border-radius: 0; background: none; height: 560px;
+  code-editor-2, .static-code { display: block; flex: none; width: calc((100% - var(--arrow)) * var(--split)) !important; height: 100% !important; min-width: 0; padding: 12px 0; border: 0 !important; border-radius: 0 4px 4px 4px; background: var(--card); font-size: 13px; overflow: hidden }
+  .static-code { padding-top: 16px } /* The card's 12px plus the 4px the editor adds inside itself. */
+  .cm-editor { height: 100%; outline: none !important; font-size: 13px }
+  .cm-scroller { font-family: var(--mono); line-height: 1.65; overflow: auto }
+  .cm-editor, .cm-gutters { background: var(--card) }
+  .cm-gutters { color: var(--gutter); border: none; min-width: 34px }
+  .cm-content { padding-right: 14px }
+  .cm-activeLine, .cm-activeLineGutter { background: var(--wash) }
+  flex-resizer { display: none !important }
+  &::after { content: ''; position: absolute; left: calc((100% - var(--arrow)) * var(--split) + (var(--arrow) - 34px) / 2); top: 56px; width: 34px; height: 24px; background: #8fbdf3; clip-path: polygon(0 29%, 59% 29%, 59% 0, 100% 50%, 59% 100%, 59% 71%, 0 71%) }
+  iframe { display: block; flex: 1; width: auto !important; min-width: 0; border: 0; border-radius: 4px; background: var(--card) !important }
+}
+.why { padding-block: 80px }
+.benefits { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 36px; margin-top: 30px;
+  article { display: grid; grid-row: span 4; grid-template-rows: subgrid; justify-items: start; min-width: 0 }
+  article:nth-child(n+5) { margin-top: 52px }
+  h3 { font-size: 19px; line-height: 1.3 }
+  p { color: var(--muted); font-size: 14.5px; margin-top: 8px } /* Half a pixel under 15, which is what lets every card's text fit in two lines. */
+  pre { justify-self: stretch; margin-block: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 4px; background: var(--wash); color: var(--link); font-size: 12px; line-height: 1.75; overflow-x: auto }
+  p code { font-size: .88em; color: var(--ink) }
+  pre b { font-weight: 400; color: var(--string) }
+  pre i { font-style: normal; color: var(--muted) }
+  a { font-size: 14px; font-weight: 700 }
+  a span { margin-left: 4px }
+}
+.performance { background: var(--wash); border-block: 1px solid var(--line); padding-block: 72px;
+  .wrap { display: grid; grid-template-columns: .8fr 1.2fr; gap: 80px; align-items: start }
+}
+.performance-copy > p { color: var(--muted); margin-top: 14px; max-width: 400px }
+.size-facts { display: flex; gap: 44px; margin-top: 30px; padding-top: 26px; border-top: 1px solid var(--line);
+  strong { font: 600 44px/1 var(--heading); letter-spacing: -.5px; color: var(--link) }
+  strong span { font-size: 18px; letter-spacing: 0; margin-left: 4px }
+  p { font-size: 13px; color: var(--muted); margin-top: 8px }
+}
+.benchmark { min-width: 0;
+  figcaption { font-size: 13px; color: var(--muted) }
+  ol { list-style: none; padding: 0; margin-block: 0 14px }
+  li { display: grid; grid-template-columns: 150px 1fr; gap: 14px; min-height: 40px; font-size: 14px; line-height: 1.25 }
+  li > span:first-child { align-self: center }
+  small { display: block; font-size: 12px; color: var(--muted); margin-top: 1px }
+  .bar { display: flex; align-items: center; gap: 10px; border-left: 1px solid var(--axis) }
+  .bar i { height: 12px; width: calc(var(--score) / 3.06 * (100% - 46px)); background: var(--bar); border-radius: 0 4px 4px 0 }
+  .bar b { font: 400 12px var(--mono) }
+  .solarite { font-weight: 700 }
+  .solarite small { font-weight: 400 }
+  .solarite .bar i { background: var(--blue) }
+  .solarite .bar b { font-weight: 700 }
+}
+/* A plain statement of what is out of scope, which a reader deciding whether to adopt it will look for. */
+.limits { padding-block: 72px }
+.limit-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 36px; margin-top: 26px;
+  h3 { font-size: 19px }
+  p { color: var(--muted); font-size: 15px; margin-top: 6px }
+}
+
+/* The closing band keeps the rings but leaves the sun itself to the top of the page. */
+.closing { padding-block: 76px; background-position: right -150px top -150px, 0 0;
+  .wrap { display: grid; grid-template-columns: calc((100% - var(--arrow)) * var(--split)) 1fr; gap: var(--arrow); align-items: center }
+  h2 { font-size: clamp(32px, 3.6vw, 46px); font-weight: 800; letter-spacing: -.01em }
+  p { font-size: 17px; max-width: 440px; margin-bottom: 22px }
+}
+
+@media (max-width: 1100px) {
+  .hero-intro p { font-size: 17px }
+  .benefits { grid-template-columns: repeat(2, 1fr); gap: 0 48px;
+    article:nth-child(n+3), article:nth-child(n+5) { margin-top: 44px }
+  }
+  .performance .wrap { gap: 48px }
+}
+@media (max-width: 767px) {
+  .hero, .closing .wrap, .performance .wrap { grid-template-columns: 1fr; gap: 24px }
+  .hero { padding-block: 40px 36px }
+  .hero h1 { font-size: min(var(--wrap) / 5.15, 104px) }
+  .hero-intro { padding-bottom: 0 }
+  .hero-intro p { font-size: 17px }
+  .example { padding-bottom: 44px }
+  .example-tabs { width: 100%;
+    [role=tab] { padding-inline: 12px; font-size: 15px }
+  }
+  play-ground { flex-direction: column; gap: 52px; height: auto;
+    code-editor-2, .static-code { width: 100% !important; height: 320px !important; max-height: none !important }
+    &::after { left: calc(50% - 17px); top: 334px; transform: rotate(90deg) }
+    iframe { flex: none; width: 100% !important }
+  }
+  .why { padding-block: 52px }
+  .limits { padding-block: 48px }
+  .limit-list { grid-template-columns: 1fr; gap: 22px }
+  .benefits { grid-template-columns: 1fr; margin-top: 8px;
+    article, article:nth-child(n+3), article:nth-child(n+5) { margin: 0; padding-block: 24px; border-bottom: 1px solid var(--line) }
+    article:last-child { border: 0; padding-bottom: 0 }
+    pre { margin-block: 12px }
+  }
+  .performance, .closing { padding-block: 48px }
+  .performance .wrap { gap: 36px }
+  .benchmark li { grid-template-columns: 118px 1fr; gap: 10px }
+}
+@media (max-width: 370px) {
+  .example-tabs [role=tab] { padding-inline: 8px; font-size: 13px }
+  #reset-demo { font-size: 13px }
+}
