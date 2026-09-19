@@ -2,7 +2,7 @@
 
 Solarite makes native web components fast to update, with no build step and no signals. You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed. It's small (12.6KB with Brotli) and runs straight in the browser as a standard ES module.
 
-**[Documentation & live examples →](https://eric-frost.github.io/solarite/)**
+**[Documentation & live examples →](https://eric-frost.github.io/solarite/docs/)**
 
 ## Install
 
@@ -40,7 +40,7 @@ document.body.append(new Counter());
 
 ## Why Solarite?
 
-It's one of the fastest UI libraries measured: a score of **1.10** on the [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/current.html) — about 10% slower than hand-written vanilla JavaScript — while staying tiny and build-free.
+It's one of the fastest UI libraries measured: a score of **1.07** on the [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/current.html) — about 7% slower than hand-written vanilla JavaScript — while staying tiny and build-free.
 
 ### Compared to Lit
 

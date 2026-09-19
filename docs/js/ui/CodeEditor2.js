@@ -1,4 +1,4 @@
-import h, { Solarite } from "../../../src/Solarite.js";
+import h, { Solarite } from "../../../dist/Solarite.min.js";
 import { Language } from "../util/FileType.js";
 export default class CodeEditor2 extends Solarite {
   static userOptions = {
@@ -1186,7 +1186,9 @@ function getChain(cm) {
         ranges.push({ from: pos, to: end });
       return ranges.length ? { parser: customHtmlParser, overlay: ranges } : null;
     });
-    let jsLanguage = cm.javascriptLanguage.configure({ wrap: templateWrap });
+    // The JSX dialect only adds meaning to a `<` where an expression starts, which plain JavaScript never has, so
+    // ordinary files highlight exactly as before and .jsx files (which share this language) get their tags coloured.
+    let jsLanguage = cm.javascriptLanguage.configure({ dialect: "jsx", wrap: templateWrap });
     let htmlSupport = cm.html({ nestedLanguages: [{
       tag: "script",
       attrs: (attrs) => !attrs.type || /^(?:text|application)\/(?:x-)?(?:java|ecma)script$|^module$|^$/i.test(attrs.type),

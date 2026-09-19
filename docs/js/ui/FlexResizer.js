@@ -1,4 +1,4 @@
-import {Solarite, h as r} from "../../../src/Solarite.js";
+import {Solarite, h as r} from "../../../dist/Solarite.min.js";
 import Draggable2 from "../util/Draggable2.js";
 import Util from "../util/Util.js";
 
@@ -12,9 +12,17 @@ export default class FlexResizer extends Solarite {
 	
 	/**
 	 * @param unit {string} Can be 'px' or '%'
-	 * @param thickness {int} Width of the resize drag area.*/
-	constructor({unit='px', thickness=10}={}) {
+	 * @param thickness {int} Width of the resize drag area.
+	 * @param vertical {?boolean} Whether this is an upright divider between side-by-side panes.  Leave it null to
+	 *     work it out from the parent's flex-direction, which only works if the parent is already in the page when
+	 *     this first renders.  A parent that is built before it is attached, as the playground is, has no computed
+	 *     style yet, so it must say.  Same option as packchain's FlexResizer.ts. */
+	constructor({unit='px', thickness=10, vertical=null}={}) {
 		super();
+
+		// Written as a bare attribute in a template, `vertical` arrives here as an empty string, which means true.
+		let v = this.hasAttribute('vertical') ? this.getAttribute('vertical') : vertical;
+		this.vertical = v === null || v === undefined ? null : v !== false && v !== 'false';
 		this.thickness = parseFloat(this.getAttribute('thickness') ?? thickness);
 		let u = this.getAttribute('unit') ?? unit;
 		this.unit = ['px', '%'].includes(u) ? u : 'px';
@@ -67,6 +75,8 @@ export default class FlexResizer extends Solarite {
    * When vertical, the resizer will be stretched horizontally to fill the available space.
 	 * @returns {boolean} */
 	isVertical() {
+		if (this.vertical !== null)
+			return this.vertical;
 		if (this.parentNode) {
 			return getComputedStyle(this.parentNode).flexDirection === 'row';
 		}
