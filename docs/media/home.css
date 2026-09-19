@@ -35,7 +35,10 @@
   [role=tab][aria-selected=true] { background: #0b0f1459; color: #fff }
 }
 .install-line { display: flex; align-items: center; border-radius: 0 4px 4px 4px; background: #0b0f1459;
-  code { flex: 1; min-width: 0; padding: 9px 12px; font-size: 12px; color: #fff; white-space: nowrap; overflow-x: auto; scrollbar-width: none }
+
+  /* The CDN line is longer than the strip at any width, so it wraps: at its spaces first, then anywhere inside the
+     address.  Copying it still gives one unbroken line. */
+  code { flex: 1; min-width: 0; padding: 9px 12px; font-size: 12px; line-height: 1.6; color: #fff; overflow-wrap: anywhere }
   button { flex: none; width: 36px; align-self: stretch; border: 0; border-left: 1px solid #ffffff26; background: none; color: var(--sky); font-size: 15px }
   button:hover { color: #fff }
 }
