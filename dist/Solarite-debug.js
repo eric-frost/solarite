@@ -71,6 +71,17 @@ function reset() {
 }
 reset();
 
+// Warn when a second copy of Solarite loads into the same page.  Each copy has its own classes and its own Globals,
+// so a template or component made by one is not recognised by the other, and the failure that follows (a template
+// rendered as "[object Object]", a slot that stays empty) gives no hint of the cause.  The usual ways to get two are
+// importing both Solarite.js and Solarite.min.js, or a JSX runtime file that doesn't match the build being imported.
+// The marker is the same for every build, so the source, debug, and minified builds all detect one another.
+let copy = Symbol.for('solarite');
+if (globalThis[copy])
+	console.warn(`Solarite loaded twice: ${globalThis[copy]} and ${import.meta.url}.  Templates and components from one won't work in the other.`);
+else
+	globalThis[copy] = import.meta.url;
+
 var Globals$1 = Globals;
 
 /**

@@ -237,6 +237,61 @@ Testimony.test('Dist.jsxRuntimeSharesOneCopy', `dist/jsx-runtime.js must share t
 	assert(txt.includes("from './Solarite.js'"));
 });
 
+Testimony.test('Dist.jsxRuntimeMinSharesOneCopy', `dist/jsx-runtime.min.js must share the minified bundle's module instance`, async () => {
+	// Every example in the documentation imports Solarite.min.js by path.  Someone who does that and
+	// maps "solarite/jsx-runtime" to jsx-runtime.js, which imports Solarite.js, loads two copies.  So
+	// the minified bundle has a runtime of its own, and this checks it against the copy this file
+	// already imported at the top, the way a page would.
+	const min = await import('../dist/Solarite.min.js');
+	const jsxRt = await import('../dist/jsx-runtime.min.js');
+	const jsxDev = await import('../dist/jsx-dev-runtime.min.js');
+
+	assert(jsxRt.jsxAttr('href', '/x') instanceof min.InternalJsxAttr);
+	assert.eq(jsxRt.Fragment, min.Fragment);
+	assert.eq(jsxDev.jsxDEVRuntime, jsxRt.jsxDEV);
+
+	// The runtime is minified apart from the bundle, so it must reach a key through a name the bundle
+	// does not mangle.  Rendering a keyed template through both tiers proves the names still agree.
+	let el = document.createElement('div');
+	document.body.append(el);
+	hMin(el, jsxRt.jsxs('ul', {children: [jsxRt.jsx('li', {children: 'a'}, 1), jsxRt.jsx('li', {children: 'b'}, 2)]}));
+	assert.eq(el.innerHTML.replace(/<!--.*?-->/g, ''), '<ul><li>a</li><li>b</li></ul>');
+	assert.eq(jsxRt.jsxTemplate(['<i ', '></i>'], jsxRt.jsxAttr('key', 7)).key, 7);
+	el.remove();
+
+	const txt = await (await fetch('../dist/jsx-runtime.min.js')).text();
+	assert(txt.includes(`from"./Solarite.min.js"`) || txt.includes(`from'./Solarite.min.js'`));
+	assert.eq(txt.includes('Solarite.js"'), false);
+});
+
+// Two copies don't recognise each other's templates or share slot hand-offs, and nothing about the
+// resulting failure points at the cause, so the second copy says so as it loads.  This runs in an
+// iframe because the marker lives on globalThis: this page has already loaded several copies, and a
+// fresh realm starts with none.  The callback is serialised into the iframe, so it can only use what
+// it imports itself.
+Testimony.testIframe('Dist.duplicateCopyWarning', `Loading a second copy of Solarite warns and names both`,
+	`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"></head><body></body></html>`, async context => {
+	const assert = context.assert;
+	let warnings = [];
+	console.warn = message => warnings.push(String(message));
+
+	// 1. One copy, plus the runtime built for it, is silent.
+	await import('/dist/Solarite.min.js');
+	await import('/dist/jsx-runtime.min.js');
+	assert.eq(warnings.length, 0);
+
+	// 2. A different build is a second copy, whichever build it is; the debug build counts too.
+	await import('/dist/Solarite-debug.js');
+	assert.eq(warnings.length, 1);
+	assert(warnings[0].includes('/dist/Solarite.min.js'));
+	assert(warnings[0].includes('/dist/Solarite-debug.js'));
+
+	// 3. So does the mismatched runtime, which is the mistake this is most likely to catch.
+	await import('/dist/jsx-runtime.js');
+	assert.eq(warnings.length, 2);
+	assert(warnings[1].includes('/dist/Solarite.js'));
+});
+
 Testimony.test('Dist.customElementsNotMangled', `Terser must not rename customElements methods it doesn't know`, async () => {
 	// build/build.js mangles properties with `builtins: false`, which spares names terser
 	// recognizes from its bundled DOM list.  That list predates CustomElementRegistry.getName,
