@@ -2,13 +2,14 @@
 
 All notable changes to Solarite are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/). While the version is below 1.0, minor releases may include breaking changes; these are called out below.
 
-## [Unreleased]
+## [0.9.0] - 2026-09-19
 
 ### Added
 - A `native:` prefix on an event attribute, such as `<button native:onclick=${...}>`, binds that one handler with `addEventListener` when the template renders instead of delegating it. Delegated handlers are attached when an event starts, so they run after any listener other code has added to the same element; use the prefix when that handler has to come first. It takes the same arguments, `this`, and array form as any other handler, and works in JSX as `native:onclick={...}`.
 
 ### Changed
 - **Breaking:** the `eventDelegation: 'document'` render option is gone. Passing it is harmless and just means "delegate", because what it did, keeping handlers alive on an element another component moves elsewhere in the page, now happens for every delegated handler.
+- The Brotli download grew from 12.4KB to 12.6KB, mostly for the reworked event dispatch described under Fixed.
 
 ### Fixed
 - Delegated event handlers now behave exactly like listeners added with `addEventListener`. They used to run only once the event bubbled up to the component's root, which silently broke four things: `stopPropagation()` in a template handler could not stop a listener someone had added on an ancestor, because that listener had already run; a listener on an ancestor that stopped propagation kept the template handler from ever running; an event dispatched programmatically without `bubbles: true` never reached a handler; and an element moved out of its component lost its handlers. Solarite now attaches a real listener to each element on an event's path the moment the event starts and lets the browser dispatch normally, so ordering, `stopPropagation()`, `currentTarget`, non-bubbling events and moved elements all just work, and rendering stays as cheap as before.
