@@ -5,7 +5,45 @@
 	<title>Solarite Tests ✨</title>
 	<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✨</text></svg>">
 	<style>
-		body { font: 14px Consolas; margin: 0; padding: 10px; box-sizing: border-box; min-height: 100vh }
+		/* Two columns, and the RIGHT one is the body's own content area.
+
+		   Tests build their fixtures — shadow hosts, iframes, loose html — as they run, and left to
+		   grow down the same column as the results they would push the tree of test names off the
+		   screen.  Fixtures are not moved into a container to achieve this, deliberately — see
+		   fixtureHost() in Testimony.js.  Code under test can see what surrounds its fixture, and
+		   most tests here append theirs straight to the body without going through the runner at
+		   all, so a container could never hold all of them anyway.  Indenting the body past a fixed
+		   pane puts every fixture in the right-hand column while leaving the DOM untouched. */
+		html { height: 100% }
+		body { font: 14px Consolas; margin: 0; box-sizing: border-box; min-height: 100%;
+			padding: 10px 10px 10px calc(var(--list-width) + 20px) }
+		#testList { position: fixed; left: 0; top: 0; bottom: 0; width: var(--list-width);
+			overflow: auto; padding: 10px; box-sizing: border-box; border-right: 1px solid #888;
+			background: inherit; z-index: 1 }
+		:root { --list-width: min(52%, 820px) }
+		/* A strip straddling the divider.  It sits inside #testList only to stay out of the body's
+		   own children, which tests may count; being fixed, the list's scrolling doesn't clip it. */
+		#listResizer { position: fixed; top: 0; bottom: 0; left: calc(var(--list-width) - 3px); width: 7px;
+			cursor: col-resize; touch-action: none; z-index: 2 }
+		#listResizer:hover, #listResizer.dragging { background: #58f6 }
+		/* Stays in view while the list scrolls, so a run can be started and the search text changed
+		   from anywhere in it.  The negative margins carry its background across the list's padding. */
+		#listHeader { position: sticky; top: -10px; z-index: 1; background: inherit;
+			margin: -10px -10px 8px; padding: 10px; border-bottom: 1px solid #8884;
+			> div { display: flex; align-items: center; gap: 6px 16px; flex-wrap: wrap }
+			> div + div { margin-top: 8px; font-size: 13px }
+			label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; opacity: .8 }
+			nav { margin-left: auto; display: flex; gap: 14px }
+			a { text-decoration: none; &:hover { text-decoration: underline } }
+			input[type=checkbox] { margin: 0; accent-color: #58f }
+			button { font: inherit; border: 1px solid #8886; border-radius: 3px; padding: 3px 15px; &:hover { border-color: #58f } }
+		}
+		#testSearch { font: inherit; flex: 1; min-width: 120px; padding: 3px 8px; border: 1px solid #8886;
+			border-radius: 3px; background: transparent; color: inherit; outline: 0;
+			&:focus { border-color: #58f }
+		}
+		test-item > div { scroll-margin-top: 80px } /* So a search match scrolled into view clears the sticky header. */
+		#searchCount { opacity: .5; min-width: 70px; &:empty { display: none } }
 		table { border-collapse: collapse }
 		td { vertical-align: top; padding: 0; white-space: normal }
 		td:first-child { white-space: nowrap }
@@ -15,6 +53,7 @@
 		@media (prefers-color-scheme: dark) {
 			body { background: #000; color: #ddd }
 			button { background: #333; color: white }
+			#testList { border-right-color: #333 }
 		}
 	</style>
 </head>
@@ -38,21 +77,101 @@
 			document.querySelector('input[name=throwOnError]').checked = true;
 
 		await Testimony.render(document.getElementById('tests'));
+
+		// Search as you type.
+		let search = document.getElementById('testSearch');
+		search.oninput = () => {
+			let query = search.value.trim();
+			let count = Testimony.search(query);
+			document.getElementById('searchCount').textContent = query ? `${count} found` : '';
+		};
 		await Testimony.run();
 	})();
 </script>
 
-<form>
-	<button>Run Tests</button>
-	<a href=".">Reset</a>
-	<label>
-		<input type="checkbox" name="throwOnError" value="">Throw on Error (So debugger can catch it)
-	</label>
+<form id="testList">
+	<header id="listHeader">
+		<div>
+			<button>Run Tests</button>
+			<input type="search" id="testSearch" placeholder="Search test names" autocomplete="off">
+			<span id="searchCount"></span>
+		</div>
+		<div>
+			<label title="Let errors escape instead of recording them as failures, so a debugger can stop on them">
+				<input type="checkbox" name="throwOnError" value="">
+				Throw on error
+			</label>
+			<nav>
+				<a href=".">Reset</a>
+			</nav>
+		</div>
+	</header>
 	<div id="tests"></div>
-	<br>
-	<button>Run Tests</button>
+	<div id="listResizer" title="Drag to resize, double-click to reset"></div>
 </form>
+<script>
+	// Keep the search box typeable.  A test that leaks a capture-phase key listener on the document
+	// and cancels what it hears would leave the box dead.  The window's capture phase comes before
+	// the document's, so stopping the event here hides the box's keystrokes from all of them, while
+	// the browser still types the character.  Enter is cancelled because it would submit the form
+	// and start a run.
+	for (let type of ['keydown', 'keypress', 'keyup', 'beforeinput', 'paste'])
+		window.addEventListener(type, e => {
+			if (e.target?.id !== 'testSearch')
+				return;
+			e.stopImmediatePropagation();
+			if (e.key === 'Enter')
+				e.preventDefault();
+		}, true);
+</script>
+<script>
+	// Dragging the divider sets --list-width, which both the fixed list and the body's left padding
+	// read.  Every run reloads the page, so the width is kept in localStorage.  This is a classic
+	// script rather than a module so the saved width applies before the first paint.
+	//
+	// The handle captures the pointer instead of listening on the document: capture keeps the drag
+	// alive over fixture iframes, and tests that dispatch their own synthetic pointer events can't
+	// reach a listener that lives only on this element.
+	(() => {
+		const key = 'tests.listWidth', root = document.documentElement;
+		const list = document.getElementById('testList'), handle = document.getElementById('listResizer');
+
+		// The min() keeps a width saved on a wider window from pushing the handle off this one.
+		function apply(px) {
+			if (px)
+				root.style.setProperty('--list-width', `min(${px}px, calc(100vw - 100px))`);
+			else
+				root.style.removeProperty('--list-width');
+		}
+		apply(localStorage.getItem(key));
+
+		let grabOffset = 0, width = null; // Null until the pointer moves, so a plain click saves nothing.
+		handle.onpointerdown = e => {
+			if (e.button !== 0)
+				return;
+			e.preventDefault(); // Don't select text while dragging.
+			width = null;
+			grabOffset = e.clientX - list.getBoundingClientRect().width; // So the divider doesn't jump to the pointer.
+			handle.setPointerCapture(e.pointerId);
+			handle.classList.add('dragging');
+		};
+		handle.onpointermove = e => {
+			if (!handle.hasPointerCapture(e.pointerId))
+				return;
+			width = Math.round(Math.max(100, Math.min(e.clientX - grabOffset, innerWidth - 100)));
+			apply(width);
+		};
+		handle.onlostpointercapture = () => {
+			handle.classList.remove('dragging');
+			if (width !== null)
+				localStorage.setItem(key, width);
+		};
+		handle.ondblclick = () => {
+			localStorage.removeItem(key);
+			apply(null);
+		};
+	})();
+</script>
 </body>
 
 </html>
-
