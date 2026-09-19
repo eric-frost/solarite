@@ -376,7 +376,9 @@ Make sure to put your events inside `${...}` expressions, because classic events
 
 #### Event Delegation
 
-Solarite delegates bubbling events by default.  Instead of calling `addEventListener` on every element, it listens once per event type at the document level and finds handlers by walking up from the event target.  So a data grid with buttons on every row costs zero listener registrations, which makes large lists noticeably faster to create and clear, especially on phones.  Your templates don't change:
+When a template gives an element a handler, like `<button onclick=${...}>`, you might expect Solarite to call `addEventListener` on that button.  It doesn't, and the reason is cost.  The browser keeps a small record for every listener, and creating each one takes about a microsecond.  That is nothing for one button, but a table of ten thousand rows with two handlers each would spend more time registering listeners than building the rows.  So Solarite stores the handler on the element as a property and registers nothing.  This is called event delegation, and it is on by default.
+
+Something still has to run those handlers when an event happens.  Solarite listens once per event type on your component's root element and on the document, during the capture phase, which runs before the event reaches anything.  When an event starts, that listener looks at the elements on the event's path, finds the ones holding a handler, and attaches a real listener to each of them for this one event.  The browser then dispatches the event exactly as it normally would, so your handlers run at their element's turn, in the right order with any listeners other code added, and the temporary listeners are removed afterward.  Rendering stays cheap, and events behave like native ones: `stopPropagation()` works in both directions, `event.currentTarget` is the element, events dispatched programmatically reach the handler even when they don't bubble, and a handler keeps working when another component moves its element elsewhere in the page.  Your templates don't change:
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -408,9 +410,20 @@ class LogViewer extends Solarite {
 document.body.append(new LogViewer());
 ```
 
-Only events that bubble are delegated (click, input, keydown, and the like); focus, blur, scroll and other non-bubbling events automatically keep regular listeners.  Pass `eventDelegation: ['click', 'input']` as a render option to delegate only specific events, or `eventDelegation: false` to bind every event directly with `addEventListener`.  Pass `eventDelegation: 'document'` to also register the dispatcher on the document, so handlers keep firing on nodes that another component re-parents outside your component - for example a toolbar that a dock panel moves into its own tab bar.  The best design is still to render such content into an element that moves with it, since then no option is needed; `'document'` is the escape hatch for content that must be rendered in place and moved by someone else.
+Only events that bubble are delegated (click, input, keydown, and the like); focus, blur, scroll and other non-bubbling events keep regular listeners.  Pass `eventDelegation: ['click', 'input']` as a render option to delegate only specific events, or `eventDelegation: false` to register every handler with `addEventListener` while the template renders.
 
-A few caveats, all rare in practice: delegated handlers run when the event bubbles up to the component's root element (or the document, with `'document'`), so a manually added `addEventListener` on an element in between fires before them rather than after, and `stopPropagation()` called from such a manual listener prevents delegated handlers from running.  A non-bubbling event dispatched programmatically (`dispatchEvent` without `bubbles: true`) won't reach delegated handlers either.  Handlers see the correct `event.currentTarget` in every case.  Use `eventDelegation: false` if any of these matter.
+There is one visible difference from a regular listener, and it only matters when your own code also adds a listener to the same element as a template handler.  A delegated handler is attached when the event starts, so it runs after any listener already on that element.  A listener registered while the template rendered would usually have run first.
+
+When that order matters, prefix the attribute with `native:`, as in `<button native:onclick=${...}>`.  Solarite then registers just that handler with `addEventListener` while the template renders, so it takes its normal place among the element's listeners, and the rest of the component stays delegated.  Everything else is the same: the `(event, element)` arguments, `this`, and the `[fn, ...args]` array form.  In JSX write it the same way, `<button native:onclick={...}>`.
+
+```javascript
+// A library adds its own keydown listener to this textarea after render.
+// With native:, the template's handler was registered first, so it runs first.
+h(this)`
+<text-editor>
+  <textarea native:onkeydown=${e => this.handleTab(e)}></textarea>
+</text-editor>`
+```
 
 ### Two-Way Binding
 

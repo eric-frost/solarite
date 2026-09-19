@@ -330,17 +330,17 @@ export default class NodeGroup {
 		let stampers = shell.stampPaths;
 		let rootNg = this.rootNg;
 		let root = rootNg.rootEl;
+		// Any value other than false or an array of event names means delegate everything.
 		let opt = rootNg.renderOptions?.eventDelegation;
-		let delegateDoc = opt === 'document';
-		let delegateAll = opt === undefined || opt === true || delegateDoc;
+		let delegateAll = opt !== false && !Array.isArray(opt);
 
 		// Register this shell's delegated dispatchers once for a whole run of rows.  They live on
-		// the root, not on the bound nodes, so asking per node — as the general binding path has
-		// to — would be a call and a set lookup for every handler in the list.
+		// the root and the document, not on the bound nodes, so asking per node — as the general
+		// binding path has to — would be a call and a set lookup for every handler in the list.
 		let names = shell.stampEventNames;
 		if (names !== null && delegateAll && rootNg[lastStampedShellKey] !== shell) {
 			for (let k=0; k<names.length; k++)
-				ensureDelegatedDispatcher(root, names[k], delegateDoc);
+				ensureDelegatedDispatcher(root, names[k]);
 			rootNg[lastStampedShellKey] = shell;
 		}
 

@@ -3219,11 +3219,14 @@ Testimony.test('Solarite.stamp.keyedRewrite', `Stamped keyed rows rewrite in pla
   | Delegation      |
   └─────────────────╯*/
 //region delegation
-// Tests for event delegation, which is on by default: bubbling events dispatch from one
-// listener per event type on the component root instead of addEventListener per element.
-// Pass eventDelegation:false to opt out.  See the delegatedDispatcher in PathToAttribValue.js.
+// Tests for event delegation, which is on by default: a template handler is stored on its
+// element, and when an event of that type starts, a capture-phase listener on the component
+// root and on the document attaches a real listener to each element on the event's path that
+// has one, so the browser dispatches them natively.  Pass eventDelegation:false to opt out, or
+// prefix one attribute with native: to bind just that handler at render time.  See
+// jitDispatcher() in PathToAttribValue.js.
 
-Testimony.test('Solarite.delegation.click', `eventDelegation option dispatches through one root listener.`, () => {
+Testimony.test('Solarite.delegation.click', `A delegated handler gets the usual arguments and this.`, () => {
 	let el = document.createElement('div');
 	document.body.append(el);
 	let count = 0, gotEl = null, gotThis = null;
@@ -3350,7 +3353,7 @@ Testimony.test('Solarite.delegation.keyedMove', `Delegated handlers follow keyed
 	el.remove();
 });
 
-Testimony.test('Solarite.delegation.defaultOn', `Delegation is on by default without passing the option.`, () => {
+Testimony.test('Solarite.delegation.defaultOn', `Delegation is on by default without passing the option, and behaves like a real listener.`, () => {
 	let el = document.createElement('div');
 	document.body.append(el);
 	let count = 0;
@@ -3358,11 +3361,12 @@ Testimony.test('Solarite.delegation.defaultOn', `Delegation is on by default wit
 
 	let btn = el.querySelector('button');
 	btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-	assert.eq(count, 1); // The delegated root listener caught the bubbling click.
-
-	// A non-bubbling event never reaches the root listener, so it doesn't fire.
-	btn.dispatchEvent(new MouseEvent('click'));
 	assert.eq(count, 1);
+
+	// A non-bubbling event reaches it too: the dispatcher attaches the listener during the
+	// capture phase, which descends the whole path whether or not the event bubbles.
+	btn.dispatchEvent(new MouseEvent('click'));
+	assert.eq(count, 2);
 
 	el.remove();
 });
@@ -3395,87 +3399,53 @@ Testimony.test('Solarite.delegation.detached', `Delegated handlers work while th
 	assert.eq(a.count, 1);
 });
 
-Testimony.test('Solarite.delegation.documentOption', `eventDelegation:'document' keeps handlers firing on nodes re-parented outside their component.`, () => {
+Testimony.test('Solarite.delegation.documentOptionIgnored', `The retired eventDelegation:'document' option is accepted and simply delegates.`, () => {
 	let el = document.createElement('div');
 	document.body.append(el);
 	let count = 0;
 	h(el, {eventDelegation: 'document'})`<div><button onclick=${() => count++}>hi</button></div>`;
 
-	let btn = el.querySelector('button');
-
-	// Inside the component: the root dispatcher handles it; the document dispatcher
-	// sees the done-marker and must not double-fire.
-	btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	el.querySelector('button').click();
 	assert.eq(count, 1);
 
-	// Re-parented outside the component (the dock-parked-toolbar case): the click
-	// bubbles past el entirely, and only the document dispatcher can reach the handler.
-	let elsewhere = document.createElement('div');
-	document.body.append(elsewhere);
-	elsewhere.append(btn);
-	btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-	assert.eq(count, 2);
-
 	el.remove();
-	elsewhere.remove();
 });
 
-Testimony.test('Solarite.delegation.documentOptionOffByDefault', `Without 'document', a re-parented node's delegated handler goes quiet.`, () => {
-	let el = document.createElement('div');
-	document.body.append(el);
-	let count = 0;
-	// mousedown, not click: another test's 'document' option leaves a click dispatcher on the
-	// shared document for the rest of the suite, which would falsely catch this handler.
-	h(el)`<div><button onmousedown=${() => count++}>hi</button></div>`;
-
-	let btn = el.querySelector('button');
-	let elsewhere = document.createElement('div');
-	document.body.append(elsewhere);
-	elsewhere.append(btn);
-
-	// Bubbles only through elsewhere -> body -> document; no dispatcher on that path.
-	btn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-	assert.eq(count, 0);
-
-	el.remove();
-	elsewhere.remove();
-});
-
-Testimony.test('Solarite.delegation.documentOptionStamped', `The 'document' option also covers handlers written by the compiled stamp program (list rows).`, () => {
+Testimony.test('Solarite.delegation.stampedReparented', `Handlers written by the compiled stamp program (list rows) keep working after a row is moved outside its component.`, () => {
 	let el = document.createElement('div');
 	document.body.append(el);
 	let hits = [];
 	let rows = [1, 2, 3];
-	h(el, {eventDelegation: 'document'})`<div>${rows.map(n =>
+	h(el)`<div>${rows.map(n =>
 		h`<p key=${n} onmouseup=${[i => hits.push(i), n]}>row</p>`)}</div>`;
 
-	// Re-parent a stamped row outside the component; its array-form handler must still fire.
-	// (mouseup keeps this test's document dispatcher independent of the other two tests'.)
+	// applyStamp() writes these handlers itself instead of going through bindEvent(), so it
+	// has to register the dispatcher itself too, and the document half of that registration
+	// is what still reaches a row after it has been moved out from under its root.
 	let p = el.querySelectorAll('p')[1];
 	let elsewhere = document.createElement('div');
 	document.body.append(elsewhere);
 	elsewhere.append(p);
 	p.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
-	assert.eq(hits.length, 1);
-	assert.eq(hits[0], 2);
+	assert.eq(hits.join(), '2');
 
 	el.remove();
 	elsewhere.remove();
 });
 
 Testimony.test('Solarite.delegation.nested', `Nested components each delegate without double-firing.`, () => {
-	let outer = 0, inner = 0;
+	let outer = 0, inner = 0, outerThis = null, innerThis = null;
 
 	class D90Inner extends Solarite {
 		render() {
-			h(this)`<d-90-inner><button onclick=${() => inner++}>inner</button></d-90-inner>`;
+			h(this)`<d-90-inner><button onclick=${function() { inner++; innerThis = this; }}>inner</button></d-90-inner>`;
 		}
 	}
 	D90Inner.define();
 
 	class D90Outer extends Solarite {
 		render() {
-			h(this)`<d-90-outer onclick=${() => outer++}><d-90-inner></d-90-inner></d-90-outer>`;
+			h(this)`<d-90-outer onclick=${function() { outer++; outerThis = this; }}><d-90-inner></d-90-inner></d-90-outer>`;
 		}
 	}
 	D90Outer.define();
@@ -3486,23 +3456,24 @@ Testimony.test('Solarite.delegation.nested', `Nested components each delegate wi
 	a.querySelector('button').dispatchEvent(new MouseEvent('click', {bubbles: true}));
 	assert.eq(inner, 1); // Inner handler fires exactly once, not twice.
 	assert.eq(outer, 1); // Outer handler also fires once as the click bubbles up.
+	assert.eq(innerThis, a.firstChild); // Each handler runs with its own component as this.
+	assert.eq(outerThis, a);
 
 	a.remove();
 });
 
 
-// The four tests below reproduce the delegated-dispatch defects that
-// agents/tasks/draft/jit-event-delegation.md is meant to fix.  They all fail today.
-// Each asserts what the browser itself does, which is also what Solarite produces when
-// delegation is turned off with eventDelegation:false -- delegation is meant to be an
-// optimization, not a change in semantics.  The "Today:" comments record the wrong value.
+// The four tests below were written as failing reproductions of the defects in the old
+// bubble-phase dispatcher, which ran every delegated handler only once the event reached the
+// component root.  Each asserts what the browser itself does, which is also what Solarite
+// produces with eventDelegation:false -- delegation is an optimization, not a change in
+// semantics.  The "Old dispatcher:" comments record what used to happen.
 
 Testimony.test('Solarite.delegation.stopPropagationVsRealListener', `A delegated handler's stopPropagation stops a real listener on an ancestor.`, () => {
 
-	// A delegated handler doesn't run until the event reaches the component ROOT, by which
-	// time an ancestor's addEventListener has already run, so stopPropagation() is too late
-	// to stop it.  A confirm button that stops propagation to keep its container from also
-	// acting finds that the container acted anyway.
+	// A confirm button that stops propagation to keep its container from also acting.  The
+	// old dispatcher ran the button's handler only when the event reached the component
+	// root, after the container's real listener, so stopPropagation() came too late.
 	let order = [];
 	let el = document.createElement('div');
 	document.body.append(el);
@@ -3511,17 +3482,17 @@ Testimony.test('Solarite.delegation.stopPropagationVsRealListener', `A delegated
 
 	el.querySelector('button').click();
 
-	assert.eq(order.join(), 'button'); // Today: 'div,button'.
+	assert.eq(order.join(), 'button'); // Old dispatcher: 'div,button'.
 
 	el.remove();
 });
 
 Testimony.test('Solarite.delegation.realListenerStopsDelegated', `An ancestor's stopPropagation must not cancel a handler below it.`, () => {
 
-	// The same ordering seen from the other side.  The button's handler should already have
-	// run by the time the ancestor's does, so stopping propagation up there is too late to
-	// silence it.  Today the event never reaches the root dispatcher and the button's
-	// handler is skipped entirely.
+	// The same ordering seen from the other side.  The button's handler has already run by
+	// the time the ancestor's does, so stopping propagation up there is too late to silence
+	// it.  With the old dispatcher the event never reached the root and the button's handler
+	// was skipped entirely.
 	let order = [];
 	let el = document.createElement('div');
 	document.body.append(el);
@@ -3530,16 +3501,16 @@ Testimony.test('Solarite.delegation.realListenerStopsDelegated', `An ancestor's 
 
 	el.querySelector('button').click();
 
-	assert.eq(order.join(), 'button,div'); // Today: 'div'.
+	assert.eq(order.join(), 'button,div'); // Old dispatcher: 'div'.
 
 	el.remove();
 });
 
 Testimony.test('Solarite.delegation.syntheticNonBubbling', `A synthetic event that doesn't bubble still reaches a delegated handler.`, () => {
 
-	// new Event('input') defaults to bubbles:false, so it never reaches a root-level
-	// dispatcher.  Anything replaying recorded events, or a test driving a control
-	// directly, hits this and sees the handler silently do nothing.
+	// new Event('input') defaults to bubbles:false, so it never reached the old root-level
+	// dispatcher.  Anything replaying recorded events, or a test driving a control directly,
+	// saw the handler silently do nothing.  Capture descends the whole path regardless.
 	let count = 0;
 	let el = document.createElement('div');
 	document.body.append(el);
@@ -3547,7 +3518,7 @@ Testimony.test('Solarite.delegation.syntheticNonBubbling', `A synthetic event th
 
 	el.firstChild.dispatchEvent(new Event('input'));
 
-	assert.eq(count, 1); // Today: 0.
+	assert.eq(count, 1); // Old dispatcher: 0.
 
 	el.remove();
 });
@@ -3555,11 +3526,9 @@ Testimony.test('Solarite.delegation.syntheticNonBubbling', `A synthetic event th
 Testimony.test('Solarite.delegation.reparented', `A node moved outside its component keeps its delegated handlers.`, () => {
 
 	// Moving a rendered node elsewhere in the page -- docking a toolbar, portaling a menu --
-	// takes it off the path to its component root, so the root dispatcher never sees its
-	// events.  Today the only cure is the eventDelegation:'document' opt-in that every such
-	// component has to remember to pass.  Solarite.delegation.documentOptionOffByDefault
-	// above pins that current behavior and so contradicts this test on purpose: whichever
-	// fix lands must delete or invert that one.
+	// takes it off the path to its component root.  The old dispatcher lost it unless the
+	// component had passed the eventDelegation:'document' opt-in; now the dispatcher on the
+	// document reaches it wherever it lives.
 	let count = 0;
 	let el = document.createElement('div');
 	document.body.append(el);
@@ -3569,9 +3538,147 @@ Testimony.test('Solarite.delegation.reparented', `A node moved outside its compo
 	document.body.append(button); // Now a sibling of el instead of a descendant.
 	button.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}));
 
-	assert.eq(count, 1); // Today: 0.
+	assert.eq(count, 1); // Old dispatcher: 0.
 
 	button.remove();
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.sameNodeOrder', `A delegated handler runs after every listener its element already had, even after an earlier dispatch in the same task.`, () => {
+	let order = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	h(el)`<button onclick=${() => order.push('template')}>x</button>`;
+	let button = el.firstChild;
+	button.addEventListener('click', () => order.push('first'));
+
+	button.click();
+	assert.eq(order.join(), 'first,template');
+
+	// The listener attached for the click above is still on the button, since it's only swept in
+	// a later task.  A listener added now must still run before the template handler, which is
+	// why the dispatcher removes and re-adds rather than just adding.
+	button.addEventListener('click', () => order.push('second'));
+	order = [];
+	button.click();
+	assert.eq(order.join(), 'first,second,template');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.reentrant', `A handler that dispatches another event of the same type mid-dispatch leaves the outer dispatch intact.`, () => {
+	let order = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	h(el)`<div onclick=${() => order.push('div')}>
+		<button onclick=${() => { order.push('a'); el.querySelector('.b').click(); }}>a</button>
+		<button class="b" onclick=${() => order.push('b')}>b</button>
+	</div>`;
+
+	el.querySelector('button').click();
+	// The nested click on b runs to completion (b, then their shared div), then the outer click
+	// continues up to the div -- exactly what four addEventListener calls would give.
+	assert.eq(order.join(), 'a,b,div,div');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.rerenderMidDispatch', `A handler that re-renders swaps an ancestor's handler before the event reaches it, and the new one runs.`, () => {
+	let hits = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = n => h(el)`<div onclick=${() => hits.push('div' + n)}><button onclick=${() => { hits.push('button'); render(2); }}>x</button></div>`;
+	render(1);
+
+	el.querySelector('button').click();
+	// A listener bound at render time reads its current handler too, so this matches
+	// eventDelegation:false; what must not happen is the stale div1 running, or a throw.
+	assert.eq(hits.join(), 'button,div2');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.captureStopOnAncestor', `An ancestor's capture-phase stopPropagation keeps a delegated handler below it from running.`, () => {
+	let count = 0;
+	let el = document.createElement('div');
+	document.body.append(el);
+	h(el)`<div><button onclick=${() => count++}>x</button></div>`;
+	el.firstChild.addEventListener('click', e => e.stopPropagation(), true);
+
+	el.querySelector('button').click();
+	assert.eq(count, 0);
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.shadowRoot', `Handlers inside a closed shadow root fire, for a synthetic event that never reaches the document and for a real click the document can't see into.`, () => {
+	let order = [];
+	let host = document.createElement('div');
+	document.body.append(host);
+	let el = document.createElement('div');
+	host.attachShadow({mode: 'closed'}).append(el);
+	h(el)`<div onclick=${() => order.push('div')}><button onclick=${() => order.push('button')}>x</button></div>`;
+
+	// composed defaults to false, so this event stops at the shadow root and the dispatcher on
+	// the document never runs; the one on the component root is what handles it.
+	el.querySelector('button').dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(order.join(), 'button,div');
+
+	// click() is composed and does reach the document, whose composedPath() hides everything
+	// inside a closed root, so the root's dispatcher has to walk the path again itself.
+	order = [];
+	el.querySelector('button').click();
+	assert.eq(order.join(), 'button,div');
+
+	host.remove();
+});
+
+Testimony.test('Solarite.delegation.nativePrefix', `native:onclick registers one handler with addEventListener while the rest of the component stays delegated.`, () => {
+	let order = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	h(el)`<div><button native:onclick=${function(e, btn) { order.push('button'); e.stopPropagation(); this.hit = btn; }}>x</button></div>`;
+	let div = el.firstChild, button = div.firstChild;
+	div.addEventListener('click', () => order.push('div'));
+
+	// Registered at render, so it runs at the button's own turn and can stop the div's real listener.
+	button.click();
+	assert.eq(order.join(), 'button');
+	assert.eq(el.hit, button); // The usual (event, element) signature with the root as `this`.
+
+	// The prefixed attribute never reaches the DOM.
+	assert.eq(button.hasAttribute('native:onclick'), false);
+
+	// A non-bubbling synthetic event reaches it too, which a delegated handler can't hear.
+	order = [];
+	button.dispatchEvent(new MouseEvent('click'));
+	assert.eq(order.join(), 'button');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.nativePrefixStamped', `native: handlers in list rows bind directly instead of through the compiled stamp program's expandos.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let hits = [];
+	let rows = [1, 2, 3];
+	let render = mult => h(el)`<div>${rows.map(n =>
+		h`<p key=${n} native:onmouseup=${[(i, e, p) => hits.push([i * mult, p]), n]}>row</p>`)}</div>`;
+	render(1);
+
+	// Non-bubbling dispatch: only a listener on the node itself can hear it.
+	let p = el.querySelectorAll('p')[1];
+	p.dispatchEvent(new MouseEvent('mouseup'));
+	assert.eq(hits.length, 1);
+	assert.eq(hits[0][0], 2);
+	assert.eq(hits[0][1], p);
+
+	// A re-render with new handlers updates the binding in place, never doubling it.
+	render(10);
+	p.dispatchEvent(new MouseEvent('mouseup'));
+	assert.eq(hits.length, 2);
+	assert.eq(hits[1][0], 20);
+
 	el.remove();
 });
 //endregion
