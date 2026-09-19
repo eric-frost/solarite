@@ -1,6 +1,6 @@
 {
   "name": "esbuild-plugin-solarite",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "esbuild plugin that compiles JSX/TSX to Solarite precompile output, giving JSX the same runtime speed as h tagged templates.",
   "type": "module",
   "license": "MIT",
@@ -22,10 +22,10 @@
     "precompile"
   ],
   "dependencies": {
-    "babel-plugin-solarite": "^0.8.0"
+    "babel-plugin-solarite": "^0.9.0"
   },
   "peerDependencies": {
-    "solarite": "^0.8.0"
+    "solarite": "^0.9.0"
   },
   "peerDependenciesMeta": {
     "solarite": { "optional": true }

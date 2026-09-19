@@ -292,14 +292,14 @@
       "packages/esbuild-plugin-solarite": {
         "packageJson": {
           "dependencies": [
-            "npm:babel-plugin-solarite@0.8"
+            "npm:babel-plugin-solarite@0.9"
           ]
         }
       },
       "packages/vite-plugin-solarite": {
         "packageJson": {
           "dependencies": [
-            "npm:babel-plugin-solarite@0.8"
+            "npm:babel-plugin-solarite@0.9"
           ]
         }
       }

@@ -4,7 +4,7 @@
   "description": "Solarite demo",
   "main": "index.js",
   "js-framework-benchmark": {
-    "frameworkVersion": "0.8.0",
+    "frameworkVersion": "0.9.0",
     "language": "JavaScript",
     "frameworkHomeURL": "https://eric-frost.github.io/solarite/"
   },

@@ -40,6 +40,42 @@ Testimony.test('Dist.events.click', `Real clicks must work in the minified build
 	a.remove();
 });
 
+Testimony.test('Dist.events.dispatchOrder', `Delegated and native: handlers keep native ordering in the minified build`, () => {
+	// The dispatcher attaches listeners along the event's path the moment an event starts and
+	// sweeps them later, so it leans on bookkeeping the minifier renames.  Guards the 0.9.0
+	// rework the way Dist.events.click guards the basic path.
+	let order = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	hMin(el)`<div><button onclick=${e => {order.push('delegated'); e.stopPropagation()}}>a</button><button native:onclick=${() => order.push('native')}>b</button><input oninput=${() => order.push('input')}></div>`;
+	let [div, delegated, native, input] = [el.firstChild, ...el.firstChild.children];
+	div.addEventListener('click', () => order.push('div'));
+	delegated.addEventListener('click', () => order.push('real'));
+	native.addEventListener('click', () => order.push('real'));
+
+	// A delegated handler runs after the element's own listeners and its stopPropagation()
+	// still stops the ancestor.  A native: one was added at render, so it runs first.
+	delegated.click();
+	assert.eq(order.join(), 'real,delegated');
+	order = [];
+	native.click();
+	assert.eq(order.join(), 'native,real,div');
+
+	// A synthetic event that doesn't bubble still reaches a delegated handler.
+	order = [];
+	input.dispatchEvent(new Event('input'));
+	assert.eq(order.join(), 'input');
+
+	// A node moved outside its component keeps its handler.
+	order = [];
+	document.body.append(input);
+	input.dispatchEvent(new Event('input'));
+	assert.eq(order.join(), 'input');
+
+	input.remove();
+	el.remove();
+});
+
 Testimony.test('Dist.events.twoWayBinding', `Two-way input binding in the minified build`, () => {
 	class DistBindTest extends SolariteMin {
 		text = 'start';

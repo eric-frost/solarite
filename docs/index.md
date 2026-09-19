@@ -11,7 +11,7 @@ append-head:  <script src="docs/js/ui/DarkToggle.js"></script><script type="modu
 
 # Solarite
 
-Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed.  It's tiny (12.4KB with Brotli) and runs straight in the browser as a standard ES module.
+Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed.  It's tiny (12.6KB with Brotli) and runs straight in the browser as a standard ES module.
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
