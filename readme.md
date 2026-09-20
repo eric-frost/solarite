@@ -1,6 +1,6 @@
 # Solarite
 
-Solarite makes native web components fast to update, with no build step and no signals. You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that changed. It's small (12.6KB with Brotli) and runs straight in the browser as a standard ES module.
+Solarite makes native web components fast to update, with no build step and no signals. You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that changed. It's small (12.7KB with Brotli) and runs straight in the browser as a standard ES module.
 
 **[Documentation & live examples →](https://eric-frost.github.io/solarite/docs/)**
 

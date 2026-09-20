@@ -1,4 +1,4 @@
-// The built bundle, not src/: the pages that advertise a 12.6KB library shouldn't fetch it as 23 separate modules.
+// The built bundle, not src/: the pages that advertise a 12.7KB library shouldn't fetch it as 23 separate modules.
 // Everything under docs/js imports this same file, so the page holds one copy of Solarite.
 import h, {toEl, Solarite} from "../../dist/Solarite.min.js";
 import "./ui/FlexResizer.js";
