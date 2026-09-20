@@ -78,7 +78,7 @@ document.body.append(new ShoppingList([{name: 'Solarite', qty: 1}]));
 
 Import the module directly from a CDN:
 
-- [Solarite.min.js](https://cdn.jsdelivr.net/npm/solarite@0.8.0/dist/Solarite.min.js)
+- [Solarite.min.js](https://cdn.jsdelivr.net/npm/solarite@0.9.0/dist/Solarite.min.js)
 
 Or install via NPM:
 

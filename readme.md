@@ -14,7 +14,7 @@ Or use it with no build step at all, straight from a CDN:
 
 ```javascript
 import h, {Solarite} from
-  'https://cdn.jsdelivr.net/npm/solarite@0.8.0/dist/Solarite.min.js';
+  'https://cdn.jsdelivr.net/npm/solarite@0.9.0/dist/Solarite.min.js';
 ```
 
 ## Example
