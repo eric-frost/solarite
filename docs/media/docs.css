@@ -55,6 +55,12 @@ play-ground { display: flex; align-items: stretch; margin: 0 0 22px; border: 1px
   flex-resizer:hover, flex-resizer:active { background: color-mix(in srgb, var(--blue) 35%, transparent) }
 }
 
+/* The button that opens the outline, in the header.  Only phones show it; see the end of this file. */
+#outline-toggle { display: none; place-items: center; width: 36px; height: 36px; margin: -6px -2px -6px -8px; padding: 0; border: 0; border-radius: 50%; background: none; color: #c9d4e0;
+  svg { width: 22px; height: 22px }
+  &:hover, &[aria-expanded=true] { color: #fff; background: #ffffff1a }
+}
+
 @media (max-width: 1100px) {
   .docs { width: var(--wrap); margin-inline: auto; grid-template-columns: 200px minmax(0, 1fr); gap: 36px }
 }
@@ -66,4 +72,30 @@ play-ground { display: flex; align-items: stretch; margin: 0 0 22px; border: 1px
   .outline { position: static; max-height: 260px; margin: 0 0 32px; padding: 6px 12px 12px; border: 1px solid var(--line); border-radius: 5px }
   .prose h2 { font-size: 27px; margin-top: 48px }
   play-ground { flex-direction: column }
+}
+
+/* On a phone the header follows the reader down the page, and its button drops the outline over the text from
+   wherever they are, since the list at the top is a long way back.  The bar is shorter than it is on the desktop so
+   it costs little of a small screen.  documentation.js opens and closes the outline, so with scripts off (or a browser
+   too old for this query) none of this applies and the outline stays the list at the top of the page. */
+@media (max-width: 767px) and (scripting: enabled) {
+  :root { --header: 46px }
+  .site-header { position: sticky; top: 0; z-index: 300;
+    .wrap { flex-wrap: nowrap; gap: 12px; min-height: var(--header) }
+    .brand { margin-right: auto; font-size: 21px;
+      svg { width: 22px; height: 22px }
+    }
+
+    /* The link to the page being read gives its room to the button. */
+    nav a[aria-current=page] { display: none }
+  }
+  .skip-link { z-index: 301 }
+  #outline-toggle { display: grid }
+  .outline { display: none; position: fixed; inset: var(--header) 0 auto; z-index: 299; max-height: calc(100dvh - var(--header)); margin: 0; padding: 0 20px 24px; border: 0; border-bottom: var(--border); border-radius: 0; background: var(--page); box-shadow: 0 12px 28px #0005; overscroll-behavior: contain; font-size: 15px;
+    &.open { display: block }
+    a { padding-block: 7px }
+  }
+
+  /* A heading jumped to stops below the bar, not under it. */
+  .prose :is(h2, h3, h4) { scroll-margin-top: calc(var(--header) + 14px) }
 }
