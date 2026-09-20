@@ -63,7 +63,10 @@
       </svg>
       <section class="hero wrap" aria-labelledby="hero-title">
         <div>
-          <h1 id="hero-title"><span>No build</span>  <span>No Signals</span>  <em>Just <span class="swap" data-alt="Solarite"><span>Simplicity</span></span></em></h1>
+          <!-- The two words share their capital S, so only the ending after it swaps: "implicity" leaves and the
+               "olarite" that docs/media/home.css draws from data-alt arrives.  The heading's real text, the text
+               a reader copies or a search engine reads, stays "Just Simplicity". -->
+          <h1 id="hero-title"><span>No build</span>  <span>No Signals</span>  <em>Just <span class="swap">S<span class="swap-tail" data-alt="olarite"><span>implicity</span></span></span></em></h1>
         </div>
         <div class="hero-intro">
           <p>Solarite is a small JavaScript library for native web components.  Just write a class, change your data, call <code>render()</code>.  Solarite updates only the DOM that changed.</p>
@@ -164,7 +167,7 @@ constructor(args={}) {...}</i></code></pre>
         </div>
         <figure class="benchmark" aria-labelledby="benchmark-title">
           <ol>
-            <li><span>Vanilla JS <small>hand-written, no library</small></span><span class="bar"><i style="--score: 1.02"></i><b>1.02</b></span></li>
+            <li><span>Vanilla JS <small>hand-written, no library</small></span><span class="bar"><i style="--score: 1.01"></i><b>1.01</b></span></li>
             <li><span>Mikado <small>0.8.400</small></span><span class="bar"><i style="--score: 1.06"></i><b>1.06</b></span></li>
             <li class="solarite"><span>Solarite <small>0.8.0</small></span><span class="bar"><i style="--score: 1.07"></i><b>1.07</b></span></li>
             <li><span>Solid <small>1.9.3</small></span><span class="bar"><i style="--score: 1.13"></i><b>1.13</b></span></li>
