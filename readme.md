@@ -1,6 +1,6 @@
 # Solarite
 
-Solarite makes native web components fast to update, with no build step and no signals. You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed. It's small (12.6KB with Brotli) and runs straight in the browser as a standard ES module.
+Solarite makes native web components fast to update, with no build step and no signals. You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that changed. It's small (12.6KB with Brotli) and runs straight in the browser as a standard ES module.
 
 **[Documentation & live examples →](https://eric-frost.github.io/solarite/docs/)**
 
@@ -40,7 +40,7 @@ document.body.append(new Counter());
 
 ## Why Solarite?
 
-It's one of the fastest UI libraries measured: a score of **1.07** on the [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/current.html) — about 7% slower than hand-written vanilla JavaScript — while staying tiny and build-free.
+It's one of the fastest UI libraries measured.  It scores **1.07** on the [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/current.html), where hand-written vanilla JavaScript scores 1.01 and lower is better.
 
 ### Compared to Lit
 
@@ -48,11 +48,11 @@ It's one of the fastest UI libraries measured: a score of **1.07** on the [js-fr
 
 - **Scoped CSS without Shadow DOM.** Solarite scopes each component's `<style>` in the light DOM, so global stylesheets, form participation, and third-party CSS still reach your elements. There's no Shadow DOM boundary to work around.
 - **No reactivity system to learn.** No signals, no `@property` decorators, no reactive controllers. Mutate plain JavaScript objects and arrays of any depth, then call `render()`. Updates happen exactly when you ask for them.
-- **Truly build-free.** You can optionally use the Solarite JSX plugins for Babel, esbuild, and Vite, but Solarite is still elegant to use in vanilla JS with a single import statement.
+- **No build step.** Solarite works in vanilla JS with a single import statement.  JSX plugins for Babel, esbuild, and Vite are there if you want them.
 - **Closer to vanilla speed.** Solarite sits near the top of the [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/current.html), ahead of most signal-based and virtual-DOM libraries.
 
-The trade-off is deliberate: Solarite re-renders when you call `render()` rather than tracking dependencies automatically.
+The trade-off is that Solarite doesn't track dependencies for you.  It re-renders when you call `render()`.
 
 ## License
 
-[MIT](LICENSE) — free for commercial use, no attribution required.
+[MIT](LICENSE).  Free for commercial use, no attribution required.

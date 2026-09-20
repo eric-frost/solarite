@@ -9,7 +9,7 @@ description: How to build native web components with Solarite: rendering, attrib
 
 # Solarite
 
-Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that actually changed.  It's tiny (12.6KB with Brotli) and runs straight in the browser as a standard ES module.
+Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that changed.  It's tiny (12.6KB with Brotli) and runs straight in the browser as a standard ES module.
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -60,18 +60,17 @@ document.body.append(new ShoppingList([{name: 'Solarite', qty: 1}]));
 
 ## Key Features
 
-- **Compilation-Free**:  No build step required. Standard ES6 modules work directly in the browser.
-- **Explicit Rendering**:  You control exactly when updates happen by calling `render()`.  No unexpected side effects.
-- **Minimal Rendering:**  Only changed DOM elements are updated.
-- **Simple State Management**:  No signals and no special state setup required. Use regular JavaScript variables and data structures of arbitrary depth.
-- **Two-Way Binding**:  Built-in shorthand for connecting data to form elements.
-- **Keyed Lists**:  An optional `key` attribute makes DOM nodes follow their data when lists reorder.
-- **Scoped CSS**:  Native styles that apply only to your component while still inheriting parent styles--without Shadow DOM.
-- **Automatic Element References**:  Elements with `id` or `data-id` automatically become class properties.
-
-- **Component Composition**:  Attributes are passed as constructor arguments to nested components for easy data flow.
-- **TypeScript Support**:  Includes a comprehensive `.d.ts` file for excellent IDE support and type safety in TypeScript projects.
-- **MIT License**:  Free for commercial use with no attribution required.
+- **No build step**:  Solarite is a standard ES module that the browser loads directly.
+- **You decide when to render**:  Nothing updates until you call `render()`.
+- **Minimal updates**:  A render only touches the DOM elements that changed.
+- **Plain state**:  There are no signals and no state setup.  Keep your data in regular JavaScript variables, objects, and arrays, nested as deep as you like.
+- **Two-way binding**:  A shorthand connects a form element to a property.
+- **Keyed lists**:  An optional `key` attribute makes DOM nodes follow their data when a list reorders.
+- **Scoped CSS**:  A component's styles apply only to that component, while styles from the page still reach it.  No Shadow DOM is involved.
+- **Element references**:  An element with an `id` or `data-id` becomes a property on the class.
+- **Child components**:  A nested component receives its attributes as constructor arguments.
+- **TypeScript**:  A `.d.ts` file is included, so editors can autocomplete and type-check the API.
+- **MIT license**:  Free for commercial use, with no attribution required.
 
 ## Installation
 
@@ -89,7 +88,7 @@ npm install solarite
 
 ### Development Tips
 
-For the best development experience, use an IDE like [WebStorm](https://www.jetbrains.com/webstorm/) or [VS Code](https://code.visualstudio.com/) with a Lit-html extension for syntax highlighting of HTML template strings. Solarite's included `Solarite.d.ts` provides auto-completion and type checking for all core APIs.
+An editor like [WebStorm](https://www.jetbrains.com/webstorm/) or [VS Code](https://code.visualstudio.com/) with a Lit-html extension will syntax highlight the HTML inside template strings.  The included `Solarite.d.ts` gives you auto-completion and type checking for the API.
 
 ## Performance
 
@@ -101,11 +100,11 @@ Solarite is **faster than almost every well-known framework** in the official [j
 
 ### Web Components
 
-Solarite enhances [web components](https://developer.mozilla.org/en-US/docs/Web/API/Web_components) with efficient and minimal re-rendering of elements when your data changes. This approach minimizes DOM operations and improves performance.
+A Solarite component is a regular [web component](https://developer.mozilla.org/en-US/docs/Web/API/Web_components).  What Solarite adds is a way to re-render it that updates only the elements whose data changed.
 
-In this minimal example, we create a class called `MyComponent` which extends from `HTMLElement` (the standard way to create web components). We add a `render()` method to define its HTML content, and call it from the constructor when a new instance is created.
+In this small example we create a class called `MyComponent` that extends `Solarite`, which itself extends `HTMLElement`, the standard base class for web components.  Its `render()` method defines its HTML content.
 
-**Important**: All browsers require web component tag names to contain at least one dash (e.g., `my-component`, not `mycomponent`). This is a standard requirement for custom elements.
+Browsers require a web component's tag name to contain at least one dash: `my-component`, not `mycomponent`.
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -150,11 +149,11 @@ Since these are just regular web components, they can define the [connectedCallb
 
 #### How Rendering Works
 
-Use the `h` function as a [tagged template literal](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals#tagged_templates) to convert HTML strings and embedded expressions into a Solarite `Template`. This data structure efficiently stores processed HTML and expressions for optimal rendering.
+Use the `h` function as a [tagged template literal](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals#tagged_templates) to convert HTML strings and embedded expressions into a Solarite `Template`.  A `Template` holds the parsed HTML together with the values of its expressions.
 
-When you call `h(this)` followed by a template string, it renders that `Template` as the element's attributes and children.  This is similar to assigning to the browser's built-in `this.outerHTML` property, but with a crucial difference:  Solarite's updates are much faster because only the changed elements are replaced, not all nodes.
+When you call `h(this)` followed by a template string, it renders that `Template` as the element's attributes and children.  This is like assigning to the browser's built-in `this.outerHTML` property, except that Solarite replaces only the elements that changed instead of every node, which is much faster.
 
-When an element is first added to the DOM, the render() function is called automatically.  But only if it hasn't already been previously called manually.
+When an element is first added to the DOM, `render()` is called automatically, unless you have already called it yourself.
 
 #### Manual Rendering
 
@@ -420,7 +419,7 @@ h(this)`
 
 ### Two-Way Binding
 
-Two-way binding connects your component's data to form elements, keeping them in sync automatically.
+Two-way binding ties a form element to a property of your component.  Rendering writes the property into the element, and the user's input is written back to the property.
 
 #### Basic Two-Way Binding
 
@@ -614,9 +613,9 @@ When you push a new plant and call `render()`, Solarite appends a single `<span>
 
 #### Efficient List Items
 
-Normally each list item runs its `.map()` callback to build a template, and then Solarite compares that template against the live DOM to find what changed.  `h.map()` skips both steps for rows that haven't changed: each row remembers the item it was built from, and a row still holding the **same object** is recognized by one identity check — no template built, nothing compared, and its DOM left alone.  Re-render a thousand rows because two of them changed, and only those two are looked at.
+Normally each list item runs its `.map()` callback to build a template, and then Solarite compares that template against the live DOM to find what changed.  `h.map()` skips both steps for rows that haven't changed: each row remembers the item it was built from, and a row still holding the **same object** is recognized by one identity check.  No template is built for it, nothing is compared, and its DOM is left alone.  Re-render a thousand rows because two of them changed, and only those two are looked at.
 
-The comparison is deliberately shallow.  Solarite checks the item reference and never looks inside it, which is what makes the check cheap enough to run per row — so to change a row you replace it with a new object rather than editing the one that's there.  That's the same contract Solid's `<For>` and React's keyed lists use, and it keeps the call site a plain list with no caching code:
+The comparison is shallow on purpose.  Solarite checks the item reference and never looks inside it, which is what makes the check cheap enough to run per row.  So to change a row, you replace it with a new object rather than editing the one that's there.  Solid's `<For>` and React's keyed lists work the same way, and it means the calling code is a plain list with no caching logic:
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -647,8 +646,8 @@ Rules and costs:
 
 - Each item must be a distinct object, and an object should appear in only one list.  The check is `===` against the item, so primitives (strings, numbers) compare by value and gain nothing.
 - Changing a few rows of a long list costs work proportional to the rows you changed, as does a render where nothing changed at all.  Inserting or removing is proportional to the number inserted or removed.  Reordering is the one case that still walks the whole list, since every row has to be found in its new place.
-- `h.immutableMap()` is the same function under a longer name, for when you want the call site to say out loud that the items are treated as immutable.
-- The return value is a `MappedList`, not an array — it carries the items and the callback so the reconciler can do the matching.  Put it straight into a template expression, as above.  Spreading it, nesting it in an array, or returning it from a function all still work, but they build every row, which is the work the shortcut exists to skip.
+- `h.immutableMap()` is the same function under a longer name, for when you want the code to make clear that the items are treated as immutable.
+- The return value is a `MappedList` instead of an array.  It carries the items and the callback so Solarite can do the matching later.  Put it straight into a template expression, as above.  Spreading it, nesting it in an array, or returning it from a function all still work, but they build every row, which is the work the shortcut exists to skip.
 
 Plain `.map()` remains the right choice when you mutate rows in place, or when the list is short enough that none of this matters.
 
@@ -694,7 +693,7 @@ Rules for `key`:
 
 #### Selection
 
-Highlighting the selected row of a table is a special case worth its own tool.  Storing the selected id as an ordinary field works, but it means every change of selection calls `render()`, and the reconciler then has to walk the list to discover that exactly two rows differ.  `h.selector()` skips that: each row's binding remembers the element it was written to, so changing the selection writes those two attributes and nothing else.
+Highlighting the selected row of a table is common enough to get its own tool.  Storing the selected id as an ordinary field works, but then every change of selection calls `render()`, and Solarite has to walk the whole list to discover that only two rows differ.  `h.selector()` skips that: each row's binding remembers the element it was written to, so changing the selection writes those two attributes and nothing else.
 
 ```JavaScript
 class UserTable extends Solarite {
@@ -722,13 +721,13 @@ class UserTable extends Solarite {
 
 Rules for selectors:
 
-- `when()` must supply a whole attribute value, on the row's own root element.  Putting it inside a longer value (`class="row ${sel.when(...)}"`), on an element deeper inside the row, or using it as element content all throw, because a selector owns the attribute it writes and finds it again through the row — fold any constant part into the `on` and `off` values instead.
+- `when()` must supply a whole attribute value, on the row's own root element.  Putting it inside a longer value (`class="row ${sel.when(...)}"`), on an element deeper inside the row, or using it as element content all throw, because a selector owns the attribute it writes and finds it again through the row.  If part of the value is constant, put it in the `on` and `off` values instead.
 - The rows must be keyed (`key=${...}`), because `set()` locates a row by its key.
-- The selection lives on the selector, not on the rows, so it survives re-renders, follows a row through a reorder, and can be set for a key whose row hasn't been rendered yet — that row comes up already selected.
-- `set(null)` deselects.  Drawing a row costs nothing: `when()` returns one of two objects the selector owns, so a list with nothing selected holds no per-row state, and there is correspondingly nothing to release when rows go away.
+- The selection lives on the selector, not on the rows, so it survives re-renders, follows a row through a reorder, and can be set for a key whose row hasn't been rendered yet.  That row will already be selected when it first renders.
+- `set(null)` deselects.  Drawing a row costs nothing: `when()` returns one of two objects the selector owns, so a list with nothing selected holds no per-row state, and there is nothing to release when rows go away.
 - One selector holds one selection.  For several independent highlights, use several selectors.
 
-A selector is worth reaching for when a change of selection would otherwise re-render a long list.  For a short list, or for state that several parts of the template derive from, an ordinary field and a `render()` call are simpler and fast enough.
+Use a selector when a change of selection would otherwise re-render a long list.  For a short list, or for state that several parts of the template derive from, an ordinary field and a `render()` call are simpler and fast enough.
 
 ### Scoped Styles
 
@@ -1077,7 +1076,7 @@ document.body.append(a, b, c, d);
 
 `getEventBinding(node, key)` returns the binding Solarite registered on an element, or `undefined` if there isn't one.  The `key` is the attribute name that created it, without any `on` prefix: `'value'` for a two-way binding written as `value=${[obj, 'field']}`, `'click'` for an `onclick=${...}` handler.
 
-The returned object has a `handleEvent(event)` method — the same one the browser calls — so invoking it runs the binding immediately.  This exists for one specific problem: a two-way binding writes back to your data when the element fires its event, so if you need that value written *before* something else happens in the same tick, you have to trigger the binding yourself rather than wait for the event.
+The returned object has a `handleEvent(event)` method, the same one the browser calls, so invoking it runs the binding immediately.  This exists for one specific problem: a two-way binding writes back to your data when the element fires its event, so if you need that value written *before* something else happens in the same tick, you have to trigger the binding yourself rather than wait for the event.
 
 Type into the field below and click Save without clicking away first.  The `input` event hasn't fired yet, so `this.name` is still the old value until the binding is flushed:
 
@@ -1106,7 +1105,7 @@ class SaveForm extends Solarite {
 document.body.append(new SaveForm());
 ```
 
-Most components never need this.  Use it only when the ordering within a single tick actually matters.
+Most components never need this.  Use it only when the ordering within a single tick matters.
 
 ## Advanced Techniques
 
@@ -1155,13 +1154,13 @@ The value of `is` cannot be an expression, so `<tr is=${name}>` will not work.
 
 ### Manual DOM Operations
 
-While Solarite handles most updates automatically, you can perform manual DOM operations in these scenarios:
+You can change the DOM yourself without confusing Solarite, as long as you stay within these rules:
 
-1. **Static Attributes**: Modify attributes not created by expressions.
-2. **Static Nodes**: Add or remove nodes not created by expressions, and not directly adjacent to node-creating expressions.
-3. **Temporary Changes**: Modify any node if you restore its original state before the next `render()`.
+1. You can modify attributes that weren't created by expressions.
+2. You can add or remove nodes that weren't created by expressions, provided they aren't directly next to an expression that creates nodes.
+3. You can modify any node if you put it back the way it was before the next `render()`.
 
-This example demonstrates these rules:
+This example shows each rule:
 
 ```javascript
 import h, {toEl} from './dist/Solarite.min.js';
@@ -1214,7 +1213,7 @@ list.render();
 
 ### Non-Component Elements
 
-The `toEl()` function (discussed above) can also be given an object with a `render()` method to `toEl()`. Properties and methods of the object become bound to the resulting element.
+The `toEl()` function (discussed above) can also be given an object with a `render()` method.  The object's properties and methods become properties and methods of the resulting element.
 
 ```javascript
 import h, {toEl} from './dist/Solarite.min.js';
@@ -1279,20 +1278,20 @@ customElements.define('my-button', MyButton);
 document.body.append(new MyButton());
 ```
 
-A piece of JSX produces a Solarite `Template` — the same render-ready value an `h` tagged template returns, which you hand to `h(this, ...)` to render. So everything else in Solarite — `render()`, lists, events, two-way binding, child components — works exactly the same way.
+A piece of JSX produces a Solarite `Template`, the same value an `h` tagged template returns, and you pass it to `h(this, ...)` to render it.  So `render()`, lists, events, two-way binding, and child components all work the same way they do with tagged templates.
 
 A few rules:
 
-- Use plain HTML attribute names: `class`, `onclick`, `for` — not React's `className` or `onClick`.
+- Use plain HTML attribute names like `class`, `onclick`, and `for`, rather than React's `className` or `onClick`.
 - `style={{color: 'red'}}` takes an object and turns it into a CSS string for you.
 - `key={item.id}` optionally tells Solarite which list item is which, so when the list is reordered it reuses the matching DOM element instead of rebuilding it. It is never rendered as an attribute.
 - A literal (non-expression) `id="..."` or `data-id="..."` still makes the element available as `this.x` inside the component, the same as in `h` tagged templates.
 
 ### Setup
 
-JSX has to be converted to JavaScript by a build tool. Your JSX code is always the same; only the build tool's configuration changes. The choice of tool also affects speed — see [Speed](#speed) below.
+JSX has to be converted to JavaScript by a build tool.  Your JSX code is always the same; only the build tool's configuration changes.  The choice of tool also affects speed, which [Speed](#speed) below covers.
 
-**Deno** — nothing to install, and full runtime speed (Deno precompiles JSX itself). Just add this to `deno.json`:
+**Deno**:  There is nothing to install, and you get full runtime speed because Deno precompiles JSX itself.  Add this to `deno.json`:
 
 ```jsonc
 {
@@ -1300,16 +1299,18 @@ JSX has to be converted to JavaScript by a build tool. Your JSX code is always t
 }
 ```
 
-**Vite, esbuild, or Babel** — these tools don't precompile JSX on their own, so add the matching build-time plugin for the same full runtime speed as Deno. Each plugin only runs while your project is being built; it is never sent to the browser, so it adds nothing to your bundle.
+**Vite, esbuild, or Babel**:  These tools don't precompile JSX on their own, so add the matching plugin to get the same runtime speed as Deno.  Each plugin only runs while your project is being built.  It is never sent to the browser, so it adds nothing to your bundle.
 
 ```js
-// vite.config.js   —   npm install --save-dev vite-plugin-solarite
+// vite.config.js
+// npm install --save-dev vite-plugin-solarite
 import solarite from 'vite-plugin-solarite';
 export default { plugins: [solarite()] };
 ```
 
 ```js
-// esbuild build script   —   npm install --save-dev esbuild-plugin-solarite
+// esbuild build script
+// npm install --save-dev esbuild-plugin-solarite
 import solarite from 'esbuild-plugin-solarite';
 await esbuild.build({
   entryPoints: ['app.tsx'], bundle: true, outfile: 'app.js',
@@ -1318,18 +1319,20 @@ await esbuild.build({
 ```
 
 ```jsonc
-// babel.config.json   —   npm install --save-dev babel-plugin-solarite   (add @babel/preset-typescript for .tsx)
+// babel.config.json
+// npm install --save-dev babel-plugin-solarite
+// Add @babel/preset-typescript for .tsx
 { "plugins": ["babel-plugin-solarite"] }
 ```
 
-**Any tool, nothing extra to install** — just point the tool's built-in JSX setting at Solarite. This works with TypeScript, esbuild, Vite, and similar tools, but runs a little slower (see below).
+**Any tool, nothing extra to install**:  Point the tool's built-in JSX setting at Solarite.  This works with TypeScript, esbuild, Vite, and similar tools, but runs a little slower (see below).
 
 ```jsonc
 // tsconfig.json
 { "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "solarite" } }
 ```
 
-**Without a bundler** — compiled JSX imports `solarite/jsx-runtime`, which a browser can only find through an import map. Point it at the runtime that matches the build you import, `jsx-runtime.min.js` for `Solarite.min.js`, so the page loads one copy of Solarite. Two copies don't recognise each other's templates, and Solarite warns in the console if it finds itself loaded twice.
+**Without a bundler**:  Compiled JSX imports `solarite/jsx-runtime`, which a browser can only find through an import map.  Point it at the runtime that matches the build you import, `jsx-runtime.min.js` for `Solarite.min.js`, so the page loads one copy of Solarite.  Two copies don't recognise each other's templates, and Solarite warns in the console if it finds itself loaded twice.
 
 ```Html
 <script type="importmap">
@@ -1344,17 +1347,17 @@ await esbuild.build({
 
 How fast your JSX runs depends on which setup above you picked:
 
-- **Deno's `precompile`, or the Vite, esbuild, or Babel plugin will be just as performant as using non-JSX tagged templates.** During the build, the unchanging parts of your HTML are figured out ahead of time, so there's no extra work left to do while your app runs.
-- **The "nothing extra to install" setup — a little slower.** Here Solarite has to figure out the unchanging parts every time it renders, which adds some JavaScript work (the DOM and painting are identical either way). In our [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/) runs this came to roughly 10–15% slower overall, and up to about 30% slower on actions that build or replace many elements at once (such as creating or replacing all the rows of a large table). Because the extra cost is on the JavaScript side, it's larger on slower devices or in CPU-heavy code. For everyday updates — changing a few items, toggling a class — the difference is too small to notice.
+- **Deno's `precompile` and the Vite, esbuild, and Babel plugins are as fast as tagged templates.**  During the build, the unchanging parts of your HTML are worked out ahead of time, so no extra work is left for when your app runs.
+- **The "nothing extra to install" setup is a little slower.**  Here Solarite has to work out the unchanging parts every time it renders, which adds some JavaScript work.  The DOM updates and painting are identical either way.  In our [js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/) runs this came to roughly 10 to 15% slower overall, and up to about 30% slower on actions that build or replace many elements at once, such as creating or replacing all the rows of a large table.  Because the extra cost is on the JavaScript side, it's larger on slower devices or in CPU-heavy code.  For everyday updates like changing a few items or toggling a class, the difference is too small to notice.
 
-If you can use Deno or the plugin, do. Otherwise the no-setup option is perfectly fine for most apps.
+If you can use Deno or a plugin, do.  Otherwise the no-setup option is fast enough for most apps.
 
 ### Components
 
 You can use your own components as JSX tags:
 
 - A class that extends `HTMLElement` (for example `<MyButton/>`) renders as its custom-element tag, just like any other Solarite child component.
-- A plain function is called with its props — its children arrive as `props.children` — and should return a `Template`.
+- A plain function is called with its props, with its children arriving as `props.children`, and should return a `Template`.
 
 ## How Solarite Works
 
@@ -1402,7 +1405,7 @@ When you call `render()`, Solarite performs these steps:
 
 2. **Instantiation**: New elements are created by cloning the Shell's nodes, then resolving all expression locations in the clone with a single precomputed resolve program that visits each target node once.
 
-3. **Diffing**: When `render()` is called, each list item is matched to the item that drew the DOM already sitting in that spot — by position for a plain list, by `key=${...}` for a keyed one, or by object identity for `h.map()`.  Matching is done with `===` comparisons, so nothing is hashed and no html is built to compare against.  A matched item whose template html is unchanged is rewritten in place, updating only the expressions whose values actually differ, and an item that matched exactly is skipped entirely.  See [DOM Diffing](#dom-diffing) below for how each strategy handles items that moved, appeared, or vanished.
+3. **Diffing**: When `render()` is called, each list item is matched to the item that drew the DOM already sitting in that spot.  A plain list matches by position, a keyed list by `key=${...}`, and `h.map()` by object identity.  Matching is done with `===` comparisons, so nothing is hashed and no html is built to compare against.  A matched item whose template html is unchanged is rewritten in place, updating only the expressions whose values differ, and an item that matched exactly is skipped.  See [DOM Diffing](#dom-diffing) below for how each strategy handles items that moved, appeared, or vanished.
 
 4. **Minimal DOM Updates**: 
    1. A lone primitive expression renders as a bare text node and updates via `nodeValue`, with no wrapper objects.  
@@ -1417,7 +1420,7 @@ Solarite picks one of three strategies for a list, based on what the expression 
 
 An unkeyed list uses a positional two-pointer diff: matching prefix and suffix items are kept, the aligned middle is rewritten in place, and leftovers are removed or batch-inserted with direct DOM operations.
 
-A list whose items carry `key=${...}` is instead matched by key, so a row's DOM follows its data when the list reorders.  The prefix and suffix scans work the same way, the remaining window matches through a key map, and rows outside a longest increasing subsequence of their old positions are the only ones moved — which is the fewest node ranges that can produce the new order.  A short reorder such as a swap or a dragged row skips the map entirely and cross-matches the handful of affected rows against each other.
+A list whose items carry `key=${...}` is instead matched by key, so a row's DOM follows its data when the list reorders.  The prefix and suffix scans work the same way, the remaining window matches through a key map, and rows outside a longest increasing subsequence of their old positions are the only ones moved, which is the fewest moves that can produce the new order.  A short reorder such as a swap or a dragged row skips the map entirely and cross-matches the handful of affected rows against each other.
 
 A list built with `h.map()` trades depth of comparison for speed.  It checks only whether each position still holds the very same object it was drawn from, using a single `===` against the item, never looking inside it.  A row that passes is left alone without building a template or comparing anything.  When only a few positions fail that check, those are patched and the rest of the list is never visited, so the cost tracks what changed rather than how long the list is.  The price of the shortcut is that a row mutated in place looks unchanged.  To get it to redraw, replace the object instead.
 
@@ -1514,7 +1517,7 @@ function pad(pad, val) {
 
 ## Possible Upcoming Features
 
-1. **Shadow DOM Support**: Optional integration with the browser's native Shadow DOM for true encapsulation of styles and DOM.
-2. **Automatic Rendering**: An opt-in feature to automatically re-render components when  properties change, eliminating the need to manually call `render()`.
+1. **Shadow DOM support**:  An option to render into the browser's Shadow DOM, for components that need their styles and DOM fully isolated from the page.
+2. **Automatic rendering**:  An opt-in mode that re-renders a component when its properties change, so you don't have to call `render()` yourself.
 
 Follow the [GitHub repository](https://github.com/eric-frost/solarite) <a class="github-button" href="https://github.com/eric-frost/solarite" data-color-scheme="no-preference: light; light: light; dark: dark;" data-icon="octicon-star" data-size="small" data-show-count="true" aria-label="Star eric-frost/solarite on GitHub">Star</a>.

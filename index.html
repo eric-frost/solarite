@@ -66,7 +66,7 @@
           <h1 id="hero-title"><span>No build</span>  <span>No Signals</span>  <em>Just <span class="swap" data-alt="Solarite"><span>Simplicity</span></span></em></h1>
         </div>
         <div class="hero-intro">
-          <p>Solarite is a small library for native web components.  Just write a class, change your data, call <code>render()</code>.  Solarite updates only the DOM that changed.</p>
+          <p>Solarite is a small JavaScript library for native web components.  Just write a class, change your data, call <code>render()</code>.  Solarite updates only the DOM that changed.</p>
           <div class="actions">
             <a class="button" href="docs/">Read the docs <span aria-hidden="true">↗</span></a>
             <a class="button ghost" href="dist/Solarite.min.js" download>Download <small>12.6 KB Brotli</small></a>
@@ -90,20 +90,20 @@
       <h2 id="why-title"><span class="slashes" aria-hidden="true">//</span> Why Solarite</h2>
       <div class="benefits">
         <article>
-          <h3>Your data is already state.</h3>
+          <h3>Your data is the state</h3>
           <p>Nothing to declare or wrap.  Change an object or an array, then render.</p>
           <pre><code>this.items.push(newItem);
 this.render();</code></pre>
           <a href="docs/#manual-rendering">Explicit rendering <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>Forms bind both ways.</h3>
+          <h3>Two-way form binding</h3>
           <p>Bind an input to a property and they stay in sync, with no handler to write.</p>
           <pre><code>&lt;input value=<b>${[item, 'name']}</b>&gt;</code></pre>
           <a href="docs/#two-way-binding">Two-way binding <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>Your CSS still works.</h3>
+          <h3>Regular CSS</h3>
           <p>Scoped styles with no shadow DOM.  Global CSS still reaches inside.</p>
           <pre><code>&lt;style&gt;
   :host input { color: navy }
@@ -111,7 +111,7 @@ this.render();</code></pre>
           <a href="docs/#scoped-styles">Scoped styles <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>Attributes are arguments.</h3>
+          <h3>Attributes are arguments</h3>
           <p>A child component’s constructor receives complex data intact.</p>
           <pre><code>&lt;user-card user=<b>${user}</b>&gt;
 
@@ -119,7 +119,7 @@ constructor({user}) { … }</code></pre>
           <a href="docs/#passing-data-to-child-components">Child components <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>The DOM is still yours.</h3>
+          <h3>The DOM belongs to you</h3>
           <p><code>data-id</code> makes an element a property.  Your DOM changes are left alone.</p>
           <pre><code>&lt;div data-id=<b>"chart"</b>&gt;&lt;/div&gt;
 
@@ -127,23 +127,22 @@ this.chart.append(canvas);</code></pre>
           <a href="docs/#ids">Element references <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>Your objects stay plain.</h3>
+          <h3>Your objects stay plain</h3>
           <p>No proxies or wrappers.  The console and debugger show your real data.</p>
           <pre><code>console.log(this.items);
 <i>// [{name: 'Apples'}, …]</i></code></pre>
           <a href="docs/#how-rendering-works">How rendering works <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>Works anywhere HTML does.</h3>
+          <h3>Works anywhere HTML does</h3>
           <p>A real custom element, usable from any page or framework.</p>
           <pre><code>&lt;my-timer mins=<b>"5"</b>&gt;&lt;/my-timer&gt;
 
-constructor(args={}) {
-  super(args); <i>// {mins: '5'}</i></code></pre>
+constructor(args={}) {...}</i></code></pre>
           <a href="docs/#web-components">Web components <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>Optional types and JSX.</h3>
+          <h3>JSX+TypeScript if you want it</h3>
           <p>TypeScript definitions are included, and JSX works with your build tool.</p>
           <pre><code><i>// tsconfig.json</i>
 "jsx": "react-jsx",
@@ -187,9 +186,9 @@ constructor(args={}) {
     <section id="limits" class="limits wrap" aria-labelledby="limits-title">
       <h2 id="limits-title"><span class="slashes" aria-hidden="true">//</span> What Solarite isn’t</h2>
       <div class="limit-list">
-        <div><h3>A framework.</h3><p>It renders components.  Routing, fetching, and stores are yours to choose, or to skip.</p></div>
-        <div><h3>Server rendering.</h3><p>Components draw in the browser.  Content a search engine must read belongs in your HTML.</p></div>
-        <div><h3>A big team.</h3><p>One maintainer, MIT licensed, with a small surface that is easy to read and to fork.</p></div>
+        <div><h3>A framework</h3><p>It renders components.  Routing, fetching, and stores are yours to choose, or to skip.</p></div>
+        <div><h3>Server rendering</h3><p>Components draw in the browser.  Content a search engine must read belongs in your HTML.</p></div>
+        <div><h3>A big team</h3><p>One maintainer, MIT licensed, with a small surface that is easy to read and to fork.</p></div>
       </div>
     </section>
 
