@@ -10,7 +10,7 @@
     ".": "./index.js"
   },
   "bin": {
-    "solarite-jsx": "./cli.js"
+    "solarite-jsx": "cli.js"
   },
   "files": [
     "index.js",
