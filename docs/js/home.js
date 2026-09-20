@@ -9,10 +9,11 @@ const languages = {js: 'javascript', jsx: 'jsx'};
 
 // The heading's word swap is CSS, except for its blur.  Motion blur should streak only in the direction of travel, and
 // CSS's blur() is the same in every direction, so two SVG filters do it and this sets their vertical strength while a
-// swap is running: the word leaving blurs as it goes, and the word arriving sharpens as it lands.
-const heading = document.querySelector('.hero h1');
+// swap is running: the ending leaving blurs as it goes, and the ending arriving sharpens as it lands.  The pointer
+// events are on the word itself, so nothing else in the heading starts a swap.
+const swapWord = document.querySelector('.hero h1 .swap');
 const blurs = ['#rise-out', '#rise-in'].map(id => document.querySelector(`${id} feGaussianBlur`));
-if (heading && blurs.every(Boolean) && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+if (swapWord && blurs.every(Boolean) && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
   const duration = 200, strength = 11; // The duration matches the rise in home.css.
   let progress = 0, target = 0, last = 0;
   const step = time => {
@@ -23,18 +24,18 @@ if (heading && blurs.every(Boolean) && !matchMedia('(prefers-reduced-motion: red
     if (progress !== target)
       requestAnimationFrame(step);
     else
-      heading.classList.remove('swapping');
+      swapWord.classList.remove('swapping');
   };
   const swapTo = value => {
     target = value;
-    if (heading.classList.contains('swapping'))
+    if (swapWord.classList.contains('swapping'))
       return;
-    heading.classList.add('swapping');
+    swapWord.classList.add('swapping');
     last = performance.now();
     requestAnimationFrame(step);
   };
-  heading.addEventListener('pointerenter', () => swapTo(1));
-  heading.addEventListener('pointerleave', () => swapTo(0));
+  swapWord.addEventListener('pointerenter', () => swapTo(1));
+  swapWord.addEventListener('pointerleave', () => swapTo(0));
 }
 
 // Tab lists take the arrow keys, Home, and End, and only the selected tab is in the Tab order, which is what a
