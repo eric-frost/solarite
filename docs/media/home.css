@@ -145,8 +145,11 @@ play-ground { position: relative; display: flex; align-items: flex-start; gap: v
     [role=tab] { padding-inline: 12px; font-size: 15px }
   }
   play-ground { flex-direction: column; gap: 52px; height: auto;
-    code-editor-2, .static-code { width: 100% !important; height: 320px !important; max-height: none !important }
-    &::after { left: calc(50% - 17px); top: 334px; transform: rotate(90deg) }
+    /* Tall enough for all 29 lines of the example, as on desktop: 29 lines of 18.2px, the card's 12px of padding above
+       and below, the 4px CodeMirror adds inside itself on each side, and 16px for the horizontal scrollbar, which a
+       screen this narrow always has and which some browsers take out of the editor's own height. */
+    code-editor-2, .static-code { width: 100% !important; height: 576px !important; max-height: none !important }
+    &::after { left: calc(50% - 17px); top: 590px; transform: rotate(90deg) }
     iframe { flex: none; width: 100% !important }
   }
   .why { padding-block: 52px }

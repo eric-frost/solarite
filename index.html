@@ -69,7 +69,8 @@
           <h1 id="hero-title"><span>No build</span>  <span>No Signals</span>  <em>Just <span class="swap">S<span class="swap-tail" data-alt="olarite"><span>implicity</span></span></span></em></h1>
         </div>
         <div class="hero-intro">
-          <p>Solarite is a small JavaScript library for native web components.  Just write a class, change your data, call <code>render()</code>.  Solarite updates only the DOM that changed.</p>
+          <p>Solarite is a small JavaScript library for native web components.  Import it anywhere, write a class,
+            change your data, and call <code>render()</code>.  Solarite updates only the DOM that changed.</p>
           <div class="actions">
             <a class="button" href="docs/">Read the docs <span aria-hidden="true">↗</span></a>
             <a class="button ghost" href="dist/Solarite.min.js" download>Download <small>12.7 KB Brotli</small></a>
@@ -145,7 +146,7 @@ constructor(args={}) {...}</i></code></pre>
           <a href="docs/#web-components">Web components <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>JSX+TypeScript if you want it</h3>
+          <h3>JSX+TS only if you want</h3>
           <p>TypeScript definitions are included, and JSX works with your build tool.</p>
           <pre><code><i>// tsconfig.json</i>
 "jsx": "react-jsx",
@@ -168,20 +169,20 @@ constructor(args={}) {...}</i></code></pre>
         <figure class="benchmark" aria-labelledby="benchmark-title">
           <ol>
             <li><span>Vanilla JS <small>hand-written, no library</small></span><span class="bar"><i style="--score: 1.01"></i><b>1.01</b></span></li>
-            <li><span>Mikado <small>0.8.400</small></span><span class="bar"><i style="--score: 1.06"></i><b>1.06</b></span></li>
+            <li><span>Mikado <small>0.8.400</small></span><span class="bar"><i style="--score: 1.04"></i><b>1.04</b></span></li>
             <li class="solarite"><span>Solarite <small>0.8.0</small></span><span class="bar"><i style="--score: 1.07"></i><b>1.07</b></span></li>
-            <li><span>Solid <small>1.9.3</small></span><span class="bar"><i style="--score: 1.13"></i><b>1.13</b></span></li>
-            <li><span>Inferno <small>8.2.2</small></span><span class="bar"><i style="--score: 1.13"></i><b>1.13</b></span></li>
-            <li><span>Svelte <small>5.42.1</small></span><span class="bar"><i style="--score: 1.17"></i><b>1.17</b></span></li>
-            <li><span>Lit <small>3.2.0</small></span><span class="bar"><i style="--score: 1.30"></i><b>1.30</b></span></li>
-            <li><span>Vue <small>3.5.39</small></span><span class="bar"><i style="--score: 1.31"></i><b>1.31</b></span></li>
-            <li><span>Angular <small>CF, no Zone · 22.0.0</small></span><span class="bar"><i style="--score: 1.54"></i><b>1.54</b></span></li>
-            <li><span>React <small>hooks · 19.2.0</small></span><span class="bar"><i style="--score: 1.58"></i><b>1.58</b></span></li>
-            <li><span>Preact <small>hooks · 10.29.8</small></span><span class="bar"><i style="--score: 1.59"></i><b>1.59</b></span></li>
-            <li><span>Ember <small>7.3.0-alpha.5</small></span><span class="bar"><i style="--score: 2.06"></i><b>2.06</b></span></li>
-            <li><span>Alpine <small>3.14.7</small></span><span class="bar"><i style="--score: 3.06"></i><b>3.06</b></span></li>
+            <li><span>Inferno <small>8.2.2</small></span><span class="bar"><i style="--score: 1.11"></i><b>1.11</b></span></li>
+            <li><span>Solid <small>1.9.3</small></span><span class="bar"><i style="--score: 1.12"></i><b>1.12</b></span></li>
+            <li><span>Svelte <small>5.42.1</small></span><span class="bar"><i style="--score: 1.15"></i><b>1.15</b></span></li>
+            <li><span>Lit <small>3.2.0</small></span><span class="bar"><i style="--score: 1.27"></i><b>1.27</b></span></li>
+            <li><span>Vue <small>3.5.39</small></span><span class="bar"><i style="--score: 1.30"></i><b>1.30</b></span></li>
+            <li><span>React <small>hooks · 19.2.0</small></span><span class="bar"><i style="--score: 1.57"></i><b>1.57</b></span></li>
+            <li><span>Angular <small>CF, no Zone · 22.0.0</small></span><span class="bar"><i style="--score: 1.58"></i><b>1.58</b></span></li>
+            <li><span>Preact <small>hooks · 10.29.8</small></span><span class="bar"><i style="--score: 1.62"></i><b>1.62</b></span></li>
+            <li><span>Ember <small>7.3.0-alpha.5</small></span><span class="bar"><i style="--score: 2.30"></i><b>2.30</b></span></li>
+            <li><span>Alpine <small>3.14.7</small></span><span class="bar"><i style="--score: 3.07"></i><b>3.07</b></span></li>
           </ol>
-          <figcaption id="benchmark-title">Select entries from the Sep 1, 2026 <a href="https://krausest.github.io/js-framework-benchmark/current.html">Krausest JS Framework Benchmark</a>, <b>lower is better.</b></figcaption>
+          <figcaption id="benchmark-title">Select entries from the Aug 12, 2026 <a href="https://krausest.github.io/js-framework-benchmark/current.html">Krausest JS Framework Benchmark</a>, <b>lower is better.</b></figcaption>
         </figure>
       </div>
     </section>
