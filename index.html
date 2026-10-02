@@ -14,7 +14,7 @@
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
-  <title>Solarite — No build.  No Signals.  Just Simplicity</title>
+  <title>Solarite: No build.  No Signals.  Just Simplicity</title>
   <link rel="icon" href="docs/media/sun.svg" type="image/svg+xml">
   <link rel="stylesheet" href="docs/media/site.css">
   <link rel="stylesheet" href="docs/media/home.css">
@@ -69,8 +69,8 @@
           <h1 id="hero-title"><span>No build</span>  <span>No Signals</span>  <em>Just <span class="swap">S<span class="swap-tail" data-alt="olarite"><span>implicity</span></span></span></em></h1>
         </div>
         <div class="hero-intro">
-          <p>Solarite is a small JavaScript library for native web components.  Import it anywhere, write a class,
-            change your data, and call <code>render()</code>.  Solarite updates only the DOM that changed.</p>
+          <p>Solarite is a small library for writing native web components.  Write a class, change your data, and
+            call <code>render()</code>.  Solarite updates only the DOM that changed.</p>
           <div class="actions">
             <a class="button" href="docs/">Read the docs <span aria-hidden="true">↗</span></a>
             <a class="button ghost" href="dist/Solarite.min.js" download>Download <small>12.7 KB Brotli</small></a>
@@ -91,63 +91,63 @@
     </div>
 
     <section id="why" class="why wrap" aria-labelledby="why-title">
-      <h2 id="why-title"><span class="slashes" aria-hidden="true">//</span> Why Solarite</h2>
+      <h2 id="why-title"><span class="slashes" aria-hidden="true">//</span> What it does</h2>
       <div class="benefits">
         <article>
-          <h3>Your data is the state</h3>
+          <h3>Plain data, explicit render</h3>
           <p>Nothing to declare or wrap.  Change an object or an array, then render.</p>
           <pre><code>this.items.push(newItem);
 this.render();</code></pre>
           <a href="docs/#manual-rendering">Explicit rendering <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>Two-way form binding</h3>
-          <p>Bind an input to a property and they stay in sync, with no handler to write.</p>
+          <h3>Two-way binding</h3>
+          <p>Set an input's value to <code>[object, 'property']</code> and the two stay in sync.</p>
           <pre><code>&lt;input value=<b>${[item, 'name']}</b>&gt;</code></pre>
           <a href="docs/#two-way-binding">Two-way binding <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>Regular CSS</h3>
-          <p>Scoped styles with no shadow DOM.  Global CSS still reaches inside.</p>
+          <h3>Scoped CSS, no shadow DOM</h3>
+          <p>A component's <code>&lt;style&gt;</code> applies only to it, and page styles still reach inside.</p>
           <pre><code>&lt;style&gt;
   :host input { color: navy }
 &lt;/style&gt;</code></pre>
           <a href="docs/#scoped-styles">Scoped styles <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>Attributes are arguments</h3>
-          <p>A child component’s constructor receives complex data intact.</p>
+          <h3>Objects as attributes</h3>
+          <p>A child component's constructor receives the actual object, not a string.</p>
           <pre><code>&lt;user-card user=<b>${user}</b>&gt;
 
 constructor({user}) { … }</code></pre>
           <a href="docs/#passing-data-to-child-components">Child components <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>The DOM belongs to you</h3>
-          <p><code>data-id</code> makes an element a property.  Your DOM changes are left alone.</p>
+          <h3>Direct DOM access</h3>
+          <p><code>data-id</code> elements become properties.  Your DOM edits are kept.</p>
           <pre><code>&lt;div data-id=<b>"chart"</b>&gt;&lt;/div&gt;
 
 this.chart.append(canvas);</code></pre>
           <a href="docs/#ids">Element references <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>Objects stay plain</h3>
-          <p>No proxies or wrappers.  The console and debugger show your real data.</p>
+          <h3>No proxies</h3>
+          <p>Objects are never wrapped, so <code>console.log</code> shows your real data.</p>
           <pre><code>console.log(this.items);
 <i>// [{name: 'Apples'}, …]</i></code></pre>
           <a href="docs/#how-rendering-works">How rendering works <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>Works anywhere HTML does</h3>
-          <p>A real custom element, usable from any page or framework.</p>
+          <h3>Standard custom elements</h3>
+          <p>They work in plain HTML pages and inside other frameworks.</p>
           <pre><code>&lt;my-timer mins=<b>"5"</b>&gt;&lt;/my-timer&gt;
 
-constructor(args={}) {...}</i></code></pre>
+constructor(args={}) {...}</code></pre>
           <a href="docs/#web-components">Web components <span aria-hidden="true">↗</span></a>
         </article>
         <article>
-          <h3>JSX+TS only if you want</h3>
-          <p>TypeScript definitions are included, and JSX works with your build tool.</p>
+          <h3>Optional JSX and TypeScript</h3>
+          <p>Type definitions are included.  JSX needs a build step; nothing else does.</p>
           <pre><code><i>// tsconfig.json</i>
 "jsx": "react-jsx",
 "jsxImportSource": <b>"solarite"</b></code></pre>
@@ -159,10 +159,10 @@ constructor(args={}) {...}</i></code></pre>
     <section id="performance" class="performance" aria-labelledby="performance-title">
       <div class="wrap">
         <div class="performance-copy">
-          <h2 id="performance-title"><span class="slashes" aria-hidden="true">//</span> Small and fast</h2>
-          <p>Solarite nearly matches the speed of hand-written vanilla JavaScript and is faster than nearly every other framework you’ve heard of.</p>
+          <h2 id="performance-title"><span class="slashes" aria-hidden="true">//</span> Size and speed</h2>
+          <p>Solarite scores 1.08 in the js-framework-benchmark, where hand-written vanilla JavaScript scores 1.02.  This is faster than nearly every other framework.</p>
           <div class="size-facts">
-            <div><strong>12.6<span>KB</span></strong><p>Minified + Brotli</p></div>
+            <div><strong>12.7<span>KB</span></strong><p>Minified + Brotli</p></div>
             <div><strong>Zero</strong><p>Runtime dependencies</p></div>
           </div>
         </div>
@@ -192,14 +192,26 @@ constructor(args={}) {...}</i></code></pre>
       <div class="limit-list">
         <div><h3>A framework</h3><p>It renders components.  Routing, fetching, and stores are yours to choose, or to skip.</p></div>
         <div><h3>Server-side rendering</h3><p>Could be added later if there's demand.</p></div>
+        <div><h3>Automatic</h3><p>If you change data and don't call <code>render()</code>, the page doesn't update.  That's the price of choosing when rendering happens.</p></div>
+        <div><h3>1.0 yet</h3><p>Possible API changes before 1.0.</p></div>
         <div><h3>A big team</h3><p>One maintainer, MIT licensed, with a small surface that is easy to read and to fork.</p></div>
       </div>
+    </section>
+
+    <section id="story" class="story wrap" aria-labelledby="story-title">
+      <h2 id="story-title"><span class="slashes" aria-hidden="true">//</span> Why I wrote it</h2>
+      <p>Several years ago I went looking for something simpler than the big JavaScript UI frameworks.  I didn't
+        want a build environment or a wait for compilation, and I didn't want to wrap my data in signals before I could
+        use it.  What I wanted was class-based components that pass arguments to their children through the
+        constructor, scoped styles and two-way binding without the limits of shadow DOM, and a library I could import
+        anywhere rather than a whole framework.  Nothing I found did all of that, so I wrote Solarite.</p>
+      <p class="signature">-- Eric Frost</p>
     </section>
 
     <section class="closing blueprint" aria-labelledby="closing-title">
       <div class="wrap">
         <div>
-          <h2 id="closing-title">Build your first component.</h2>
+          <h2 id="closing-title">Install</h2>
           <div class="install">
             <div role="tablist" aria-label="Ways to get Solarite">
               <button type="button" role="tab" aria-selected="true" data-line="import h, {Solarite} from 'https://cdn.jsdelivr.net/npm/solarite@0.9.0/dist/Solarite.min.js';">CDN</button>
@@ -211,10 +223,9 @@ constructor(args={}) {...}</i></code></pre>
           </div>
         </div>
         <div>
-          <p>The examples in the documentation are live, so you can edit them right in the page.</p>
+          <p>The examples in the <a href="docs/">documentation</a> are live, so you can edit them right in the page.</p>
           <div class="actions">
-            <a class="button" href="docs/">Read the docs <span aria-hidden="true">↗</span></a>
-            <a class="button ghost" href="https://github.com/eric-frost/solarite"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Zm0 2.445L6.615 5.5a.75.75 0 0 1-.564.41l-3.097.45 2.24 2.184a.75.75 0 0 1 .216.664l-.528 3.084 2.769-1.456a.75.75 0 0 1 .698 0l2.77 1.456-.53-3.084a.75.75 0 0 1 .216-.664l2.24-2.183-3.096-.45a.75.75 0 0 1-.564-.41L8 2.694Z"/></svg> Star on GitHub</a>
+            <a class="button" href="https://github.com/eric-frost/solarite">GitHub <span aria-hidden="true">↗</span></a>
           </div>
         </div>
       </div>
