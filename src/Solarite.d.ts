@@ -11,14 +11,15 @@ export interface RenderOptions {
     render?: boolean;
 
     /**
-     * Delegate bubbling events (default true).  A handler is stored on its element instead of
-     * registered with addEventListener, and when an event of that type starts, a capture-phase
-     * listener on the component root and the document attaches a real listener to each element
-     * on the event's path that has one; the browser then dispatches normally.  Much faster
-     * creation and teardown of large lists, with native ordering, stopPropagation(),
-     * currentTarget, non-bubbling events and moved elements all behaving as with
-     * addEventListener.  The one difference: a delegated handler is attached when the event
-     * starts, so it runs after listeners other code added to the same element.  Prefix an
+     * Delegate bubbling events (default true).  A handler is kept on its element, or for a list
+     * row in the row's template, instead of being registered with addEventListener, and when an
+     * event of that type starts, a capture-phase listener on the component root and the document
+     * attaches a real listener to each element on the event's path that has one; the browser
+     * then dispatches normally.  Much faster creation and teardown of large lists, with native
+     * ordering, stopPropagation(), currentTarget, non-bubbling events and moved elements all
+     * behaving as with addEventListener, except that an element moved out of its list row loses
+     * its delegated handlers.  One more difference: a delegated handler is attached when the
+     * event starts, so it runs after listeners other code added to the same element.  Prefix an
      * attribute with native: (native:onclick) to bind just that handler at render time.
      * Pass false to bind every event directly, or an array to delegate only the listed event
      * names.  Non-bubbling events always bind directly. */

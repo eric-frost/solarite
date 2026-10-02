@@ -55,26 +55,23 @@ export default class PathToComponent extends Path {
 			// instead of Solarite's documented (event, element) signature.
 			if (attribPath instanceof PathToEvent)
 				continue;
+
+			// The whole expression, or the joined text of an attribute with several parts.
+			let value = attribPath.getValue(exprs[i]);
 			if (attribPath instanceof PathToAttribValue) {
-				let name = Util.dashesToCamel(attribPath.attribName);
-				
-				// Resolve two way bindimg path before we pass it to the component.
-				let value = attribPath.getValue(exprs[i]);
-				if (!attribPath.attrValue && isDelvePath(value))
+
+				// Resolve a two-way binding path before we pass it to the component.  Joined
+				// text is a string, which is never one.
+				if (isDelvePath(value))
 					value = delve(value[0], value.slice(1));
-				
-				attribs[name] = value;
+				attribs[Util.dashesToCamel(attribPath.attribName)] = value;
 			}
-			else { // PathToAttribs
-				let val = attribPath.getValue(exprs[i]);
-				if (typeof val === 'object')
-					for (let name in val)
-						attribs[Util.dashesToCamel(name)] = val[name];
-				else if (typeof val === 'string') {
-					let attrs = Util.splitAttribs(val);
-					for (let name in attrs)
-						attribs[Util.dashesToCamel(name)] = attrs[name];
-				}
+			else { // PathToAttribs: an object of attributes, or a string of them.
+				if (typeof value === 'string')
+					value = Util.splitAttribs(value);
+				if (typeof value === 'object')
+					for (let name in value)
+						attribs[Util.dashesToCamel(name)] = value[name];
 			}
 		}
 
@@ -96,21 +93,20 @@ export default class PathToComponent extends Path {
 
 				// Not defined yet (e.g. the module is being lazily imported): keep the placeholder
 				// and instantiate when the definition lands, like a native custom-element upgrade.
-				// deferredExprs always holds the LATEST exprs so re-renders while undefined win.
+				// deferredExprs always holds the LATEST exprs so re-renders while undefined win,
+				// and while it is set a wait is already under way.
 				if (!Constructor) {
-					this.deferredExprs = exprs;
-					if (!this.whenDefinedPending) {
-						this.whenDefinedPending = true;
+					if (!this.deferredExprs) {
 						console.warn(`Solarite: <${tagName}> is not defined yet; waiting for customElements.define().`);
 						customElements.whenDefined(tagName).then(() => {
-							this.whenDefinedPending = false;
 							let deferred = this.deferredExprs;
 							this.deferredExprs = null;
 							// Skip if a newer render already instantiated or replaced the placeholder.
-							if (deferred && this.nodeMarker === el && el.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
+							if (this.nodeMarker === el && el.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
 								this.applyAll(deferred);
 						});
 					}
+					this.deferredExprs = exprs;
 					return;
 				}
 

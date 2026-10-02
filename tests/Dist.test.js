@@ -4,7 +4,7 @@
  * browser looks up a property by name, e.g. handleEvent for addEventListener(name, object).
  * Run `bash build/build.bat` first; these fail against a stale build. */
 import Testimony, {assert} from './Testimony.js';
-import {Solarite as SolariteMin, h as hMin} from '../dist/Solarite.min.js';
+import {Solarite as SolariteMin, h as hMin, getEventBinding as getEventBindingMin, toEl as toElMin} from '../dist/Solarite.min.js';
 
 Testimony.test('Dist.events.click', `Real clicks must work in the minified build`, () => {
 	let clicked = 0;
@@ -42,8 +42,8 @@ Testimony.test('Dist.events.click', `Real clicks must work in the minified build
 
 Testimony.test('Dist.events.dispatchOrder', `Delegated and native: handlers keep native ordering in the minified build`, () => {
 	// The dispatcher attaches listeners along the event's path the moment an event starts and
-	// sweeps them later, so it leans on bookkeeping the minifier renames.  Guards the 0.9.0
-	// rework the way Dist.events.click guards the basic path.
+	// removes them when the event reaches the last of them, so it leans on bookkeeping the
+	// minifier renames.  Guards the 0.9.0 rework the way Dist.events.click guards the basic path.
 	let order = [];
 	let el = document.createElement('div');
 	document.body.append(el);
@@ -76,6 +76,57 @@ Testimony.test('Dist.events.dispatchOrder', `Delegated and native: handlers keep
 	el.remove();
 });
 
+Testimony.test('Dist.events.listRows', `Handlers on the rows of a keyed h.map() list work in the minified build`, () => {
+	// A list row stores no handler on its elements.  The dispatcher finds the row through a
+	// pointer on the row's root element, looks up which of the row's elements bind the event, and
+	// reads each handler from the row's template.  Every step of that is bookkeeping the minifier
+	// renames, and no other test in this file sends an event to a list row.
+	let log = [];
+	class DistListRowsTest extends SolariteMin {
+		rows = [1, 2, 3].map(id => ({id, label: 'r' + id}));
+		render() {
+			hMin(this)`<dist-list-rows-test>${hMin.map(this.rows, row =>
+				hMin`<p key=${row.id} onclick=${[function(item) { log.push(['row', item, this]); }, row]}><a onclick=${[function(item) { log.push(['inner', item, this]); }, row]}>${row.label}</a></p>`)}</dist-list-rows-test>`;
+		}
+	}
+	customElements.define('dist-list-rows-test', DistListRowsTest);
+	let a = new DistListRowsTest();
+	document.body.append(a);
+	let ps = [...a.querySelectorAll('p')];
+	assert.eq(ps.length, 3);
+
+	// Click the inner element of one row, and report which handlers ran, in order, with which
+	// item, and whether `this` was the component.
+	const click = index => {
+		log = [];
+		a.querySelectorAll('a')[index].click();
+		return log.map(([which, item, self]) => which + ':' + item.label + ':' + (self === a)).join();
+	};
+
+	// 1. The inner handler runs first, then the row's, each with the row's own item.
+	assert.eq(click(1), 'inner:r2:true,row:r2:true');
+	assert.eq(log[0][1], a.rows[1]);
+
+	// 2. A row replaced by a new object with the same key keeps its element, and its handlers
+	// now report the new item.
+	a.rows[1] = {id: 2, label: 'changed'};
+	a.render();
+	assert.eq(a.querySelectorAll('p')[1], ps[1]);
+	assert.eq(click(1), 'inner:changed:true,row:changed:true');
+	assert.eq(log[0][1], a.rows[1]);
+	assert.eq(log[1][1], a.rows[1]);
+
+	// 3. Removing a row leaves the others answering, each with its own item.
+	a.rows.splice(0, 1);
+	a.render();
+	assert.eq(ps[0].isConnected, false);
+	assert.eq(a.querySelectorAll('p').length, 2);
+	assert.eq(click(0), 'inner:changed:true,row:changed:true');
+	assert.eq(click(1), 'inner:r3:true,row:r3:true');
+
+	a.remove();
+});
+
 Testimony.test('Dist.events.twoWayBinding', `Two-way input binding in the minified build`, () => {
 	class DistBindTest extends SolariteMin {
 		text = 'start';
@@ -95,6 +146,47 @@ Testimony.test('Dist.events.twoWayBinding', `Two-way input binding in the minifi
 	assert.eq(a.text, 'changed');
 
 	a.remove();
+});
+
+Testimony.test('Dist.events.handlerForms', `Every form of handler works in the minified build: a function or an array with any number of arguments, on an element of the root's template, on a list row, and bound with addEventListener, where one element can hold several handlers and getEventBinding() finds each.`, () => {
+	// The browser looks up handleEvent by name on a binding made with addEventListener, and
+	// getEventBinding() is part of the public API, so both have to survive property mangling.
+	for (let eventDelegation of [true, false]) {
+		let el = document.createElement('div');
+		document.body.append(el);
+		let log = [];
+		let fn = function(...args) {
+			let node = args.pop(), ev = args.pop();
+			log.push([this === el, ev.type, node.tagName, ...args].join(' '));
+		};
+		let handlers = [fn, [fn], [fn, 'a'], [fn, 'a', 'b'], [fn, 'a', 'b', 'c'], [fn, 'a', 'b', 'c', 'd']];
+		let model = {text: 'a'};
+		hMin(el, {eventDelegation})`<div>
+			<input value=${[model, 'text']} onclick=${[fn, 'click']} onkeyup=${[fn, 'keyup']} onfocus=${[fn, 'focus']}>
+			${handlers.map(handler => hMin`<b onclick=${handler}><s onclick=${handler}></s></b>`)}</div>`;
+
+		// 1. Each form, on a list row's root and on an element inside it.
+		for (let s of el.querySelectorAll('s'))
+			s.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+		let expected = ['', '', ' a', ' a b', ' a b c', ' a b c d'];
+		assert.eq(log.join(), expected.map(args => `true click S${args},true click B${args}`).join());
+
+		// 2. Several handlers and a two-way binding on one element.
+		log = [];
+		let input = el.querySelector('input');
+		input.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+		input.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}));
+		input.dispatchEvent(new FocusEvent('focus'));
+		input.value = 'b';
+		input.dispatchEvent(new Event('input', {bubbles: true}));
+		assert.eq(log.join(), 'true click INPUT click,true keyup INPUT keyup,true focus INPUT focus');
+		assert.eq(model.text, 'b');
+
+		// 3. Bindings made with addEventListener are found by key; delegated handlers have none.
+		let found = ['value', 'click', 'keyup', 'focus'].map(key => typeof getEventBindingMin(input, key)?.handleEvent);
+		assert.eq(found.join(), eventDelegation ? 'function,undefined,undefined,function' : 'function,function,function,function');
+		el.remove();
+	}
 });
 
 Testimony.test('Dist.map.keyed', `h.map and the keyed reconciler work in the minified build`, () => {
@@ -148,6 +240,67 @@ Testimony.test('Dist.map.keyed', `h.map and the keyed reconciler work in the min
 	a.render();
 	assert.eq(a.querySelectorAll('tr').length, 0);
 	a.remove();
+});
+
+Testimony.test('Dist.map.sameWorkAsUnminified', `The minified build settles a long h.map() list by the same route as the unminified build: the size limits that choose between patching rows in place, following a shifted list and the general diff are numbers the minifier writes into the code, and both builds must call the callback equally often and end with the same rows.`, async () => {
+	const plain = await import('../dist/Solarite.js');
+
+	// Each step replaces the list, and between them they cross the limits the list code has:
+	// more than 256 changed positions (rows that moved, then rows that are all new) and fewer,
+	// more than 16 rows that changed places and fewer, a block of inserted rows longer than
+	// 64 and a shorter one, and rows removed in two places.  How often the callback runs
+	// depends on the route taken, so equal counts mean equal routes.
+	const run = h => {
+		let all = [];
+		for (let i=0; i<1200; i++)
+			all.push({id: i, label: 'r' + i});
+		const swapPairs = (rows, pairs) => {
+			rows = rows.slice();
+			for (let k=0; k<pairs; k++) {
+				let t = rows[k*10];
+				rows[k*10] = rows[k*10+5];
+				rows[k*10+5] = t;
+			}
+			return rows;
+		};
+		let steps = [
+			() => all.slice(0, 300),
+			rows => rows.slice().reverse(),
+			rows => rows.slice(0, 200),
+			rows => rows.slice().reverse(),
+			() => all.slice(300, 600),
+			() => all.slice(600, 900),
+			rows => swapPairs(rows, 9),
+			rows => swapPairs(rows, 8),
+			rows => [...all.slice(900, 960), ...rows],
+			rows => [...all.slice(960, 1030), ...rows],
+			rows => [...rows.slice(0, 10), ...rows.slice(13, 100), ...rows.slice(106)],
+			rows => rows.slice(0, 5)
+		];
+
+		let el = document.createElement('div'), rows = [], result = [];
+		for (let step of steps) {
+			rows = step(rows);
+			let calls = 0;
+			h(el)`<ul>${h.map(rows, r => {
+				calls++;
+				return h`<li key=${r.id}>${r.label}</li>`;
+			})}</ul>`;
+			assert.eq(el.textContent, rows.map(r => r.label).join(''));
+			result.push(calls);
+		}
+		return result;
+	};
+
+	let counts = run(hMin);
+	assert.eq(counts, run(plain.h));
+
+	// The two limits that decide how often the callback runs, so that equal counts above can't
+	// mean that neither build has them: 300 rows reversed are recognized as moved and none is
+	// built again, 200 are each built again; 60 rows put in front are the only ones built,
+	// 70 are too many to look past and the rows behind them are built again as well.
+	assert.eq([counts[1], counts[3], counts[8]], [0, 200, 60]);
+	assert.eq(counts[9] > 70, true);
 });
 
 Testimony.test('Dist.selector', `h.selector survives property mangling in the minified build`, () => {
@@ -312,6 +465,18 @@ Testimony.test('Dist.customElementsNotMangled', `Terser must not rename customEl
 			`customElements.${name} is not a real method — terser mangled it`);
 });
 
+Testimony.test('Dist.helpersStayFunctions', `The minified build must not turn a helper into a closure created on every call`, async () => {
+	// The minifier, left to itself, moves a function that is called from one place to its call
+	// site as a function expression that is created and immediately called.  That saves a few
+	// bytes and costs a closure allocation on every call, which for a helper the list code
+	// calls once per row is an allocation per row, and it hides the helper from the engine's
+	// own inlining.  build.js turns that off (reduce_funcs: false).  This fails if a change of
+	// minifier settings, or a minifier upgrade that drops the option, brings it back.
+	const src = await (await fetch('../dist/Solarite.min.js')).text();
+	assert(src.length > 10000, 'dist/Solarite.min.js fetched');
+	assert.eq((src.match(/\}\)\(/g) || []).length, 0);
+});
+
 Testimony.test('Dist.slotHandOff', `Slot children survive property mangling`, () => {
 	// RootNodeGroup.instantiate() decides whether a pending slot hand-off is addressed to the
 	// component it is rendering by reading el.constructor -- a name the BROWSER owns, so it
@@ -342,4 +507,66 @@ Testimony.test('Dist.slotHandOff', `Slot children survive property mangling`, ()
 	assert.eq(div.querySelector('slot').innerHTML, `<button>one</button>`);
 
 	div.remove();
+});
+
+Testimony.test('Dist.attribs.string', `A string of whole attributes is applied in the minified build`, () => {
+	// The minifier takes String.replace() to have no side effects.  Util.splitAttribs() once
+	// collected the attributes from inside a replace() callback and ignored what the call
+	// returned, so the minified build deleted the call and every such string applied nothing,
+	// while the source and unminified builds kept working.
+	let el = document.createElement('div');
+	hMin(el)`<div><b ${'title="I have a title" data-x=2 hidden'}>a</b></div>`;
+	let b = el.querySelector('b');
+	assert.eq(b.getAttribute('title'), 'I have a title');
+	assert.eq(b.getAttribute('data-x'), '2');
+	assert.eq(b.hasAttribute('hidden'), true);
+});
+
+Testimony.test('Dist.defineClass.registeredName', `A component class keeps the tag name it was registered under in the minified build`, () => {
+	// Util.defineClass() asks customElements.getName() whether a class has a name already.  The
+	// minifier renames property names it does not know to be the browser's, and its list is older
+	// than getName(), so the call has to be written in a way that keeps the name.  Renamed, it is
+	// a call of something that does not exist, and nothing that creates a component works.
+	class DistOddName extends HTMLElement {}
+	customElements.define('dist-registered-name', DistOddName);
+	assert.eqJson(hMin(DistOddName, null).html, ['<dist-registered-name></dist-registered-name>']);
+
+	// A class nothing has registered is registered when its first instance is made.
+	class DistAutoName extends SolariteMin {
+		render() {
+			hMin(this)`<dist-auto-name>x</dist-auto-name>`;
+		}
+	}
+	let el = new DistAutoName();
+	assert.eq(el.tagName, 'DIST-AUTO-NAME');
+	assert.eq(customElements.getName(DistAutoName), 'dist-auto-name');
+
+	// A name given without a dash gets one.
+	class DistGivenName extends SolariteMin {}
+	DistGivenName.define('distgiven');
+	assert.eq(customElements.getName(DistGivenName), 'distgiven-element');
+});
+
+Testimony.test('Dist.toEl.object', `toEl() finds an object's render() by name in the minified build`, () => {
+	// 1. render() that calls h(this)`...`
+	let el = toElMin({
+		label: 'a',
+		render() {
+			hMin(this)`<b>${this.label}</b>`;
+		}
+	});
+	assert.eq(el.tagName, 'B');
+	assert.eq(el.textContent, 'a');
+	el.label = 'b';
+	el.render();
+	assert.eq(el.textContent, 'b');
+
+	// 2. render() that calls h(this, template)
+	el = toElMin({
+		render() {
+			hMin(this, hMin`<i>x</i>`);
+		}
+	});
+	assert.eq(el.tagName, 'I');
+	assert.eq(el.textContent, 'x');
 });

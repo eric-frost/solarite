@@ -62,6 +62,12 @@ const terserOptions = {
 		// Comma-chaining saves minified bytes but costs compressed bytes. The commas
 		// produce more distinct byte sequences than repeated '};' lines.
 		sequences: false,
+		// Leave a function that is called from one place as a function.  Terser otherwise moves its
+		// body to the call site as a function expression that is created and called on the spot,
+		// so a helper called once per list row or once per event became a new closure object
+		// allocated on every call, and one the engine has to see through before it can inline it.
+		// Kept as a declaration, the engine inlines the small ones itself and calls the rest.
+		reduce_funcs: false,
 	},
 	mangle: { // https://github.com/terser/terser#mangle-options
 		//eval: true, // We use reserved words to not mangle names used in eval.

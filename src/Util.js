@@ -210,11 +210,17 @@ let Util = {
 	 * True for an attribute name that binds an event: `onclick`, or `native:onclick` for a
 	 * handler that is registered with addEventListener when the template renders instead of
 	 * being delegated.  Only names an element really exposes as on* handlers count, so an
-	 * attribute like `online` is never mistaken for one. */
+	 * attribute like `online` is never mistaken for one.
+	 *
+	 * A few events have no such property to ask about and are named here instead: no browser
+	 * gives elements `onfocusin` or `onfocusout`, and the touch properties exist only on a
+	 * machine with a touch screen, so a template would otherwise mean one thing on a phone
+	 * and another on a desktop. */
 	isEvent(attribName) {
 		if (attribName.startsWith(nativeEventPrefix))
 			attribName = attribName.slice(nativeEventPrefix.length);
-		return attribName.startsWith('on') && attribName in Globals.div;
+		return attribName.startsWith('on') && (attribName in Globals.div
+			|| /^on(focus(in|out)|touch(start|move|end|cancel))$/.test(attribName));
 	},
 
 	/**
@@ -228,12 +234,8 @@ let Util = {
 			let proto = Object.getPrototypeOf(el);
 
 			// Find the first HTMLElement that we inherit from (not our own classes)
-			while (proto) {
-				const ctorName = proto.constructor.name;
-				if (ctorName.startsWith('HTML') && ctorName.endsWith('Element'))
-					break
+			while (proto && !/^HTML.*Element$/.test(proto.constructor.name))
 				proto = Object.getPrototypeOf(proto);
-			}
 			Globals.htmlProps[key] = result = (proto
 				? !!Object.getOwnPropertyDescriptor(proto, prop)?.set
 				: false);
@@ -256,8 +258,12 @@ let Util = {
 		// written on its own ('disabled') still lands in the result with an empty value, and the three
 		// value alternatives capture *inside* the quotes so no separate quote-trimming pass is needed.
 		// Whatever doesn't look like an attribute name is skipped rather than becoming a bogus key.
-		(str + '').replace(/([\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g,
-			(_, name, dq, sq, bare) => result[name] = dq ?? sq ?? bare ?? '');
+		// This must stay a loop that reads each match.  Written as a String.replace() whose callback
+		// filled result, the minifier deleted the whole call: it takes replace() on a string to have
+		// no side effects, and nothing used what it returned.
+		let regex = /([\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g, m;
+		while (m = regex.exec(str))
+			result[m[1]] = m[2] ?? m[3] ?? m[4] ?? '';
 
 		return result;
 	},

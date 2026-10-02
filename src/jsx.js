@@ -60,38 +60,6 @@ function escapeAttr(value) {
 }
 
 /**
- * Build the interned htmlStrings for a Tier 2 element shape, matching how a tagged template would
- * split `<tag openStatic name1=${} name2=${}>${child0}${child1}</tag>`.
- * @param tag {string}
- * @param openStatic {string} Static attributes inlined into the opening tag (e.g. ` id="x"`).
- * @param names {string[]} Dynamic attribute names in order.
- * @param childCount {int}
- * @param isVoid {boolean}
- * @return {string[]} */
-function buildShapeHtml(tag, openStatic, names, childCount, isVoid) {
-	let strings = [];
-	let cur = '<' + tag + openStatic;
-	for (let name of names) {
-		strings.push(cur + ' ' + name + '=');
-		cur = '';
-	}
-	cur += '>';
-	if (isVoid) {
-		strings.push(cur);
-		return strings;
-	}
-	if (childCount === 0)
-		strings.push(cur + '</' + tag + '>');
-	else {
-		strings.push(cur);
-		for (let i = 1; i < childCount; i++)
-			strings.push('');
-		strings.push('</' + tag + '>');
-	}
-	return strings;
-}
-
-/**
  * Build a Template for a Tier 2 (classic/automatic) JSX element.
  * @param tag {string|Function|symbol} Intrinsic tag name, component class/function, or Fragment.
  * @param props {?Object} Attributes/props (children and key are pulled out by the caller for the
@@ -179,7 +147,13 @@ function buildIntrinsic(tag, props, children, key) {
 	let shapeKey = tag + openStatic + '\0' + names.join('\0') + '\0#' + childCount;
 	let html = shapeCache.get(shapeKey);
 	if (!html) {
-		html = buildShapeHtml(tag, openStatic, names, childCount, isVoid);
+		// The html a tagged template would have had, split where its holes are:
+		// `<tag openStatic name1=${} name2=${}>${child0}${child1}</tag>`.  Everything after the static
+		// attributes is written as one string with a NUL at each hole and split there; a NUL cannot be
+		// part of a tag or attribute name.  A void tag has no children and no end tag.
+		html = (names.map(name => ' ' + name + '=\0').join('') + '>'
+			+ (isVoid ? '' : '\0'.repeat(childCount) + '</' + tag + '>')).split('\0');
+		html[0] = '<' + tag + openStatic + html[0];
 		shapeCache.set(shapeKey, html);
 	}
 
