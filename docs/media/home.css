@@ -119,12 +119,20 @@ play-ground { position: relative; display: flex; align-items: flex-start; gap: v
   h3 { font-size: 19px }
   p { color: var(--muted); font-size: 15px; margin-top: 6px }
 }
+/* The maintainer's note on why the library exists.  It follows the limits section without padding of its own on top,
+   since the limits section already ends with 72px. */
+.story { padding-block: 0 112px;
+  p { font-size: 16px; max-width: 760px; margin-top: 14px }
+  h2 + p { margin-top: 22px }
+  .signature { color: var(--muted) }
+}
 
 /* The closing band keeps the rings but leaves the sun itself to the top of the page. */
 .closing { padding-block: 76px; background-position: right -150px top -150px, 0 0;
   .wrap { display: grid; grid-template-columns: calc((100% - var(--arrow)) * var(--split)) 1fr; gap: var(--arrow); align-items: center }
   h2 { font-size: clamp(32px, 3.6vw, 46px); font-weight: 800; letter-spacing: -.01em }
   p { font-size: 17px; max-width: 440px; margin-bottom: 22px }
+  p a { color: inherit; text-decoration: underline }
 }
 
 @media (max-width: 1100px) {
@@ -154,6 +162,7 @@ play-ground { position: relative; display: flex; align-items: flex-start; gap: v
   }
   .why { padding-block: 52px }
   .limits { padding-block: 48px }
+  .story { padding-bottom: 72px }
   .limit-list { grid-template-columns: 1fr; gap: 22px }
   .benefits { grid-template-columns: 1fr; margin-top: 8px;
     article, article:nth-child(n+3), article:nth-child(n+5) { margin: 0; padding-block: 24px; border-bottom: 1px solid var(--line) }
