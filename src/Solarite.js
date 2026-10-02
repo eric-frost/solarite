@@ -94,7 +94,7 @@ export class Solarite extends HTMLElementAutoDefine {
 	 * finishes and would overwrite them; that's why the subclass does the final assign.
 	 * @param attribs {?Record<string, any>}
 	 * @param types {?Record<string, Function>} */
-	constructor(attribs=null, types=null) {
+	constructor(attribs, types) {
 		super();
 
 		if (attribs) {
@@ -102,12 +102,8 @@ export class Solarite extends HTMLElementAutoDefine {
 				throw new Error('First argument must be an object.');
 
 			// 1. Populate attribs if it's an empty object.
-			if (!Object.keys(attribs).length) {
-				let attribs2 =  Solarite.getAttribs(this);
-				for (let name in attribs2) {
-					attribs[name] = attribs2[name];
-				}
-			}
+			if (!Object.keys(attribs).length)
+				Object.assign(attribs, Solarite.getAttribs(this));
 
 			// 2. Convert string values to the types the component declares.
 			for (let name in types || {})
@@ -135,7 +131,7 @@ export class Solarite extends HTMLElementAutoDefine {
 		this.renderFirstTime();
 	}
 
-	static 'define'(tagName=null) {
+	static 'define'(tagName) {
 		Util.defineClass(this, tagName);
 	}
 

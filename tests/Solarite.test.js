@@ -6,6 +6,7 @@ import h, {toEl, Solarite, Template, Globals, SolariteUtil, svg, getEventBinding
 import {jsxTemplate, jsxAttr, jsxEscape, jsx, jsxs} from '../src/jsx-runtime.js';
 import NodeGroup from '../src/NodeGroup.js';
 import Shell from '../src/Shell.js';
+import PathToNodes from '../src/PathToNodes.js';
 
 //import h, {toEl, Solarite, Template, Globals, SolariteUtil,
 // NodeGroup, Shell} from '../dist/Solarite.min.js'; // This will help the Benchmark test warm up.
@@ -97,6 +98,40 @@ Testimony.test('Solarite.Shell.emptyTwoPathsNested', () => {
 Testimony.test('Solarite.Shell.nodesAroundPathsNested', () => {
 	let shell = new Shell(['<p>a', 'b', 'c</p>'])
 	assert.eq(getHtml(shell, true), '<p>abc</p>')
+});
+
+Testimony.test('Solarite.Shell.eventIsNotLiveProperty', `An event attribute doesn't mark a row as holding a live property, on any element.`, () => {
+	for (let tag of ['a', 'i', 'section', 'button', 'em']) {
+		let t = new Template([`<${tag} onclick=`, '>', `</${tag}>`], [() => {}, 'x']);
+		let shell = Shell.get(t.html);
+		assert.eq(shell.hasLivePropPaths, false, tag);
+		assert.eq(shell.needsRefresh, false, tag);
+	}
+	let t = h`<input checked=${true}>`;
+	assert.eq(Shell.get(t.html).hasLivePropPaths, true);
+});
+
+Testimony.test('Solarite.Shell.tableWhitespace', `Whitespace-only text between a table's sections, rows and cells is dropped when a template is parsed, at any depth and nowhere else: a cell's own whitespace stays, and so does the whitespace of an svg element that happens to have a table element's name.`, () => {
+	let html = shell => {
+		let div = document.createElement('div');
+		div.append(shell.docFrag.cloneNode(true));
+		return div.innerHTML;
+	};
+
+	let shell = new Shell(['a <table> <thead> <tr> <th> b </th> </tr> </thead> <tbody> <tr> <td> </td>'
+		+ ' <td><p> <b>c</b> </p><table> <tr> <td>d</td> </tr> </table></td> </tr> </tbody>'
+		+ ' <tfoot> <tr> <td>e</td> </tr> </tfoot> </table> f']);
+	assert.eq(html(shell), 'a <table><thead><tr><th> b </th></tr></thead><tbody><tr><td> </td>'
+		+ '<td><p> <b>c</b> </p><table><tbody><tr><td>d</td></tr></tbody></table></td></tr></tbody>'
+		+ '<tfoot><tr><td>e</td></tr></tfoot></table> f');
+
+	// A row template, as a list draws it, with an expression in a cell.
+	shell = new Shell(['<tr> <td>', '</td> <td> x </td> </tr>']);
+	assert.eq(html(shell), '<tr><td></td><td> x </td></tr>');
+
+	// In an svg these names are ordinary elements, whose text is theirs to keep.
+	shell = new Shell(['<tr> <td> </td> </tr><text> </text>'], true);
+	assert.eq(html(shell), '<tr> <td> </td> </tr><text> </text>');
 });
 
 
@@ -321,6 +356,99 @@ Testimony.test('Solarite.Util.camelToDashes', () => {
 	assert.eq(SolariteUtil.camelToDashes('BigUI'), 'big-ui');
 	assert.eq(SolariteUtil.camelToDashes('UIForm'), 'ui-form');
 	assert.eq(SolariteUtil.camelToDashes('A100'), 'a-100');
+});
+
+Testimony.test('Solarite.Util.attribsToObject', `An element's attributes as an object with camelCase names, less the one asked to be left out`, () => {
+	let el = toEl(`<div data-id="a" tab-index="2" _is="x-y" hidden></div>`);
+	assert.eqJson(SolariteUtil.attribsToObject(el), {dataId: 'a', tabIndex: '2', _is: 'x-y', hidden: ''});
+	assert.eqJson(SolariteUtil.attribsToObject(el, '_is'), {dataId: 'a', tabIndex: '2', hidden: ''});
+});
+
+Testimony.test('Solarite.Util.getInputValue', `Each kind of input gives its value in the type that fits it`, () => {
+	const value = html => SolariteUtil.getInputValue(toEl(html));
+
+	// 1. A checkbox is a boolean, whatever its value attribute says.
+	let checkbox = toEl(`<input type="checkbox" value="v" checked>`);
+	assert.eq(SolariteUtil.getInputValue(checkbox), true);
+	checkbox.checked = false;
+	assert.eq(SolariteUtil.getInputValue(checkbox), false);
+
+	// 2. A radio is its value, and stays so with a contenteditable attribute beside it.
+	assert.eq(value(`<input type="radio" value="b">`), 'b');
+	assert.eq(value(`<input type="radio" value="b" contenteditable>`), 'b');
+
+	// 3. A file input is an array of its files.
+	let files = value(`<input type="file">`);
+	assert(Array.isArray(files));
+	assert.eq(files.length, 0);
+
+	// 4. Number and range are numbers.
+	assert.eq(value(`<input type="number" value="3.5">`), 3.5);
+	assert.eq(value(`<input type="range" min="0" max="10" value="7">`), 7);
+	assert(Number.isNaN(value(`<input type="number">`)));
+
+	// 5. Date and time are Dates.  datetime-local is whatever the browser gives as valueAsDate.
+	let date = value(`<input type="date" value="2026-02-03">`);
+	assert(date instanceof Date);
+	assert.eq(date.toISOString(), '2026-02-03T00:00:00.000Z');
+	let time = value(`<input type="time" value="01:02">`);
+	assert(time instanceof Date);
+	assert.eq(time.getTime(), 62 * 60 * 1000);
+	let local = toEl(`<input type="datetime-local" value="2026-02-03T04:05">`);
+	assert.eq(SolariteUtil.getInputValue(local), local.valueAsDate);
+
+	// 6. A multiple select is the array of its selected values; a single one is a string.
+	assert.eqJson(value(`<select multiple><option value="a" selected>A</option><option value="b">B</option><option value="c" selected>C</option></select>`), ['a', 'c']);
+	assert.eq(value(`<select><option value="a">A</option><option value="b" selected>B</option></select>`), 'b');
+
+	// 7. Text inputs and textareas are strings.
+	assert.eq(value(`<input value="t">`), 't');
+	assert.eq(value(`<textarea>ta</textarea>`), 'ta');
+
+	// 8. A contenteditable is its html.
+	assert.eq(value(`<div contenteditable><b>x</b></div>`), '<b>x</b>');
+});
+
+Testimony.test('Solarite.Util.isHtmlProp', `A name is a property when the element's built-in class has a setter for it`, () => {
+	// Answers are remembered by tag name and property, so these use a tag no other test asks about.
+	let meter = document.createElement('meter');
+	assert.eq(SolariteUtil.isHtmlProp(meter, 'value'), true);
+	assert.eq(SolariteUtil.isHtmlProp(meter, 'labels'), false); // Read-only.
+	assert.eq(SolariteUtil.isHtmlProp(meter, 'nothing'), false);
+
+	// Only the nearest built-in class is asked, so a property every element inherits does not count.
+	assert.eq(SolariteUtil.isHtmlProp(meter, 'title'), false);
+
+	// The classes of a web component are passed over on the way to that built-in class.
+	class IsHtmlPropBase extends HTMLElement {
+		set mine(v) {}
+	}
+	class IsHtmlPropChild extends IsHtmlPropBase {}
+	customElements.define('is-html-prop-child', IsHtmlPropChild);
+	let el = new IsHtmlPropChild();
+	assert.eq(SolariteUtil.isHtmlProp(el, 'title'), true);
+	assert.eq(SolariteUtil.isHtmlProp(el, 'mine'), false);
+
+	// An element with no HTML class behind it has none.
+	let circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+	assert.eq(SolariteUtil.isHtmlProp(circle, 'id'), false);
+});
+
+Testimony.test('Solarite.Util.makePrimitive', `What an attribute expression is turned into before it is written`, () => {
+	assert.eq(SolariteUtil.makePrimitive('a'), 'a');
+	assert.eq(SolariteUtil.makePrimitive(3), 3);
+	assert.eq(SolariteUtil.makePrimitive(true), true);
+	assert.eq(SolariteUtil.makePrimitive(undefined), undefined);
+
+	// A function is called, and what it returns is too, until something else comes back.
+	assert.eq(SolariteUtil.makePrimitive(() => () => 'b'), 'b');
+
+	assert.eq(SolariteUtil.makePrimitive(new Date(Date.UTC(2026, 0, 2, 3, 4, 5))), '2026-01-02 03:04:05.000Z');
+
+	// Arrays, objects and null are written as nothing.
+	assert.eq(SolariteUtil.makePrimitive([1, 2]), '');
+	assert.eq(SolariteUtil.makePrimitive({a: 1}), '');
+	assert.eq(SolariteUtil.makePrimitive(null), '');
 });
 //endregion
 
@@ -1381,6 +1509,177 @@ Testimony.test('Solarite.map.shift', `Removing a row from the middle reuses ever
 	a.remove();
 });
 
+Testimony.test('Solarite.map.removeRun', `Removing a run of rows keeps every other row and builds nothing`, () => {
+	let calls = 0;
+	const mk = n => Array.from({length: n}, (_, i) => ({id: i + 1, label: 'L' + (i + 1)}));
+	class A extends Solarite {
+		rows = mk(8);
+
+		render() {
+			h(this)`<div>${h.map(this.rows, row => { calls++; return h`<p key=${row.id}>${row.label}</p>` })}</div>`
+		}
+	}
+	customElements.define('r-remrun-1', A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	let host = a.firstElementChild;
+	let els = [...host.children];
+	const text = () => [...host.children].map(el => el.textContent).join(' ');
+
+	// 1. A run from the middle.
+	calls = 0;
+	a.rows.splice(2, 3);
+	a.render();
+	assert.eq(text(), 'L1 L2 L6 L7 L8');
+	assert.eq(calls, 0);
+	assert.eq([...host.children], [els[0], els[1], els[5], els[6], els[7]]);
+	assert.eq(els[2].isConnected, false);
+
+	// 2. From the front, then from the back.
+	a.rows.shift();
+	a.render();
+	assert.eq(text(), 'L2 L6 L7 L8');
+	a.rows.length = 2;
+	a.render();
+	assert.eq(text(), 'L2 L6');
+	assert.eq(calls, 0);
+	assert.eq([...host.children], [els[1], els[5]]);
+
+	// 3. The rows that stayed are still matched to their items afterwards: one is rewritten in
+	// place, then they swap, and each keeps its element.
+	a.rows[1] = {...a.rows[1], label: 'six'};
+	a.render();
+	assert.eq(text(), 'L2 six');
+	assert.eq(calls, 1);
+	a.rows.reverse();
+	a.render();
+	assert.eq(text(), 'six L2');
+	assert.eq([...host.children], [els[5], els[1]]);
+
+	// 4. A removed key that comes back gets a new element, since its old one was discarded.
+	a.rows.push({id: 3, label: 'L3'});
+	a.render();
+	assert.eq(text(), 'six L2 L3');
+	assert.neq(host.children[2], els[2]);
+
+	// 5. Two separate removals in one render are not a single run, and still come out right.
+	a.rows = mk(6);
+	a.render();
+	a.rows.splice(4, 1);
+	a.rows.splice(1, 1);
+	a.render();
+	assert.eq(text(), 'L1 L3 L4 L6');
+	a.remove();
+});
+
+Testimony.test('Solarite.map.removeRunShapes', `A removed run of unkeyed, text or multi-node rows is handled like any other removal`, () => {
+	class A extends Solarite {
+		rows = [];
+		mode = 'unkeyed';
+
+		render() {
+			h(this)`<div>${h.map(this.rows, row =>
+				this.mode === 'unkeyed' ? h`<p>${row.label}</p>`
+				: this.mode === 'text' ? row.label
+				: h`<dt key=${row.id}>${row.id}</dt><dd>${row.label}</dd>`)}</div>`
+		}
+	}
+	customElements.define('r-remrun-2', A);
+	let a = new A();
+	document.body.append(a);
+	const mk = () => [{id: 1, label: 'a'}, {id: 2, label: 'b'}, {id: 3, label: 'c'}, {id: 4, label: 'd'}];
+
+	// 1. Unkeyed rows.  The removed row is pooled, so the next row drawn from that template
+	// takes its element instead of building a new one, as the positional diff has always done.
+	a.rows = mk();
+	a.render();
+	let host = a.firstElementChild;
+	let [p1, p2, p3, p4] = [...host.children];
+	a.rows.splice(1, 1);
+	a.render();
+	assert.eq(getHtml(host), '<div><p>a</p><p>c</p><p>d</p></div>');
+	assert.eq([...host.children], [p1, p3, p4]);
+	a.rows.push({id: 5, label: 'e'});
+	a.render();
+	assert.eq(getHtml(host), '<div><p>a</p><p>c</p><p>d</p><p>e</p></div>');
+	assert.eq(host.children[3], p2);
+
+	// 2. Rows that are plain strings.
+	a.rows = [];
+	a.render();
+	a.mode = 'text';
+	a.rows = mk();
+	a.render();
+	assert.eq(getHtml(host), '<div>abcd</div>');
+	a.rows.splice(1, 2);
+	a.render();
+	assert.eq(getHtml(host), '<div>ad</div>');
+
+	// 3. Rows made of more than one node.
+	a.rows = [];
+	a.render();
+	a.mode = 'pair';
+	a.rows = mk();
+	a.render();
+	let dt4 = host.children[6];
+	a.rows.splice(0, 2);
+	a.render();
+	assert.eq(getHtml(host), '<div><dt>3</dt><dd>c</dd><dt>4</dt><dd>d</dd></div>');
+	assert.eq(host.children[2], dt4);
+	a.remove();
+});
+
+Testimony.test('Solarite.map.removeRunOfEqualValues', `Removing a run from a list of strings, several of them equal, builds no row: the rows that stay are recognized although equal values stand at other positions.`, () => {
+	let calls = 0;
+	let el = document.createElement('div');
+	let rows = ['p3', 'p4', 'p2', 'p0', 'p4', 'p3', 'p1', 'p0', 'p3', 'p4', 'p2', 'p1'];
+	let render = () => h(el)`<div>${h.map(rows, s => { calls++; return h`<p>${s}</p>`; })}</div>`;
+	render();
+	assert.eq(calls, 12);
+	let ps = [...el.querySelectorAll('p')];
+
+	// The walk that follows a shifted list by its items loses its place among equal values and
+	// builds five of these rows again.  Comparing the two item arrays from both ends does not.
+	calls = 0;
+	rows.splice(1, 4);
+	render();
+	assert.eq(el.textContent, 'p3p3p1p0p3p4p2p1');
+	assert.eq(calls, 0);
+	assert.eq([...el.querySelectorAll('p')], [ps[0], ...ps.slice(5)]);
+});
+
+Testimony.test('Solarite.map.identicalUnkeyedRows', `In a list without keys whose rows all look the same, removing one run of adjacent items removes the elements those items were drawn in, so what was typed into a row stays with its item.  Items removed in two separate places are matched by position instead.`, () => {
+	// The second shape binds an event on <i>, an element whose onclick property once counted as a
+	// live property and so turned this removal off for every row of the list.
+	let noop = () => {};
+	let shapes = [() => h`<p><input></p>`, () => h`<p><i onclick=${noop}>x</i><input></p>`];
+	for (let shape of shapes) {
+		let el = document.createElement('div');
+		let rows = [{}, {}, {}];
+		let render = () => h(el)`<div>${h.map(rows, shape)}</div>`;
+		render();
+		let ps = [...el.querySelectorAll('p')];
+		ps.forEach((p, i) => p.querySelector('input').value = 'typed ' + (i + 1));
+
+		// 1. One run: the first item goes, and its own element goes with it.
+		rows.shift();
+		render();
+		assert.eq([...el.querySelectorAll('p')], [ps[1], ps[2]]);
+		assert.eq([...el.querySelectorAll('input')].map(input => input.value).join(), 'typed 2,typed 3');
+
+		// 2. Two runs in one render: rows that look the same are matched by position, so the
+		// last two elements go whichever items were removed.  Rows that hold state need a key.
+		rows = [{}, {}, {}, {}, {}];
+		render();
+		ps = [...el.querySelectorAll('p')];
+		rows.splice(3, 1);
+		rows.splice(1, 1);
+		render();
+		assert.eq([...el.querySelectorAll('p')], [ps[0], ps[1], ps[2]]);
+	}
+});
+
 Testimony.test('Solarite.map.afterNodes', `An h.map() can replace a render that produced raw Nodes`, () => {
 	class A extends Solarite {
 		useNodes = true;
@@ -1533,6 +1832,55 @@ Testimony.test('Solarite.map.patchUpdate', `A partial update rewrites just the c
 		assert.eq(now[i].textContent, 'r' + i + (i % 10 === 0 ? '!' : ''));
 	}
 	a.remove();
+});
+
+Testimony.test('Solarite.map.patchStampedRows', `Rows changed by a partial update keep their element and take every changed value: text, an attribute, a handler, and for JSX rows the key carried on the template.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let hits = [];
+	let rows = [{id: 1, a: 'one', c: 'x'}, {id: 2, a: 'two', c: 'y'}, {id: 3, a: 'three', c: 'z'}];
+	let render = () => h(el)`<div>${h.map(rows, r => h`<p key=${r.id} class=${r.c} onclick=${[item => hits.push(item.a), r]}><i>${r.a}</i></p>`)}</div>`;
+	render();
+	let ps = [...el.querySelectorAll('p')];
+
+	// 1. Text, attribute and handler all follow the new item; the other rows are untouched.
+	rows[1] = {id: 2, a: 'TWO', c: 'yy'};
+	render();
+	assert.eq([...el.querySelectorAll('p')], ps);
+	assert.eq(ps[1].textContent, 'TWO');
+	assert.eq(ps[1].className, 'yy');
+	assert.eq(ps[0].textContent + ps[2].textContent, 'onethree');
+	ps[1].click();
+	ps[0].click();
+	assert.eq(hits.join(), 'TWO,one');
+
+	// 2. A second change to the same row, removing the attribute.
+	rows[1] = {id: 2, a: 'two again', c: ''};
+	render();
+	assert.eq(el.querySelectorAll('p')[1], ps[1]);
+	assert.eq(ps[1].textContent, 'two again');
+	assert.eq(ps[1].hasAttribute('class'), false);
+	ps[1].click();
+	assert.eq(hits.join(), 'TWO,one,two again');
+	el.remove();
+
+	// 3. JSX rows carry their key on the Template rather than in an expression.
+	let el2 = document.createElement('div');
+	document.body.append(el2);
+	let items = [{id: 1, t: 'a'}, {id: 2, t: 'b'}];
+	let render2 = () => h(el2)`<ul>${h.map(items, i => jsx('li', {children: i.t}, i.id))}</ul>`;
+	render2();
+	let lis = [...el2.querySelectorAll('li')];
+	items[0] = {id: 1, t: 'A'};
+	render2();
+	assert.eq(el2.querySelector('li'), lis[0]);
+	assert.eq(lis[0].textContent, 'A');
+	items[0] = {id: 9, t: 'nine'}; // A new key at the same position is a new element.
+	render2();
+	assert(el2.querySelector('li') !== lis[0]);
+	assert.eq(el2.querySelector('li').textContent, 'nine');
+	assert.eq(el2.querySelectorAll('li')[1], lis[1]);
+	el2.remove();
 });
 
 Testimony.test('Solarite.map.patchNewKey', `Replacing a row with a new key builds a new row`, () => {
@@ -1741,10 +2089,13 @@ Testimony.test('Solarite.map.svg', `h.map works with svg`+'`` '+`templates`, () 
 Testimony.test('Solarite.map.fuzz', `Random list edits always produce the right DOM. This is a slow test.`, () => {
 
 	// A deterministic generator, so a failure can be reproduced by re-running the test.
+	// Math.imul keeps the multiplication exact: a plain product overflows what a double holds,
+	// its low bits come back as zeros, and every draw is then even.  The low bits of this kind
+	// of generator also repeat quickly, so the draw is taken from the higher ones.
 	let seed = 1234567;
 	const rnd = n => {
-		seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-		return seed % n;
+		seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff;
+		return (seed >>> 8) % n;
 	};
 
 	let nextId = 1;
@@ -1883,6 +2234,907 @@ Testimony.test('Solarite.map.fuzz', `Random list edits always produce the right 
 	run(false, 'r-927');
 });
 
+Testimony.test('Solarite.map.callbackGrowsArray', `A list that grows while it is being drawn still recognizes its rows on the next render`, () => {
+	let rows = [{id: 1}, {id: 2}, {id: 3}], calls = 0, grow = true;
+	let el = document.createElement('div');
+	let render = () => h(el)`<div>${h.map(rows, r => {
+		calls++;
+		if (grow) {
+			grow = false;
+			rows.push({id: 4});
+		}
+		return h`<p key=${r.id}>${r.id}</p>`;
+	})}</div>`;
+	render();
+	assert.eq(el.textContent, '123'); // The length was read before the callback ran.
+	let ps = [...el.querySelectorAll('p')];
+
+	calls = 0;
+	render();
+	assert.eq(el.textContent, '1234');
+	assert.eq([...el.querySelectorAll('p')].slice(0, 3).every((p, i) => p === ps[i]), true);
+	assert.eq(calls, 1); // Only the row that was never drawn.
+});
+
+Testimony.test('Solarite.map.arrayLikeReadByIndex', `An array-like is read by index when it is remembered, as it is when it is drawn`, () => {
+	// Indexed like an array, but iterates newest first, as a history or an undo stack might.
+	class Stack {
+		constructor(items) {
+			this.length = items.length;
+			for (let i=0; i<items.length; i++)
+				this[i] = items[i];
+		}
+		*[Symbol.iterator]() {
+			for (let i=this.length-1; i>=0; i--)
+				yield this[i];
+		}
+	}
+	let a = {id: 1}, b = {id: 2}, c = {id: 3};
+	let el = document.createElement('div');
+	let render = items => h(el)`<div>${h.map(items, r => h`<p key=${r.id}>${r.id}</p>`)}</div>`;
+	render(new Stack([a, b, c]));
+	assert.eq(el.textContent, '123');
+	render(new Stack([c, b, a]));
+	assert.eq(el.textContent, '321');
+});
+
+// Helpers for the list tests below: a name for a throwaway component, and the text of a
+// list's rows.
+
+let uniqueTagCount = 0;
+
+/**
+ * A custom element name no other test registers.  The counter keeps names apart within one load
+ * of this file, and the random part keeps them apart if the file is ever loaded twice into one
+ * page, since a name can be registered only once per page.
+ * @return {string} */
+const uniqueTag = () => 'unique-el-' + (++uniqueTagCount) + '-' + Math.random().toString(36).slice(2, 7);
+
+/**
+ * @param host {HTMLElement}
+ * @param selector {string}
+ * @return {string} The text of each element under host that matches selector, joined with commas. */
+const textsOf = (host, selector) => [...host.querySelectorAll(selector)].map(el => el.textContent).join();
+
+Testimony.test('Solarite.map.reentrantDisconnectRawNode', `A custom element inside a removed row that re-renders its list from disconnectedCallback leaves the list consistent`, () => {
+	let owner = null;
+	let probeTag = uniqueTag();
+	class Probe extends HTMLElement {
+		disconnectedCallback() {
+			if (owner !== null)
+				owner.render();
+		}
+	}
+	customElements.define(probeTag, Probe);
+
+	class A extends Solarite {
+		rows = [1, 2, 3, 4, 5].map(id => ({id, label: 'r' + id, el: document.createElement(probeTag)}));
+
+		render() {
+			h(this)`<div>${h.map(this.rows, row => h`<p key=${row.id}><b>${row.label}</b>${row.el}</p>`)}</div>`
+		}
+	}
+	customElements.define(uniqueTag(), A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	let host = a.firstElementChild;
+	assert.eq(textsOf(host, 'b'), 'r1,r2,r3,r4,r5');
+
+	owner = a;
+	a.rows.splice(1, 1);
+	a.render();
+	owner = null;
+	assert.eq(textsOf(host, 'b'), 'r1,r3,r4,r5');
+
+	// The list must still be tracked row for row.
+	a.rows.push({id: 6, label: 'r6', el: document.createElement(probeTag)});
+	a.render();
+	assert.eq(textsOf(host, 'b'), 'r1,r3,r4,r5,r6');
+
+	a.rows.splice(1, 1);
+	a.render();
+	assert.eq(textsOf(host, 'b'), 'r1,r4,r5,r6');
+
+	a.rows = [];
+	a.render();
+	assert.eq(host.children.length, 0);
+	a.remove();
+});
+
+Testimony.test('Solarite.map.reentrantDisconnectComponent', `A Solarite child component in a nested template that re-renders the parent when it disconnects`, () => {
+	let owner = null;
+	class Child extends Solarite {
+		render() {
+			h(this)`<i>child</i>`
+		}
+
+		disconnectedCallback() {
+			if (owner !== null)
+				owner.render();
+		}
+	}
+	customElements.define('r-reentrant-child', Child);
+	let childTag = 'r-reentrant-child';
+
+	class A extends Solarite {
+		rows = [1, 2, 3, 4, 5].map(id => ({id, label: 'r' + id}));
+
+		render() {
+			h(this)`<div>${h.map(this.rows, row => h`<p key=${row.id}><b>${row.label}</b>${h`<r-reentrant-child></r-reentrant-child>`}</p>`)}</div>`
+		}
+	}
+	customElements.define(uniqueTag(), A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	let host = a.firstElementChild;
+	assert.eq(textsOf(host, 'b'), 'r1,r2,r3,r4,r5');
+	assert.eq(host.querySelectorAll(childTag).length, 5);
+
+	owner = a;
+	a.rows.splice(1, 2);
+	a.render();
+	owner = null;
+	assert.eq(textsOf(host, 'b'), 'r1,r4,r5');
+
+	a.rows.push({id: 6, label: 'r6'});
+	a.render();
+	assert.eq(textsOf(host, 'b'), 'r1,r4,r5,r6');
+	a.remove();
+});
+
+Testimony.test('Solarite.map.reentrantCallback', `A callback that renders its host again while the list is being drawn leaves every item drawn once, by a row that calls its own handler, whether the rows are keyed, unkeyed or plain text`, () => {
+	let hits = [];
+	const click = r => [x => hits.push(x.id), r];
+	const shapes = {
+		keyed: r => h`<li key=${r.id} onclick=${click(r)}>${r.id} </li>`,
+		unkeyed: r => h`<li onclick=${click(r)}>${r.id} </li>`,
+		// Rows of two kinds, so an unkeyed row can't always be rewritten where it stands.
+		unkeyedMixed: r => r.id % 2 ? h`<li onclick=${click(r)}>${r.id} </li>` : h`<li class="even" onclick=${click(r)}><b>${r.id} </b></li>`,
+		text: r => r.id + ' '
+	};
+
+	// Each is the list before, the list after, and the item whose callback renders again.
+	// An unkeyed row is reused for whatever item now stands at its position, so the render the
+	// callback starts leaves rows showing other items than the outer render remembers them by.
+	const cases = [
+		[[8], [20, 8, 21], 20], // Rows arrive on both sides of one that stays.
+		[[1, 2, 3], [4, 3, 2, 1], 4], // Rows arrive and the others change places.
+		[[3, 1, 4], [1, 2, 3, 4], 2], // The callback of a row in the middle.
+		[[9, 1, 2, 3], [4, 3, 2, 1], 3] // The length stays the same.
+	];
+	for (let name in shapes)
+		for (let [before, after, on] of cases) {
+			let el = document.createElement('div');
+			document.body.append(el);
+			let items = {}, item = id => items[id] ??= {id};
+			let rows = before.map(item), again = null;
+			let render = () => h(el)`<ul>${h.map(rows, r => {
+				if (again === r) {
+					again = null;
+					render();
+				}
+				return shapes[name](r);
+			})}</ul>`;
+			render();
+
+			let what = `${name} [${before}] to [${after}]`, want = after.join(' ') + ' ';
+			rows = after.map(item);
+			again = item(on);
+			render();
+			assert.eq(what + ': ' + el.textContent, what + ': ' + want);
+			if (name !== 'text') {
+				hits = [];
+				for (let li of el.querySelectorAll('li'))
+					li.click();
+				assert.eq(what + ': ' + hits.join(' ') + ' ', what + ': ' + want);
+			}
+
+			// The rows must also be remembered by the items they show, or the next render
+			// would find nothing to do and leave a wrong row standing.
+			render();
+			assert.eq(what + ', next render: ' + el.textContent, what + ', next render: ' + want);
+			el.remove();
+		}
+});
+
+Testimony.test('Solarite.map.reentrantCallbackOtherContent', `A callback that renders its host with no rows, or with plain text where the list is, is overruled by the render it interrupted: that render's rows are drawn once, and still once after the next render`, () => {
+	let el = document.createElement('div');
+	let again = null;
+	let render = list => h(el)`<ul>${typeof list === 'string' ? list : h.map(list, r => {
+		if (again !== null && again.on === r) {
+			let other = again.other;
+			again = null;
+			render(other);
+		}
+		return h`<li key=${r.id}>${r.id}</li>`;
+	})}</ul>`;
+	let one = {id: 1}, two = {id: 2}, three = {id: 3};
+
+	// 1. The nested render empties the list while the outer one is building the rows that changed.
+	render([one, two]);
+	again = {on: two, other: []};
+	render([two, three]);
+	assert.eq(textsOf(el, 'li'), '2,3');
+	render([two, three]);
+	assert.eq(textsOf(el, 'li'), '2,3');
+
+	// 2. The nested render puts plain text where the list is.
+	render([]);
+	again = {on: one, other: 'none'};
+	render([one, two]);
+	assert.eq(el.textContent, '12');
+	render([one, two]);
+	assert.eq(el.textContent, '12');
+});
+
+Testimony.test('Solarite.map.reentrantRawNodes', `A row that is created while a list is being patched may render its host with raw DOM nodes where the list is.  The rows which that render took out are not handed to a later render, which would draw each of them without its second node.`, () => {
+	for (let between of [true, false]) {
+		let el = document.createElement('div');
+		let raw = document.createElement('em');
+		let showRaw = false, armed = false;
+		let rows = [1, 2, 3, 4].map(id => ({id}));
+		let row = r => h`<dt key=${r.id}>${() => {
+			if (armed) {
+				armed = false;
+				showRaw = true;
+				render();
+				showRaw = false;
+			}
+			return r.id;
+		}}</dt><dd>${r.id}</dd>`;
+		let list = () => showRaw ? [raw] : h.map(rows, row);
+		let render = () => between ? h(el)`<dl><b>head</b>${list()}<i>tail</i></dl>` : h(el)`<dl>${list()}</dl>`;
+		const text = () => (between ? 'head' : '') + rows.map(r => '' + r.id + r.id).join('') + (between ? 'tail' : '');
+		render();
+		assert.eq(el.textContent, text());
+
+		// 1. The last row gets a new key.  Only that row is built, by the path that patches the
+		// rows which changed, and the function inside it renders the host with the raw node.
+		rows = [...rows.slice(0, 3), {id: 9}];
+		armed = true;
+		render();
+		assert.eq(armed, false);
+
+		// 2. The renders after it draw every row whole.
+		for (let i=0; i<2; i++) {
+			render();
+			assert.eq(el.textContent, text(), 'between=' + between);
+			assert.eq(el.querySelectorAll('dd').length, 4);
+		}
+
+		// 3. And the list is still followed row for row.
+		rows = rows.slice(1);
+		render();
+		assert.eq(el.textContent, text(), 'between=' + between);
+		rows = [{id: 7}, ...rows];
+		render();
+		assert.eq(el.textContent, text(), 'between=' + between);
+		assert.eq(el.querySelectorAll('dt, dd').length, 8);
+	}
+});
+
+Testimony.test('Solarite.map.keyedNeverPooled', `Keyed rows removed by any shape of removal are never reused, and nothing is retained after a clear`, () => {
+	class A extends Solarite {
+		rows = [1, 2, 3, 4, 5, 6].map(id => ({id, label: 'r' + id}));
+
+		render() {
+			h(this)`<section><hr>${h.map(this.rows, row => h`<p key=${row.id}>${row.label}</p>`)}</section>`
+		}
+	}
+	customElements.define(uniqueTag(), A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	let host = a.firstElementChild;
+	let removed = [];
+	const step = fn => {
+		let before = [...host.querySelectorAll('p')];
+		fn();
+		a.render();
+		let after = new Set(host.querySelectorAll('p'));
+		for (let el of before)
+			if (!after.has(el))
+				removed.push(el);
+		for (let el of after)
+			if (removed.includes(el))
+				throw new Error('a removed keyed element came back');
+		assert.eq(textsOf(host, 'p'), a.rows.map(r => r.label).join());
+	};
+	step(() => a.rows.splice(2, 2));
+	step(() => a.rows.push({id: 3, label: 'r3'}, {id: 4, label: 'r4'}));
+	step(() => a.rows.shift());
+	step(() => a.rows.unshift({id: 1, label: 'r1'}));
+	step(() => a.rows = []);
+	step(() => a.rows = [1, 2, 3].map(id => ({id, label: 'r' + id})));
+	step(() => a.rows.length = 1);
+	step(() => a.rows.push({id: 2, label: 'r2'}));
+	a.remove();
+});
+
+Testimony.test('Solarite.map.internalStateAfterClear', `Nothing is retained by a keyed list after it empties, and the path's arrays stay aligned`, () => {
+	class A extends Solarite {
+		rows = [1, 2, 3, 4, 5, 6].map(id => ({id, label: 'r' + id}));
+
+		render() {
+			h(this)`<div>${h.map(this.rows, row => h`<p key=${row.id}>${row.label}</p>`)}</div>`
+		}
+	}
+	customElements.define(uniqueTag(), A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	let rootNg = Globals.rootNodeGroups.get(a);
+	let path = rootNg.paths.find(p => p instanceof PathToNodes);
+	assert.eq(path.nodeGroups.length, 6);
+	a.rows.splice(1, 2);
+	a.render();
+	assert.eq(path.nodeGroups.length, 4);
+	assert.eq(path.lastItems.length, 4);
+	assert.eq(path.nodeGroups.map(ng => ng.key).join(), '1,4,5,6');
+	assert.eq(path.lastItems.map(r => r.id).join(), '1,4,5,6');
+	assert.eq(path.nodeGroupsDetachedAvailable, null);
+	a.rows = [];
+	a.render();
+	assert.eq(path.nodeGroups.length, 0);
+	assert.eq(path.lastItems === null ? 0 : path.lastItems.length, 0);
+	assert.eq(path.nodeGroupsDetachedAvailable, null);
+	assert.eq(path.nodeGroupsAttachedAvailable, null);
+	a.remove();
+});
+
+Testimony.test('Solarite.map.eventsAfterRemoval', `Handlers of the rows that stay still fire with their own row, and a handler that removes its own row mid-dispatch`, () => {
+	let log = [];
+	class A extends Solarite {
+		rows = [1, 2, 3, 4, 5, 6].map(id => ({id, label: 'r' + id}));
+
+		del(row, ev) {
+			log.push('del' + row.id);
+			this.rows.splice(this.rows.indexOf(row), 1);
+			this.render();
+		}
+
+		render() {
+			h(this)`<div onclick=${() => log.push('host')}>${h.map(this.rows, row =>
+				h`<p key=${row.id} onclick=${() => log.push('row' + row.id)}><a onclick=${[this.del, row]}>x</a><b onclick=${ev => { log.push('stop' + row.id); ev.stopPropagation() }}>${row.label}</b></p>`)}</div>`
+		}
+	}
+	customElements.define(uniqueTag(), A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	let host = a.firstElementChild;
+
+	a.rows.splice(1, 2);
+	a.render();
+	host.children[1].querySelector('b').click();
+	assert.eq(log.join(), 'stop4');
+	log.length = 0;
+
+	// The handler removes its own row; the row and host handlers still run, as the event had started.
+	host.children[2].querySelector('a').click();
+	assert.eq(log.join(), 'del5,row5,host');
+	assert.eq(textsOf(host, 'b'), 'r1,r4,r6');
+	log.length = 0;
+
+	host.children[2].querySelector('a').click();
+	assert.eq(log.join(), 'del6,row6,host');
+	host.children[0].querySelector('a').click();
+	assert.eq(textsOf(host, 'b'), 'r4');
+	log.length = 0;
+	host.children[0].click();
+	assert.eq(log.join(), 'row4,host');
+	a.remove();
+});
+
+Testimony.test('Solarite.map.selectorAfterRemoval', `A selector finds the right rows after the fast path cut rows out`, () => {
+	class A extends Solarite {
+		rows = [1, 2, 3, 4, 5, 6].map(id => ({id, label: 'r' + id}));
+		sel = h.selector();
+
+		render() {
+			h(this)`<div>${h.map(this.rows, row =>
+				h`<p key=${row.id} class=${this.sel.when(row.id, 'danger')}>${row.label}</p>`)}</div>`
+		}
+	}
+	customElements.define(uniqueTag(), A);
+	let a = new A();
+	document.body.append(a);
+	a.render();
+	let host = a.firstElementChild;
+	const sel = () => [...host.children].filter(el => el.className === 'danger').map(el => el.textContent).join();
+
+	a.sel.set(4);
+	assert.eq(sel(), 'r4');
+	a.rows.splice(1, 2);
+	a.render();
+	assert.eq(sel(), 'r4');
+	a.sel.set(5);
+	assert.eq(sel(), 'r5');
+	a.sel.set(2); // Gone.
+	assert.eq(sel(), '');
+	a.rows.splice(1, 1); // Removes 4.
+	a.render();
+	a.sel.set(6);
+	assert.eq(sel(), 'r6');
+	a.rows.pop(); // The selected row goes.
+	a.render();
+	assert.eq(sel(), '');
+	a.sel.set(1);
+	assert.eq(sel(), 'r1');
+	a.rows = [];
+	a.render();
+	a.sel.set(5);
+	a.rows = [{id: 5, label: 'r5'}, {id: 7, label: 'r7'}];
+	a.render();
+	assert.eq(sel(), 'r5');
+	a.remove();
+});
+
+Testimony.test('Solarite.map.staleItemsAfterArrayCallback', `A render whose callback returns arrays, or whose rows are raw nodes, leaves nothing behind that a later render of the earlier items could mistake for the current rows.`, () => {
+	let el = document.createElement('div');
+	let a = {t: 'a'}, b = {t: 'b'}, c = {t: 'c'};
+	let mode = 'tpl', items = [a, b, c];
+	let render = () => h(el)`<div>${h.map(items, r =>
+		mode === 'tpl' ? h`<p>${r.t}</p>` : mode === 'arrays' ? [h`<p>${r.t}</p>`] : Object.assign(document.createElement('p'), {textContent: r.t}))}</div>`;
+	for (let other of ['arrays', 'nodes']) {
+		mode = 'tpl';
+		items = [a, b, c];
+		render();
+		assert.eq(el.textContent, 'abc');
+		mode = other;
+		items = [{t: 'x'}, {t: 'y'}, {t: 'z'}];
+		render();
+		assert.eq(el.textContent, 'xyz');
+		mode = 'tpl';
+		items = [a, b, c];
+		render();
+		assert.eq(el.textContent, 'abc', other);
+	}
+});
+
+Testimony.test('Solarite.map.keyedRowsBecomeArrays', `A keyed list re-rendered at the same length, whose callback now returns an array for each changed row, is drawn the general way, and is a keyed list again when the callback returns templates again.`, () => {
+	// At an unchanged length only the changed rows are built, and that short route can only
+	// place a Template or a string: it has to notice anything else and hand the render on.
+	let el = document.createElement('div');
+	let a = {id: 1, t: 'a'}, b = {id: 2, t: 'b'}, c = {id: 3, t: 'c'};
+	let items = [a, b, c], asArrays = false;
+	let row = r => h`<p key=${r.id}>${r.t}</p>`;
+	let render = () => h(el)`<div>${h.map(items, r => asArrays ? [row(r)] : row(r))}</div>`;
+	render();
+	let [p1, p2, p3] = el.querySelectorAll('p');
+
+	items = [{id: 1, t: 'x'}, {id: 2, t: 'y'}, {id: 3, t: 'z'}];
+	asArrays = true;
+	render();
+	assert.eq(el.textContent, 'xyz');
+	assert.eq([...el.querySelectorAll('p')], [p1, p2, p3]); // The keys are the same, so the elements are.
+
+	items = [c, a, b];
+	asArrays = false;
+	render();
+	assert.eq(el.textContent, 'cab');
+	assert.eq([...el.querySelectorAll('p')], [p3, p1, p2]);
+});
+
+Testimony.test('Solarite.map.oddResultAnywhere', `An h.map() callback may return an array, a raw node, a nested list, a function, a number or nothing for any item, not only for the first one, and the list is then drawn as a plain array of the same values is.`, () => {
+	// What a callback may return besides a Template or a string.
+	const odd = {
+		array: r => [h`<p>${r.id}a</p>`, h`<p>${r.id}b</p>`],
+		emptyArray: () => [],
+		node: r => Object.assign(document.createElement('p'), {textContent: r.id + 'n'}),
+		nestedMap: r => h.map([1, 2], n => h`<i>${r.id}.${n}</i>`),
+		function: r => () => h`<p>${r.id}f</p>`,
+		number: r => r.id,
+		null: () => null,
+		undefined: () => undefined,
+		false: () => false,
+	};
+	let nextId = 1;
+	const row = isOdd => ({id: nextId++, isOdd});
+	const html = el => el.innerHTML.replace(/<!--.*?-->/g, '');
+
+	// Draw each value in turn into el, and after each one compare with a fresh element that drew
+	// the same items as a plain array.  toValue turns a list of items into what is drawn.
+	const check = (lists, fn, toValue, what) => {
+		let el = document.createElement('div');
+		for (let items of lists) {
+			h(el)`<div>${toValue(items)}</div>`;
+			let expected = document.createElement('div');
+			h(expected)`<div>${items.map(fn)}</div>`;
+			assert.eq(html(el), html(expected), what);
+		}
+	};
+
+	for (let keyed of [false, true])
+		for (let kind in odd) {
+			const fn = r => r.isOdd ? odd[kind](r) : keyed ? h`<p key=${r.id}>${r.id}</p>` : h`<p>${r.id}</p>`;
+			const mapped = items => h.map(items, fn);
+			let a = row(false), b = row(false), c = row(false);
+			let what = (keyed ? 'keyed ' : 'unkeyed ') + kind + ' ';
+
+			// 1. The odd row in each position of a new list.
+			check([[row(true), a, b]], fn, mapped, what + 'first');
+			check([[a, row(true), b]], fn, mapped, what + 'middle');
+			check([[a, b, row(true)]], fn, mapped, what + 'last');
+			check([[row(true), row(true)]], fn, mapped, what + 'every');
+
+			// 2. The odd row arriving in a list that is already drawn, and leaving it again.
+			check([[a, b, c], [a, row(true), c], [a, row(false), c], [a, b, c]], fn, mapped, what + 'replaced');
+			check([[a, b], [a, b, row(true)], [a, b, row(true), row(false)], [a, b]], fn, mapped, what + 'appended');
+			check([[a, b], [row(true), a, b], [a, b]], fn, mapped, what + 'prepended');
+			check([[a, b, c], [c, row(true), a, b], [b, a, c]], fn, mapped, what + 'reordered');
+
+			// 3. After a render that was not an h.map(): a plain array, then one holding a raw node.
+			let el = document.createElement('div');
+			for (let before of [[h`<p>x</p>`, h`<b>x</b>`], [document.createElement('hr'), h`<b>x</b>`]]) {
+				let items = [a, row(true), b];
+				h(el)`<div>${before}</div>`;
+				h(el)`<div>${h.map(items, fn)}</div>`;
+				let expected = document.createElement('div');
+				h(expected)`<div>${items.map(fn)}</div>`;
+				assert.eq(html(el), html(expected), what + 'after another render');
+			}
+		}
+});
+
+Testimony.test('Solarite.map.oddResultKeepsOtherRows', `When a row that is an array, or nothing at all, joins a keyed h.map() list, the rows whose items did not change keep their elements, in that render and the ones after it.`, () => {
+	for (let odd of [r => [h`<i>${r.id}a</i>`, h`<i>${r.id}b</i>`], () => null])
+		for (let shape of ['replaced', 'appended', 'prepended']) {
+			let el = document.createElement('div');
+			let a = {id: 1}, b = {id: 2}, c = {id: 3}, x = {id: 4, isOdd: true};
+			let items = [a, b, c];
+			let render = () => h(el)`<div>${h.map(items, r => r.isOdd ? odd(r) : h`<p key=${r.id}>${r.id}</p>`)}</div>`;
+			render();
+			let [pa, pb, pc] = el.querySelectorAll('p');
+
+			items = shape === 'replaced' ? [a, x, c] : shape === 'appended' ? [a, b, c, x] : [x, a, b, c];
+			for (let pass of ['first', 'second']) {
+				render();
+				let ps = [...el.querySelectorAll('p')];
+				assert.eq(ps[0] === pa && ps.at(-1) === pc && (shape === 'replaced' || ps[1] === pb), true, shape + ', ' + pass + ' render');
+			}
+		}
+});
+
+Testimony.test('Solarite.map.throwingRowLeavesNoOrphans', `A row that throws while it is created leaves the list empty rather than half-drawn, puts back a parent that was taken out of the document, and the next render draws the whole list once.`, () => {
+	for (let keyed of [true, false])
+		for (let count of [5, 600]) { // 600 keyed rows go in with the parent detached.
+			let el = document.createElement('div');
+			document.body.append(el);
+			let rows = [];
+			for (let i=0; i<count; i++)
+				rows.push({id: i});
+			let bad = count - 2;
+			let row = r => keyed
+				? h`<li key=${r.id} onclick=${r.id === bad ? 'not a function' : () => {}}>${r.id}</li>`
+				: h`<li onclick=${r.id === bad ? 'not a function' : () => {}}>${r.id}</li>`;
+			let render = () => h(el)`<ul>${h.map(rows, row)}</ul><footer></footer>`;
+			let threw = false;
+			try { render(); } catch (e) { threw = true; }
+			assert.eq(threw, true);
+			assert.eq(el.querySelector('ul') !== null, true, 'the list parent is in place');
+			assert.eq(el.querySelectorAll('li').length, 0, 'no orphan rows');
+
+			bad = -1;
+			render();
+			assert.eq(el.querySelectorAll('li').length, count);
+			assert.eq(el.querySelector('ul').textContent, rows.map(r => r.id).join(''));
+
+			// The same when rows are added to a list that already has some.
+			bad = count + 3;
+			for (let i=count; i<count+6; i++)
+				rows.push({id: i});
+			threw = false;
+			try { render(); } catch (e) { threw = true; }
+			assert.eq(threw, true);
+			bad = -1;
+			render();
+			assert.eq(el.querySelector('ul').textContent, rows.map(r => r.id).join(''), 'keyed=' + keyed + ' count=' + count);
+			el.remove();
+		}
+});
+
+Testimony.test('Solarite.map.throwingRowAmongReplacedRows', `A new row that throws while a few rows of a keyed list are replaced at the same length, which is settled by a shorter route than the general diff, leaves the list empty as well, so the next render shows exactly the items it is given.`, () => {
+	for (let mapped of [true, false]) {
+		let el = document.createElement('div');
+		let rows = [1, 2, 3, 4], bad = -1;
+		let row = id => h`<li key=${id} onclick=${id === bad ? 'not a function' : () => {}}>${id}</li>`;
+		let render = () => h(el)`<ul>${mapped ? h.map(rows, row) : rows.map(row)}</ul>`;
+		render();
+
+		// Row 9 is created after row 8 has already been put in place.
+		rows = [1, 9, 8, 4];
+		bad = 9;
+		let threw = false;
+		try { render(); } catch (e) { threw = true; }
+		assert.eq(threw, true);
+		assert.eq(el.querySelectorAll('li').length, 0, 'no orphan rows, mapped=' + mapped);
+
+		// The same items once they are valid, then other items, then the original ones.
+		bad = -1;
+		for (let next of [[1, 9, 8, 4], [1, 5, 6, 4], [1, 2, 3, 4]]) {
+			rows = next;
+			render();
+			assert.eq(el.textContent, next.join(''), 'mapped=' + mapped);
+		}
+	}
+});
+
+Testimony.test('Solarite.map.throwingRowOtherRoutes', `Whatever makes a new row throw (a component whose constructor fails, a nested list whose callback throws), and also when rows are being inserted between rows that move, the list is left empty and the next render draws it once.`, () => {
+
+	// Render once with the fault, then twice without it.
+	const failThenDraw = (el, render, want) => {
+		let threw = false;
+		try { render(true); } catch (e) { threw = true; }
+		assert.eq(threw, true, want);
+		assert.eq(el.textContent, '', want);
+		render(false);
+		assert.eq(el.textContent, want);
+		render(false);
+		assert.eq(el.textContent, want);
+	};
+
+	// 1. A component inside a row, whose constructor throws.
+	let fail = false;
+	class Child extends Solarite {
+		constructor() {
+			super();
+			if (fail)
+				throw new Error('thrown on purpose by the test');
+		}
+
+		render() {
+			h(this)`<b>c</b>`
+		}
+	}
+	customElements.define('r-throwing-row-child', Child);
+	let el = document.createElement('div');
+	let rows = [{id: 1}, {id: 2, child: true}, {id: 3}];
+	failThenDraw(el, failing => {
+		fail = failing;
+		h(el)`<ul>${h.map(rows, r => h`<li key=${r.id}>${r.id}${r.child ? h`<r-throwing-row-child></r-throwing-row-child>` : ''}</li>`)}</ul>`;
+	}, '12c3');
+
+	// 2. A list inside a row, whose callback throws.
+	el = document.createElement('div');
+	rows = [{id: 1, kids: [1, 2]}, {id: 2, kids: [3, 4]}, {id: 3, kids: [5]}];
+	failThenDraw(el, failing => {
+		h(el)`<ul>${h.map(rows, r => h`<li key=${r.id}>${h.map(r.kids, kid => {
+			if (failing && kid === 4)
+				throw new Error('thrown on purpose by the test');
+			return h`<b>${kid}</b>`;
+		})}</li>`)}</ul>`;
+	}, '12345');
+
+	// 3. A list that is already drawn, whose rows all move while two new ones arrive between
+	// them.  The second new row to be created throws, after the first is already in place.
+	el = document.createElement('div');
+	let a = {id: 1}, b = {id: 2}, c = {id: 3}, d = {id: 4};
+	rows = [a, b, c, d];
+	let bad = 0;
+	let render = () => h(el)`<ul>${h.map(rows, r => h`<li key=${r.id} onclick=${r.id === bad ? 'not a function' : () => {}}>${r.id}</li>`)}</ul>`;
+	render();
+	rows = [d, {id: 9}, c, {id: 8}, b, a];
+	failThenDraw(el, failing => {
+		bad = failing ? 9 : 0;
+		render();
+	}, '493821');
+});
+
+Testimony.test('Solarite.map.keyedRowNotPooledBehindString', `A keyed row removed from a list whose first row is a plain string, or a row without a key, is discarded whichever way the removal is settled, so a new key never gets its element.`, () => {
+	// Whether a list is keyed is decided by its first row, so these lists are not.  A removal
+	// that is one run of adjacent rows is settled by removeRun() and any other by the positional
+	// diff, and each of the two has its own place where a removed row is pooled or discarded.
+	for (let first of ['string', 'unkeyed'])
+		for (let runs of [1, 2]) {
+			let el = document.createElement('div');
+			let head = first === 'string' ? 'head' : {title: 'head'};
+			let mid = first === 'string' ? 'mid' : {title: 'mid'};
+			let row = r => typeof r === 'string' ? r : r.title ? h`<h3>${r.title}</h3>` : h`<p key=${r.id}>${r.id}</p>`;
+			let items = runs === 1 ? [head, {id: 1}, {id: 2}, {id: 3}] : [head, {id: 1}, mid, {id: 2}];
+			let render = () => h(el)`<div>${h.map(items, row)}</div>`;
+			render();
+			let before = [...el.querySelectorAll('p')];
+
+			// Every keyed row goes: as one run, or as two with a row that stays between them.
+			items = runs === 1 ? [head] : [head, mid];
+			render();
+			assert.eq(el.querySelectorAll('p').length, 0);
+
+			items = [...items, {id: 7}, {id: 8}];
+			render();
+			let after = [...el.querySelectorAll('p')];
+			assert.eq(el.textContent, runs === 1 ? 'head78' : 'headmid78');
+			assert.eq(after.some(p => before.includes(p)), false, first + ' row first, removed in ' + runs + ' run(s)');
+		}
+});
+
+Testimony.test('Solarite.map.keyedListKeepsStringRows', `A row of a keyed list that is a plain string keeps its text node while rows are added before it, after it, or between it and the next string, whether the list is an h.map() or an array.`, () => {
+	for (let mapped of [true, false]) {
+		let el = document.createElement('div');
+		let rows = [{id: 1}, {sep: ' | '}, {id: 2}, {sep: ' / '}, {id: 3}];
+		let row = r => r.sep ? r.sep : h`<b key=${r.id}>${r.id}</b>`;
+		let render = () => h(el)`<p>${mapped ? h.map(rows, row) : rows.map(row)}</p>`;
+		render();
+		let p = el.firstElementChild;
+		let before = [...p.childNodes].filter(n => n.nodeType === 3);
+		assert.eq(before.length, 2);
+
+		// Which of the first render's text nodes shows each string row now; -1 is a new node.
+		let kept = () => [...p.childNodes].filter(n => n.nodeType === 3).map(n => before.indexOf(n)).join();
+
+		rows.push({id: 4}); // Both strings are before the new row.
+		render();
+		assert.eq(p.textContent, '1 | 2 / 34');
+		assert.eq(kept(), '0,1', 'append, mapped=' + mapped);
+
+		rows.unshift({id: 0}); // Both are after it.
+		render();
+		assert.eq(p.textContent, '01 | 2 / 34');
+		assert.eq(kept(), '0,1', 'prepend, mapped=' + mapped);
+
+		rows.splice(4, 0, {id: 9}); // One on each side.
+		render();
+		assert.eq(p.textContent, '01 | 29 / 34');
+		assert.eq(kept(), '0,1', 'insert, mapped=' + mapped);
+	}
+});
+
+Testimony.test('Solarite.map.rawNodeRowReturns', `A raw DOM node that is a row's child is shown again when its item returns to an unkeyed list, whichever row showed the node in between.`, () => {
+	const item = text => ({node: Object.assign(document.createElement('span'), {textContent: text})});
+	const html = rows => rows.map(r => '<p><i>' + r.node.outerHTML + '</i></p>').join('');
+	const row = r => h`<p><i>${r.node}</i></p>`;
+	const deepRow = r => h`<p>${h`<i>${r.node}</i>`}</p>`; // The node sits one template below the row.
+
+	for (let list of [rows => h.map(rows, row), rows => rows.map(row), rows => h.map(rows, deepRow)]) {
+		let a = item('A'), b = item('B'), c = item('C');
+		let el = document.createElement('div');
+		const show = rows => {
+			h(el)`<div>${list(rows)}</div>`;
+			assert.eq(el.firstElementChild.innerHTML, html(rows));
+		};
+
+		// 1. An unkeyed list is rewritten by position, so when a and c leave it is the first row
+		// that shows b, and b's node moves into it.  The row b was drawn in is removed without
+		// its node, and must not be the row b is shown in when it comes back.
+		show([a, b, c]);
+		show([b]);
+		show([]);
+		show([b]);
+
+		// 2. The same when the row is removed on its own first and loses its node afterwards.
+		show([a, b, c]);
+		show([a, c]);
+		show([a, b]);
+		show([a]);
+		show([a, b]);
+	}
+
+	// 3. An item that moves to another list and back, as a card dragged between two columns does.
+	let a = item('A'), b = item('B'), c = item('C');
+	let el = document.createElement('div');
+	const show = (left, right) => {
+		h(el)`<div><ul>${h.map(left, row)}</ul><ol>${h.map(right, row)}</ol></div>`;
+		assert.eq(el.firstElementChild.innerHTML, '<ul>' + html(left) + '</ul><ol>' + html(right) + '</ol>');
+	};
+	show([a, b], [c]);
+	show([a], [c, b]);
+	show([a, b], [c]);
+});
+
+Testimony.test('Solarite.map.rawNodeRowsFuzz', `Unkeyed rows that each hold a raw DOM node show every item's node through random selections and reorderings of the same items, as filtering a list makes.`, () => {
+	const row = r => h`<p><i>${r.node}</i></p>`;
+	const deepRow = r => h`<p>${h`<i>${r.node}</i>`}</p>`;
+	for (let list of [rows => h.map(rows, row), rows => rows.map(row), rows => h.map(rows, deepRow)])
+		for (let start of [11, 12345, 987654]) {
+
+			// The deterministic generator Solarite.map.fuzz uses, which explains its two details.
+			let seed = start;
+			const rnd = n => {
+				seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff;
+				return (seed >>> 8) % n;
+			};
+			let el = document.createElement('div');
+			let all = ['A', 'B', 'C', 'D', 'E', 'F'].map(text => ({node: Object.assign(document.createElement('span'), {textContent: text})}));
+			for (let step=0; step<200; step++) {
+
+				// A random selection of the items, one time in three in a random order.  Drawing
+				// from so few items is what makes a removed row meet its own item again.
+				let rows = all.filter(() => rnd(2) === 1);
+				if (rnd(3) === 0)
+					for (let i=rows.length-1; i>0; i--) {
+						let j = rnd(i + 1), t = rows[i];
+						rows[i] = rows[j];
+						rows[j] = t;
+					}
+				h(el)`<div>${list(rows)}</div>`;
+				assert.eq(el.firstElementChild.innerHTML, rows.map(r => '<p><i>' + r.node.outerHTML + '</i></p>').join(''),
+					'seed ' + start + ' step ' + step);
+			}
+		}
+});
+
+Testimony.test('Solarite.map.textRowsThenPrimitive', `A list of text rows, replaced by plain text and then drawn again from the same items, shows the rows again.`, () => {
+	let el = document.createElement('div');
+	let rows = [{label: 'A'}];
+	let render = list => h(el)`<div>${list ? h.map(rows, r => r.label) : 'hello'}</div>`;
+	render(true);
+	assert.eq(el.textContent, 'A');
+	render(false);
+	assert.eq(el.textContent, 'hello');
+	render(true);
+	assert.eq(el.textContent, 'A');
+});
+
+Testimony.test('Solarite.map.textRowsFuzz', `h.map() rows that are plain strings survive random insertions, removals, returns of removed items, moves and edits.`, () => {
+	for (let start of [11, 12345, 987654]) {
+
+		// The deterministic generator Solarite.map.fuzz uses, which explains its two details.
+		let seed = start;
+		const rnd = n => {
+			seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff;
+			return (seed >>> 8) % n;
+		};
+		let el = document.createElement('div');
+		let id = 0;
+		const mk = () => ({label: 'L' + (++id)});
+		let rows = [], graveyard = [];
+		let render = () => h(el)`<div>${h.map(rows, r => r.label + ';')}</div>`;
+		for (let step=0; step<600; step++) {
+			let op = rnd(7);
+			if (op === 0 || rows.length === 0) // Insert a few.
+				for (let k=1+rnd(3); k>0; k--)
+					rows.splice(rnd(rows.length + 1), 0, mk());
+			else if (op === 1) // Remove a run.
+				graveyard.push(...rows.splice(rnd(rows.length), 1 + rnd(3)));
+			else if (op === 2) // Bring removed items back, the same objects.
+				for (let k=Math.min(graveyard.length, 1+rnd(3)); k>0; k--)
+					rows.splice(rnd(rows.length + 1), 0, graveyard.splice(rnd(graveyard.length), 1)[0]);
+			else if (op === 3) { // Swap two.
+				let i = rnd(rows.length), j = rnd(rows.length), t = rows[i];
+				rows[i] = rows[j];
+				rows[j] = t;
+			}
+			else if (op === 4) { // Replace one with a changed copy.
+				let i = rnd(rows.length);
+				rows[i] = {label: rows[i].label + '!'};
+			}
+			else if (op === 5) // Reverse.
+				rows.reverse();
+			else { // Remove one and put a new row in the hole.
+				let i = rnd(rows.length);
+				graveyard.push(rows[i]);
+				rows[i] = mk();
+			}
+			if (graveyard.length > 30)
+				graveyard.splice(0, 15);
+			render();
+			assert.eq(el.textContent, rows.map(r => r.label + ';').join(''), 'seed ' + start + ' step ' + step + ' op ' + op);
+		}
+	}
+});
+
+Testimony.test('Solarite.map.throwingCallbackLeavesDomUntouched', `An h.map() callback that throws while a list is first drawn leaves the list's parent in place and empty, and the next render draws it cleanly.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let rows = [], bad = true;
+	for (let i = 0; i < 600; i++)
+		rows.push({id: i});
+	let render = () => h(el)`<ul>${h.map(rows, r => { if (bad && (r.id === 2 || r.id === 300)) throw new Error('boom'); return h`<li key=${r.id}>${r.id}</li>`; })}</ul><footer></footer>`;
+	let threw = false;
+	try { render(); } catch (e) { threw = true; }
+	assert.eq(threw, true);
+	assert.eq(el.querySelector('ul') !== null, true);
+	assert.eq(el.querySelectorAll('li').length, 0);
+	bad = false;
+	render();
+	assert.eq(el.querySelectorAll('li').length, 600);
+	assert.eq(el.querySelector('li').textContent, '0');
+	el.remove();
+});
+
 
 /**
  * Build a 50-row table bound to a selector, for the tests below.
@@ -1909,6 +3161,13 @@ function selectorTable(tag, rowCount=50) {
 	a.render();
 	return a;
 }
+
+Testimony.test('Solarite.selector.initialKey', `A selector starts with the key it is given, or with none`, () => {
+	assert.eq(h.selector().key, null);
+	assert.eq(h.selector(undefined).key, null);
+	assert.eq(h.selector(5).key, 5);
+	assert.eq(h.selector(0).key, 0);
+});
 
 Testimony.test('Solarite.selector.basic', `A selector writes only the two rows that change, with no render`, () => {
 	let a = selectorTable('r-940');
@@ -2396,6 +3655,78 @@ Testimony.test('Solarite.loop.zeroExprReuse', `A pooled zero-expression, multi-r
 	assert.eq(getHtml(a), '<r-zero-expr-reuse><div><b>Loading…</b><i>wait</i></div></r-zero-expr-reuse>');
 
 	a.remove();
+});
+
+Testimony.test('Solarite.loop.rawNodeSwitch', `A raw DOM node shown by one of two templates is in place again each time the expression switches back to that template.`, () => {
+	const span = text => Object.assign(document.createElement('span'), {textContent: text});
+	let node = span('N'), other = span('O');
+	let el = document.createElement('div');
+	const inner = () => el.firstElementChild.innerHTML;
+
+	// 1. The same node in either of two templates.
+	let render = first => h(el)`<div>${first ? h`<p>${node}</p>` : h`<b>${node}</b>`}</div>`;
+	for (let i=0; i<2; i++) {
+		render(true);
+		assert.eq(inner(), '<p><span>N</span></p>');
+		render(false);
+		assert.eq(inner(), '<b><span>N</span></b>');
+	}
+
+	// 2. One of the templates holds the node a template deeper, beside another raw node.
+	el = document.createElement('div');
+	render = first => h(el)`<div>${first ? h`<p>${[other, h`<i>${node}</i>`]}</p>` : h`<b>${node}</b>`}</div>`;
+	for (let i=0; i<2; i++) {
+		render(true);
+		assert.eq(inner(), '<p><span>O</span><i><span>N</span></i></p>');
+		render(false);
+		assert.eq(inner(), '<b><span>N</span></b>');
+	}
+
+	// 3. Templates that hold nodes, in an array beside a raw node.  Such an array is reconciled
+	// by node identity rather than by position, and keeps the templates it stopped showing in
+	// a pool of its own.
+	el = document.createElement('div');
+	let a = span('A'), b = span('B');
+	const p = n => h`<p>${n}</p>`; // One template site, so the rows share a shell.
+	const show = (items, expected) => {
+		h(el)`<div>${items}</div>`;
+		assert.eq(inner(), expected);
+	};
+	show([p(a), p(b), other], '<p><span>A</span></p><p><span>B</span></p><span>O</span>');
+	show([p(b), other], '<p><span>B</span></p><span>O</span>');
+	show([other], '<span>O</span>');
+	show([p(b), other], '<p><span>B</span></p><span>O</span>');
+	show([p(a), p(b), other], '<p><span>A</span></p><p><span>B</span></p><span>O</span>');
+});
+
+Testimony.test('Solarite.loop.rawNodeListReusesDroppedRows', `Rows dropped from a list that holds a raw node are kept, and come back as the same elements`, () => {
+	// A list with a raw DOM node in it is reconciled by its own path, which keeps the rows a render
+	// stopped showing: first among those still attached, and from the next render on in a pool.
+	let hr = document.createElement('hr');
+	let el = document.createElement('div');
+	const render = labels => h(el)`<div>${[hr, labels.map(label => h`<p>${label}</p>`)]}</div>`;
+	const rows = () => [...el.querySelectorAll('p')];
+
+	render(['a', 'b', 'c']);
+	let [a, b, c] = rows();
+
+	// 1. Dropped rows that come back on the very next render.
+	render(['a']);
+	assert.eq(rows().length, 1);
+	assert(rows()[0] === a);
+	render(['a', 'b', 'c']);
+	assert(rows()[0] === a);
+	assert(rows()[1] === b);
+	assert(rows()[2] === c);
+
+	// 2. Dropped rows that stay away for two renders.
+	render(['a']);
+	render(['a']);
+	render(['a', 'b', 'c']);
+	assert.eq(el.firstElementChild.innerHTML, '<hr><p>a</p><p>b</p><p>c</p>');
+	assert(rows()[0] === a);
+	assert(rows()[1] === b);
+	assert(rows()[2] === c);
 });
 
 Testimony.test('Solarite.loop.eventBindings', () => {
@@ -3118,6 +4449,65 @@ Testimony.test('Solarite.keyed.toUnkeyed', `Switching a list from keyed to unkey
 	el.remove();
 });
 
+Testimony.test('Solarite.keyed.unkeyedRowAmongManyReplaced', `A row without a key, a template or a plain string, that stays where it is in a keyed h.map() list is still drawn when many of the other rows get new keys and one that stays shifts by a position.`, () => {
+	for (let asString of [false, true]) {
+		let el = document.createElement('div');
+		let mk = id => ({id});
+		let note = {note: 'note'};
+		let rows = [mk(0), mk(1), note];
+		for (let i=2; i<=22; i++)
+			rows.push(mk(i));
+		let render = () => h(el)`<div>${h.map(rows, r => r.note ? (asString ? r.note : h`<i>${r.note}</i>`) : h`<p key=${r.id}>${r.id},</p>`)}</div>`;
+		render();
+		let kept = el.querySelectorAll('p')[21]; // Key 21.
+
+		// Rows 1 to 20 get new keys, a new row comes before row 21, and row 22 goes: the same
+		// length, with more rows out of place than the reconciler settles by matching them
+		// against each other.
+		let next = [rows[0], mk(101), note];
+		for (let i=2; i<=21; i++)
+			next.push(mk(100 + i));
+		next.push(rows[22]);
+		assert.eq(next.length, rows.length);
+		rows = next;
+		render();
+		assert.eq(el.textContent, rows.map(r => r.note || r.id + ',').join(''), 'asString=' + asString);
+		assert.eq([...el.querySelectorAll('p')].at(-1), kept);
+	}
+});
+
+Testimony.test('Solarite.keyed.noneKeptBetweenKeptEnds', `A keyed list whose middle is all new keys, between rows that stay, keeps the ends and replaces the middle`, () => {
+	let el = document.createElement('div');
+	let mk = (id, label='r' + id) => ({id, label});
+	let rows = [mk(1), mk(2), mk(3), mk(4), mk(5), mk(6)];
+	let hits = [];
+	let render = () => h(el)`<div><b>head</b>${h.map(rows, r => h`<p key=${r.id} onclick=${[x => hits.push(x.id), r]}>${r.label}</p>`)}<i>foot</i></div>`;
+	render();
+	let before = [...el.querySelectorAll('p')];
+
+	// Old middle 2..5 goes; a longer new middle comes.  No old key in the window survives.
+	rows = [rows[0], mk(20), mk(21), mk(22), mk(23), mk(24), mk(25), mk(26), mk(27), mk(28), mk(29), rows[5]];
+	render();
+	let after = [...el.querySelectorAll('p')];
+	assert.eq(el.firstElementChild.textContent, 'headr1r20r21r22r23r24r25r26r27r28r29r6foot');
+	assert.eq(after[0], before[0]);
+	assert.eq(after[11], before[5]);
+	assert.eq(before.slice(1, 5).some(p => p.isConnected || after.includes(p)), false);
+	assert.eq(el.querySelector('b').textContent + el.querySelector('i').textContent, 'headfoot');
+	document.body.append(el);
+	after[5].click();
+	after[11].click();
+	el.remove();
+	assert.eq(hits.join(), '24,6');
+
+	// And the reverse: the middle shrinks to rows with new keys.
+	rows = [rows[0], mk(40), rows[11]];
+	render();
+	assert.eq(el.firstElementChild.textContent, 'headr1r40r6foot');
+	assert.eq(el.querySelectorAll('p')[0], before[0]);
+	assert.eq(el.querySelectorAll('p')[2], before[5]);
+});
+
 //endregion
 
 
@@ -3189,6 +4579,39 @@ Testimony.test('Solarite.stamp.poolReuse', `Cleared stamped rows reused from the
 	el.remove();
 });
 
+Testimony.test('Solarite.stamp.pooledRowTemplateChild', `A row that is re-applied through the raw-node list route can be given a template where its text was: it shows the template, keeps its attribute and its handler current, and goes back to text and to a template again.`, () => {
+	for (let eventDelegation of [true, false]) {
+		let el = document.createElement('div');
+		document.body.append(el);
+		let hits = [];
+		let hr = document.createElement('hr'); // A raw node in the list sends it down the general route.
+		let row = (i, cell) => h`<p title=${'t' + i} onclick=${[n => hits.push(n), i]}><b>${cell}</b></p>`; // One template site, so the rows share a shell.
+		let render = items => h(el, {eventDelegation})`<div>${[...items, hr]}</div>`;
+
+		render([row(1, 'one')]);
+		let p = el.querySelector('p');
+		assert.eq(p.outerHTML, '<p title="t1"><b>one</b></p>');
+
+		// The same row, given a template for a child.
+		render([row(2, h`<i>two</i>`)]);
+		assert.eq(el.querySelector('p'), p);
+		assert.eq(p.outerHTML, '<p title="t2"><b><i>two</i></b></p>');
+		p.click();
+		assert.eq(hits.join(), '2');
+
+		render([row(3, 'three')]);
+		assert.eq(p.outerHTML, '<p title="t3"><b>three</b></p>');
+		render([row(4, h`<u>four</u>`)]);
+		assert.eq(el.querySelector('p'), p);
+		assert.eq(p.outerHTML, '<p title="t4"><b><u>four</u></b></p>');
+		p.click();
+		assert.eq(hits.join(), '2,4', 'eventDelegation=' + eventDelegation);
+		assert.eq(el.firstElementChild.lastChild, hr);
+
+		el.remove();
+	}
+});
+
 Testimony.test('Solarite.stamp.keyedRewrite', `Stamped keyed rows rewrite in place without losing node state.`, () => {
 	let el = document.createElement('div');
 	document.body.append(el);
@@ -3210,6 +4633,311 @@ Testimony.test('Solarite.stamp.keyedRewrite', `Stamped keyed rows rewrite in pla
 	el.remove();
 });
 
+Testimony.test('Solarite.stamp.prefilledText', `Row text is cloned in from the shell's master: literal for any characters, numbers included, per row, and correct across re-renders that change it, turn it into a template, and turn it back; a pooled row re-applied through the generic path writes its text too.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let rows = [{id: 1, a: '<b>&amp;</b>', b: 5}, {id: 2, a: 'two', b: 6}];
+	let render = () => h(el)`<div>${h.map(rows, r => h`<p key=${r.id}><i>${r.a}</i><u>${r.b}</u></p>`)}</div>`;
+	render();
+	let ps = el.querySelectorAll('p');
+	assert.eq(ps[0].firstChild.textContent, '<b>&amp;</b>');
+	assert.eq(ps[0].firstChild.childNodes.length, 1);
+	assert.eq(ps[0].lastChild.textContent, '5');
+	assert.eq(ps[1].firstChild.textContent, 'two');
+	assert.eq(ps[1].lastChild.textContent, '6');
+
+	rows[1] = {id: 2, a: 'TWO', b: 6};
+	render();
+	assert.eq(el.querySelectorAll('p')[1], ps[1]);
+	assert.eq(ps[1].firstChild.textContent, 'TWO');
+	assert.eq(ps[1].firstChild.childNodes.length, 1);
+
+	// A child that becomes a template materializes real paths; back to text works too.
+	rows[1] = {id: 2, a: h`<s>deep</s>`, b: 6};
+	render();
+	assert.eq(ps[1].firstChild.innerHTML, '<s>deep</s>');
+	rows[1] = {id: 2, a: 'plain', b: 7};
+	render();
+	assert.eq(ps[1].firstChild.innerHTML, 'plain');
+	assert.eq(ps[1].lastChild.textContent, '7');
+
+	// A brand-new row whose child starts as a template.
+	rows.push({id: 3, a: h`<em>new</em>`, b: 8});
+	render();
+	let p3 = el.querySelectorAll('p')[2];
+	assert.eq(p3.firstChild.innerHTML, '<em>new</em>');
+	assert.eq(p3.lastChild.textContent, '8');
+	el.remove();
+
+	// Pooled rows re-applied through the generic path (raw nodes in the list) write their text.
+	let el2 = document.createElement('div');
+	document.body.append(el2);
+	let hr = document.createElement('hr');
+	let quote = text => h`<q>${text}</q>`; // One template site, so the rows share a shell.
+	let items = [quote('a'), hr];
+	let render2 = () => h(el2)`<div>${items}</div>`;
+	render2();
+	let q = el2.querySelector('q');
+	assert.eq(q.textContent, 'a');
+	items = [quote('b'), hr];
+	render2();
+	assert.eq(el2.querySelector('q'), q);
+	assert.eq(q.textContent, 'b');
+	el2.remove();
+});
+
+Testimony.test('Solarite.stamp.masterPartialWrite', `A row with a template child, drawn between rows of plain text, leaves the shared master row clean`, () => {
+	let el = document.createElement('div');
+	let rows = [
+		{id: 1, a: 'A1', b: 'B1'},
+		{id: 2, a: 'A2', b: h`<b>T2</b>`}, // Writes A2 into the master, then finds b is not text.
+		{id: 3, a: '', b: h`<b>T3</b>`},   // Removes the master's first text node, then gives up.
+		{id: 4, a: '', b: ''},
+		{id: 5, a: 5, b: 0},
+		{id: 6, a: 'A6', b: [h`<b>T6</b>`, 'x']},
+		{id: 7, a: 'A7', b: 'B7'}
+	];
+	let render = () => h(el)`<div>${h.map(rows, r => h`<p key=${r.id}><i>${r.a}</i><u>${r.b}</u></p>`)}</div>`;
+	render();
+	let html = () => [...el.querySelectorAll('p')].map(p => p.innerHTML.replace(/<!--.*?-->/g, '')).join('|');
+	let want = '<i>A1</i><u>B1</u>|<i>A2</i><u><b>T2</b></u>|<i></i><u><b>T3</b></u>|<i></i><u></u>|<i>5</i><u>0</u>|<i>A6</i><u><b>T6</b>x</u>|<i>A7</i><u>B7</u>';
+	assert.eq(html(), want);
+	assert.eq(el.querySelectorAll('p')[3].querySelector('i').childNodes.length, 0); // No empty text node.
+
+	// Again in the other order, into the same master.
+	rows = rows.map(r => ({...r, id: r.id + 10})).reverse();
+	render();
+	assert.eq(html(), want.split('|').reverse().join('|'));
+});
+
+Testimony.test('Solarite.stamp.rewriteAfterOutsideTextContent', `After a row was rewritten once, something outside the library replaces the cell's text; the next rewrite must still show the new value.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let rows = [{id: 1, a: 'one'}, {id: 2, a: 'two'}];
+	let render = () => h(el)`<div>${h.map(rows, r => h`<p key=${r.id}><i>${r.a}</i></p>`)}</div>`;
+	render();
+	rows[0] = {id: 1, a: 'ONE'};
+	render();
+	let i = el.querySelector('i');
+	assert.eq(i.textContent, 'ONE');
+
+	i.textContent = 'edited elsewhere'; // A new Text node replaces the old one.
+	rows[0] = {id: 1, a: 'uno'};
+	render();
+	assert.eq(i.textContent, 'uno');
+	el.remove();
+});
+
+Testimony.test('Solarite.stamp.rewriteAfterNormalize', `A cell rewritten to the empty string keeps an empty text node; normalize() on any ancestor removes it, and the next rewrite must still show.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let rows = [{id: 1, a: 'one'}, {id: 2, a: 'two'}];
+	let render = () => h(el)`<div>${h.map(rows, r => h`<p key=${r.id}><i>${r.a}</i></p>`)}</div>`;
+	render();
+	rows[0] = {id: 1, a: ''};
+	render();
+	let i = el.querySelector('i');
+	assert.eq(i.textContent, '');
+
+	el.normalize(); // Standard DOM call; removes empty Text nodes.
+	rows[0] = {id: 1, a: 'back'};
+	render();
+	assert.eq(i.textContent, 'back');
+	el.remove();
+});
+
+Testimony.test('Solarite.stamp.rewriteAfterSplitText', `A search highlighter splits a cell's text and wraps the match in <mark>, leaving the original Text node in place as the first piece.  The next rewrite must replace the whole cell.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let rows = [{id: 1, a: 'one'}];
+	let render = () => h(el)`<div>${h.map(rows, r => h`<p key=${r.id}><i>${r.a}</i></p>`)}</div>`;
+	render();
+	rows[0] = {id: 1, a: 'find me here'};
+	render();
+	let i = el.querySelector('i');
+	let tail = i.firstChild.splitText(5), mark = document.createElement('mark');
+	tail.replaceWith(mark);
+	mark.append(tail);
+	assert.eq(i.innerHTML, 'find <mark>me here</mark>');
+
+	rows[0] = {id: 1, a: 'new text'};
+	render();
+	assert.eq(i.innerHTML, 'new text');
+	el.remove();
+});
+
+Testimony.test('Solarite.stamp.rewriteAfterWrappedText', `A page translator wraps a cell's text in a <font> element.  The next rewrite must replace it.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let rows = [{id: 1, a: 'one'}];
+	let render = () => h(el)`<div>${h.map(rows, r => h`<p key=${r.id}><i>${r.a}</i></p>`)}</div>`;
+	render();
+	rows[0] = {id: 1, a: 'two'};
+	render();
+	let i = el.querySelector('i');
+	let font = document.createElement('font');
+	font.textContent = 'deux';
+	i.firstChild.replaceWith(font);
+
+	rows[0] = {id: 1, a: 'three'};
+	render();
+	assert.eq(i.innerHTML, 'three');
+	el.remove();
+});
+
+Testimony.test('Solarite.stamp.materializeReleasesKeptText', `White box: after a cell that was rewritten as text becomes a template, the row holds no node that is no longer in its own subtree.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let rows = [{id: 1, a: 'one'}];
+	let render = () => h(el)`<div>${h.map(rows, r => h`<p key=${r.id} onclick=${() => {}}><i>${r.a}</i></p>`)}</div>`;
+	render();
+	rows[0] = {id: 1, a: 'ONE'};
+	render();
+	rows[0] = {id: 1, a: h`<b>bold</b>`};
+	render();
+	let p = el.querySelector('p');
+	assert.eq(p.innerHTML, '<i><b>bold</b></i>');
+	let ng = Object.getOwnPropertySymbols(p).map(k => p[k]).find(v => v && v.startNode === p);
+	assert(ng);
+	let kept = (ng.stampSlotsCache || []).filter(n => n && n !== p && !p.contains(n));
+	assert.eq(kept.length, 0);
+	el.remove();
+});
+
+Testimony.test('Solarite.stamp.clickAndUpdateInterleaved', `The row's kept nodes are shared by the dispatcher (which resolves up to the event's node) and the rewrite (which resolves up to the text's parent), in either order and with the event node before or after the text.`, () => {
+	const shapes = [
+		r => h`<p key=${r.id}><a onclick=${[x => hits.push('a' + x.a), r]}>go</a><i>${r.a}</i><u class=${r.c}>${r.b}</u></p>`,
+		r => h`<p key=${r.id}><i>${r.a}</i><u class=${r.c}>${r.b}</u><a onclick=${[x => hits.push('a' + x.a), r]}>go</a></p>`,
+		r => h`<p key=${r.id} class=${r.c}><i>${r.a}</i><a onclick=${[x => hits.push('a' + x.a), r]}><u>${r.b}</u></a></p>`
+	];
+	let hits = [];
+	for (let shape of shapes)
+		for (let clickFirst of [true, false]) {
+			let el = document.createElement('div');
+			document.body.append(el);
+			let rows = [{id: 1, a: 'one', b: 1, c: 'x'}, {id: 2, a: 'two', b: 2, c: ''}];
+			let render = () => h(el)`<div>${h.map(rows, shape)}</div>`;
+			render();
+			let p = el.querySelector('p'), a = p.querySelector('a'), i = p.querySelector('i'), u = p.querySelector('u');
+			let uc = () => p.className || u.className;
+			if (clickFirst) {
+				a.click();
+				assert.eq(hits.pop(), 'aone');
+			}
+			rows[0] = {id: 1, a: 'ONE', b: 1, c: 'x'}; // Only the first text.
+			render();
+			assert.eq(i.textContent + '|' + u.textContent + '|' + uc(), 'ONE|1|x');
+			a.click();
+			assert.eq(hits.pop(), 'aONE');
+			rows[0] = {id: 1, a: 'ONE', b: 11, c: 'y'}; // Only the second text and the class.
+			render();
+			assert.eq(i.textContent + '|' + u.textContent + '|' + uc(), 'ONE|11|y');
+			rows[0] = {id: 1, a: '', b: '', c: ''};
+			render();
+			assert.eq(i.textContent + '|' + u.textContent + '|' + uc(), '||');
+			a.click();
+			assert.eq(hits.pop(), 'a');
+			rows[0] = {id: 1, a: 0, b: 'z', c: 'q'};
+			render();
+			assert.eq(i.textContent + '|' + u.textContent + '|' + uc(), '0|z|q');
+			assert.eq(el.querySelector('p'), p);
+			assert.eq(el.querySelectorAll('p')[1].textContent.replace('go', ''), 'two2');
+			el.remove();
+		}
+});
+
+Testimony.test('Solarite.stamp.emptyChildLeavesNoNode', `A row whose child expression is '' has no text node in that cell, like every other way of rendering it, and later rows aren't affected.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let rows = [{id: 1, a: ''}, {id: 2, a: 'two'}, {id: 3, a: ''}];
+	let render = () => h(el)`<div>${h.map(rows, r => h`<p key=${r.id}><i>${r.a}</i><u>${r.id}</u></p>`)}</div>`;
+	render();
+	let ps = el.querySelectorAll('p');
+	assert.eq(ps[0].firstChild.childNodes.length, 0);
+	assert.eq(ps[0].firstChild.hasChildNodes(), false);
+	assert.eq(ps[1].firstChild.textContent, 'two');
+	assert.eq(ps[1].firstChild.childNodes.length, 1);
+	assert.eq(ps[2].firstChild.childNodes.length, 0);
+	assert.eq(ps[2].lastChild.textContent, '3');
+	// An empty cell can be written later, and a written one emptied.
+	rows[0] = {id: 1, a: 'one'};
+	rows[1] = {id: 2, a: ''};
+	render();
+	assert.eq(el.querySelectorAll('p')[0], ps[0]);
+	assert.eq(ps[0].firstChild.textContent, 'one');
+	assert.eq(ps[1].firstChild.textContent, '');
+	el.remove();
+});
+
+Testimony.test('Solarite.stamp.rewriteKeepsTextNode', `A row rewritten in place writes into the text node it already has: the node stays the same object, a cell that gains its text later keeps the node it gets, and a row re-applied through the raw-node list route in between is still written correctly afterwards.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let rows = [{id: 1, a: 'one', b: 1}, {id: 2, a: 'two', b: 2}];
+	let render = () => h(el)`<div>${h.map(rows, r => h`<p key=${r.id}><i>${r.a}</i><u>${r.b}</u></p>`)}</div>`;
+	render();
+	let p = el.querySelector('p'), i = p.firstChild, u = p.lastChild;
+	let tn = i.firstChild, un = u.firstChild;
+
+	// 1. Repeated rewrites reuse the row's own text nodes.
+	for (let n = 0; n < 3; n++) {
+		rows[0] = {id: 1, a: 'one' + n, b: 10 + n};
+		render();
+		assert.eq(i.firstChild, tn);
+		assert.eq(tn.nodeValue, 'one' + n);
+		assert.eq(u.firstChild, un);
+		assert.eq(un.nodeValue, '' + (10 + n));
+	}
+	assert.eq(i.childNodes.length, 1);
+
+	// 2. Only the child that changed is written.
+	rows[0] = {id: 1, a: 'one2', b: 99};
+	render();
+	assert.eq(i.textContent, 'one2');
+	assert.eq(u.textContent, '99');
+	assert.eq(el.querySelectorAll('p')[1].textContent, 'two2');
+
+	// 3. A cell that starts empty has no text node; once written it keeps the one it gets.
+	rows.push({id: 3, a: '', b: 3});
+	render();
+	let i3 = el.querySelectorAll('p')[2].firstChild;
+	assert.eq(i3.childNodes.length, 0);
+	rows[2] = {id: 3, a: 'three', b: 3};
+	render();
+	let tn3 = i3.firstChild;
+	assert.eq(tn3.nodeValue, 'three');
+	rows[2] = {id: 3, a: 'THREE', b: 3};
+	render();
+	assert.eq(i3.firstChild, tn3);
+	assert.eq(i3.textContent, 'THREE');
+	el.remove();
+
+	// 4. The raw-node list route replaces a row's text node; a later in-place rewrite must
+	// write the node that is in the document, not the one the row wrote before.
+	let el2 = document.createElement('div');
+	document.body.append(el2);
+	let hr = document.createElement('hr');
+	let quote = text => h`<q>${text}</q>`; // One template site, so the rows share a shell.
+	let items = [quote('a')];
+	let render2 = () => h(el2)`<div>${items}</div>`;
+	render2();
+	let q = el2.querySelector('q');
+	items = [quote('b')];
+	render2(); // Rewritten in place.
+	assert.eq(q.textContent, 'b');
+	items = [quote('c'), hr];
+	render2(); // Re-applied through the raw-node route.
+	assert.eq(el2.querySelector('q'), q);
+	assert.eq(q.textContent, 'c');
+	for (let text of ['d', 'e', 'f']) { // The first of these still takes the raw-node route.
+		items = [quote(text)];
+		render2();
+		assert.eq(el2.querySelector('q'), q);
+		assert.eq(q.textContent, text);
+		assert.eq(q.childNodes.length, 1);
+	}
+	el2.remove();
+});
+
 //endregion
 
 
@@ -3223,8 +4951,9 @@ Testimony.test('Solarite.stamp.keyedRewrite', `Stamped keyed rows rewrite in pla
 // element, and when an event of that type starts, a capture-phase listener on the component
 // root and on the document attaches a real listener to each element on the event's path that
 // has one, so the browser dispatches them natively.  Pass eventDelegation:false to opt out, or
-// prefix one attribute with native: to bind just that handler at render time.  See
-// jitDispatcher() in PathToAttribValue.js.
+// prefix one attribute with native: to bind just that handler at render time.  List rows are
+// the exception: nothing is stored on their elements, and the dispatcher reads their handlers
+// from the row's template.  See createDispatcher() in PathToAttribValue.js.
 
 Testimony.test('Solarite.delegation.click', `A delegated handler gets the usual arguments and this.`, () => {
 	let el = document.createElement('div');
@@ -3253,6 +4982,37 @@ Testimony.test('Solarite.delegation.args', `Array-form handlers receive args thr
 	assert.eq(got[1], el.children[1]);
 
 	el.remove();
+});
+
+Testimony.test('Solarite.delegation.argCounts', `A handler written as an array gets its own arguments, then the event and the element, with the root as this, however many arguments it has.  The same holds for an element of the root's own template, for a list row, and for handlers bound with addEventListener.`, () => {
+	for (let eventDelegation of [true, false]) {
+		let el = document.createElement('div');
+		document.body.append(el);
+		let log = [];
+		let fn = function(...args) {
+			let node = args.pop(), ev = args.pop();
+			log.push([this === el, ev.type, node.tagName, ...args].join(' '));
+			return args.length;
+		};
+		let handlers = [fn, [fn], [fn, 'a'], [fn, 'a', 'b'], [fn, 'a', 'b', 'c'], [fn, 'a', 'b', 'c', 'd']];
+		h(el, {eventDelegation})`<div>
+			<s onclick=${handlers[0]}></s><s onclick=${handlers[1]}></s><s onclick=${handlers[2]}></s>
+			<s onclick=${handlers[3]}></s><s onclick=${handlers[4]}></s><s onclick=${handlers[5]}></s>
+			${handlers.map(handler => h`<b onclick=${handler}>x</b>`)}</div>`;
+
+		let own = el.querySelectorAll('s'), rows = el.querySelectorAll('b');
+		for (let i=0; i<handlers.length; i++) {
+			own[i].dispatchEvent(new MouseEvent('click', {bubbles: true}));
+			rows[i].dispatchEvent(new MouseEvent('click', {bubbles: true}));
+		}
+		let expected = ['', '', ' a', ' a b', ' a b c', ' a b c d'];
+		assert.eq(log.join(), expected.map(args => `true click S${args},true click B${args}`).join());
+
+		// A binding made with addEventListener hands back what its handler returned.
+		if (!eventDelegation)
+			assert.eq([...own].map(s => getEventBinding(s, 'click').handleEvent(new MouseEvent('click'))).join(), '0,0,1,2,3,4');
+		el.remove();
+	}
 });
 
 Testimony.test('Solarite.delegation.currentTarget', `currentTarget is the bound element, not the document.`, () => {
@@ -3384,6 +5144,47 @@ Testimony.test('Solarite.delegation.off', `eventDelegation:false binds every eve
 	el.remove();
 });
 
+Testimony.test('Solarite.delegation.offSeveralBindings', `With eventDelegation:false one element can hold several handlers and a two-way binding.  Each is one listener, a re-render replaces the function it calls without adding another, and getEventBinding() finds each by its own key.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let log = [];
+	let model = {text: 'a'};
+	let render = n => h(el, {eventDelegation: false})`<input value=${[model, 'text']}
+		onclick=${() => log.push('click' + n)}
+		onkeyup=${[function(tag, ev, node) { log.push(tag + n + node.tagName + (this === el)) }, 'keyup']}
+		onfocus=${() => log.push('focus' + n)}>`;
+	let fire = input => {
+		input.dispatchEvent(new MouseEvent('click'));
+		input.dispatchEvent(new KeyboardEvent('keyup'));
+		input.dispatchEvent(new FocusEvent('focus'));
+		input.value += 'b';
+		input.dispatchEvent(new Event('input'));
+	};
+
+	// 1. Four bindings on one element, each found by its key.  A two-way binding's key is its
+	// attribute's name, not the name of the event it listens for.
+	render(1);
+	let input = el.firstChild;
+	let keys = ['value', 'click', 'keyup', 'focus'];
+	let bindings = keys.map(key => getEventBinding(input, key));
+	assert.eq(bindings.map(b => typeof b?.handleEvent).join(), 'function,function,function,function');
+	assert.eq(new Set(bindings).size, 4);
+	assert.eq(getEventBinding(input, 'input'), undefined);
+	fire(input);
+	assert.eq(log.join(), 'click1,keyup1INPUTtrue,focus1');
+	assert.eq(model.text, 'ab');
+
+	// 2. A re-render keeps the same four bindings; each now calls the new function, once.
+	log = [];
+	render(2);
+	assert.eq(keys.map((key, i) => getEventBinding(input, key) === bindings[i]).join(), 'true,true,true,true');
+	fire(input);
+	assert.eq(log.join(), 'click2,keyup2INPUTtrue,focus2');
+	assert.eq(model.text, 'abb');
+
+	el.remove();
+});
+
 Testimony.test('Solarite.delegation.detached', `Delegated handlers work while the component is detached from the document.`, () => {
 	class D80 extends Solarite {
 		count = 0;
@@ -3411,7 +5212,7 @@ Testimony.test('Solarite.delegation.documentOptionIgnored', `The retired eventDe
 	el.remove();
 });
 
-Testimony.test('Solarite.delegation.stampedReparented', `Handlers written by the compiled stamp program (list rows) keep working after a row is moved outside its component.`, () => {
+Testimony.test('Solarite.delegation.stampedReparented', `The handlers of list rows made by the compiled stamp program keep working after a row is moved outside its component.`, () => {
 	let el = document.createElement('div');
 	document.body.append(el);
 	let hits = [];
@@ -3419,9 +5220,9 @@ Testimony.test('Solarite.delegation.stampedReparented', `Handlers written by the
 	h(el)`<div>${rows.map(n =>
 		h`<p key=${n} onmouseup=${[i => hits.push(i), n]}>row</p>`)}</div>`;
 
-	// applyStamp() writes these handlers itself instead of going through bindEvent(), so it
-	// has to register the dispatcher itself too, and the document half of that registration
-	// is what still reaches a row after it has been moved out from under its root.
+	// These handlers stay in the row's template and never go through bindEvent(), so the row
+	// registers the dispatcher itself (registerRowDispatchers), and the document half of that
+	// registration is what still reaches a row after it has been moved out from under its root.
 	let p = el.querySelectorAll('p')[1];
 	let elsewhere = document.createElement('div');
 	document.body.append(elsewhere);
@@ -3555,9 +5356,10 @@ Testimony.test('Solarite.delegation.sameNodeOrder', `A delegated handler runs af
 	button.click();
 	assert.eq(order.join(), 'first,template');
 
-	// The listener attached for the click above is still on the button, since it's only swept in
-	// a later task.  A listener added now must still run before the template handler, which is
-	// why the dispatcher removes and re-adds rather than just adding.
+	// The temporary listener for the click above is already gone: it is removed when the event
+	// reaches the last element it has a handler on.  A listener added now still runs before the
+	// template handler, because the dispatcher attaches its own listener only when the next
+	// event starts.
 	button.addEventListener('click', () => order.push('second'));
 	order = [];
 	button.click();
@@ -3657,7 +5459,462 @@ Testimony.test('Solarite.delegation.nativePrefix', `native:onclick registers one
 	el.remove();
 });
 
-Testimony.test('Solarite.delegation.nativePrefixStamped', `native: handlers in list rows bind directly instead of through the compiled stamp program's expandos.`, () => {
+// Helpers for the tests below that compare delegated handlers with listeners bound at render, or
+// that check which temporary listeners an event leaves behind.
+
+/** @return {HTMLDivElement} A new element attached to the document. */
+function attachedDiv() {
+	let el = document.createElement('div');
+	document.body.append(el);
+	return el;
+}
+
+/**
+ * Run a scenario once delegated (the default) and once with eventDelegation:false, which
+ * binds real listeners at render and is therefore the browser's own answer.
+ * @param scenario {function(HTMLElement, Object, string[])} Given a host, render options and a log.
+ * @return {string[]} [delegated log, native log], each joined with commas. */
+function delegatedAndNative(scenario) {
+	let out = [];
+	for (let opt of [true, false]) {
+		let el = attachedDiv();
+		let log = [];
+		try { scenario(el, {eventDelegation: opt}, log); }
+		finally { el.remove(); }
+		out.push(log.join());
+	}
+	return out;
+}
+
+/**
+ * Track the bubble-phase listeners of one event type that are added and removed while fn runs.
+ * @param type {string}
+ * @param fn {function(Map<EventTarget, Set>)} Given the live map.
+ * @return {Map<EventTarget, Set>} What was still attached when fn returned. */
+function trackListeners(type, fn) {
+	let live = new Map(), origAdd = EventTarget.prototype.addEventListener, origRemove = EventTarget.prototype.removeEventListener;
+	EventTarget.prototype.addEventListener = function(t, l, o) {
+		if (t === type && !o) {
+			let set = live.get(this) || new Set();
+			set.add(l);
+			live.set(this, set);
+		}
+		return origAdd.call(this, t, l, o);
+	};
+	EventTarget.prototype.removeEventListener = function(t, l, o) {
+		if (t === type && !o) {
+			let set = live.get(this);
+			if (set) {
+				set.delete(l);
+				if (!set.size)
+					live.delete(this);
+			}
+		}
+		return origRemove.call(this, t, l, o);
+	};
+	try { fn(live); }
+	finally { EventTarget.prototype.addEventListener = origAdd; EventTarget.prototype.removeEventListener = origRemove; }
+	return live;
+}
+
+Testimony.test('Solarite.delegation.redispatchDifferentDepth', `One Event object dispatched on two elements at different depths runs the handler of each.`, () => {
+	let [d, n] = delegatedAndNative((el, opt, log) => {
+		h(el, opt)`<div><a onclick=${() => log.push('a')}>a</a><p><b onclick=${() => log.push('b')}>b</b></p></div>`;
+		let ev = new MouseEvent('click', {bubbles: true});
+		el.querySelector('a').dispatchEvent(ev);
+		el.querySelector('b').dispatchEvent(ev);
+	});
+	assert.eq(n, 'a,b');
+	assert.eq(d, n);
+});
+
+Testimony.test('Solarite.delegation.redispatchDifferentDepthRows', `One Event object dispatched on two list rows at different depths runs the handlers of each.`, () => {
+	let [d, n] = delegatedAndNative((el, opt, log) => {
+		let rows = [{id: 1}, {id: 2}];
+		h(el, opt)`<div>${h.map(rows, r => h`<p key=${r.id} onclick=${[row => log.push('p' + row.id), r]}><span><b onclick=${[row => log.push('b' + row.id), r]}>x</b></span></p>`)}</div>`;
+		let ev = new MouseEvent('click', {bubbles: true});
+		el.querySelectorAll('p')[0].dispatchEvent(ev);
+		el.querySelectorAll('b')[1].dispatchEvent(ev);
+	});
+	assert.eq(n, 'p1,b2,p2');
+	assert.eq(d, n);
+});
+
+Testimony.test('Solarite.delegation.redispatchSameDepth', `One Event object dispatched on two siblings (same path length).`, () => {
+	let [d, n] = delegatedAndNative((el, opt, log) => {
+		h(el, opt)`<div><a onclick=${() => log.push('a')}>a</a><b onclick=${() => log.push('b')}>b</b></div>`;
+		let ev = new MouseEvent('click', {bubbles: true});
+		el.querySelector('a').dispatchEvent(ev);
+		el.querySelector('b').dispatchEvent(ev);
+	});
+	assert.eq(n, 'a,b');
+	assert.eq(d, n);
+});
+
+Testimony.test('Solarite.delegation.redispatchSameDepthRows', `One Event object dispatched on two list rows that sit at the same depth runs the handler of each.`, () => {
+	let [d, n] = delegatedAndNative((el, opt, log) => {
+		let rows = [{id: 1}, {id: 2}];
+		h(el, opt)`<div>${h.map(rows, r => h`<p key=${r.id} onclick=${[row => log.push('p' + row.id), r]}>x</p>`)}</div>`;
+		let ps = el.querySelectorAll('p'), ev = new MouseEvent('click', {bubbles: true});
+		ps[0].dispatchEvent(ev);
+		ps[1].dispatchEvent(ev);
+	});
+	assert.eq(n, 'p1,p2');
+	assert.eq(d, n);
+});
+
+Testimony.test('Solarite.delegation.redispatchDetachedRoot', `One Event object dispatched on two elements at different depths of a detached root.`, () => {
+	let el = document.createElement('div');
+	let log = [];
+	h(el)`<div><a onclick=${() => log.push('a')}>a</a><p><b onclick=${() => log.push('b')}>b</b></p></div>`;
+	let ev = new MouseEvent('click', {bubbles: true});
+	el.querySelector('a').dispatchEvent(ev);
+	el.querySelector('b').dispatchEvent(ev);
+	assert.eq(log.join(), 'a,b');
+});
+
+Testimony.test('Solarite.delegation.redispatchAfterStop', `An Event object whose first dispatch was stopped part-way is dispatched again elsewhere; each handler on the second path runs once.`, () => {
+	let [d, n] = delegatedAndNative((el, opt, log) => {
+		h(el, opt)`<div onclick=${() => log.push('div')}><a onclick=${e => { log.push('a'); e.stopPropagation(); }}>a</a><p onclick=${() => log.push('p')}><b onclick=${() => log.push('b')}>b</b></p></div>`;
+		let ev = new MouseEvent('click', {bubbles: true});
+		el.querySelector('a').dispatchEvent(ev);
+		el.querySelector('b').dispatchEvent(ev);
+		log.push('|');
+		el.querySelector('b').click();
+	});
+	assert.eq(n, 'a,b,p,div,|,b,p,div');
+	assert.eq(d, n);
+});
+
+Testimony.test('Solarite.delegation.dispatcherThrows', `A row whose static structure outside code broke makes the dispatcher throw; afterwards handlers elsewhere on the path still obey the ordering rule.`, () => {
+	let el = attachedDiv();
+	let order = [];
+	let rows = [{id: 1}];
+	h(el)`<div>${h.map(rows, r => h`<p key=${r.id}><span>${h`<b onclick=${() => order.push('template')}>x</b>`}</span><i><u onclick=${[() => order.push('u'), r]}>u</u></i></p>`)}</div>`;
+	let b = el.querySelector('b');
+	el.querySelector('i').remove(); // Outside code breaks the row.
+	let errors = 0;
+	let swallow = e => { errors++; e.preventDefault(); };
+	window.addEventListener('error', swallow);
+	try {
+		b.click();
+		b.addEventListener('click', () => order.push('late'));
+		order.length = 0;
+		b.click();
+	}
+	finally { window.removeEventListener('error', swallow); }
+	// A delegated handler runs after every listener its element had when the event started.
+	assert.eq(order.join(), 'late,template');
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.listenerBalance', `Every temporary listener attached for an event that ran to its end is removed again, across nested lists, nested dispatch, re-render and row removal mid-dispatch.`, () => {
+	let el = attachedDiv();
+	let log = [];
+	let groups = [{id: 1, items: [{id: 11}, {id: 12}]}, {id: 2, items: [{id: 21}]}];
+	let render = () => h(el)`<div onclick=${() => log.push('root')}>${h.map(groups, g =>
+		h`<section key=${g.id} onclick=${[x => log.push('g' + x.id), g]}>${h.map(g.items, it =>
+			h`<li key=${it.id} onclick=${[x => log.push('i' + x.id), it]}><a onclick=${[x => {
+				log.push('a' + x.id);
+				if (x.id === 11)
+					el.querySelectorAll('a')[2]?.click();
+				if (x.id === 12) {
+					groups = [{id: 1, items: [groups[0].items[0]]}, groups[1]];
+					render();
+				}
+			}, it]}>x</a></li>`)}</section>`)}</div>`;
+	render();
+	let live = trackListeners('click', () => {
+		el.querySelectorAll('a')[0].click();
+		el.querySelectorAll('a')[1].click();
+		el.querySelectorAll('a')[0].click();
+	});
+	assert.eq(log.join(), 'a11,a21,i21,g2,root,i11,g1,root,a12,i12,g1,root,a11,i11,g1,root');
+	assert.eq(live.size, 0);
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.nestedInnerStopped', `A nested dispatch whose propagation is stopped doesn't cost the outer one a handler, and later events run each handler once.`, () => {
+	let [d, n] = delegatedAndNative((el, opt, log) => {
+		let nest = true;
+		let rows = [{id: 1}, {id: 2}];
+		h(el, opt)`<div onclick=${() => log.push('div')}>${h.map(rows, r => h`<p key=${r.id} onclick=${[x => log.push('p' + x.id), r]}><a onclick=${[(x, e) => {
+			log.push('a' + x.id);
+			if (x.id === 1 && nest) {
+				nest = false;
+				el.querySelectorAll('a')[1].click();
+			}
+			else if (x.id === 2)
+				e.stopPropagation();
+		}, r]}>x</a></p>`)}</div>`;
+		let as = el.querySelectorAll('a');
+		as[0].click();
+		log.push('|');
+		as[0].click();
+		log.push('|');
+		as[1].click();
+		log.push('|');
+		as[0].click();
+	});
+	assert.eq(d, n);
+});
+
+Testimony.test('Solarite.delegation.nestedInnerStoppedSwept', `An event whose handler dispatched other events of the same type that never reached their last handler (stopped, or not bubbling) still removes every temporary listener when it ends, theirs included.`, () => {
+	// 1. List rows.  The first row's handler clicks the second row and then the third; each of
+	// those clicks is stopped at its own target.
+	let el = attachedDiv();
+	let log = [];
+	let rows = [{id: 1}, {id: 2}, {id: 3}];
+	h(el)`<div onclick=${() => log.push('div')}>${h.map(rows, r => h`<p key=${r.id} onclick=${[x => log.push('p' + x.id), r]}><a onclick=${[(x, e) => {
+		log.push('a' + x.id);
+		if (x.id === 1) {
+			el.querySelectorAll('a')[1].click();
+			el.querySelectorAll('a')[2].click();
+		}
+		else
+			e.stopPropagation();
+	}, r]}>x</a></p>`)}</div>`;
+	let live = trackListeners('click', () => el.querySelector('a').click());
+	assert.eq(log.join(), 'a1,a2,a3,p1,div');
+	assert.eq(live.size, 0);
+	el.remove();
+
+	// 2. Elements outside a list, and a nested event that doesn't bubble.
+	el = attachedDiv();
+	log = [];
+	h(el)`<div onclick=${() => log.push('div')}><b onclick=${() => {
+		log.push('b');
+		el.querySelector('i').dispatchEvent(new MouseEvent('click'));
+	}}>b</b><i onclick=${() => log.push('i')}>i</i></div>`;
+	live = trackListeners('click', () => el.querySelector('b').click());
+	assert.eq(log.join(), 'b,i,div');
+	assert.eq(live.size, 0);
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.lingerThenOtherRoot', `Listeners left by a stopped dispatch in one root are cleared by the next event of that type, even when it happens in a detached root.`, () => {
+	let log = [];
+	let a = attachedDiv(), b = document.createElement('div');
+	h(a)`<div onclick=${() => log.push('adiv')}><button onclick=${e => { log.push('abtn'); e.stopPropagation(); }}>x</button></div>`;
+	h(b)`<div onclick=${() => log.push('bdiv')}><button onclick=${() => log.push('bbtn')}>x</button></div>`;
+	let live = trackListeners('click', () => {
+		a.querySelector('button').click();
+		b.querySelector('button').dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	});
+	assert.eq(log.join(), 'abtn,bbtn,bdiv');
+	assert.eq(live.size, 0);
+	a.remove();
+});
+
+Testimony.test('Solarite.delegation.removeOwnRowMidDispatch', `A handler that removes its own row (keyed and unkeyed) or clears the list; the handlers further up the path run as a native listener's would.`, () => {
+	for (let keyed of [true, false])
+		for (let mode of ['remove', 'clear', 'replace']) {
+			let [d, n] = delegatedAndNative((el, opt, log) => {
+				let rows = [{id: 1}, {id: 2}, {id: 3}];
+				let act = x => {
+					log.push('a' + x.id);
+					if (mode === 'remove')
+						rows = rows.filter(r => r !== x);
+					else if (mode === 'clear')
+						rows = [];
+					else
+						rows = rows.map(r => ({id: r.id + 10}));
+					render();
+				};
+				let row = r => keyed
+					? h`<p key=${r.id} onclick=${[x => log.push('p' + x.id), r]}><a onclick=${[act, r]}>x</a></p>`
+					: h`<p onclick=${[x => log.push('p' + x.id), r]}><a onclick=${[act, r]}>x</a></p>`;
+				let render = () => h(el, opt)`<div onclick=${() => log.push('root' + rows.length)}>${rows.map(row)}</div>`;
+				render();
+				el.querySelectorAll('a')[0].click();
+				log.push('|');
+				// Re-queried each time: a row a handler removed is out of the document, where a
+				// delegated handler is documented not to run.
+				for (let i=0; i<3; i++)
+					el.querySelectorAll('a')[i]?.click();
+			});
+			assert.eq(d, n, `keyed=${keyed} mode=${mode}`);
+		}
+});
+
+Testimony.test('Solarite.delegation.lastHandlerClearsList', `The handler on the outermost handled node empties the list and re-renders it; later clicks run each handler once.`, () => {
+	let [d, n] = delegatedAndNative((el, opt, log) => {
+		let rows = [{id: 1}, {id: 2}];
+		let render = () => h(el, opt)`<div>${h.map(rows, r => h`<p key=${r.id} onclick=${[x => { log.push('p' + x.id); rows = []; render(); rows = [{id: 7}, {id: 8}]; render(); }, r]}><a onclick=${[x => log.push('a' + x.id), r]}>x</a></p>`)}</div>`;
+		render();
+		el.querySelector('a').click();
+		log.push('|');
+		el.querySelectorAll('a')[1].click();
+		log.push(el.querySelectorAll('p').length);
+	});
+	assert.eq(d, n);
+});
+
+Testimony.test('Solarite.delegation.closedShadowRows', `List rows inside a closed shadow root, under a host whose ancestor has a handler in another root: each handler runs once, inner first.`, () => {
+	let log = [];
+	let outer = attachedDiv();
+	h(outer)`<div onclick=${() => log.push('outer')}><span class="host"></span></div>`;
+	let host = outer.querySelector('.host');
+	let inner = document.createElement('div');
+	host.attachShadow({mode: 'closed'}).append(inner);
+	let rows = [{id: 1}, {id: 2}];
+	h(inner)`<div onclick=${() => log.push('inner')}>${h.map(rows, r => h`<p key=${r.id} onclick=${[x => log.push('p' + x.id), r]}><a onclick=${[x => log.push('a' + x.id), r]}>x</a></p>`)}</div>`;
+	let as = inner.querySelectorAll('a');
+
+	let live = trackListeners('click', () => {
+		as[1].click();
+		assert.eq(log.join(), 'a2,p2,inner,outer');
+		log.length = 0;
+		as[0].click();
+		assert.eq(log.join(), 'a1,p1,inner,outer');
+		log.length = 0;
+		as[0].dispatchEvent(new MouseEvent('click', {bubbles: true})); // Not composed: stops at the shadow root.
+		assert.eq(log.join(), 'a1,p1,inner');
+		log.length = 0;
+		as[1].click();
+		assert.eq(log.join(), 'a2,p2,inner,outer');
+	});
+	assert.eq(live.size, 0);
+	outer.remove();
+});
+
+Testimony.test('Solarite.delegation.redispatchSameTarget', `One Event object dispatched twice on the same element runs the handler twice, in the document, in a detached root and inside a shadow root.`, () => {
+	for (let where of ['document', 'detached', 'shadow'])
+		for (let opt of [true, false]) {
+			let el = document.createElement('div'), host = null, log = [];
+			if (where === 'document')
+				document.body.append(el);
+			else if (where === 'shadow') {
+				host = document.createElement('div');
+				document.body.append(host);
+				host.attachShadow({mode: 'open'}).append(el);
+			}
+			h(el, {eventDelegation: opt})`<div><a onclick=${() => log.push('a')}>a</a></div>`;
+			let ev = new MouseEvent('click', {bubbles: true});
+			el.querySelector('a').dispatchEvent(ev);
+			el.querySelector('a').dispatchEvent(ev);
+			assert.eq(log.join(''), 'aa', where + ', eventDelegation=' + opt);
+			(host || el).remove();
+		}
+});
+
+Testimony.test('Solarite.delegation.nestedDispatchOnRemovedRow', `A row handler that removes its own row and then dispatches an event on it runs the row's handlers again, as listeners bound at render would, whether or not anything above the row has a handler.`, () => {
+	let run = (opt, withRootHandler) => {
+		let el = document.createElement('div');
+		document.body.append(el);
+		let log = [], rows = [{id: 1}, {id: 2}], once = true;
+		let rowHandler = (x, e, node) => {
+			log.push('p' + x.id);
+			if (once) {
+				once = false;
+				rows = rows.filter(y => y !== x);
+				render();
+				node.querySelector('a').dispatchEvent(new MouseEvent('click', {bubbles: true}));
+			}
+		};
+		let list = () => h.map(rows, r => h`<p key=${r.id} onclick=${[rowHandler, r]}><a onclick=${[x => log.push('a' + x.id), r]}>x</a></p>`);
+		let render = () => withRootHandler
+			? h(el, {eventDelegation: opt})`<div onclick=${() => log.push('root')}>${list()}</div>`
+			: h(el, {eventDelegation: opt})`<div>${list()}</div>`;
+		render();
+		el.querySelector('a').click();
+		el.remove();
+		return log.join();
+	};
+	assert.eq(run(true, false), 'a1,p1,a1,p1');
+	assert.eq(run(true, false), run(false, false));
+	assert.eq(run(true, true), run(false, true));
+});
+
+Testimony.test('Solarite.delegation.nestedDispatchOnRemovedElement', `The same for an element that is not a list row: a handler that takes its own element out of the page and then dispatches an event on it runs the element's handlers again, as listeners bound at render would.`, () => {
+	let run = (opt, withRootHandler) => {
+		let el = attachedDiv();
+		let log = [], show = true, once = true;
+		let handler = (e, node) => {
+			log.push('p');
+			if (once) {
+				once = false;
+				show = false;
+				render();
+				node.querySelector('a').dispatchEvent(new MouseEvent('click', {bubbles: true}));
+			}
+		};
+		let inner = () => show ? h`<p onclick=${handler}><a onclick=${() => log.push('a')}>x</a></p>` : '';
+		let render = () => withRootHandler
+			? h(el, {eventDelegation: opt})`<div onclick=${() => log.push('root')}>${inner()}</div>`
+			: h(el, {eventDelegation: opt})`<div>${inner()}</div>`;
+		render();
+		el.querySelector('a').click();
+		el.remove();
+		return log.join();
+	};
+	assert.eq(run(true, false), 'a,p,a,p');
+	assert.eq(run(true, false), run(false, false));
+	assert.eq(run(true, true), run(false, true));
+});
+
+Testimony.test('Solarite.delegation.movedOutOfRow', `An element moved out of its list row loses its delegated handler, because the dispatcher finds a row's handlers through the row's root element.  A native: handler on it keeps working, and so does every handler of a row that is moved whole.`, () => {
+	let log = [];
+	class List extends Solarite {
+		rows = [{id: 1}, {id: 2}];
+
+		render() {
+			h(this)`<div>${h.map(this.rows, r =>
+				h`<p key=${r.id} onclick=${[function(row) { log.push('p' + row.id + (this === list ? '' : ' with the wrong this')); }, r]}><a onclick=${[row => log.push('a' + row.id), r]}>a</a><b native:onclick=${[row => log.push('b' + row.id), r]}>b</b></p>`)}</div>`
+		}
+	}
+	customElements.define(uniqueTag(), List);
+	let list = new List();
+	document.body.append(list);
+	list.render();
+	let elsewhere = attachedDiv();
+	let [p1, p2] = list.querySelectorAll('p');
+
+	// 1. A whole row moved elsewhere in the page: every handler runs, with the component as this.
+	elsewhere.append(p1);
+	p1.querySelector('a').click();
+	p1.querySelector('b').click();
+	assert.eq(log.join(), 'a1,p1,b1,p1');
+
+	// 2. Elements moved out of their row: the delegated one is silent, the native: one is not.
+	log = [];
+	let a2 = p2.querySelector('a'), b2 = p2.querySelector('b');
+	elsewhere.append(a2, b2);
+	a2.click();
+	b2.click();
+	assert.eq(log.join(), 'b2');
+
+	// 3. The row they left still answers.
+	p2.click();
+	assert.eq(log.join(), 'b2,p2');
+	list.remove();
+	elsewhere.remove();
+});
+
+Testimony.test('Solarite.delegation.rowAfterOutsideListener', `A listener other code added to a list row's element runs before the row's delegated handler, and after a handler bound at render.  When that listener removes the row, the event still finishes on it either way.`, () => {
+	let [d, n] = delegatedAndNative((el, opt, log) => {
+		let rows = [{id: 1}, {id: 2}, {id: 3}];
+		let render = () => h(el, opt)`<div onclick=${() => log.push('root' + rows.length)}>${h.map(rows, r => h`<p key=${r.id} onclick=${[x => log.push('p' + x.id), r]}><a onclick=${[x => log.push('a' + x.id), r]}>x</a></p>`)}</div>`;
+		render();
+		let p = el.querySelectorAll('p')[1];
+		p.addEventListener('click', () => {
+			log.push('outside');
+			rows = rows.filter(r => r.id !== 2);
+			render();
+		});
+		p.querySelector('a').click();
+		log.push('|');
+		for (let a of el.querySelectorAll('a'))
+			a.click();
+	});
+
+	// The one documented difference from a regular listener: a delegated handler is attached
+	// when the event starts, so it comes after a listener its element already had.
+	assert.eq(d, 'a2,outside,p2,root2,|,a1,p1,root2,a3,p3,root2');
+	assert.eq(n, 'a2,p2,outside,root2,|,a1,p1,root2,a3,p3,root2');
+});
+
+Testimony.test('Solarite.delegation.nativePrefixStamped', `native: handlers in list rows are bound with addEventListener when the row is drawn, instead of being left in the row's template for the dispatcher.`, () => {
 	let el = document.createElement('div');
 	document.body.append(el);
 	let hits = [];
@@ -3679,6 +5936,535 @@ Testimony.test('Solarite.delegation.nativePrefixStamped', `native: handlers in l
 	assert.eq(hits.length, 2);
 	assert.eq(hits[1][0], 20);
 
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.rowsStoreNothing', `A list row made by the compiled stamp program stores no handler on its nodes, before, during or after an event: the dispatcher reads handlers from the row's template, and a re-rendered row's new handler is what runs.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let hits = [];
+	let rows = [{id: 1}, {id: 2}, {id: 3}];
+	let render = () => h(el)`<div>${h.map(rows, r =>
+		h`<p key=${r.id}><a onclick=${[function(row, e, a) { hits.push([row, a, this, Object.getOwnPropertySymbols(a).length]); }, r]}>x</a><i onmouseup=${[row => hits.push('i' + row.id), r]}></i></p>`)}</div>`;
+	render();
+	let p = el.querySelectorAll('p')[1], a = p.firstChild, i = p.lastChild;
+
+	// Nothing is stored on the nodes that carry handlers; the row root carries one pointer.
+	assert.eq(Object.getOwnPropertySymbols(a).length, 0);
+	assert.eq(Object.getOwnPropertySymbols(i).length, 0);
+	assert.eq(Object.getOwnPropertySymbols(p).length, 1);
+
+	a.click();
+	assert.eq(hits.length, 1);
+	assert.eq(hits[0][0], rows[1]);
+	assert.eq(hits[0][1], a);
+	assert.eq(hits[0][2], el);
+	assert.eq(hits[0][3], 0); // Nothing on the node while its handler ran.
+	i.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+	assert.eq(hits[1], 'i2');
+
+	// Nothing was written onto the node for the event either, so it still has no property of
+	// its own.
+	assert.eq(Object.getOwnPropertySymbols(a).length, 0);
+	assert.eq(Object.getOwnPropertySymbols(i).length, 0);
+	assert.eq(Object.getOwnPropertySymbols(p).length, 1);
+
+	// A re-render that changes the row's handler: the next event runs the new one.
+	rows[1] = {id: 2, v: 'new'};
+	render();
+	assert.eq(el.querySelectorAll('p')[1], p); // Same key, same element.
+	a.click();
+	assert.eq(hits[2][0], rows[1]);
+	assert.eq(hits[2][0].v, 'new');
+	rows[1] = {id: 2, v: 'newer'};
+	render();
+	a.click();
+	assert.eq(hits[3][0].v, 'newer');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.nestedRows', `Rows nested inside rows each run their own delegated handler once, with the component as this.`, () => {
+	class D95 extends Solarite {
+		hits = [];
+		groups = [{id: 1, items: [{id: 11}, {id: 12}]}, {id: 2, items: [{id: 21}]}];
+		render() {
+			h(this)`<d-95>${h.map(this.groups, g =>
+				h`<section key=${g.id} onclick=${[function(group) { this.hits.push('g' + group.id); }, g]}>${h.map(g.items, it =>
+					h`<span key=${it.id} onclick=${[function(item) { this.hits.push('i' + item.id); }, it]}>x</span>`)}</section>`)}</d-95>`;
+		}
+	}
+	D95.define();
+	let a = new D95();
+	document.body.append(a);
+	a.querySelectorAll('span')[1].click();
+	assert.eq(a.hits.join(), 'i12,g1');
+	a.querySelectorAll('span')[2].click();
+	assert.eq(a.hits.join(), 'i12,g1,i21,g2');
+	a.remove();
+});
+
+Testimony.test('Solarite.delegation.rowRerenderMidDispatch', `A row handler that re-renders swaps an enclosing row's handler before the event reaches it, and the new one runs.`, () => {
+	let hits = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	let groups = [{id: 1, n: 1, items: [{id: 11}]}];
+	let render = () => h(el)`<div>${h.map(groups, g =>
+		h`<section key=${g.id} onclick=${[group => hits.push('g' + group.n), g]}>${h.map(g.items, it =>
+			h`<span key=${it.id} onclick=${[() => { hits.push('i'); groups[0] = {id: 1, n: 2, items: groups[0].items}; render(); }, it]}>x</span>`)}</section>`)}</div>`;
+	render();
+	el.querySelector('span').click();
+	assert.eq(hits.join(), 'i,g2');
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.rowsWithOptions', `List rows under eventDelegation:false or an event-name array bind the ordinary way.`, () => {
+	let hits = [];
+	let rows = [{id: 1}, {id: 2}];
+	let el1 = document.createElement('div'), el2 = document.createElement('div');
+	document.body.append(el1, el2);
+	h(el1, {eventDelegation: false})`<div>${h.map(rows, r => h`<p key=${r.id} onclick=${[row => hits.push('f' + row.id), r]}>x</p>`)}</div>`;
+	h(el2, {eventDelegation: ['mouseup']})`<div>${h.map(rows, r => h`<p key=${r.id} onclick=${[row => hits.push('c' + row.id), r]} onmouseup=${[row => hits.push('m' + row.id), r]}>x</p>`)}</div>`;
+	let p1 = el1.querySelectorAll('p')[1], p2 = el2.querySelectorAll('p')[1];
+	assert.eq(getEventBinding(p1, 'click') !== undefined, true); // A real listener, registered at render.
+	assert.eq(getEventBinding(p2, 'click') !== undefined, true);
+	assert.eq(getEventBinding(p2, 'mouseup'), undefined); // Delegated by name, stored on the node.
+	p1.click();
+	p2.click();
+	p2.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+	assert.eq(hits.join(), 'f2,c2,m2');
+	el1.remove();
+	el2.remove();
+});
+
+Testimony.test('Solarite.delegation.pooledRowMidDispatch', `A pooled row re-applied through the raw-node list route mid-dispatch has its new template in place before the enclosing handler's turn, so that handler runs with current arguments.`, () => {
+	for (let opt of [true, false]) {
+		let el = document.createElement('div');
+		document.body.append(el);
+		let hits = [];
+		let hr = document.createElement('hr');
+		let rows = [{n: 1}];
+		let row = r => h`<p onclick=${[item => hits.push('p' + item.n), r]}><b onclick=${[item => { hits.push('b' + item.n); if (item.n === 1) { rows[0] = {n: 2}; render(); } }, r]}>x</b></p>`;
+		let render = () => h(el, {eventDelegation: opt})`<div>${[...rows.map(row), hr]}</div>`;
+		render();
+		let p = el.querySelector('p');
+		el.querySelector('b').click();
+		assert.eq(el.querySelector('p'), p); // The same element, reused from the pool.
+		assert.eq(hits.join(), 'b1,p2', 'eventDelegation=' + opt);
+		el.remove();
+	}
+});
+
+Testimony.test('Solarite.delegation.rowUpdateThrows', `A row update that throws part-way leaves each of the row's handlers as a listener bound at render would be: the ones the update had already reached receive the new item, the rest still receive the old one, and the next render finishes the row.`, () => {
+	// Expressions are applied from the last to the first, so the update reaches <b>, then the
+	// text, then <a>'s handler and its title, and <p> last.  What stops it is either a handler
+	// that isn't a function or an attribute function that throws.
+	for (let cause of ['handler', 'title'])
+		for (let mapped of [true, false]) // h.map() patches the changed row; an array goes through the keyed diff.
+			for (let nested of [false, true]) // A row whose text is a template has paths of its own.
+				for (let opt of [true, false]) {
+					let el = document.createElement('div');
+					document.body.append(el);
+					let hits = [], built = [], bad = false, rows = [{id: 1, n: 0}];
+					let row = r => {
+						let title = bad && cause === 'title' ? () => { throw new Error('thrown on purpose by the test'); } : 't' + r.n;
+						let onA = bad && cause === 'handler' ? 'not a function' : [item => hits.push('a' + item.n), r];
+						let t = h`<p key=${r.id} onclick=${[item => hits.push('p' + item.n), r]}><a title=${title} onclick=${onA}>${nested ? h`<u>${r.n}</u>` : r.n}</a><b onclick=${[item => hits.push('b' + item.n), r]}>x</b></p>`;
+						built.push([t, t.exprs.slice()]);
+						return t;
+					};
+					let render = () => h(el, {eventDelegation: opt})`<div>${mapped ? h.map(rows, row) : rows.map(row)}</div>`;
+					render();
+					let a = el.querySelector('a'), b = el.querySelector('b');
+
+					bad = true;
+					rows = [{id: 1, n: 1}];
+					let threw = false;
+					try { render(); } catch (e) { threw = true; }
+					let which = `cause=${cause} mapped=${mapped} nested=${nested} eventDelegation=${opt}`;
+					assert.eq(threw, true, which);
+					assert.eq(el.querySelector('a'), a, which); // The same row, updated as far as the throw.
+					assert.eq(a.textContent, '1', which);
+					assert.eq(a.title, 't0', which);
+					b.click();
+					a.click();
+					assert.eq(hits.join(), cause === 'handler' ? 'b1,p0,a0,p0' : 'b1,p0,a1,p0', which);
+
+					// The templates the rows were built from are as the callback made them: h.map()
+					// hands a row's template out again while its item stays the same.
+					assert.eq(built.every(([t, exprs]) => exprs.every((expr, i) => t.exprs[i] === expr)), true, which);
+
+					bad = false;
+					hits = [];
+					render();
+					assert.eq(a.title, 't1', which);
+					b.click();
+					a.click();
+					assert.eq(hits.join(), 'b1,p1,a1,p1', which);
+					el.remove();
+				}
+});
+
+Testimony.test('Solarite.delegation.rowUpdateThrowsRawNodeList', `Known limit: in a list that also holds a raw DOM node, a row update that throws part-way leaves all of the row's delegated handlers on the old item, where listeners bound at render have been replaced as far as the throw.  The next render brings both up to date.`, () => {
+	for (let opt of [true, false]) {
+		let el = document.createElement('div');
+		document.body.append(el);
+		let hits = [], bad = false, rows = [{n: 0}];
+		let hr = document.createElement('hr');
+		let row = r => h`<p onclick=${[item => hits.push('p' + item.n), r]}><a onclick=${bad ? 'not a function' : [item => hits.push('a' + item.n), r]}>${r.n}</a><b onclick=${[item => hits.push('b' + item.n), r]}>x</b></p>`;
+		let render = () => h(el, {eventDelegation: opt})`<div>${[...rows.map(row), hr]}</div>`;
+		render();
+
+		bad = true;
+		rows = [{n: 1}];
+		let threw = false;
+		try { render(); } catch (e) { threw = true; }
+		assert.eq(threw, true);
+		assert.eq(el.querySelector('a').textContent, '1');
+		el.querySelector('b').click();
+
+		// The two would agree on 'b1,p0' if this route recorded how far the update got, as
+		// rowUpdateThrows shows the others do.
+		assert.eq(hits.join(), opt ? 'b0,p0' : 'b1,p0');
+
+		bad = false;
+		hits = [];
+		render();
+		el.querySelector('b').click();
+		assert.eq(hits.join(), 'b1,p1', 'eventDelegation=' + opt);
+		el.remove();
+	}
+});
+
+Testimony.test('Solarite.delegation.sameTaskSecondClickAttachesOnce', `A second event on a row attaches one temporary listener to the node, as the first did, and each is removed again when its event is over.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let noop = () => {};
+	h(el)`<div>${h.map([{id: 1}], r => h`<p key=${r.id}><a onclick=${[noop, r]}>x</a></p>`)}</div>`;
+	let a = el.querySelector('a');
+	let ops = [], origAdd = EventTarget.prototype.addEventListener, origRemove = EventTarget.prototype.removeEventListener;
+	EventTarget.prototype.addEventListener = function(...args) { if (this === a) ops.push('add'); return origAdd.apply(this, args); };
+	EventTarget.prototype.removeEventListener = function(...args) { if (this === a) ops.push('remove'); return origRemove.apply(this, args); };
+	try {
+		a.click();
+		assert.eq(ops.join(), 'add,remove'); // Its temporary listener was removed again once its handler returned.
+		a.click();
+		assert.eq(ops.join(), 'add,remove,add,remove'); // Nothing was left to remove first.
+	}
+	finally { EventTarget.prototype.addEventListener = origAdd; EventTarget.prototype.removeEventListener = origRemove; }
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.firstClickResolvesOnce', `A row's first event resolves its nodes once, however many of them bind that event.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let noop = () => {};
+	let rows = [{id: 1}, {id: 2}];
+	h(el)`<table><tbody>${h.map(rows, row => h`<tr key=${row.id}><td><button onclick=${[noop, row]}>1</button></td><td><button onclick=${[noop, row]}>2</button></td><td><button onclick=${[noop, row]}>3</button></td><td><button onclick=${[noop, row]}>4</button></td><td><button onclick=${[noop, row]}>5</button></td></tr>`)}</tbody></table>`;
+	let count = 0, orig = NodeGroup.prototype.resolveStampSlots;
+	NodeGroup.prototype.resolveStampSlots = function(...args) { count++; return orig.apply(this, args); };
+	try {
+		el.querySelectorAll('button')[4].click();
+		assert.eq(count, 1);
+		el.querySelectorAll('button')[0].click(); // Same row, later in the same task: nothing to resolve.
+		assert.eq(count, 1);
+	}
+	finally { NodeGroup.prototype.resolveStampSlots = orig; }
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.stoppedDispatchSweptNext', `A dispatch whose propagation a handler stopped before the event reached the last node it had a handler on leaves its temporary listeners in place; the next dispatch of that type clears them first, and the handler still runs exactly once.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let hits = 0, outer = 0;
+	h(el)`<div>${h.map([{id: 1}], r => h`<p key=${r.id} onclick=${[() => outer++, r]}><a onclick=${[(row, e) => { hits++; e.stopPropagation(); }, r]}>x</a></p>`)}</div>`;
+	let a = el.querySelector('a');
+	let ops = [], origAdd = EventTarget.prototype.addEventListener, origRemove = EventTarget.prototype.removeEventListener;
+	EventTarget.prototype.addEventListener = function(...args) { if (this === a) ops.push('add'); return origAdd.apply(this, args); };
+	EventTarget.prototype.removeEventListener = function(...args) { if (this === a) ops.push('remove'); return origRemove.apply(this, args); };
+	try {
+		a.click();
+		assert.eq(hits, 1);
+		assert.eq(outer, 0);
+		assert.eq(ops.at(-1), 'add'); // Never swept: the event never reached the row's root, the last node it had a handler on.
+		ops = [];
+		a.click();
+	}
+	finally { EventTarget.prototype.addEventListener = origAdd; EventTarget.prototype.removeEventListener = origRemove; }
+	assert.eq(hits, 2);
+	assert.eq(ops[0], 'remove'); // Cleared before anything is attached for the new event.
+	assert.eq(ops.filter(op => op === 'add').length, 1);
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.sweptAtLastHandler', `The temporary listeners of a dispatch are removed when the event reaches the last node it has a handler on, even if that handler stops propagation, so nothing waits for the event to reach the document.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let hits = [];
+	let stop = false;
+	h(el)`<div onclick=${e => { hits.push('div'); if (stop) e.stopPropagation(); }}>${h.map([{id: 1}], r =>
+		h`<p key=${r.id}><a onclick=${[() => hits.push('a'), r]}>x</a></p>`)}</div>`;
+	let a = el.querySelector('a'), div = el.firstElementChild;
+	let live = new Set(), origAdd = EventTarget.prototype.addEventListener, origRemove = EventTarget.prototype.removeEventListener;
+	EventTarget.prototype.addEventListener = function(...args) { if (this === a || this === div) live.add(this); return origAdd.apply(this, args); };
+	EventTarget.prototype.removeEventListener = function(...args) { if (this === a || this === div) live.delete(this); return origRemove.apply(this, args); };
+
+	// What a listener further up than every handler sees when the event gets to it.
+	let seenAbove = -1;
+	let above = () => seenAbove = live.size;
+	el.addEventListener('click', above);
+	try {
+		a.click();
+		assert.eq(hits.join(), 'a,div');
+		assert.eq(seenAbove, 0);
+		assert.eq(live.size, 0);
+
+		stop = true;
+		a.click();
+		assert.eq(hits.join(), 'a,div,a,div');
+		assert.eq(live.size, 0);
+	}
+	finally { EventTarget.prototype.addEventListener = origAdd; EventTarget.prototype.removeEventListener = origRemove; }
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.registeredMidDispatch', `The first delegated handler of an event type can be rendered while an event of that type is being dispatched; the event then finishes without an error, and the handler works from the next event on.`, () => {
+	// dblclick is delegatable and no other test uses it, so its dispatcher is registered here
+	// for the first time, by the render the native listener below performs mid-dispatch.
+	let el = document.createElement('div');
+	document.body.append(el);
+	let errors = [], hits = 0;
+	let onError = e => { errors.push(e.message); e.preventDefault(); };
+	window.addEventListener('error', onError);
+	let open = false;
+	let render = () => h(el)`<div><button native:ondblclick=${() => { open = true; render(); }}>open</button>${open ? h`<a ondblclick=${() => hits++}>x</a>` : ''}</div>`;
+	render();
+	try {
+		el.querySelector('button').dispatchEvent(new MouseEvent('dblclick', {bubbles: true}));
+		assert.eq(errors.join(), '');
+		el.querySelector('a').dispatchEvent(new MouseEvent('dblclick', {bubbles: true}));
+		assert.eq(hits, 1);
+		assert.eq(errors.join(), '');
+	}
+	finally { window.removeEventListener('error', onError); }
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.nonBubblingThenBubbling', `An event that doesn't bubble never reaches the handlers above its target; the listeners attached for them are cleared by the next event, which runs every handler exactly once.`, () => {
+	let hits = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	h(el)`<div onclick=${() => hits.push('div')}><button onclick=${() => hits.push('button')}>x</button></div>`;
+	let button = el.querySelector('button');
+
+	button.dispatchEvent(new MouseEvent('click'));
+	assert.eq(hits.join(), 'button');
+
+	hits = [];
+	button.click();
+	assert.eq(hits.join(), 'button,div');
+	button.click();
+	assert.eq(hits.join(), 'button,div,button,div');
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.throwingHandler', `A handler that throws doesn't keep the handlers after it from running, and leaves no temporary listener behind.`, () => {
+	let hits = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	h(el)`<div onclick=${() => { hits.push('div'); throw new Error('thrown on purpose by the test'); }}><button onclick=${() => { hits.push('button'); throw new Error('thrown on purpose by the test'); }}>x</button></div>`;
+	let button = el.querySelector('button'), div = el.firstElementChild;
+	let live = new Set(), origAdd = EventTarget.prototype.addEventListener, origRemove = EventTarget.prototype.removeEventListener;
+	EventTarget.prototype.addEventListener = function(...args) { if (this === button || this === div) live.add(this); return origAdd.apply(this, args); };
+	EventTarget.prototype.removeEventListener = function(...args) { if (this === button || this === div) live.delete(this); return origRemove.apply(this, args); };
+
+	// The browser reports an exception thrown by a listener to window.onerror rather than
+	// to the code that dispatched the event; keep those two reports out of the test's way.
+	let reported = 0;
+	let swallow = e => { reported++; e.preventDefault(); };
+	window.addEventListener('error', swallow);
+	try {
+		button.click();
+	}
+	finally {
+		window.removeEventListener('error', swallow);
+		EventTarget.prototype.addEventListener = origAdd;
+		EventTarget.prototype.removeEventListener = origRemove;
+	}
+	assert.eq(hits.join(), 'button,div');
+	assert.eq(reported, 2);
+	assert.eq(live.size, 0);
+
+	hits = [];
+	window.addEventListener('error', swallow);
+	try { button.click(); } finally { window.removeEventListener('error', swallow); }
+	assert.eq(hits.join(), 'button,div');
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.nestedRootsWalkOnce', `An event passing through nested components is walked once: the inner component's dispatcher finds the event already handled by the document's and attaches nothing more.`, () => {
+	let hits = [];
+	class D96Inner extends Solarite {
+		render() {
+			h(this)`<d-96-inner><button onclick=${() => hits.push('inner')}>x</button></d-96-inner>`;
+		}
+	}
+	D96Inner.define();
+	class D96Outer extends Solarite {
+		render() {
+			h(this)`<d-96-outer><div onclick=${() => hits.push('outer')}><d-96-inner></d-96-inner></div></d-96-outer>`;
+		}
+	}
+	D96Outer.define();
+	let outer = new D96Outer();
+	document.body.append(outer);
+	let button = outer.querySelector('button');
+	let adds = 0, orig = EventTarget.prototype.addEventListener;
+	EventTarget.prototype.addEventListener = function(...args) { if (this === button) adds++; return orig.apply(this, args); };
+	try { button.click(); } finally { EventTarget.prototype.addEventListener = orig; }
+	assert.eq(hits.join(), 'inner,outer');
+	assert.eq(adds, 1);
+
+	// Detached, the outer component's own dispatcher is the first to see the event.
+	outer.remove();
+	hits = [];
+	button.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(hits.join(), 'inner,outer');
+});
+
+Testimony.test('Solarite.delegation.orderAfterStoppedDispatch', `A listener added after a dispatch that was stopped part-way still runs before the template handler on the next event.`, () => {
+	let order = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	h(el)`<div onclick=${() => order.push('div')}><button onclick=${e => { order.push('template'); e.stopPropagation(); }}>x</button></div>`;
+	let button = el.querySelector('button');
+	button.addEventListener('click', () => order.push('first'));
+	button.click();
+	assert.eq(order.join(), 'first,template');
+
+	button.addEventListener('click', () => order.push('second'));
+	order = [];
+	button.click();
+	assert.eq(order.join(), 'first,second,template');
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.orderInNestedDispatch', `A handler that adds a listener to an ancestor and then dispatches another event of the same type: the ancestor's template handler runs after the new listener in both dispatches.`, () => {
+	let order = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	let added = false;
+	h(el)`<div onclick=${() => order.push('div')}><button onclick=${() => {
+		order.push('button');
+		if (!added) {
+			added = true;
+			el.firstElementChild.addEventListener('click', () => order.push('late'));
+			el.querySelector('i').click();
+		}
+	}}>x</button><i onclick=${() => order.push('i')}></i></div>`;
+	el.querySelector('button').click();
+	assert.eq(order.join(), 'button,i,late,div,late,div');
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.nativeListenerNestedDispatch', `A listener added with addEventListener that dispatches another event of the same type through its own element doesn't cost the outer event that element's template handler, and no temporary listener is left behind.`, () => {
+	let sorted = log => log.split(',').sort().join();
+
+	// 1. The listener sits on the last element the outer click has a handler on.
+	let [d, n] = delegatedAndNative((el, opt, log) => {
+		h(el, opt)`<div onclick=${() => log.push('div')}><b onclick=${() => log.push('b')}>b</b><i onclick=${() => log.push('i')}>i</i></div>`;
+		let nest = true;
+		el.firstElementChild.addEventListener('click', () => {
+			log.push('listener');
+			if (nest) {
+				nest = false;
+				el.querySelector('i').click();
+			}
+		});
+		assert.eq(trackListeners('click', () => el.querySelector('b').click()).size, 0);
+	});
+	// Delegated handlers run after the listener on the same element, so the order differs from
+	// handlers bound at render, but each of the two clicks reaches the div's handler.
+	assert.eq(n, 'b,div,listener,i,div,listener');
+	assert.eq(d, 'b,listener,i,listener,div,div');
+
+	// 2. The listener sits on the root of a list row, below another element with a handler.
+	[d, n] = delegatedAndNative((el, opt, log) => {
+		let rows = [{id: 1}, {id: 2}];
+		h(el, opt)`<div onclick=${() => log.push('div')}>${h.map(rows, r => h`<p key=${r.id} onclick=${[x => log.push('p' + x.id), r]}><a onclick=${[x => log.push('a' + x.id), r]}>x</a><i onclick=${[x => log.push('i' + x.id), r]}>y</i></p>`)}</div>`;
+		let p = el.querySelector('p'), nest = true;
+		p.addEventListener('click', () => {
+			log.push('listener');
+			if (nest) {
+				nest = false;
+				p.querySelector('i').click();
+			}
+		});
+		assert.eq(trackListeners('click', () => p.querySelector('a').click()).size, 0);
+	});
+	assert.eq(d, 'a1,listener,i1,listener,p1,div,p1,div');
+	assert.eq(sorted(d), sorted(n));
+
+	// 3. Three clicks deep: the listener's click runs a handler that dispatches a third, and
+	// that one passes through the listener's element while the first click is still there.
+	[d, n] = delegatedAndNative((el, opt, log) => {
+		let nest = true, deeper = true;
+		h(el, opt)`<div onclick=${() => log.push('div')}><b onclick=${() => log.push('b')}>b</b><i onclick=${() => {
+			log.push('i');
+			if (deeper) {
+				deeper = false;
+				el.querySelector('u').click();
+			}
+		}}>i</i><u onclick=${() => log.push('u')}>u</u></div>`;
+		el.firstElementChild.addEventListener('click', () => {
+			log.push('listener');
+			if (nest) {
+				nest = false;
+				el.querySelector('i').click();
+			}
+		});
+		assert.eq(trackListeners('click', () => el.querySelector('b').click()).size, 0);
+	});
+	assert.eq(d, 'b,listener,i,u,listener,div,listener,div,div');
+	assert.eq(sorted(d), sorted(n));
+});
+
+Testimony.test('Solarite.delegation.rowHandlerInvalidatedMidDispatch', `A row whose handler an earlier handler in the same dispatch re-rendered runs the handler it has when its turn comes, read from the row and not from a copy made when the event started.`, () => {
+	let hits = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	let rows = [{id: 1, n: 1}];
+	let render = () => h(el)`<div>${h.map(rows, r =>
+		h`<p key=${r.id} onclick=${[row => hits.push('p' + row.n), r]}><a onclick=${[() => { hits.push('a'); rows[0] = {id: 1, n: rows[0].n + 1}; render(); }, r]}>x</a></p>`)}</div>`;
+	render();
+	let p = el.querySelector('p'), a = p.firstChild;
+	a.click();
+	assert.eq(hits.join(), 'a,p2');
+	a.click();
+	assert.eq(hits.join(), 'a,p2,a,p3');
+
+	// Nothing was ever written onto the nodes that carry the handlers.
+	assert.eq(Object.getOwnPropertySymbols(a).length, 0);
+	assert.eq(Object.getOwnPropertySymbols(p).length, 1);
+	el.remove();
+});
+
+Testimony.test('Solarite.delegation.nestedDispatchesInARow', `A handler that dispatches two events of the same type, one after the other, doesn't cost the outer event the handlers it hasn't reached yet.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let hits = [];
+	let done = false;
+	h(el)`<div onclick=${() => hits.push('div')}><p onclick=${() => {
+		hits.push('p');
+		if (!done) {
+			done = true;
+			let i = el.querySelector('i');
+			i.click();
+			i.click();
+		}
+	}}><b>x</b></p><i onclick=${() => hits.push('i')}></i></div>`;
+	el.querySelector('b').click();
+	assert.eq(hits.join(), 'p,i,div,i,div,div');
 	el.remove();
 });
 //endregion
@@ -4141,6 +6927,19 @@ Testimony.test('Solarite.attrib.singleAndText', () => {
 	assert.eq(getHtml(a), `<r-410><div class="before  after"></div></r-410>`);
 });
 
+Testimony.test('Solarite.attrib.mixedTypesAndText', `Expressions of every type inside one attribute value are joined with its text: undefined, null, false, arrays and objects add nothing, a function is called, a Date is written as text.`, () => {
+	let el = document.createElement('div');
+	let render = (...v) => h(el)`<div title="a ${v[0]} ${v[1]} ${v[2]} ${v[3]} ${v[4]} z" lang="${v[5]}${v[6]}"></div>`;
+
+	render(1, null, undefined, true, 0, 'e', 'n');
+	assert.eq(el.firstChild.getAttribute('title'), 'a 1   true 0 z');
+	assert.eq(el.firstChild.getAttribute('lang'), 'en');
+
+	render(false, new Date(0), {b: 1}, [1, 2], () => () => 'f', 10n, '');
+	assert.eq(el.firstChild.getAttribute('title'), 'a  1970-01-01 00:00:00.000Z   f z');
+	assert.eq(el.firstChild.getAttribute('lang'), '10');
+});
+
 Testimony.test('Solarite.attrib.function', () => {
 
 	let val = 'one';
@@ -4511,6 +7310,34 @@ Testimony.test('Solarite.attrib.multiple', '', () => {
 	a.render();
 
 	assert.eq(getHtml(a), `<r-474><button class="primary">Hello</button></r-474>`);
+});
+
+Testimony.test('Solarite.attrib.multipleForms', `Whole attributes can be given as a string, an array of strings (nested or not), an object, or a function returning any of those.  Each render removes the attributes the one before it added and this one doesn't.`, () => {
+	let el = document.createElement('div');
+	let render = attribs => h(el)`<div><b ${attribs}>x</b></div>`;
+	let html = () => el.firstChild.innerHTML;
+
+	render('title="one two" data-x=1 hidden');
+	assert.eq(html(), `<b title="one two" data-x="1" hidden="">x</b>`);
+
+	render(['title="three"', ['lang=en', 'hidden']]);
+	assert.eq(html(), `<b title="three" hidden="" lang="en">x</b>`);
+
+	render({title: 'four', lang: null, hidden: false, 'data-y': 0, dir: undefined, class: ''});
+	assert.eq(html(), `<b title="four" data-y="0" class="">x</b>`);
+
+	render(() => ({title: 'five', hidden: true}));
+	assert.eq(html(), `<b title="five" hidden="true">x</b>`);
+
+	render(() => `title='six' data-z="a b"`);
+	assert.eq(html(), `<b title="six" data-z="a b">x</b>`);
+
+	render(() => null);
+	assert.eq(html(), `<b>x</b>`);
+
+	render('id=b1');
+	render(null);
+	assert.eq(html(), `<b>x</b>`);
 });
 
 Testimony.test('Solarite.attrib.ids1', () => {
@@ -5108,6 +7935,30 @@ Testimony.test('Solarite.h.element', () => {
 	assert.eq(getHtml(button), `<button>I'm a <b>better</b> button</button>`)
 })
 
+Testimony.test('Solarite.h.otherArgs', `What h() makes of an argument that is no template, string, function or element`, () => {
+	// 1. Nothing to render gives an empty template.
+	for (let empty of [null, false]) {
+		let template = h(empty);
+		assert(template instanceof Template);
+		assert.eqJson(template.html, ['']);
+	}
+
+	// 2. Anything else is refused, an object that toEl() is not building included.
+	const message = arg => {
+		try {
+			h(arg);
+		}
+		catch (e) {
+			return e.message;
+		}
+	};
+	assert.eq(message({}), 'h() does not support argument of type: object');
+	assert.eq(message(5), 'h() does not support argument of type: number');
+	assert.eq(message(0), 'h() does not support argument of type: 0');
+	assert.eq(message(true), 'h() does not support argument of type: boolean');
+	assert.eq(message(Symbol()), 'h() does not support argument of type: symbol');
+});
+
 
 //endregion
 
@@ -5625,6 +8476,102 @@ Testimony.test('Solarite.component.componentWithDynamicAttribsFromExpr2', () => 
 	flag = true;
 	a.render();
 	assert.eq(`<a-522><b-522 title="test">Title: test</b-522></a-522>`, getHtml(a));
+});
+
+Testimony.test('Solarite.component.attribsFromObjectOrString', `Whole attributes on a component, given as an object or as a string, reach its constructor and its render() as camelCase arguments along with the attributes written in the template.`, () => {
+	let constructed = [];
+	class B523 extends HTMLElement {
+		constructor(attribs) {
+			super();
+			constructed.push(JSON.stringify(attribs));
+		}
+		render(attribs) {
+			this.attribs = attribs;
+		}
+	}
+	customElements.define('b-523', B523);
+
+	let make = attribs => {
+		let el = document.createElement('div');
+		h(el)`<div><b-523 name="n" ${attribs}></b-523></div>`;
+		return el.querySelector('b-523');
+	};
+
+	let b = make({'max-size': 3, title: 't', open: true});
+	assert.eq(constructed[0], `{"name":"n","maxSize":3,"title":"t","open":true}`);
+	assert.eq(JSON.stringify(b.attribs), constructed[0]);
+	assert.eq(b.getAttribute('max-size'), '3');
+
+	b = make(`max-size=4 title="t two" open`);
+	assert.eq(constructed[1], `{"name":"n","maxSize":"4","title":"t two","open":""}`);
+	assert.eq(JSON.stringify(b.attribs), constructed[1]);
+	assert.eq(b.getAttribute('max-size'), '4');
+
+	// A value that stands for no attributes passes nothing.
+	for (let other of [false, null, undefined, ''])
+		assert.eq(JSON.stringify(make(other).attribs), `{"name":"n"}`);
+	assert.eq(constructed.length, 6);
+});
+
+Testimony.test('Solarite.component.definedLater', `A component whose tag isn't defined yet is built when customElements.define() is called, from the expressions of the latest render.  One warning is logged however many renders happen meanwhile, and a render that runs straight after the define builds it at once, and only once.`, async () => {
+	let warnings = 0;
+	let warn = console.warn;
+	console.warn = (...args) => {
+		if ((args[0] + '').includes('<late-52'))
+			warnings++;
+		else
+			warn(...args);
+	};
+	try {
+		let constructed = [];
+		const define = tag => customElements.define(tag, class extends HTMLElement {
+			constructor(attribs) {
+				super();
+				constructed.push(tag + ':' + attribs?.name);
+			}
+			render(attribs) {
+				h(this)`<b>${attribs?.name}</b>`;
+			}
+		});
+
+		// 1. Rendered three times before it is defined.
+		let el = document.createElement('div');
+		let render = name => h(el)`<div><late-524 name=${name}></late-524></div>`;
+		render('one');
+		render('two');
+		render('three');
+		assert.eq(warnings, 1);
+		assert.eq(el.querySelector('late-524'), null);
+		assert.eq(constructed.length, 0);
+		define('late-524');
+		await customElements.whenDefined('late-524');
+		await Promise.resolve();
+		assert.eq(constructed.join(), 'late-524:three');
+		assert.eq(getHtml(el), `<div><div><late-524 name="three"><b>three</b></late-524></div></div>`);
+
+		// It renders the usual way from then on.
+		render('four');
+		assert.eq(constructed.length, 1);
+		assert.eq(getHtml(el), `<div><div><late-524 name="four"><b>four</b></late-524></div></div>`);
+		assert.eq(warnings, 1);
+
+		// 2. Rendered again straight after the define, before the wait is over.
+		let el2 = document.createElement('div');
+		let render2 = name => h(el2)`<div><late-525 name=${name}></late-525></div>`;
+		render2('one');
+		assert.eq(warnings, 2);
+		define('late-525');
+		render2('two');
+		assert.eq(constructed.join(), 'late-524:three,late-525:two');
+		await customElements.whenDefined('late-525');
+		await Promise.resolve();
+		assert.eq(constructed.join(), 'late-524:three,late-525:two');
+		assert.eq(getHtml(el2), `<div><div><late-525 name="two"><b>two</b></late-525></div></div>`);
+		assert.eq(warnings, 2);
+	}
+	finally {
+		console.warn = warn;
+	}
 });
 
 Testimony.test('Solarite.component.nested', () => {
@@ -6357,6 +9304,28 @@ Testimony.test('Solarite.events.classicWithExpr', () => {
 	a.remove();
 });
 
+Testimony.test('Solarite.events.classicWithExprs', `An event attribute written as text with several expressions in it stays a plain attribute, rewritten when an expression changes, and other handlers of the same template are bound as usual.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let clicks = 0;
+	let render = (a, b) => h(el)`<input data-total="0" oninput="this.dataset.total = ${a} + ${b}" onclick=${() => clicks++}>`;
+
+	render(2, 3);
+	let input = el.firstChild;
+	assert.eq(input.getAttribute('oninput'), 'this.dataset.total = 2 + 3');
+	input.dispatchEvent(new Event('input'));
+	assert.eq(input.dataset.total, '5');
+
+	render(4, 5);
+	assert.eq(input.getAttribute('oninput'), 'this.dataset.total = 4 + 5');
+	input.dispatchEvent(new Event('input'));
+	assert.eq(input.dataset.total, '9');
+
+	input.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(clicks, 1);
+	el.remove();
+});
+
 Testimony.test('Solarite.events.rebind', 'Ensure function is unbound/rebound on render', () => {
 
 	let assignCalls = 0;
@@ -6409,6 +9378,60 @@ Testimony.test('Solarite.events.args', 'Ensure event function args are received'
 	a.firstChild.value = '2';
 	a.firstChild.dispatchEvent(new Event('input', {bubbles: true}));
 	assert.eq(a.count, '2');
+});
+
+Testimony.test('Solarite.events.noHandlerProperty', `An event that elements have no on* property for is still bound from its on* attribute: focusin and focusout have none in any browser, and the touch events have none on a machine without a touch screen.  The handler runs when the event arrives and is not called while rendering.`, () => {
+	// A template's attribute names are fixed text, so each event gets a template of its own.
+	const renders = {
+		focusin: (el, o, a, b) => h(el, o)`<p onfocusin=${a}><input onfocusin=${b}></p>`,
+		focusout: (el, o, a, b) => h(el, o)`<p onfocusout=${a}><input onfocusout=${b}></p>`,
+		touchstart: (el, o, a, b) => h(el, o)`<p ontouchstart=${a}><input ontouchstart=${b}></p>`,
+		touchmove: (el, o, a, b) => h(el, o)`<p ontouchmove=${a}><input ontouchmove=${b}></p>`,
+		touchend: (el, o, a, b) => h(el, o)`<p ontouchend=${a}><input ontouchend=${b}></p>`,
+		touchcancel: (el, o, a, b) => h(el, o)`<p ontouchcancel=${a}><input ontouchcancel=${b}></p>`
+	};
+	for (let eventDelegation of [true, false])
+		for (let type in renders) {
+			let el = document.createElement('div');
+			document.body.append(el);
+			let log = [];
+			let handler = (suffix, ev) => log.push(ev.type + suffix);
+			renders[type](el, {eventDelegation}, [handler, 1], ev => handler(2, ev));
+			assert.eq(log.length, 0, type + ': not called by the render');
+			assert.eq(el.querySelector('input').hasAttribute('on' + type), false);
+
+			el.querySelector('input').dispatchEvent(new Event(type, {bubbles: true}));
+			assert.eq(log.join(), type + '2,' + type + '1', 'eventDelegation=' + eventDelegation);
+			el.remove();
+		}
+});
+
+Testimony.test('Solarite.events.stringInRowThrows', `A string given to an event attribute that is bound when the template renders (an event that isn't delegated, or any event written with native:) is a mistake wherever it is written.  In a list row it throws the same error as outside one, instead of being written to the row as an attribute, where the browser would run an on* value as an inline handler.`, () => {
+	// A template's attribute names are fixed text, so each attribute gets templates of its own:
+	// one outside a list, one as the row of a list.
+	const renders = {
+		onfocus: [
+			(el, v) => h(el)`<p onfocus=${v}>x</p>`,
+			(el, v) => h(el)`<ul>${[1, 2].map(n => h`<li onfocus=${v}>${n}</li>`)}</ul>`
+		],
+		'native:onclick': [
+			(el, v) => h(el)`<p native:onclick=${v}>x</p>`,
+			(el, v) => h(el)`<ul>${[1, 2].map(n => h`<li native:onclick=${v}>${n}</li>`)}</ul>`
+		]
+	};
+	for (let name in renders)
+		for (let render of renders[name]) {
+			let el = document.createElement('div');
+			assert.throws(() => render(el, 'window.stringHandlerRan = true'), name + '=${...} is not a function');
+			assert.eq([...el.querySelectorAll('*')].some(node => node.hasAttribute(name)), false, name);
+
+			// A function in the same place is bound as a listener on the element itself.
+			el = document.createElement('div');
+			let hits = 0;
+			render(el, () => hits++);
+			el.querySelector('p, li').dispatchEvent(new Event(name.split('on')[1])); // Doesn't bubble.
+			assert.eq(hits, 1, name);
+		}
 });
 
 Testimony.test('Solarite.events.onComponent', 'Event attrib on root component', () => {
@@ -7018,6 +10041,123 @@ Testimony.test('Solarite.jsx.arrayChildren', () => {
     assert.eq(lis.length, 2);
     assert.eq(lis[0].textContent, 'A');
     assert.eq(lis[1].textContent, 'B');
+});
+
+Testimony.test('Solarite.jsx.shapes', `The html of a JSX element is what the same element written as a tagged template would have`, () => {
+	// What a tagged template hands its tag function.
+	const strings = htmlStrings => [...htmlStrings];
+	let a = 1, b = 2, c = 3;
+
+	// 1. No attributes: zero, one and several children.
+	assert.eqJson(h('p', null).html, strings`<p></p>`);
+	assert.eqJson(h('p', null, a).html, strings`<p>${a}</p>`);
+	assert.eqJson(h('p', null, a, b, c).html, strings`<p>${a}${b}${c}</p>`);
+
+	// 2. Attributes, with and without children.
+	assert.eqJson(h('p', {title: a}).html, strings`<p title=${a}></p>`);
+	assert.eqJson(h('p', {title: a, lang: b}).html, strings`<p title=${a} lang=${b}></p>`);
+	assert.eqJson(h('p', {title: a, lang: b}, c).html, strings`<p title=${a} lang=${b}>${c}</p>`);
+	assert.eqJson(h('p', {title: a, lang: b, dir: c}, a, b).html, strings`<p title=${a} lang=${b} dir=${c}>${a}${b}</p>`);
+
+	// 3. A static id is part of the html, wherever it is among the props.
+	assert.eqJson(h('p', {id: 'x'}).html, strings`<p id="x"></p>`);
+	assert.eqJson(h('p', {title: a, id: 'x', lang: b}, c).html, strings`<p id="x" title=${a} lang=${b}>${c}</p>`);
+
+	// 4. The expressions line up with the holes: attributes first, then children.
+	assert.eqJson(h('p', {title: a, id: 'x', lang: b}, c).exprs, [a, b, c]);
+
+	// 5. A void element has no end tag, and children given to it are dropped.
+	assert.eqJson(h('br', null).html, strings`<br>`);
+	assert.eqJson(h('input', {value: a, type: b}).html, strings`<input value=${a} type=${b}>`);
+	assert.eqJson(h('IMG', {id: 'x', src: a}, b).html, strings`<IMG id="x" src=${a}>`);
+	assert.eqJson(h('IMG', {id: 'x', src: a}, b).exprs, [a]);
+
+	// 6. A fragment is nothing but its child holes.
+	assert.eqJson(h(Fragment, null).html, ['']);
+	assert.eqJson(h(Fragment, null, a, b, c).html, strings`${a}${b}${c}`);
+	assert.eqJson(h(Fragment, null, a, b, c).exprs, [a, b, c]);
+
+	// 7. Whatever a static id holds stays inside its own string.
+	assert.eqJson(h('p', {id: 'a\0b', title: a}, b).html, ['<p id="a\0b" title=', '>', '</p>']);
+});
+
+Testimony.test('Solarite.jsx.staticId', `A string id is written into the html, escaped; any other id is an expression`, () => {
+	let template = h('p', {id: 'a"b&c'});
+	assert.eqJson(template.html, ['<p id="a&quot;b&amp;c"></p>']);
+	assert.eqJson(template.exprs, []);
+	assert.eq(template.render().id, 'a"b&c');
+
+	assert.eqJson(h('p', {'data-id': 'a"b'}).html, ['<p data-id="a&quot;b"></p>']);
+
+	template = h('p', {id: 5});
+	assert.eqJson(template.html, ['<p id=', '></p>']);
+	assert.eqJson(template.exprs, [5]);
+});
+
+Testimony.test('Solarite.jsx.key', `A JSX key reaches the Template from the props or from the runtime's own argument, and is never an attribute`, () => {
+	// 1. Classic factory: the key is among the props.
+	let li = h('li', {key: 5, title: 't'}, 'x');
+	assert.eq(li.key, 5);
+	assert.eqJson(li.html, ['<li title=', '>', '</li>']);
+	assert.eqJson(li.exprs, ['t', 'x']);
+	assert.eq(h('li', {title: 't'}).key, undefined);
+	assert.eq(h('li', null).key, undefined);
+
+	// 2. Automatic runtime: the key is an argument of its own, and wins over one left in the props.
+	assert.eq(jsx('li', {title: 't'}, 7).key, 7);
+	assert.eq(jsx('li', {key: 5}, 7).key, 7);
+	assert.eq(jsx('li', {key: 5}).key, 5);
+	assert.eqJson(jsx('li', {key: 5}, 7).html, ['<li></li>']);
+	assert.eq(jsxs('li', {key: 5, children: ['a', 'b']}).key, 5);
+
+	// 3. A function component is not shown its key; the Template it returns gets it.
+	let seen;
+	const Row = props => {
+		seen = props;
+		return h('li', null, props.label);
+	};
+	assert.eq(h(Row, {key: 3, label: 'a'}).key, 3);
+	assert.eqJson(seen, {label: 'a'});
+	assert.eq(jsx(Row, {key: 3, label: 'a'}, 9).key, 9);
+	assert.eq(h(Row, {label: 'a'}).key, undefined);
+
+	// A key the component set itself stays when none is given.
+	const Keyed = () => h('li', {key: 'own'});
+	assert.eq(h(Keyed, null).key, 'own');
+
+	// 4. A component class becomes its tag, keyed the same way.
+	class JsxKeyRow extends HTMLElement {}
+	customElements.define('jsx-key-row', JsxKeyRow);
+	let row = h(JsxKeyRow, {key: 4, title: 't'});
+	assert.eq(row.key, 4);
+	assert.eqJson(row.html, ['<jsx-key-row title=', '></jsx-key-row>']);
+	assert.eq(jsx(JsxKeyRow, {key: 4}, 8).key, 8);
+
+	// 5. A fragment has no element to key.
+	assert.eq(h(Fragment, {key: 1}, 'a').key, undefined);
+	assert.eq(jsx(Fragment, {children: 'a'}, 1).key, undefined);
+});
+
+Testimony.test('Solarite.jsx.factoryArgs', `h(tag, props, ...children) is JSX only when the props argument is there`, () => {
+	// 1. Props are null for an element without attributes, as the transform writes it.
+	assert.eqJson(h('b', null).html, ['<b></b>']);
+	assert.eqJson(h('b', {}).html, ['<b></b>']);
+	assert.eqJson(h('b', null, 'x').exprs, ['x']);
+
+	// 2. A string alone, or followed by something that is not props, is html.
+	assert.eqJson(h('b').html, ['b']);
+	assert.eqJson(h('b', undefined).html, ['b']);
+	assert.eqJson(h('b', 'x').html, ['b']);
+	assert.eqJson(h('b', 1).exprs, []);
+
+	// 3. A String object is taken as a string either way.
+	assert.eqJson(h(new String('b'), null).html, ['<b></b>']);
+
+	// 4. A component or a fragment with no props at all.
+	const Count = props => h('i', null, Object.keys(props).length);
+	assert.eqJson(h(Count).exprs, [0]);
+	assert.eqJson(h(Count, null).exprs, [0]);
+	assert.eqJson(h(Fragment).html, ['']);
 });
 
 //endregion
@@ -7822,7 +10962,8 @@ Testimony.test('Solarite.detach.eventsSurviveReattach', `Delegated event handler
 	let el = document.createElement('div');
 	document.body.append(el);
 
-	// Delegated handlers ride on per-node expandos; detach/reattach must not lose them.
+	// A row's delegated handlers are found through the pointer on its root element;
+	// detach/reattach must not lose it.
 	let clicked = [];
 	let rows = new Array(600);
 	for (let i=0; i<600; i++)

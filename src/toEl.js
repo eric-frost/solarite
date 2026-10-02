@@ -41,12 +41,17 @@ export default function toEl(arg) {
 		let obj = arg;
 
 		if (obj.constructor.name !== 'Object')
-			throw new Error(`Solarite web component class ${obj.constructor?.name} must extend HTMLElement.`);
+			throw new Error(`Solarite web component class ${obj.constructor.name} must extend HTMLElement.`);
 
 		// Normal path
 		if (!Globals.objToEl.has(obj)) {
 			Globals.objToEl.set(obj, null);
-			obj[renderF](); // Calls the Special rebound render path above, when the render function calls h(this)
+
+			// The object's render() calls h(this), which is form 6 of h(): it renders the template
+			// to a new element and leaves that element in objToEl.  The call can be written
+			// plainly, because the build never renames `render`: build.js lists it under
+			// mangle.properties.reserved, and Dist.toEl.object checks the minified build.
+			obj.render();
 			let el = Globals.objToEl.get(obj);
 			Globals.objToEl.delete(obj);
 
@@ -72,7 +77,3 @@ export default function toEl(arg) {
 
 	throw new Error('toEl() does not support argument of type: ' + (arg ? typeof arg : arg));
 }
-
-
-// Trick to prevent minifier from renaming this function.
-let renderF = 'render';

@@ -7,39 +7,6 @@ import MappedList from "./MappedList.js";
 import Selector from "./Selector.js";
 
 /**
- * Convert strings to HTMLNodes.
- * Using h`...` as a tag will always create a Template.
- * Using h() as a function() will always create a DOM element.
- *
- * Features beyond what standard js tagged template strings do:
- * 1. h`` sub-expressions
- * 2. functions, nodes, and arrays of nodes as sub-expressions.
- * 3. html-escape all expressions by default, unless wrapped in h()
- * 4. event binding
- * 5. TODO:  list more
- *
- * General rule:
- * If h() is a function with null or an HTMLElement as its first argument create a Node.
- * Otherwise create a template
- *
- * Currently supported:
- *
- * Create Tempataes
- * 1. h`<b>Hello</b> ${'World'}!`      // Create Template that can later be used to create nodes.
- * 2. h('<b>Hello</b><u>Goodbye</u>'); // Create Template from string, that can later be used to create nodes.
- *
- * Add children to an element.
- * 3. h(el, h`<b>${'Hi'}</b>`, ?options)
- * 4. h(el, ?options)`<b>${'Hi'}</b>`   // typical path used in render(). Create template and render its nodes to el.
- *
- * Create top-level element
- * 5. h()`Hello<b>${'World'}!</b>`
- *
- * 6. h(string, object, ...)           // Used for JSX
- * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
- * @param exprs {*[]|string|Template|Object}
- * @return {Node|HTMLElement|Template|Function} */
-/**
  * Like h`...` but the fragment is parsed in the SVG namespace.
  * Required for nested SVG fragments, since they're parsed standalone without an <svg> ancestor:
  * h`<svg>${svg`<circle r="1"/>`}</svg>`
@@ -59,18 +26,65 @@ const renderTemplateKey = Symbol('solariteRender');
 const noArg = Symbol();
 
 // The /** @type {*} */ cast on the default keeps TypeScript from inferring the parameter as
-// `symbol` from noArg: TS can't parse the closure-style @param type above (function() without
+// `symbol` from noArg: TS can't parse the closure-style @param type below (function() without
 // a return type under noImplicitAny), falls back to the default's type, and then flags every
 // h(this) / h`` call in the codebase as an error.  JetBrains reads the @param fine either way.
+/**
+ * Convert strings to HTMLNodes.
+ * Using h`...` as a tag will always create a Template.
+ * Using h() as a function() will always create a DOM element.
+ *
+ * Features beyond what standard js tagged template strings do:
+ * 1. h`` sub-expressions
+ * 2. functions, nodes, and arrays of nodes as sub-expressions.
+ * 3. html-escape all expressions by default, unless wrapped in h()
+ * 4. event binding
+ * 5. TODO:  list more
+ *
+ * General rule:
+ * If h() is a function with null or an HTMLElement as its first argument create a Node.
+ * Otherwise create a template
+ *
+ * Currently supported:
+ *
+ * Create Templates
+ * 1. h`<b>Hello</b> ${'World'}!`      // Create Template that can later be used to create nodes.
+ * 2. h('<b>Hello</b><u>Goodbye</u>'); // Create Template from string, that can later be used to create nodes.
+ *
+ * Add children to an element.
+ * 3. h(el, h`<b>${'Hi'}</b>`, ?options)
+ * 4. h(el, ?options)`<b>${'Hi'}</b>`   // typical path used in render(). Create template and render its nodes to el.
+ *
+ * Create top-level element
+ * 5. h()`Hello<b>${'World'}!</b>`
+ *
+ * 6. h(string, object, ...)           // Used for JSX
+ * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
+ * @param exprs {*[]|string|Template|Object}
+ * @return {Node|HTMLElement|Template|Function} */
 export default function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 
 	// 1. Tagged template: h`<div>...</div>`
-	if (Array.isArray(htmlStrings)) {
+	// Every other form lives in hOther(), so that this function is nothing but this test.  A
+	// JavaScript engine promotes a function to faster code according to how much of the function
+	// each call runs, and this branch is a few bytes of what used to be a very long function, so
+	// the row template of a list had to be called several thousand times before it was promoted.
+	// As a function of its own it is promoted within a few hundred calls.
+	if (Array.isArray(htmlStrings))
 		return new Template(htmlStrings, exprs);
-	}
+
+	return hOther(htmlStrings, exprs);
+}
+
+/**
+ * Every form of h() other than the tagged template.  See the numbered list above h().
+ * @param htmlStrings {?HTMLElement|string|function():Template|{render:function()}|symbol}
+ * @param exprs {*[]} The rest of h()'s arguments.
+ * @return {Node|HTMLElement|Template|Function} */
+function hOther(htmlStrings, exprs) {
 
 	// 2. String to template, or JSX factory form h(tag, props, ...children)
-	else if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {
+	if (typeof htmlStrings === 'string' || htmlStrings instanceof String) {
 		let tagOrHtml = htmlStrings;
 
 		// 2a. JSX classic factory: h("tag", {props}, ...children)
@@ -187,8 +201,12 @@ export default function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
  * Solid's <For> and React's keyed lists use.  It takes no deps — the object identity IS
  * the dependency — so the call site stays a plain list with no caching code.
  *
- * Each item must be a distinct object, and an object must appear in only one h.map.
- * Non-object items (strings, numbers) are never cached and rebuild every render.
+ * A row is recognized by comparing its item with === against the items the same list drew
+ * last time.  Nothing is remembered about an item outside the list it is drawn in, so one
+ * object can appear in several h.map() lists.  Within one list each item should be distinct:
+ * two positions holding the same item cannot be told apart once the list is reordered.
+ * Items that are strings or numbers are compared the same way, so one equal to an item of
+ * the last render keeps its row.
  *
  * h.immutableMap is the same function under a longer, self-documenting name; use whichever
  * reads better: h.map for brevity, h.immutableMap to flag the immutability contract.
@@ -243,5 +261,5 @@ h.immutableMap = h.map;
  *
  * @param key {*} The initially selected key, or null for none.
  * @return {Selector} */
-h.selector = (key = null) => new Selector(key);
+h.selector = key => new Selector(key);
 

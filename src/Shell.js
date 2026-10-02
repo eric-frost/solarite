@@ -56,6 +56,18 @@ export default class Shell {
 	 * unchanged row costs one field read instead of a call. */
 	needsRefresh = false;
 
+	/** @type {boolean} True once a NodeGroup made from this Shell has held a raw DOM node given
+	 * as an expression, in a place of its own or in a NodeGroup inside it.  A node can be in only
+	 * one place, so the next NodeGroup that is given the same node takes it away, and nothing
+	 * tells the one it was taken from.  That is harmless while both are being rendered, because
+	 * the one that lost the node is given something else in the same render.  A NodeGroup that
+	 * was removed and kept for reuse is not being rendered, though: it would come back still
+	 * recording the node as its own, be given that node again, find nothing changed and show an
+	 * empty place.  So PathToNodes discards a removed NodeGroup of such a Shell, as it does a
+	 * keyed row, and builds a new one when one is needed.  Sticky, and shared by every NodeGroup
+	 * of the Shell, which can only cost a rebuild that wasn't needed. */
+	heldRawNodes = false;
+
 	/** @type {boolean} True if this Shell has any ids, styles, or scripts. */
 	hasEmbeds = false;
 
@@ -104,18 +116,47 @@ export default class Shell {
 	 * doesn't load the Path object to find its slot. */
 	stampSlot;
 
-	/** @type {?Path[]} Per-path extra the stamp program needs: the event stamper for op 3
-	 * (it carries delegatedKey and eventName), the attribute name for op 4, null otherwise. */
+	/** @type {?Array} Per-path extra the stamp program needs: the attribute name for op 4, and
+	 * for a whole-parent text child (op 2) the index in a row's NodeGroup.stampSlots() array
+	 * where the row keeps that child's Text node.  Null otherwise. */
 	stampAux;
 
-	/** @type {?string[]} The delegatable event names this shell binds, so a loop can register
-	 * their dispatchers once for the whole run of rows instead of testing every bound node. */
+	/** @type {?string[]} The delegatable event names this shell binds, each listed once, so a
+	 * loop can register their dispatchers once for the whole run of rows instead of testing
+	 * every bound node. */
 	stampEventNames;
 
 	/** @type {?Uint8Array} Per-path flags the in-place rewrite loop needs, so it reads one byte
 	 * from a flat array instead of two properties from a Path object it otherwise wouldn't
 	 * touch.  Bit 1 = the path binds a live HTML property, bit 2 = it's a whole-parent child. */
 	stampFlags;
+
+	/** @type {?HTMLElement} A copy of the root element with an empty text node inside every
+	 * whole-parent child marker.  A new row writes its primitive child text into those text
+	 * nodes and clones this instead of docFrag, so the clone carries the text natively and
+	 * nothing has to reach into the clone afterwards.  Every read of a clone's child creates
+	 * a JS wrapper for that node, and the wrappers cost as much to make, and later to
+	 * collect, as the writes they were made for.  See NodeGroup's constructor. */
+	stampMaster;
+
+	/** @type {?Text[]} The master's text nodes, in nodesPathIdx order. */
+	stampMasterTexts;
+
+	/** @type {?HTMLElement[]} The master's whole-parent markers, the elements those text nodes
+	 * sit in, in the same order. */
+	stampMasterCells;
+
+	/** @type {?boolean[]} Whether each master text node is currently detached from its cell,
+	 * which is how a row with an empty-string child is cloned without an empty text node. */
+	stampMasterEmpty;
+
+	/** @type {?Object<string, int[]>} For each delegatable event name this shell binds, a flat
+	 * list of [path index, marker slot] pairs.  A row's delegated handlers are never written
+	 * onto its nodes; when an event starts, the dispatcher finds the row through its root
+	 * element, looks the event's targets up here, and reads the handlers from the row's
+	 * template.  Null when the shell binds no delegatable events, and for every shell that
+	 * isn't stampable. */
+	stampEventsByType = null;
 
 	/**
 	 * Create the nodes but without filling in the expressions.
@@ -140,27 +181,20 @@ export default class Shell {
 		// 1.  Add placeholders
 		let htmlWithPlaceholders = Shell.addPlaceholders(html);
 
+		// The html is never empty here: an html of one empty string took the text-node exit above,
+		// and any other html holds text or at least one placeholder.
 		let template = Globals.doc.createElement('template'); // Using a single global template won't keep the nodes as children of the DocumentFragment.
-		if (htmlWithPlaceholders) {
-			// Wrap in <svg> so the parser's foreign-content rules create the nodes in the SVG namespace,
-			// then lift the children back out so the fragment has no wrapper.
-			if (svgMode) {
-				template.innerHTML = '<svg>' + htmlWithPlaceholders + '</svg>';
-				let svgEl = template.content.firstChild;
-				let frag = Globals.doc.createDocumentFragment();
-				while (svgEl.firstChild)
-					frag.append(svgEl.firstChild);
-				this.docFrag = frag;
-			}
-			else {
-				template.innerHTML = htmlWithPlaceholders;
-				this.docFrag = template.content;
-			}
+		this.docFrag = template.content;
+
+		// Wrap in <svg> so the parser's foreign-content rules create the nodes in the SVG namespace,
+		// then lift the children back out so the fragment has no wrapper.
+		if (svgMode) {
+			template.innerHTML = '<svg>' + htmlWithPlaceholders + '</svg>';
+			this.docFrag = Globals.doc.createDocumentFragment();
+			this.docFrag.append(...template.content.firstChild.childNodes);
 		}
-		else { // Create one text node, so shell isn't empty and NodeGroups created from it have something to point the startNode and endNode at.
-			template.content.append(Globals.doc.createTextNode(''))
-			this.docFrag = template.content;
-		}
+		else
+			template.innerHTML = htmlWithPlaceholders;
 
 		// 1b. Remove whitespace-only text nodes inside table-structure elements.
 		// The parser foster-parents non-whitespace text out of tables, and whitespace-only
@@ -173,14 +207,16 @@ export default class Shell {
 
 		// 2. Find placeholders
 		let node;
-		let toRemove = [];
-		let placeholdersUsed = 0;
-		const walker = Globals.doc.createTreeWalker(this.docFrag, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT);
+		let toRemove = null; // A placeholder node the walker has not moved off yet.
+
+		// The walker needs no filter: a parsed fragment holds only elements, text and comments.
+		const walker = Globals.doc.createTreeWalker(this.docFrag);
 		while (node = walker.nextNode()) {
 
-			// Remove previous elements after each iteration, so paths will still be calculated correctly.
-			toRemove.map(el => el.remove());
-			toRemove = [];
+			// Remove the placeholder the previous step was done with, now that the walker has moved
+			// off it, so paths will still be calculated correctly.  Each step leaves at most one,
+			// and removing a node that is already out does nothing.
+			toRemove?.remove();
 			
 			// Replace attributes
 			if (node.nodeType === 1) {
@@ -189,18 +225,23 @@ export default class Shell {
 				const componentAttribPaths = [];
 
 				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes with placeholders as we go.
+					let name = attr.name, path;
+
+					// The value split around its expressions, and null in place of that when the
+					// whole value is one expression.
+					let parts = attr.value.split(/[\ue000-\uf8ff]/g);
+					let nonEmptyParts = (parts.length === 2 && !parts[0] && !parts[1]) ? null : parts;
 
 					// The reserved key attribute identifies this template within a keyed list.
 					// It's consumed here and never written to the DOM or passed to components.
-					if (attr.name === 'key') {
+					if (name === 'key') {
 
 						// These three are template-authoring mistakes, and every one of them fails SILENTLY if
 						// it isn't caught: the reconciler would key rows on a garbage value and reuse the wrong
 						// DOM, with nothing reported.  So they ship, unlike the assertions elsewhere in this
 						// file.  The cost is one regex split per unique template \u2014 never per render, never per
 						// row \u2014 which is why they are affordable to keep.
-						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
-						if (parts.length !== 2 || parts[0] !== '' || parts[1] !== '')
+						if (nonEmptyParts)
 							throw new Error(`Solarite: key must be one whole expression.`);
 						if (node.parentNode !== this.docFrag)
 							throw new Error(`Solarite: key must be on a top-level element.`);
@@ -209,77 +250,66 @@ export default class Shell {
 
 						this.keyIndex = attr.value.charCodeAt(0) - attribPlaceholder;
 
-						let path = new PathToKey(null, node);
-						this.paths.push(path);
-						if (isComponent)
-							componentAttribPaths.push(path); // Keeps PathToComponent's contiguous expression slices aligned; it skips PathToKey when building args.
-
-						placeholdersUsed++;
-						node.removeAttribute('key');
-						continue;
+						// On a component the key still joins componentAttribPaths below, which keeps
+						// PathToComponent's contiguous expression slices aligned; it skips PathToKey
+						// when building args.
+						path = new PathToKey(null, node);
 					}
 
 					// One or more whole attributes
-					let matches = attr.name.match(/^[\ue000-\uf8ff]$/)
-					if (matches) {
-						let path = new PathToAttribs(null, node);
-						this.paths.push(path);
-						if (isComponent) {
-							path.isComponentAttrib = true;
-							componentAttribPaths.push(path);
-						}
-
-						placeholdersUsed ++;
-						node.removeAttribute(matches[0]); // TODO: Is this necessary?
+					else if (name.match(/^[\ue000-\uf8ff]$/)) {
+						path = new PathToAttribs(null, node);
+						nonEmptyParts = null; // So the placeholder attribute is removed below.
 					}
 
 					// Just the attribute value.
-					else {
-						let parts = attr.value.split(/[\ue000-\uf8ff]/g);
-						if (parts.length > 1) {
-							let nonEmptyParts = (parts.length === 2 && !parts[0].length && !parts[1].length) ? null : parts;
-
-							let isEvent = Util.isEvent(attr.name);
-							let path = isEvent
-								? new PathToEvent(null, node, attr.name, nonEmptyParts)
-								: new PathToAttribValue(null, node, attr.name, nonEmptyParts);
-							path.isHtmlProperty = Util.isHtmlProp(node, attr.name);
-							this.paths.push(path);
-							if (isComponent) {
-								path.isComponentAttrib = true;
-								componentAttribPaths.push(path);
-							}
-
-							placeholdersUsed += parts.length - 1;
-							// An attribute whose whole value is one expression is removed from the shell:
-							// its stamped value is always the empty string, so every clone would carry a
-							// useless empty attribute that costs storage on creation and a slot in the
-							// element's attribute list forever, and apply() writes the real value anyway
-							// (a missing attribute reads back as '', so an empty expression still writes
-							// nothing).  Event attributes must be removed for the same reason plus a
-							// stricter one: an empty onclick="" violates a strict CSP when the event fires.
-							// In svgMode, setting typed SVG attributes (viewBox, r, etc.) with the
-							// placeholders stripped out makes the browser log parse errors, both here and
-							// when the fragment is cloned, so those are removed whether or not they're whole.
-							if (svgMode || !nonEmptyParts)
-								node.removeAttribute(attr.name);
-
-							// setAttribute throws only when the template author wrote a name the browser
-							// refuses, such as one holding a space or a quote.  That name comes from a tagged
-							// template literal's static text, so it is a typo that surfaces the first time the
-							// template renders and can never appear later or for only some users.  Development
-							// therefore wraps the call to rethrow with the attribute name and the tag included,
-							// because the browser's own DOMException names neither and leaves the author
-							// hunting.  Production ships the bare call and lets that DOMException through: the
-							// friendlier wording is only worth its bytes to whoever can still fix the template.
-							else /*#IFDEBUG*/try {/*#ENDIF*/
-								node.setAttribute(attr.name, parts.join(''));
-							/*#IFDEBUG*/}
-							catch (e) {
-								throw new Error(`Error setting attribute "${attr.name}" on node <${node.tagName}>: ${e.message}`);
-							}/*#ENDIF*/
-						}
+					else if (parts.length > 1) {
+						let isEvent = Util.isEvent(name);
+						path = isEvent
+							? new PathToEvent(null, node, name, nonEmptyParts)
+							: new PathToAttribValue(null, node, name, nonEmptyParts);
+						// An event attribute is never a live property, though elements do have an
+						// onclick property: counting it as one would mark every row that binds an
+						// event on a plain element (<i>, <section>, <em>...) as needing a visit on
+						// every render, which turns the list shortcuts off for the whole list.
+						path.isHtmlProperty = !isEvent && Util.isHtmlProp(node, name);
 					}
+					else
+						continue;
+
+					this.paths.push(path);
+					if (isComponent) {
+						path.isComponentAttrib = true;
+						componentAttribPaths.push(path);
+					}
+
+					// An attribute whose whole value is one expression is removed from the shell:
+					// its stamped value is always the empty string, so every clone would carry a
+					// useless empty attribute that costs storage on creation and a slot in the
+					// element's attribute list forever, and apply() writes the real value anyway
+					// (a missing attribute reads back as '', so an empty expression still writes
+					// nothing).  Event attributes must be removed for the same reason plus a
+					// stricter one: an empty onclick="" violates a strict CSP when the event fires.
+					// In svgMode, setting typed SVG attributes (viewBox, r, etc.) with the
+					// placeholders stripped out makes the browser log parse errors, both here and
+					// when the fragment is cloned, so those are removed whether or not they're whole.
+					if (svgMode || !nonEmptyParts)
+						node.removeAttribute(name);
+
+					// setAttribute throws only when the template author wrote a name the browser
+					// refuses, such as one holding a space or a quote.  That name comes from a tagged
+					// template literal's static text, so it is a typo that surfaces the first time the
+					// template renders and can never appear later or for only some users.  Development
+					// therefore wraps the call to rethrow with the attribute name and the tag included,
+					// because the browser's own DOMException names neither and leaves the author
+					// hunting.  Production ships the bare call and lets that DOMException through: the
+					// friendlier wording is only worth its bytes to whoever can still fix the template.
+					else /*#IFDEBUG*/try {/*#ENDIF*/
+						node.setAttribute(name, parts.join(''));
+					/*#IFDEBUG*/}
+					catch (e) {
+						throw new Error(`Error setting attribute "${name}" on node <${node.tagName}>: ${e.message}`);
+					}/*#ENDIF*/
 				}
 
 				// Web components
@@ -294,10 +324,10 @@ export default class Shell {
 			// Replace comment placeholders
 			else if (node.nodeType === 8 && node.nodeValue === '!✨!') {
 
-				if (node?.parentNode?.closest && node?.parentNode?.closest('[contenteditable]'))
-					throw new Error(`Solarite: no \${...} inside contenteditable; use value="\${...}".`);
-
+				// The parent is the fragment itself, which has no closest(), for a top-level expression.
 				let parent = node.parentNode;
+				if (parent.closest?.('[contenteditable]'))
+					throw new Error(`Solarite: no \${...} inside contenteditable; use value="\${...}".`);
 
 				// The expression is the only child of an element, so the element itself
 				// can delimit the expression's nodes and no marker comments are needed.
@@ -308,8 +338,7 @@ export default class Shell {
 					let path = new PathToNodes(null, parent);
 					path.wholeParent = true;
 					this.paths.push(path);
-					placeholdersUsed ++;
-					toRemove.push(node); // Removing it here would mess up the treeWalker.
+					toRemove = node; // Removing it here would mess up the treeWalker.
 				}
 
 				else {
@@ -317,7 +346,7 @@ export default class Shell {
 					let nodeBefore = node.previousSibling; // Can be the same as another Path's nodeMarker.
 					if (!nodeBefore) {
 						nodeBefore = Globals.doc.createComment('Path:'+this.paths.length);
-						node.parentNode.insertBefore(nodeBefore, node)
+						node.before(nodeBefore);
 					}
 					/*#IFDEBUG*/assert(nodeBefore);/*#ENDIF*/
 
@@ -327,7 +356,7 @@ export default class Shell {
 					// A subsequent node is available to be a nodeMarker.
 					if (node.nextSibling && (node.nextSibling.nodeType !== 8 || node.nextSibling.textContent !== '!✨!')) {
 						nodeMarker = node.nextSibling;
-						toRemove.push(node); // Removing them here will mess up the treeWalker.
+						toRemove = node; // Removing it here would mess up the treeWalker.
 					}
 					// Re-use existing comment placeholder.
 					else {
@@ -338,7 +367,6 @@ export default class Shell {
 
 					let path = new PathToNodes(nodeBefore, nodeMarker);
 					this.paths.push(path);
-					placeholdersUsed ++;
 				}
 			}
 
@@ -351,7 +379,6 @@ export default class Shell {
 				for (let i=0; i<parts.length-1; i++) {
 					let path = new Path(node.previousSibling, node)
 					this.paths.push(path);
-					placeholdersUsed ++;
 				}
 			}
 
@@ -375,29 +402,29 @@ export default class Shell {
 						// immediately before this one and serves as the new path's nodeBefore.
 						for (let i = 0; i<parts.length; i++) {
 							let current = Globals.doc.createTextNode(parts[i]);
-							node.parentNode.insertBefore(current, node);
+							node.before(current);
 							if (i > 0) {
 								let path = new PathToNodes(current.previousSibling, current);
 								this.paths.push(path);
-								placeholdersUsed ++;
 
 								/*#IFDEBUG*/path.verify();/*#ENDIF*/
 							}
 						}
 
 						// Removing it here will mess up the treeWalker.
-						toRemove.push(node);
+						toRemove = node;
 					}
 				}
 			}
 		}
-		toRemove.map(el => el.remove());
+		toRemove?.remove();
 
-		// Less than or equal because there can be one path to multiple expressions
-		// if those expressions are in the same attribute value.
-		if (placeholdersUsed !== html.length-1)
-			throw new Error(`Solarite: bad html or duplicate attribute: ${html.join('${...}')}`);
+		this.findEmbeds();
 
+		// This scan must run before buildResolveProgram(), which skips shells with components
+		// and reads hasComponentPaths rather than walking the paths a second time.
+		this.pathsSingleExpr = true;
+		let placeholdersUsed = 0;
 		for (let path of this.paths) {
 			// -1 when the path has no nodeBefore.  Assigned unconditionally so every shell path
 			// of a given class takes the same property-addition order and shares one hidden class.
@@ -405,25 +432,26 @@ export default class Shell {
 				? Array.prototype.indexOf.call(path.nodeBefore.parentNode.childNodes, path.nodeBefore)
 				: -1;
 
-			// Must be calculated after we remove the toRemove nodes:
+			// Must be calculated after the placeholders are removed:
 			path.nodeMarkerPath = Path.get(path.nodeMarker)
-		}
 
-		this.findEmbeds();
-
-		// This scan must run before buildResolveProgram(), which skips shells with components
-		// and reads hasComponentPaths rather than walking the paths a second time.
-		this.pathsSingleExpr = true;
-		for (let path of this.paths) {
-			if (path instanceof PathToComponent) {
+			if (path instanceof PathToComponent)
 				this.hasComponentPaths = true;
-				this.pathsSingleExpr = false;
-			}
-			else if (path.getExpressionCount() !== 1)
+
+			// A component path takes no expression of its own, and one attribute value can take several.
+			let count = path.getExpressionCount();
+			placeholdersUsed += count;
+			if (count !== 1)
 				this.pathsSingleExpr = false;
 			if (path.isHtmlProperty) // needs the full scan — no early break
 				this.hasLivePropPaths = true;
 		}
+
+		// Every expression of the template must have found its path.  The browser's parser drops
+		// what it can't place, such as the second of two attributes with the same name.
+		if (placeholdersUsed !== html.length-1)
+			throw new Error(`Solarite: bad html or duplicate attribute: ${html.join('${...}')}`);
+
 		this.needsRefresh = this.hasComponentPaths || (this.hasLivePropPaths && this.pathsSingleExpr);
 
 		this.buildResolveProgram();
@@ -431,66 +459,85 @@ export default class Shell {
 		// Stampable shells create NodeGroups without allocating any Path objects:
 		// NodeGroup.applyStamp() writes expressions through these shared stamper paths,
 		// and real paths are materialized only if a NodeGroup is later rewritten in place.
-		// Child-node paths must be wholeParent so their bare-text state can be recovered.
 		if (this.singleRoot && this.pathsSingleExpr) {
-			let nodesIdx = [];
-			let ok = true;
-			for (let i=0; i<this.paths.length; i++) {
+
+			// Compiled stamp program: one opcode per path lets applyStamp() write a fresh
+			// row through a flat branch chain instead of dispatching applySingle() per path.
+			// 0 = generic (shared stamper fallback), 1 = list key (no DOM), 2 = wholeParent
+			// child text, 3 = delegatable single-expression event (left in the row's template
+			// for the dispatcher when the root delegates every event, the default; otherwise
+			// bound by the shared stamper), 4 = a plain attribute holding one whole expression
+			// (see the branch that assigns it below).  The same pass decides whether the shell
+			// is stampable at all, and fills the dispatcher's lookup table (stampEventsByType).
+			let n = this.paths.length;
+			let ops = new Uint8Array(n), slots = new Uint16Array(n), flags = new Uint8Array(n);
+			let aux = new Array(n).fill(null);
+			let nodesIdx = [], byType = null, ok = true;
+			for (let i=0; i<n; i++) {
 				let path = this.paths[i];
-				if (path instanceof PathToNodes) {
-					if (!path.wholeParent) {
-						ok = false;
-						break;
-					}
+				slots[i] = path.markerSlot;
+				flags[i] = (path.isHtmlProperty ? 1 : 0) | (path.wholeParent ? 2 : 0);
+				if (path instanceof PathToKey)
+					ops[i] = 1;
+				else if (path.wholeParent) {
+					ops[i] = 2;
+					aux[i] = this.resolveSlots.length + nodesIdx.length;
 					nodesIdx.push(i);
 				}
-				else if (!(path instanceof PathToAttribValue || path instanceof PathToKey)) {
-					ok = false; // Base Paths from commented-out expressions, etc.
-					break;
+
+				// An event stays generic unless the dispatcher handles it: an event that is bound
+				// when the row is drawn must go through PathToEvent.applySingle(), which rejects
+				// a value that isn't a handler.  As a plain attribute, a string given to onfocus
+				// would be written to the row and run by the browser as an inline handler.
+				else if (path instanceof PathToEvent) {
+					if (path.delegatedKey !== undefined && !path.attrValue) {
+						ops[i] = 3;
+						byType ??= {};
+						(byType[path.eventName] ??= []).push(i, path.markerSlot);
+					}
 				}
+
+				// A plain attribute holding one whole expression.  The shell no longer carries
+				// the attribute at all (see the placeholder handling above), so on a freshly
+				// cloned row the value is known to be absent and a string can be written
+				// without first reading back what's there.  It is never a component's attribute:
+				// a shell that holds a component isn't pathsSingleExpr.
+				else if (path instanceof PathToAttribValue) {
+					if (!path.attrValue && !path.isHtmlProperty) {
+						ops[i] = 4;
+						aux[i] = path.attribName;
+					}
+				}
+
+				// A child that isn't the only child of its parent, whose bare-text state couldn't
+				// be recovered, or a path the stamp program has no way to write: whole attributes,
+				// the base Path of a commented-out expression.
+				else
+					ok = false;
 			}
 			if (ok) {
 				this.stampable = true;
 				this.nodesPathIdx = nodesIdx;
 				this.stampPaths = this.paths.map(p => p.cloneWithNodes(null, p.nodeMarker));
+				this.stampOp = ops;
+				this.stampSlot = slots;
+				this.stampAux = aux;
+				this.stampFlags = flags;
+				this.stampEventsByType = byType;
+				this.stampEventNames = byType && Object.keys(byType);
 
-				// Compiled stamp program: one opcode per path lets applyStamp() write a fresh
-				// row through a flat branch chain instead of dispatching applySingle() per path.
-				// 0 = generic (shared stamper fallback), 1 = list key (no DOM), 2 = wholeParent
-				// child text, 3 = delegatable single-expression event (written as node expandos
-				// when the root delegates, the default).
-				let n = this.paths.length;
-				this.stampOp = new Uint8Array(n);
-				this.stampSlot = new Uint16Array(n);
-				this.stampAux = new Array(n).fill(null);
-				this.stampFlags = new Uint8Array(n);
-
-				let eventNames = null;
-				for (let i=0; i<n; i++) {
-					let p = this.paths[i], sp = this.stampPaths[i];
-					this.stampSlot[i] = p.markerSlot;
-					this.stampFlags[i] = (sp.isHtmlProperty ? 1 : 0) | (sp.wholeParent ? 2 : 0);
-					if (p instanceof PathToKey)
-						this.stampOp[i] = 1;
-					else if (sp.wholeParent)
-						this.stampOp[i] = 2;
-					else if (sp instanceof PathToEvent && sp.delegatedKey !== undefined && !sp.attrValue) {
-						this.stampOp[i] = 3;
-						this.stampAux[i] = sp;
-						(eventNames ??= []).push(sp.eventName);
-					}
-
-					// A plain attribute holding one whole expression.  The shell no longer carries
-					// the attribute at all (see the placeholder handling above), so on a freshly
-					// cloned row the value is known to be absent and a string can be written
-					// without first reading back what's there.
-					else if (sp instanceof PathToAttribValue && !sp.attrValue && !sp.isHtmlProperty
-						&& !sp.isComponentAttrib) {
-						this.stampOp[i] = 4;
-						this.stampAux[i] = sp.attribName;
-					}
-				}
-				this.stampEventNames = eventNames;
+				// The master rows are cloned from, see stampMaster.  Its text nodes are made in the
+				// template's inert document with the rest of the shell, since cloning there is
+				// cheaper than in the page's document (the exp2 note in optimization-log.md).
+				let master = this.stampMaster = this.docFrag.firstChild.cloneNode(true);
+				let doc = master.ownerDocument;
+				this.stampMasterCells = nodesIdx.map(i => Path.resolve(master, this.paths[i].nodeMarkerPath, 1));
+				this.stampMasterTexts = this.stampMasterCells.map(el => {
+					let tn = doc.createTextNode('');
+					el.append(tn);
+					return tn;
+				});
+				this.stampMasterEmpty = nodesIdx.map(() => false);
 			}
 		}
 
@@ -633,19 +680,20 @@ export default class Shell {
 			return s;
 		};
 		for (let path of this.paths) {
-			path.markerSlot = path.nodeMarker === frag ? 0 : getSlot(path.nodeMarker);
+			path.markerSlot = getSlot(path.nodeMarker);
 			path.beforeSlot = path.nodeBefore ? getSlot(path.nodeBefore) : -1;
 		}
 
 		this.resolveOps = ops;
 		this.resolveSlots = new Array(nextSlot);
 
-		// A lone root element means slot 1 is always that element (the first op pair is [0, 0]),
-		// so a NodeGroup can clone the element directly and seed slot 1 with it.
-		// Embeds are excluded because their paths are fragment-relative.
-		if (!this.hasEmbeds && frag.childNodes.length === 1 && frag.firstChild.nodeType === 1
-			&& ops.length >= 2 && ops[0] === 0 && ops[1] === 0)
-			this.singleRoot = true;
+		// A lone root element means slot 1 is always that element, so a NodeGroup can clone the
+		// element directly and seed slot 1 with it.  The first op pair is then always [0, 0]:
+		// every marker is that element or inside it, and getSlot() gives an ancestor its slot
+		// before the node that asked.  Embeds are excluded because their paths are
+		// fragment-relative.
+		this.singleRoot = !this.hasEmbeds && frag.childNodes.length === 1 && frag.firstChild.nodeType === 1;
+		/*#IFDEBUG*/assert(!this.singleRoot || (ops[0] === 0 && ops[1] === 0));/*#ENDIF*/
 	}
 
 	/**
@@ -699,23 +747,17 @@ const commentPlaceholder = `<!--!✨!-->`;
 // Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 const isWebComponentTagName = /<\/?[a-z][a-z0-9]*-[a-z0-9-]+/iy;
 
-// Elements whose whitespace-only text children are never rendered.
-const tableTags = ['TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR'];
-
 /**
- * Recursively remove whitespace-only text children of table-structure elements.
- * @param el {DocumentFragment|HTMLElement} */
-function stripTableWhitespace(el) {
-	let isTable = el.nodeType === 1 && tableTags.includes(el.tagName);
-	let child = el.firstChild;
-	while (child) {
-		let next = child.nextSibling;
-		if (child.nodeType === 1)
-			stripTableWhitespace(child);
-		else if (isTable && child.nodeType === 3 && !child.nodeValue.trim())
-			child.remove();
-		child = next;
-	}
+ * Remove whitespace-only text children of table-structure elements, whose whitespace is never
+ * rendered.  Only html elements count: an svg element may have one of these names, since the
+ * parser gives no meaning to them there, and a selector matches it whatever its case.
+ * @param docFrag {DocumentFragment} */
+function stripTableWhitespace(docFrag) {
+	for (let el of docFrag.querySelectorAll('table,thead,tbody,tfoot,tr'))
+		if (el instanceof HTMLElement)
+			for (let child of [...el.childNodes])
+				if (child.nodeType === 3 && !child.nodeValue.trim())
+					child.remove();
 }
 
 /**

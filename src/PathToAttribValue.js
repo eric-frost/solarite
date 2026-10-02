@@ -3,6 +3,7 @@ import Util from "./Util.js";
 import delve, {isDelvePath} from "./delve.js";
 import assert from "./assert.js";
 import {SelectorRef} from "./Selector.js";
+import Globals from "./Globals.js";
 
 export default class PathToAttribValue extends Path {
 
@@ -238,10 +239,9 @@ export default class PathToAttribValue extends Path {
 				// inside a multi-part attribute is fixed by the shape of the template and never by
 				// the data, so this can only be an authoring mistake, and it always surfaces on the
 				// template's very first render -- exactly like the placement check in
-				// SelectorRef.bind().  That makes it safe to strip from the built file, where the
-				// throw is the only thing lost: makePrimitive() then turns the ref into '' and the
-				// attribute is written from its constant parts alone.  Stripping it also keeps a
-				// per-expression instanceof out of the multi-part attribute loop.
+				// SelectorRef.bind().  Like that check it ships in the built file: without it
+				// makePrimitive() turns the ref into '' and the attribute is silently written
+				// from its constant parts alone.
 				if (typeof exprs[i] === 'object' && exprs[i] instanceof SelectorRef)
 					throw new Error(`Solarite: a selector must own the whole ${this.attribName} attribute.`);
 				let val = Util.makePrimitive(exprs[i]);
@@ -253,16 +253,14 @@ export default class PathToAttribValue extends Path {
 	}
 
 	/**
-	 * Call function when eventName is triggerd on node.
+	 * Call function when eventName is triggered on node.
 	 * @param node {HTMLElement}
 	 * @param root {HTMLElement}
 	 * @param key {string}
 	 * @param eventName {string}
 	 * @param func {function}
-	 * @param args {array}
+	 * @param funcAndArgs {?Array} The [func, ...args] array from the template, or null if func stands alone.
 	 * @param capture {boolean} */
-	/**
-	 * @param funcAndArgs {?Array} The [func, ...args] array from the template, or null if func stands alone. */
 	bindEvent(node, root, key, eventName, func, funcAndArgs, capture=false) {
 		//#IFDEBUG
 		// Both callers already guarantee a function, so this only catches a future third caller.
@@ -278,8 +276,9 @@ export default class PathToAttribValue extends Path {
 		// Delegated path: a bubbling event (when the root's options allow it, the default)
 		// stores its handler directly on the node as a per-event-type Symbol expando, with no
 		// EventBinding object and no addEventListener call.  When an event of that type
-		// starts, jitDispatcher() attaches a real listener to each node on its path that
-		// carries the expando, so the browser runs the handler at the node's own turn.
+		// starts, the dispatcher (see createDispatcher) attaches a real listener to each node
+		// on its path that carries the expando, so the browser runs the handler at the node's
+		// own turn.
 		// Re-renders just overwrite the property.  this.delegatedKey is set by the PathToEvent
 		// constructor only for delegatable event names, so this test also excludes
 		// non-bubbling events and native:on* bindings.
@@ -289,6 +288,11 @@ export default class PathToAttribValue extends Path {
 			// value (such as the retired 'document' string) counts as true.
 			if (opt !== false && (!Array.isArray(opt) || opt.includes(eventName))) {
 				let dk = this.delegatedKey;
+
+				// An anchored row keeps its handlers in its template (see isAnchored), so there is
+				// nothing to store: the dispatcher reads the template when the handler's turn comes.
+				if (isAnchored(this.parentNg))
+					return;
 				if (node[dk] === undefined) // First binding of this type on this node.
 					ensureDelegatedDispatcher(root, eventName);
 				// Array-form bindings (onclick=${[fn, arg]}, the hot per-row case) store the
@@ -383,8 +387,58 @@ export function delegatedKeyFor(eventName) {
 }
 
 // The component root a node's delegated handlers run with as `this`.
-// Exported so NodeGroup.applyStamp()'s compiled stamp program can write it directly.
-export const delegatedRootKey = Symbol('solariteDelegatedRoot');
+const delegatedRootKey = Symbol('solariteDelegatedRoot');
+
+// A list row's root element points back at its NodeGroup under this key, which is how the
+// dispatcher finds the row's handlers.  See isAnchored().
+export const rowNgKey = Symbol('solariteRow');
+
+// The Shell whose delegated dispatchers a root last registered, kept on the RootNodeGroup so
+// that a run of rows checks one field instead of asking at every bound node.  A Symbol rather
+// than a declared field, since only root NodeGroups ever carry it and a declared field would
+// cost a slot on every row.
+export const stampedShellKey = Symbol('solariteStampedShell');
+
+/**
+ * Is this NodeGroup a row whose delegated handlers the dispatcher reads from its template?
+ *
+ * The rows of a list are where event binding cost adds up: a row is cloned once and its
+ * handlers are written once, and a thousand-row list does that a thousand times.  Storing a
+ * handler on the node it belongs to means reaching that node in the fresh clone, which creates
+ * a JS wrapper for it, and then adding a property to that wrapper.  Both are paid for again when
+ * the row is torn down.  So a row made by the compiled stamp program stores nothing on its
+ * nodes: its handlers stay in its Template, whose expressions the stamp program already keeps
+ * for its re-render comparisons, and the row's root element carries one pointer back to the
+ * NodeGroup (rowNgKey).  When an event starts, the dispatcher sees that pointer on the row's
+ * root as it walks the event's path, looks up which of the row's nodes bind that event type
+ * (Shell.stampEventsByType), and attaches the trampoline to those that are on the path; the
+ * trampoline reads the handler from the template when its turn comes, so a row re-rendered in
+ * the middle of a dispatch runs its current handler.  The pointer costs almost nothing: the
+ * root element's wrapper exists already, since cloneNode() returned it.
+ *
+ * A row qualifies when it came from a stampable shell that binds at least one delegatable
+ * event (so stampEventsByType is set), it belongs to a list (parentPath), and its root delegates
+ * every event; an event-name array in the render options means the general binding path
+ * decides event by event, and that path stores on nodes.
+ * @param ng {NodeGroup}
+ * @return {boolean} */
+export function isAnchored(ng) {
+	return ng.parentPath !== null && ng.shell.stampEventsByType !== null && ng.rootNg.delegateAll === true;
+}
+
+/**
+ * Make sure the dispatchers for a row shell's event types are registered on its root and
+ * document.  The NodeGroup constructor makes a fresh row findable by the dispatcher itself, by
+ * writing the row under rowNgKey on its root element, and calls this only when the root last
+ * registered a different shell, so a run of rows from one template asks once.
+ * @param rootNg {RootNodeGroup}
+ * @param shell {Shell} */
+export function registerRowDispatchers(rootNg, shell) {
+	let names = shell.stampEventNames, root = rootNg.rootEl;
+	for (let k=0; k<names.length; k++)
+		ensureDelegatedDispatcher(root, names[k]);
+	rootNg[stampedShellKey] = shell;
+}
 
 // Set of event types that already have the dispatcher registered, kept on each root element
 // and on each document.
@@ -392,136 +446,323 @@ const delegatedTypesKey = Symbol('solariteDelegatedTypes');
 
 /**
  * Register the just-in-time dispatcher for eventName on root and on root's document, once
- * each.  Shared by bindEvent()'s delegated branch and NodeGroup.applyStamp()'s stamp program.
+ * each.  Shared by bindEvent()'s delegated branch and registerRowDispatchers().
  *
  * Both registrations are needed.  The document's listener is what still reaches a bound node
  * after another component re-parents it outside its root (a toolbar a dock parks in its own
  * chrome).  The root's listener is what reaches what the document cannot see: a component
  * that isn't in the document at all, nodes inside a closed shadow root, and a synthetic
  * event dispatched inside any shadow root without composed:true, which never leaves it.
- * @param root {HTMLElement}
+ * @param root {HTMLElement|Document}
  * @param eventName {string} */
-export function ensureDelegatedDispatcher(root, eventName) {
-	let types = root[delegatedTypesKey];
-	if (types === undefined)
-		types = root[delegatedTypesKey] = new Set();
+function ensureDelegatedDispatcher(root, eventName) {
+	let types = root[delegatedTypesKey] ??= new Set();
 	if (!types.has(eventName)) {
 		types.add(eventName);
-		root.addEventListener(eventName, jitDispatcher, true);
+		let dispatcher = dispatchers[eventName] ??= createDispatcher(eventName);
+		root.addEventListener(eventName, dispatcher, true);
 
+		// The document registers the same way.  It has no document of its own, which ends this.
 		let doc = root.ownerDocument;
-		let docTypes = doc[delegatedTypesKey];
-		if (docTypes === undefined)
-			docTypes = doc[delegatedTypesKey] = new Set();
-		if (!docTypes.has(eventName)) {
-			docTypes.add(eventName);
-			doc.addEventListener(eventName, jitDispatcher, true);
-		}
-	}
-}
-
-// Set on an event by the first dispatcher to walk it, holding the length of the path it saw,
-// so the dispatchers on nested roots further down don't repeat the walk.  A root inside a
-// closed shadow root sees a longer path than the document did, because composedPath() hides
-// a closed tree from listeners outside it, and that mismatch is what makes it walk again.
-const delegatedDoneKey = Symbol('solariteDelegated');
-
-/**
- * One shared bubble-phase listener per event type, attached to a node only for the duration
- * of one event.  The browser invokes it at the node's own turn in propagation, and it reads
- * the node's handler THEN rather than when it was attached, so a handler that an earlier
- * listener in the same dispatch replaced or removed is honored.
- * @type {Object<string, {handleEvent: function(Event)}>} */
-const trampolines = {};
-
-/**
- * @param type {string}
- * @return {{handleEvent: function(Event)}} */
-function trampolineFor(type) {
-	let tramp = trampolines[type];
-	if (tramp === undefined) {
-		let dk = delegatedKeys[type];
-		tramp = trampolines[type] = {
-			// Quoted so the minifier's property mangling doesn't rename it, since the browser looks it up by name.
-			'handleEvent'(ev) {
-				let node = ev.currentTarget;
-				let a = node[dk];
-				if (a === undefined) // Unbound by an earlier handler in this same dispatch.
-					return;
-				let root = node[delegatedRootKey];
-				if (typeof a === 'function')
-					a.call(root, ev, node);
-				else
-					switch (a.length) {
-						case 1: a[0].call(root, ev, node); break;
-						case 2: a[0].call(root, a[1], ev, node); break;
-						case 3: a[0].call(root, a[1], a[2], ev, node); break;
-						default: a[0].call(root, ...a.slice(1), ev, node);
-					}
-			}
-		};
-	}
-	return tramp;
-}
-
-// Nodes still carrying a trampoline, per event type, and the one timer that clears them.
-const pending = {};
-let sweepTimer = 0;
-
-/**
- * Remove every trampoline attached since the last sweep.  Runs as a task, which is always
- * after every dispatch in progress has finished.  A microtask would not be: for a real click
- * the browser runs a microtask checkpoint between listeners, so a microtask sweep would strip
- * the trampolines before the event reached the first of them.  The sweep is housekeeping
- * only; a trampoline left in place is harmless, because jitDispatcher() re-attaches it and
- * the trampoline reads its handler fresh. */
-function sweep() {
-	sweepTimer = 0;
-	for (let type in pending) {
-		let nodes = pending[type];
-		if (nodes.length !== 0) {
-			pending[type] = [];
-			let tramp = trampolines[type];
-			for (let i=0; i<nodes.length; i++)
-				nodes[i].removeEventListener(type, tramp);
-		}
+		if (doc !== null)
+			ensureDelegatedDispatcher(doc, eventName);
 	}
 }
 
 /**
- * The capture-phase listener registered per delegated event type on every root and on the
- * document.  It runs before the event reaches anything, walks the event's path, and attaches
- * the type's trampoline to each node holding a delegated handler.  The browser then finishes
- * the dispatch natively, so those handlers interleave correctly with listeners anyone else
- * registered, stopPropagation() works in both directions, currentTarget is right, and the
- * event needn't bubble.
+ * The capture-phase listener of each delegated event type, made by createDispatcher().
+ * @type {Object<string, function(Event)>} */
+const dispatchers = {};
+
+// For an event a dispatcher has walked, the path that walk saw.  A dispatcher on a nested root
+// further down finds its own element in that path and skips the walk.  A root inside a closed
+// shadow root does not find itself, because composedPath() hides a closed tree from listeners
+// outside it, and that is what makes it walk again.  The path also names the root or document
+// whose dispatcher did the walk (its walker property), which is how a second dispatch of the
+// same Event object is told from a nested root's turn in the first; see step 1 of the
+// dispatcher.  A WeakMap rather than a property on the event: every event is a new object, so
+// a property has to be added to each one, and reading one that isn't there yet searches the
+// event's whole prototype chain.  Measured on the first click after a page has been idle, the
+// WeakMap is the cheaper of the two by 5 to 10 microseconds per click, about a tenth of what
+// the dispatcher costs altogether.
+const walked = new WeakMap();
+
+const hasOwn = Object.hasOwn;
+
+/**
+ * Build the dispatcher for one event type: the capture-phase listener ensureDelegatedDispatcher()
+ * registers on every root and on the document.  It runs before the event reaches anything,
+ * walks the event's path, and attaches a real bubble-phase listener (the trampoline) to each
+ * node holding a delegated handler.  The browser then finishes the dispatch natively, so those
+ * handlers interleave correctly with listeners anyone else registered, stopPropagation() works
+ * in both directions, currentTarget is right, and the event needn't bubble.
  *
- * Each attach removes the trampoline first.  One left from an earlier event in this same task
- * would otherwise keep its old place in the node's listener list, ahead of listeners added
- * since; removing and re-adding puts it last, so the rule holds without exception: a
- * delegated handler runs after every listener its element had when the event started. */
-function jitDispatcher(ev) {
-	let path = ev.composedPath();
-	if (ev[delegatedDoneKey] === path.length)
-		return;
-	ev[delegatedDoneKey] = path.length;
-
-	let type = ev.type;
+ * Everything one event type needs lives in this closure, so a dispatch looks nothing up by
+ * the type's name: no event.type call, and no keyed reads of per-type tables apart from one
+ * lookup per row Shell, which attachRow() remembers.  The page has been idle before a click,
+ * so each thing a click's code touches for the first time is a cache miss, and the dispatcher
+ * runs on every delegated event in the page.
+ *
+ * @param type {string}
+ * @return {function(Event)} */
+function createDispatcher(type) {
 	let dk = delegatedKeys[type];
-	let tramp = trampolineFor(type);
-	let list = pending[type];
-	if (list === undefined)
-		list = pending[type] = [];
-	for (let i=0; i<path.length; i++) {
-		let node = path[i];
-		if (node[dk] !== undefined) {
-			node.removeEventListener(type, tramp);
-			node.addEventListener(type, tramp);
-			list.push(node);
+	let doc = Globals.doc;
+
+	// The nodes carrying the trampoline, and for each one where its handler is read from when
+	// its turn comes: an anchored row's node has the row's NodeGroup and the index of the
+	// handler among its template's expressions, any other node has null and holds its handler
+	// itself (under dk).  The arrays are reused from one event to the next.
+	let nodes = [], rows = [], exprIdx = [], count = 0;
+
+	// The events of this type being dispatched right now, outermost first: a handler can
+	// dispatch another event of the same type before its own has finished.  Only events the
+	// walk attached something for are listed.  lasts holds, for each, the outermost node its
+	// walk attached the trampoline to, which is the last one the event can reach.
+	let evs = [], lasts = [], depth = 0;
+
+	// One-entry memo of the anchored-row lookup, since the rows of a list share one Shell.
+	let memoShell = null, memoOps;
+
+	/**
+	 * Remove the trampolines.  Housekeeping only: one left in place is harmless, because the
+	 * next dispatch of this type removes it before attaching its own, and the trampoline reads
+	 * its handler fresh. */
+	const sweep = () => {
+		for (let i=0; i<count; i++) {
+			nodes[i].removeEventListener(type, trampoline);
+			nodes[i] = rows[i] = null;
+		}
+		count = 0;
+	};
+
+	/**
+	 * Take the trampoline off a node for a walk that started inside another dispatch, so that
+	 * the walk can add it again behind every listener the node has now (step 3 of the
+	 * dispatcher).  A node that an event in progress is at right now keeps it: the browser is
+	 * part-way through that node's listeners, and removing the trampoline takes it out of that
+	 * pass, so the outer event would skip the node's handler.  That is what a listener someone
+	 * added to the node with addEventListener does when it dispatches another event of this
+	 * type through the node, since it runs before the trampoline.  Adding the trampoline again
+	 * then does nothing, and the new event finds it in the place the outer event gave it.
+	 * The unused slots of evs hold null, and an event that is over has no currentTarget.
+	 * @param node {Element} */
+	const detach = node => {
+		if (!evs.some(ev => ev?.currentTarget === node))
+			node.removeEventListener(type, trampoline);
+	};
+
+	/**
+	 * Take the dispatches that are over off the top of the stack.  A dispatch is still on
+	 * record after it is over when it never reached its last node: propagation was stopped, or
+	 * the event doesn't bubble.  An event's phase is 0 once it is over.
+	 * @return {int} The depth that is left, which counts the dispatches still in progress. */
+	const unwind = () => {
+		while (depth !== 0 && evs[depth - 1].eventPhase === 0)
+			evs[--depth] = lasts[depth] = null;
+		return depth;
+	};
+
+	/**
+	 * The shared bubble-phase listener, attached to a node only for the duration of one event.
+	 * The browser invokes it at the node's own turn in propagation, and it reads the node's
+	 * handler THEN rather than when it was attached, so a handler that an earlier listener in
+	 * the same dispatch replaced or removed is honored.
+	 *
+	 * It also ends the dispatch.  The outermost node a walk attached to is the last one the
+	 * event can reach, so when its turn comes nothing of ours is left to run, and the
+	 * trampolines are removed once its handler returns or throws.  Ending here rather than
+	 * from a listener on the document costs no extra listener call per event.  A timer would
+	 * not do (it is a second task between the event and the frame it produces), and neither
+	 * would a microtask (for a real click the browser runs a microtask checkpoint between
+	 * listeners, so the trampolines would go before the event reached the first of them).
+	 * An event that never reaches that node, because propagation was stopped or the event
+	 * doesn't bubble, leaves its trampolines for the next dispatch of this type to remove, or
+	 * for the event it was dispatched from, which removes them with its own when it ends. */
+	function trampoline(ev) {
+		let node = this;
+
+		// 1. Find where this node's handler lives.  The innermost dispatch's nodes are last.
+		let i = count - 1;
+		while (i >= 0 && nodes[i] !== node)
+			i--;
+		if (i < 0) // Defensive: a node carries the trampoline only while it is listed here.
+			return;
+		let ng = rows[i], a, root;
+		if (ng === null) {
+			a = node[dk];
+			root = node[delegatedRootKey];
+		}
+		else {
+			a = ng.template.exprs[exprIdx[i]];
+			root = ng.rootNg.rootEl;
+		}
+
+		// 2. End the dispatch if this is its last node.  The trampolines themselves are removed
+		// after the handler has run (step 3), so that an event the handler dispatches on a row
+		// it has just removed, which no dispatcher can see, still finds them, as it would find
+		// listeners registered at render.
+		//
+		// This event is nearly always the innermost one on record.  When it isn't, dispatches
+		// that its listeners started and that never reached their own last node may be lying on
+		// top of it; unwind() takes those off and the test is made once more.  Left there they
+		// would keep this event from ever being seen to end, and its trampolines and theirs
+		// would stay until the next dispatch of this type.
+		let ended = false;
+		let d = depth - 1;
+		if (d >= 0 && (evs[d] === ev || evs[d = unwind() - 1] === ev) && lasts[d] === node) {
+			evs[d] = lasts[d] = null;
+			depth = d;
+			ended = d === 0;
+		}
+
+		// 3. Call the handler: a function, or a [function, ...args] array.  Anything else
+		// cannot be reached through a template, which rejects a non-function at render; the
+		// test only keeps a damaged row from throwing here.
+		try {
+			if (typeof a === 'function')
+				a.call(root, ev, node);
+			else if (Array.isArray(a) && typeof a[0] === 'function')
+				switch (a.length) {
+					case 1: a[0].call(root, ev, node); break;
+					case 2: a[0].call(root, a[1], ev, node); break;
+					case 3: a[0].call(root, a[1], a[2], ev, node); break;
+					default: a[0].call(root, ...a.slice(1), ev, node);
+				}
+		}
+		finally {
+			if (ended)
+				sweep();
 		}
 	}
-	if (list.length !== 0 && sweepTimer === 0)
-		sweepTimer = setTimeout(sweep);
+
+	/**
+	 * Attach the trampoline to the nodes of an anchored row that are on the event's path and
+	 * bind this event type.  Nothing is written onto them: the trampoline reads each handler
+	 * from the row's template.  See isAnchored() for why rows are handled this way.
+	 * @param rowEl {HTMLElement} The row's root element, path[rowIndex].
+	 * @param ng {NodeGroup} The row.
+	 * @param path {EventTarget[]} ev.composedPath().
+	 * @param rowIndex {int} Where the row's root sits in path; its other nodes sit before it.
+	 * @param removeFirst {boolean} See the dispatcher.
+	 * @return {int} The highest index in path a trampoline was attached at, or -1. */
+	const attachRow = (rowEl, ng, path, rowIndex, removeFirst) => {
+		let shell = ng.shell;
+		if (shell !== memoShell) {
+			memoShell = shell;
+			memoOps = shell.stampEventsByType[type];
+		}
+		let ops = memoOps;
+		if (ops === undefined)
+			return -1;
+
+		// Resolved nodes are kept on the row, so the next event on it skips the walk.  The
+		// pairs are in ascending slot order, so one resolve up to the last covers them all.
+		let last = ops[ops.length - 1];
+		let slots = last > 1 ? ng.stampSlots(last) : null;
+		let outer = -1;
+		for (let k=0; k<ops.length; k+=2) {
+			let s = ops[k+1];
+			let target = s === 1 ? rowEl : slots[s];
+
+			// Only a node the event passes through gets a listener: the row's other bound nodes
+			// aren't involved in this event at all.
+			let j = rowIndex;
+			while (j >= 0 && path[j] !== target)
+				j--;
+			if (j < 0)
+				continue;
+
+			if (removeFirst)
+				detach(target);
+			target.addEventListener(type, trampoline);
+			nodes[count] = target;
+			rows[count] = ng;
+			exprIdx[count++] = ops[k];
+			if (j > outer)
+				outer = j;
+		}
+		return outer;
+	};
+
+	return function dispatcher(ev) {
+
+		// 1. Skip the walk when a dispatcher that could see this element has walked the event
+		// already.  The dispatcher that did that walk never skips: it is the first of these
+		// listeners the event reaches, so finding the event on record means the same Event
+		// object is being dispatched again, which needs a new walk.  The others skip only while
+		// the target is the one that walk saw.
+		let seen = walked.get(ev);
+		if (seen !== undefined && seen.walker !== this && seen.includes(this) && seen[0] === ev.target)
+			return;
+		let path = ev.composedPath();
+		path.walker = this;
+		walked.set(ev, path);
+
+		// 2. Dispatches of this type that are over but never reached their last node
+		// (propagation stopped, or an event that doesn't bubble) come off the stack now.  If
+		// nothing of this type is still in progress their trampolines are removed before this
+		// event's are attached.  A dispatch a handler started this one from is still in
+		// progress and is left alone.
+		let d = depth;
+		if (d !== 0)
+			d = unwind();
+		// Trampolines can also be left with no dispatch on record, when a walk threw part-way,
+		// so anything still attached while nothing is in progress is removed here too.
+		if (d === 0 && count !== 0)
+			sweep();
+
+		// 3. Walk the path.  A node already carrying the trampoline, for a dispatch this one
+		// was started from, has it removed first: left alone it would keep its old place in
+		// the node's listener list, ahead of listeners added since, and removing and re-adding
+		// puts it last.  So the rule holds: a delegated handler runs after every listener its
+		// element had when the event started.  The one exception is the node an outer event is
+		// at while this one starts, which detach() leaves alone; there the handler runs after
+		// every listener the node had when the outer event started.  Nothing carries a
+		// trampoline when no dispatch is in progress, which spares the usual event the remove.
+		//
+		// hasOwn() rather than a read: a read that finds nothing on the node goes on to search
+		// every prototype behind it, and the path holds a different kind of element at nearly
+		// every step, so each of those searches is a fresh one.  Handlers are only ever stored
+		// on elements, so the walk stops at the document.
+		let removeFirst = d !== 0;
+		let outer = -1;
+		for (let i=0; i<path.length; i++) {
+			let node = path[i];
+			if (node === doc)
+				break;
+			if (hasOwn(node, dk)) {
+				if (removeFirst)
+					detach(node);
+				node.addEventListener(type, trampoline);
+				nodes[count] = node;
+				rows[count++] = null;
+				outer = i;
+			}
+			// The root of an anchored list row: its handlers are read from the row's template.
+			if (hasOwn(node, rowNgKey)) {
+				let j = attachRow(node, node[rowNgKey], path, i, removeFirst);
+				if (j > outer)
+					outer = j;
+			}
+		}
+
+		// 4. Remember the event as in progress, with the node that ends it.  A second walk of
+		// the same event (a root inside a closed shadow root) updates its entry.
+		if (outer >= 0) {
+			let k = -1;
+			if (seen !== undefined) {
+				k = d - 1;
+				while (k >= 0 && evs[k] !== ev)
+					k--;
+			}
+			if (k < 0) {
+				k = depth++;
+				evs[k] = ev;
+			}
+			lasts[k] = path[outer];
+		}
+	};
 }
 
 class EventBinding {

@@ -17,13 +17,19 @@ export default class RootNodeGroup extends NodeGroup {
 	instantiate(shell, shellFragment, el, options) {
 		let startingPathDepth = 0;
 		this.renderOptions = options;
+
+		// Whether every delegatable event in this tree is delegated: any value other than false
+		// or an array of event names means yes.  The stamp program and the dispatcher read this
+		// per row, so it is worked out once here rather than from the options each time.
+		let opt = options?.eventDelegation;
+		this.delegateAll = opt !== false && !Array.isArray(opt);
 		if (shellFragment instanceof Text) {
 			if (!el)
 				throw new Error('Text node needs an element.');
 
 			this.rootEl = el;
 			if (shellFragment.nodeValue.length)
-				this.rootEl.append(shellFragment);
+				el.append(shellFragment);
 		}
 
 		else {
@@ -57,23 +63,20 @@ export default class RootNodeGroup extends NodeGroup {
 				}
 
 				// If el should replace the root node of the fragment.
-				if (isReplaceEl(shellFragment, this.rootEl.tagName)) {
-					this.rootEl.append(...shellFragment.children[0].childNodes);
+				if (isReplaceEl(shellFragment, el.tagName)) {
+					el.append(...shellFragment.children[0].childNodes);
 
 					// Copy attributes
 					for (let attrib of shellFragment.children[0].attributes)
-						if (!this.rootEl.hasAttribute(attrib.name))
-							this.rootEl.setAttribute(attrib.name, attrib.value);
+						if (!el.hasAttribute(attrib.name))
+							el.setAttribute(attrib.name, attrib.value);
 
 					// Go one level deeper into all of shell's paths.
 					startingPathDepth = 1;
 				}
 
-				else {
-					let isEmpty = shellFragment.childNodes.length === 1 && shellFragment.childNodes[0].nodeType === 3 && shellFragment.childNodes[0].textContent === '';
-					if (!isEmpty)
-						this.rootEl.append(...shellFragment.childNodes);
-				}
+				else
+					el.append(...shellFragment.childNodes);
 
 
 				// Setup slot children (deprecated)

@@ -8,13 +8,15 @@ export default class PathToEvent extends PathToAttribValue {
 	/** @type {string} The attribName without the "on" prefix. */
 	eventName;
 
-	/** @type {symbol|undefined} Expando key nodes store this event's delegated handler under.
-	 * Undefined for non-delegatable (non-bubbling) events; bindEvent() then binds directly. */
+	/** @type {symbol|undefined} The property a node stores this event's delegated handler under
+	 * (the rows of a list keep theirs in the row's template instead; see isAnchored() in
+	 * PathToAttribValue.js).  Undefined for non-delegatable (non-bubbling) events and for
+	 * native: bindings; bindEvent() then binds directly. */
 	delegatedKey;
 
 	/** @type {boolean} True for `native:onclick`: the handler is registered with addEventListener
-	 * when the template renders, so it runs at its element's own turn in the browser's dispatch
-	 * order instead of being delegated to the component root. */
+	 * when the template renders, so it keeps the place in its element's listener order that it
+	 * was given at render, instead of being attached by the dispatcher when an event starts. */
 	native;
 
 	constructor(nodeBefore, nodeMarker, attribName=null, attrValue=null) {
