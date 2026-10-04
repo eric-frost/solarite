@@ -290,7 +290,7 @@ async function runWithinIframe(iframe, fn, args, testName='') {
 /**
  * Where relative test urls resolve from, captured at import time.
  *
- * Server-side tests are registered with page-relative urls ('php-admin/util/RestTest.php?x'),
+ * Server-side tests are registered with page-relative urls ('php-admin/http/RestTest.php?x'),
  * and a bare fetch() of one resolves against the document's CURRENT address.  Tests are allowed
  * to move that address: QcConsole's setup checks call history.replaceState('/qc-console?kiosk=1')
  * to prove the console reads its own url, and DataTable's do the same with ?table=.  While one of
@@ -423,7 +423,7 @@ function normalizeLocks(locks, where) {
  * @param ms {int} How long to keep waiting before giving up and letting the assertion speak.
  * @return {Promise<boolean>} Whether the page ever accepted the focus. */
 async function clearFocus(ms=5000) {
-	let deadline = performance.now() + ms;
+	let waited = 0;   // counted in polls, not read off the clock: see until()
 	let probe = document.createElement('button');
 	probe.style.cssText = 'position:fixed; left:-9999px; opacity:0';
 	document.body.append(probe);
@@ -433,14 +433,50 @@ async function clearFocus(ms=5000) {
 			// Only the inertness can change while we wait, so it is the only thing waited on.
 			if (document.activeElement === probe)
 				return true;
-			if (performance.now() >= deadline)
+			if (waited >= ms)
 				return false;   // let the caller's assertion speak
 			await new Promise(resolve => setTimeout(resolve, 10));
+			waited += 10;
 		}
 	}
 	finally {
 		probe.remove(); // Focus falls back to <body>, leaving the slot free for the caller.
 	}
+}
+
+/**
+ * Poll until cond() returns something truthy, or give up after about `ms`.  The one way a test
+ * should wait for asynchronous work; a fixed sleep is either too short under load or wastes time.
+ *
+ * THE BUDGET IS COUNTED IN POLLS, NOT READ OFF THE CLOCK, and that is the point of having this
+ * here rather than a three-line loop in each test file.  Every test on the page shares one main
+ * thread, and in a full run another test can freeze it for seconds.  When the page thaws, the
+ * browser runs the overdue timers in the order they were due, so a test's short poll timer wakes
+ * BEFORE the later timers of the code it is waiting on.  A loop comparing performance.now() with
+ * a deadline then finds its time already gone and gives up, with the work it was waiting for
+ * still queued behind it.  One freeze fails every test that was polling at that moment, so such
+ * tests fail in pairs, in full runs only, and never alone (Camera.listen.*, 2026-09-21).  Here a
+ * frozen page spends none of the budget: each poll counts as `every` ms however long it took, so
+ * the code under test always gets its turns.  The price is that on a busy page `ms` is a lower
+ * bound on the real wait, never an upper one; the runner's own per-test timeout is the backstop.
+ *
+ * @param cond {function():*} Checked before every poll, and once more after the last.
+ * @param ms {int} The budget.
+ * @param what {string|function():string} What is being waited for.  When given, a timeout throws
+ *     "Timed out waiting for <what>"; when omitted the caller's next assertion speaks instead.
+ * @param every {int} Milliseconds between polls.
+ * @return {Promise<boolean>} Whether cond() held in the end. */
+async function until(cond, ms=3000, what='', every=10) {
+	for (let waited = 0; waited < ms; waited += every) {
+		if (cond())
+			return true;
+		await new Promise(resolve => setTimeout(resolve, every));
+	}
+	if (cond())
+		return true;
+	if (what)
+		throw new Error(`Timed out waiting for ${typeof what === 'function' ? what() : what}`);
+	return false;
 }
 
 /*┌──────────────────────╮
@@ -749,7 +785,9 @@ trackModalDialogs();
 function closeAbandonedModals() {
 	let abandoned = [];
 	for (let [dialog, who] of [...openModals]) {
-		if (!dialog.open) {
+		// :modal rather than .open: a dialog taken off the page while still open (a test that faked
+		// its toggle event) keeps its open attribute but has left the top layer and inerts nothing.
+		if (!dialog.matches(':modal')) {
 			openModals.delete(dialog);
 			continue;
 		}
@@ -2453,7 +2491,7 @@ var Testimony = {
 	 * test whose fn awaits its entry via result(), so failures, output and the UI stay per-method.
 	 * If the response frame is missing (a method die()'d or hard-fataled mid-batch), falls back
 	 * to running every method as its own request, exactly like testExternal.
-	 * @param url {string} e.g. 'php-admin/util/AuthTest.php'
+	 * @param url {string} e.g. 'php-admin/auth/AuthTest.php'
 	 * @param methods {string[]} All test method names in the file.
 	 * @returns {{result: function(string):Promise<*>}} */
 	runAsOneRequest(url, methods) {
@@ -2798,8 +2836,46 @@ async function runPage(path, webServer=null, webRoot=null, tests=null, headless=
 		const absWebRoot = Deno.realPathSync(webRoot);
 		return Deno.serve(
 			{hostname: '127.0.0.1', port, onListen() {}},
-			request => serveDir(request, {fsRoot: absWebRoot, quiet: true}));
+			async request => await serveTypeScript(request, absWebRoot) ?? serveDir(request, {fsRoot: absWebRoot, quiet: true}));
 	};
+
+	/**
+	 * Compile a .ts or .tsx file on request, as the sites' servers do (packchain's build.php and the
+	 * deno-projects handler use esbuild with these same flags), so tests can import TypeScript.  Only the
+	 * built-in file server needs this; a site served by Apache or its own serve.ts compiles for itself.
+	 * esbuild is imported the first time a .ts file is asked for, so runs that never ask never load it.
+	 * @returns {Promise<Response|null>} Null for any other request. */
+	const compiled = new Map();
+	let esbuild = null;
+	async function serveTypeScript(request, root) {
+		const pathname = decodeURIComponent(new URL(request.url).pathname);
+		if (!/\.tsx?$/.test(pathname) || pathname.includes('..'))
+			return null;
+		const path = root + pathname;
+		let stat;
+		try { stat = await Deno.stat(path); } catch { return null; }
+		if (!stat.isFile)
+			return null;
+		const key = `${stat.mtime?.getTime()}:${stat.size}`;
+		let hit = compiled.get(path);
+		if (hit?.key !== key) {
+			esbuild ??= await import('npm:esbuild@0.25.6');
+			const source = await Deno.readTextFile(path);
+			let code;
+			try {
+				code = (await esbuild.transform(source, {
+					loader: pathname.endsWith('.tsx') ? 'tsx' : 'ts', format: 'esm', keepNames: true, jsxFactory: 'h',
+					sourcemap: 'inline', sourcefile: pathname,
+				})).code;
+			}
+			catch (e) { // Throw in the page, so the failure names the file in the browser's console.
+				code = `throw new Error(${JSON.stringify(`${pathname}: ${e.message}`)});`;
+			}
+			hit = {key, code};
+			compiled.set(path, hit);
+		}
+		return new Response(hit.code, {headers: {'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-cache'}});
+	}
 
 	/**
 	 * Deno keeps the listening socket open until BOTH the shutdown promise and the
@@ -3152,7 +3228,7 @@ Testimony.Lock = Lock;
 globalThis.Testimony = Testimony; // used by command line test runner.
 
 export default Testimony;
-export {assert, clearFocus, Testimony};
+export {assert, clearFocus, until, Testimony};
 
 
 // If Testimony.js is run directly from the command line
