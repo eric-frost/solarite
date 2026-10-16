@@ -1135,6 +1135,50 @@ Testimony.test('Solarite.expr.contenteditableGrandchild', 'Make sure we throw if
 	assert(error);
 	assert(error.message.includes(`no \${...} inside contenteditable`));
 });
+
+Testimony.test('Solarite.expr.contenteditableValueEmpties', 'Empty values clear a contenteditable and the same element can be filled again.', () => {
+
+	class R151 extends HTMLElement {
+		text = 'abc'
+
+		render() {
+			h(this)`<div contenteditable value=${this.text}></div>`
+		}
+	}
+	customElements.define('r-151', R151);
+
+	let a = new R151();
+	document.body.append(a);
+	try {
+		a.render();
+		let div = a.querySelector('div');
+		assert.eq(div.innerHTML, 'abc');
+
+		for (let empty of ['', null, undefined, false, () => '', () => null, () => undefined, () => false]) {
+			a.text = '<b>abc</b>';
+			a.render();
+			assert.eq(div.innerHTML, '<b>abc</b>');
+
+			a.text = empty;
+			a.render();
+			assert.eq(a.querySelector('div'), div);
+			assert.eq(div.innerHTML, '');
+			assert.eq(div.getAttribute('value'), null);
+		}
+
+		a.text = 0;
+		a.render();
+		assert.eq(div.innerHTML, '0');
+
+		a.text = 'de';
+		a.render();
+		assert.eq(a.querySelector('div'), div);
+		assert.eq(div.innerHTML, 'de');
+	}
+	finally {
+		a.remove();
+	}
+});
 //endregion
 
 
