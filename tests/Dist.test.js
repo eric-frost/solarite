@@ -570,3 +570,30 @@ Testimony.test('Dist.toEl.object', `toEl() finds an object's render() by name in
 	assert.eq(el.tagName, 'I');
 	assert.eq(el.textContent, 'x');
 });
+
+Testimony.test('Dist.attrib.contenteditableValueEmpties', 'Empty values clear and refill a contenteditable in the minified build.', () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = value => hMin(el)`<div contenteditable value=${value}></div>`;
+	try {
+		render('abc');
+		let div = el.firstElementChild;
+		assert.eq(div.innerHTML, 'abc');
+		for (let empty of ['', null, undefined, false]) {
+			render('<b>abc</b>');
+			assert.eq(div.innerHTML, '<b>abc</b>');
+
+			render(empty);
+			assert.eq(el.firstElementChild, div);
+			assert.eq(div.innerHTML, '');
+			assert.eq(div.getAttribute('value'), null);
+		}
+
+		render('de');
+		assert.eq(el.firstElementChild, div);
+		assert.eq(div.innerHTML, 'de');
+	}
+	finally {
+		el.remove();
+	}
+});

@@ -1015,6 +1015,11 @@ class PathToAttribValue extends Path {
 					let old = node[this.attribName];
 					node[this.attribName] = typeof old === 'boolean' ? false : '';
 				}
+				// A contenteditable's value is its content (see the assignment below), so an empty
+				// one empties it.  Without this a reused element kept its old text: a grid cell
+				// moved to an empty column still showed the column it came from.
+				else if (this.attribName === 'value' && node.hasAttribute('contenteditable') && node.innerHTML !== '')
+					node.innerHTML = '';
 				node.removeAttribute(this.attribName);
 			}
 			else if (expr === true) {
