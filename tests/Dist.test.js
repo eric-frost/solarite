@@ -531,7 +531,7 @@ Testimony.test('Dist.rootRenderCreatesNothing', `The function that every render 
 	// callback reads then has to live in an object that is allocated on every call of render(),
 	// whether the comparison runs or not.  Written as a loop it stays a function of its own.
 	const src = await (await fetch('../dist/Solarite.min.js')).text();
-	let render = src.match(/render\(\w+=null,\w+=\{\}\)\{.*?\.exprs,!0,\w+\);/);
+	let render = src.match(/render\(\w+=null,\w+=\{\}\)\{.*?\.exprs,!0,\w+\).*?return /);
 	assert(render, 'Template.render() found in dist/Solarite.min.js');
 	assert(!/=>|function/.test(render[0]), render[0]);
 });

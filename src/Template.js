@@ -90,9 +90,13 @@ export default class Template {
 			// Not while firstApply is set: the group has then never been applied in full, because
 			// its first render threw part-way, or because this render comes from inside it (a slot
 			// child whose connectedCallback renders the element), and an expression that render
-			// has not reached must not be taken as already in place.
+			// has not reached must not be taken as already in place.  Nor after a later render that
+			// threw part-way (threw), which left the paths it reached holding its expressions and
+			// the rest holding older ones than last's; this render clears the mark.
 			if (last.html === this.html) {
-				if (last !== this && !ng.firstApply)
+				if (ng.threw)
+					ng.threw = false;
+				else if (last !== this && !ng.firstApply)
 					lastExprs = last.exprs;
 			}
 
@@ -112,7 +116,13 @@ export default class Template {
 			}
 		}
 
-		ng.applyExprs(this.exprs, true, lastExprs);
+		try {
+			ng.applyExprs(this.exprs, true, lastExprs);
+		}
+		catch (e) {
+			ng.threw = true;
+			throw e;
+		}
 		ng.template = this;
 
 		// A standalone template returns the node it made, which is read only now that the

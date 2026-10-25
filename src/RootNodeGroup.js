@@ -21,7 +21,9 @@ import PathToNodes from './PathToNodes.js';
  *     Null for a standalone template.  See unrender().
  * @property {?string[]} copiedAttribs - Names of the attributes that were copied from the template's
  *     own root element onto the element, leaving out those a parent's template wrote over them.
- *     Null unless the two were merged. */
+ *     Null unless the two were merged.
+ * @property {boolean} threw - True when the last render threw part-way through applying its
+ *     expressions, so the next one has none to compare with.  See Template.render(). */
 export default class RootNodeGroup extends NodeGroup {
 
 	/**
@@ -38,6 +40,7 @@ export default class RootNodeGroup extends NodeGroup {
 		// reads the root (delegateAll, rootEl), and the engine keeps that read fast only while
 		// the roots it meets there have few different shapes.
 		this.slotMarks = this.copiedAttribs = null;
+		this.threw = false;
 
 		// Whether every delegatable event in this tree is delegated: any value other than false
 		// or an array of event names means yes.  The stamp program and the dispatcher read this

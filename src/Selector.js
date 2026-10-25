@@ -1,3 +1,5 @@
+import Globals from './Globals.js';
+
 /**
  * A key-scoped selection that updates only the rows it actually affects.
  *
@@ -157,10 +159,16 @@ export default class Selector {
 			return;
 		this.#key = key;
 
-		// Nothing has rendered a row yet, so there is no list to write into.  The new key
-		// still takes effect: rows drawn later come up already carrying the attribute.
-		if (this.path === null)
+		// Nothing has rendered a row yet, so there is no list to write into.  Nor when the
+		// element that holds the list has been given another template since: the list is then
+		// let go, so that it and the template around it can be freed, instead of being written
+		// into where nobody sees it.  Either way the new key still takes effect: rows drawn
+		// later come up already carrying the attribute.
+		let root = this.path?.parentNg.rootNg;
+		if (!root || Globals.rootNodeGroups.get(root.rootEl) !== root) {
+			this.path = null;
 			return;
+		}
 
 		this.#write(old, this.offValue);
 		this.#write(key, this.onValue);

@@ -593,6 +593,11 @@ function createDispatcher(type) {
 		let ended = false;
 		let d = depth - 1;
 		if (d >= 0 && (evs[d] === ev || evs[d = unwind() - 1] === ev) && lasts[d] === node) {
+			// The walk of a dispatch that is over is forgotten, so that the same Event object
+			// dispatched again is walked again by the first dispatcher it reaches.  Left on record,
+			// it would let a component's root that has since left the page take the second
+			// dispatch for its own turn in the first and skip it.
+			walked.delete(ev);
 			evs[d] = lasts[d] = null;
 			depth = d;
 			ended = d === 0;

@@ -821,10 +821,16 @@ class Selector {
 			return;
 		this.#key = key;
 
-		// Nothing has rendered a row yet, so there is no list to write into.  The new key
-		// still takes effect: rows drawn later come up already carrying the attribute.
-		if (this.path === null)
+		// Nothing has rendered a row yet, so there is no list to write into.  Nor when the
+		// element that holds the list has been given another template since: the list is then
+		// let go, so that it and the template around it can be freed, instead of being written
+		// into where nobody sees it.  Either way the new key still takes effect: rows drawn
+		// later come up already carrying the attribute.
+		let root = this.path?.parentNg.rootNg;
+		if (!root || Globals.rootNodeGroups.get(root.rootEl) !== root) {
+			this.path = null;
 			return;
+		}
 
 		this.#write(old, this.offValue);
 		this.#write(key, this.onValue);
@@ -1443,6 +1449,11 @@ function createDispatcher(type) {
 		let ended = false;
 		let d = depth - 1;
 		if (d >= 0 && (evs[d] === ev || evs[d = unwind() - 1] === ev) && lasts[d] === node) {
+			// The walk of a dispatch that is over is forgotten, so that the same Event object
+			// dispatched again is walked again by the first dispatcher it reaches.  Left on record,
+			// it would let a component's root that has since left the page take the second
+			// dispatch for its own turn in the first and skip it.
+			walked.delete(ev);
 			evs[d] = lasts[d] = null;
 			depth = d;
 			ended = d === 0;
@@ -2106,6 +2117,9 @@ let drawing = {el: null, nodes: null};
 // by the drawing.
 let blamed;
 
+// The path PathToNodes.drawAgain() is drawing again, which it does not do a second time.
+let drawingAgain = null;
+
 // Most detached NodeGroups kept per close key.  Bounds memory growth after very large
 // lists are cleared while keeping pooled rows for every typical re-create pattern.
 // Lowering this (e.g. to 1000) cuts retained memory ~7x after clearing a 10k-row list,
@@ -2483,7 +2497,20 @@ class PathToNodes extends Path {
 		// 1. h.map() hands over its source items and callback rather than built Templates, so a
 		// row whose item is unchanged is recognized without building or looking up a Template.
 		if (expr instanceof MappedList) {
-			this.applyMapped(expr);
+			// A row that throws while it is updated leaves the remembered items out of step with
+			// the rows: that row, and the rows the render updated before it, show (some of) their
+			// new items, while the items are recorded only once every row is drawn.  Trusting
+			// them, the next render would keep such a row as its old item's, and could show an
+			// item twice.  So they are forgotten, and the next render compares each row's
+			// template instead, which says what the row shows (see NodeGroup.keepReached()).  A
+			// try costs nothing until something throws.
+			try {
+				this.applyMapped(expr);
+			}
+			catch (e) {
+				this.lastItems = null;
+				throw e;
+			}
 			
 			return;
 		}
@@ -2518,8 +2545,8 @@ class PathToNodes extends Path {
 		// because this.nodeGroups only tracks NodeGroups.  Use the generic path for those.
 		if (hasNodesNow || this.itemsHaveNodes)
 			this.applyGeneric(newItems);
-		else
-			this.diffItems(newItems);
+		else if (this.diffItems(newItems)) // See diffItems().
+			this.drawAgain(newItems);
 
 		
 	}
@@ -2558,15 +2585,25 @@ class PathToNodes extends Path {
 	 * keyed NodeGroups are discarded instead of pooled.  The first item decides; a list whose
 	 * first row has no key goes to applyDiff, which hands it to applyKeyed at the first row
 	 * with a key that it would otherwise rewrite.
-	 * @param newItems {(Template|string)[]} */
+	 *
+	 * Taking a row out of the document or putting one in can run code that renders the host
+	 * again: the disconnectedCallback or connectedCallback of an element in the row, such as a
+	 * tab that tells its tab set.  That render draws the whole list, from this path's rows as
+	 * they stand.  So the reconcilers compare this.nodeGroups before and after each such step,
+	 * and stop when it changed, taking out the rows they had made and put in, which that render
+	 * did not know of (see dropStrays()).  The caller then draws its own list again, from what
+	 * that render left; see drawAgain().  A render that starts from a function in a row, while
+	 * the row is built, is not one of these, and the render it interrupted carries on.
+	 * @param newItems {(Template|string)[]}
+	 * @return {boolean|undefined} True when such a render drew the list and this one stopped. */
 	diffItems(newItems) {
 		let first = newItems.length !== 0 ? newItems[0] : null;
 		if (first !== null
 			? (typeof first !== 'string' && (first.key !== undefined || Shell.get(first.html, first.svgMode).keyIndex >= 0))
 			: (this.nodeGroups !== null && this.nodeGroups.length !== 0 && this.nodeGroups[0].key !== undefined))
-			this.applyKeyed(newItems);
+			return this.applyKeyed(newItems);
 		else
-			this.applyDiff(newItems);
+			return this.applyDiff(newItems);
 	}
 
 	/**
@@ -2632,7 +2669,7 @@ class PathToNodes extends Path {
 				}
 			}
 			if (!tooMany && (missCount === 0
-					|| this.applyMisses(oldNgs, misses, missTemplates, missCount, len))) {
+					|| this.applyMisses(oldNgs, misses, missTemplates, missCount, len, mapped))) {
 				for (let k=0; k<missCount; k++) {
 					let j = misses[k];
 					lastItems[j] = items[j];
@@ -2794,7 +2831,9 @@ class PathToNodes extends Path {
 		if (!plain || this.itemsHaveNodes)
 			return this.applySingle(newItems);
 
-		this.diffItems(newItems);
+		// A render that started while rows were taken out or put in drew the list; see diffItems().
+		if (this.diffItems(newItems))
+			return this.drawAgain(mapped);
 
 		// Remember which item drew each row, so the next render can match them by identity.
 		// The reconciler leaves nodeGroups aligned with newItems, and therefore with items.
@@ -2848,13 +2887,63 @@ class PathToNodes extends Path {
 	 * @param parent {Node}
 	 * @param anchor {?Node} Null appends at the end.
 	 * @param pooled {boolean} True to take a detached NodeGroup of the same html from the pool
-	 * when there is one.  False for the rows of a keyed list, which are always built new. */
+	 * when there is one.  False for the rows of a keyed list, which are always built new.
+	 * @return {boolean|undefined} True when a render of this list started as a row was put in,
+	 * and drew the list; see diffItems(). */
 	createRows(items, from, to, ngs, parent, anchor, pooled) {
 		for (let i=from; i<to; i++) {
 			let ng = pooled ? this.createOrReuse(items[i]) : this.createNew(items[i]);
 			ngs[i] = ng;
+			let list = this.nodeGroups;
 			insertNodesBefore(parent, ng, anchor);
+			if (this.nodeGroups !== list)
+				return this.dropStrays(ngs, from, i + 1);
 		}
+	}
+
+	/**
+	 * Take out those of ngs[from] up to ngs[to-1] that this path's list does not hold, once a
+	 * render of the list that started inside the render that made them has drawn the list
+	 * without them; see diffItems().  Rows of the old list that the interrupted render moved are
+	 * in the other's list too, and stay.
+	 * @param ngs {NodeGroup[]}
+	 * @param from {int}
+	 * @param to {int}
+	 * @return {boolean} True, for the caller to return. */
+	dropStrays(ngs, from, to) {
+		let kept = new Set(this.nodeGroups);
+		for (let i=from; i<to; i++)
+			if (ngs[i] && !kept.has(ngs[i]))
+				detachNodes(ngs[i]);
+		return true;
+	}
+
+	/**
+	 * Draw expr once more, after a render of this list that started while a row was taken out
+	 * or put in drew the list itself; see diffItems().  The render that was interrupted draws
+	 * its own list, from what the other left, as it does when a function in a row renders the
+	 * host (see applyMapped() and applyGeneric()).  The items remembered for h.map() are
+	 * forgotten first: the other render recognized rows by them while some rows already showed
+	 * other items, so they may not say what each row shows, and the templates do.
+	 *
+	 * It draws again once.  A row that renders the host every time it leaves or enters the
+	 * document could otherwise be answered by drawing again for ever; when this render is
+	 * interrupted in its turn, the list the newest render drew is left as it is.
+	 * @param expr {Expr}
+	 * @return {boolean} True, for the caller to return. */
+	drawAgain(expr) {
+		this.lastItems = null;
+		if (drawingAgain !== this) {
+			let was = drawingAgain;
+			drawingAgain = this;
+			try {
+				this.applySingle(expr);
+			}
+			finally {
+				drawingAgain = was;
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -2943,9 +3032,10 @@ class PathToNodes extends Path {
 	 * @param templates {(Template|string)[]} The new Template for each of those positions.
 	 * @param missCount {int}
 	 * @param len {int} Length of the list, for anchoring the last position.
+	 * @param mapped {MappedList} The list being drawn, to draw again; see diffItems().
 	 * @return {boolean} False when the change doesn't fit this path and the caller must run
 	 * the general diff instead; nothing has been modified in that case. */
-	applyMisses(ngs, misses, templates, missCount, len) {
+	applyMisses(ngs, misses, templates, missCount, len, mapped) {
 
 		// Only a keyed list can move rows around safely.  An unkeyed one can still be rewritten
 		// in place, which is what the positional diff would do for it anyway.
@@ -2955,11 +3045,13 @@ class PathToNodes extends Path {
 		// for this path can still be handed to the general diff with nothing half-applied.
 		// A row that kept its key is rewritten where it stands; the rest have to be matched
 		// against each other, and past a handful of those the general diff's map-and-LIS
-		// approach is the better tool.
+		// approach is the better tool.  A row that has a key, in a list whose first row has none
+		// (a string, a heading without a key), is not rewritten for another item either: the
+		// general diff gives such a list to the keyed diff (see applyDiff()).
 		let displaced = null, dCount = 0;
 		for (let k=0; k<missCount; k++) {
 			let ng = ngs[misses[k]], t = templates[k];
-			if (typeof t === 'string' || !itemClose(ng, t) || (keyed && ng.key !== keyOf(t))) {
+			if (typeof t === 'string' || !itemClose(ng, t) || (keyed ? ng.key !== keyOf(t) : ng.key !== undefined)) {
 				if (!keyed || dCount === maxDisplacedMisses)
 					return false;
 				(displaced ??= [])[dCount++] = k;
@@ -3003,10 +3095,18 @@ class PathToNodes extends Path {
 			return true;
 
 		// 3. Hand the displaced rows to the shared placer.  displaced holds indexes into misses
-		// and templates, so misses is what maps a row to its position in the list.
-		this.placeDisplaced(displaced, misses, ngs, templates, ngs, len,
-			this.wholeParent ? null : this.nodeMarker,
-			this.wholeParent ? this.nodeMarker : this.nodeMarker.parentNode);
+		// and templates, so misses is what maps a row to its position in the list.  The items
+		// are put aside while it takes rows out and puts them in (see diffItems()): a render
+		// that starts meanwhile then draws the list by the general diff, which gives it a new
+		// list of rows and so is noticed, rather than by this shortcut, which would change these
+		// same rows in place with no sign of it.
+		let lastItems = this.lastItems;
+		this.lastItems = null;
+		if (this.placeDisplaced(displaced, misses, ngs, templates, ngs, len,
+				this.wholeParent ? null : this.nodeMarker,
+				this.wholeParent ? this.nodeMarker : this.nodeMarker.parentNode))
+			return this.drawAgain(mapped);
+		this.lastItems = lastItems;
 
 		// 4. Node membership or order changed, so invalidate caches.
 		if (!this.parentNg.firstApply) {
@@ -3135,7 +3235,9 @@ class PathToNodes extends Path {
 	 * @param boundary {int} First position past this window, where the anchor stops being
 	 *   outNgs[p+1] and becomes tailAnchor.
 	 * @param tailAnchor {Node|null} Anchor for a row placed at boundary-1.
-	 * @param parent {Node} Where the rows' nodes live. */
+	 * @param parent {Node} Where the rows' nodes live.
+	 * @return {boolean|undefined} True when a render of this list started as a row was taken
+	 * out or put in, and drew the list; see diffItems(). */
 	placeDisplaced(rows, positions, oldNgs, items, outNgs, boundary, tailAnchor, parent) {
 		let count = rows.length;
 
@@ -3167,20 +3269,28 @@ class PathToNodes extends Path {
 
 		// 2. Discard the old rows nothing claimed.  Keyed semantics require a new key to get new
 		// nodes, so these are never pooled.
+		let list = this.nodeGroups;
 		for (let b=0; b<count; b++) {
 			let ng = free[b];
-			if (ng !== null)
+			if (ng !== null) {
 				detachNodes(ng);
+				if (this.nodeGroups !== list)
+					return true;
+			}
 		}
 
-		// 3. Put the rows in place, right to left so each one's anchor is already final.
+		// 3. Put the rows in place, right to left so each one's anchor is already final.  The
+		// row after each is the one placed before it, when that is at the next position, and
+		// otherwise one that stays.  outNgs is written only once every row stands in its place:
+		// it can be this path's own list, which a render that starts while a row is put in must
+		// find as it was.
 		for (let a=count-1; a>=0; a--) {
 			let i = rows[a];
 			let p = positions === null ? i : positions[i];
 			let ng = placed[a];
 			if (ng === undefined)
 				try {
-					ng = this.createNew(items[i]);
+					ng = placed[a] = this.createNew(items[i]);
 				}
 				catch (e) {
 					// The rows to its right are already in place and the ones it replaces are
@@ -3188,10 +3298,18 @@ class PathToNodes extends Path {
 					this.dropRows();
 					throw e;
 				}
-			outNgs[p] = ng;
-			let anchor = p+1 < boundary ? outNgs[p+1].startNode : tailAnchor;
-			if (ng.endNode.nextSibling !== anchor || ng.startNode.parentNode !== parent)
+			let next = a+1 < count && (positions === null ? rows[a+1] : positions[rows[a+1]]) === p+1 ? placed[a+1] : p+1 < boundary ? outNgs[p+1] : null;
+			let anchor = next !== null ? next.startNode : tailAnchor;
+			if (ng.endNode.nextSibling !== anchor || ng.startNode.parentNode !== parent) {
+				list = this.nodeGroups;
 				insertNodesBefore(parent, ng, anchor);
+				if (this.nodeGroups !== list)
+					return this.dropStrays(placed, a, count);
+			}
+		}
+		for (let a=0; a<count; a++) {
+			let i = rows[a];
+			outNgs[positions === null ? i : positions[i]] = placed[a];
 		}
 	}
 
@@ -3260,6 +3378,7 @@ class PathToNodes extends Path {
 
 		let oldRemain = oldEnd - start, newRemain = newEnd - start;
 		if (oldRemain || newRemain) {
+			let list = this.nodeGroups;
 
 			// 4. Remove leftover old NodeGroups.
 			if (oldRemain) {
@@ -3271,15 +3390,20 @@ class PathToNodes extends Path {
 						ng.getNodes();
 				}
 
-				// Fast clear when removing everything.
+				// Fast clear when removing everything.  The rows are all taken out before any is
+				// kept for reuse: a render that starts as one is taken out (see diffItems()) keeps
+				// those it finds taken out itself, and a row must not be in the pool twice.
 				let cleared = newLen === 0 && start === 0 && this.fastClear();
+				if (!cleared)
+					for (let i=start; i<oldEnd && this.nodeGroups === list; i++)
+						detachNodes(oldNgs[i]);
+				if (this.nodeGroups !== list)
+					return true;
 				let pool = this.nodeGroupsDetachedAvailable ??= new MultiValueMap();
 				for (let i=start; i<oldEnd; i++) {
 					let ng = oldNgs[i];
-					if (ng.startNode !== ng.endNode)
+					if (cleared && ng.startNode !== ng.endNode)
 						Util.saveOrphans(ng.getNodes()); // Moves the nodes out of the DOM, into their own fragment.
-					else if (!cleared)
-						ng.startNode.remove();
 					// A row with a key is discarded, as in the keyed diff: a list whose first row
 					// is a string or has no key is reconciled here even when later rows have
 					// keys, and a key that comes back must still get new nodes.  So is a row that
@@ -3296,7 +3420,8 @@ class PathToNodes extends Path {
 				let anchor = newEnd < newLen ? newNgs[newEnd].startNode : (this.wholeParent ? null : this.nodeMarker);
 				let parent = this.wholeParent ? this.nodeMarker : this.nodeMarker.parentNode;
 				try {
-					this.createRows(newItems, start, newEnd, newNgs, parent, anchor, true);
+					if (this.createRows(newItems, start, newEnd, newNgs, parent, anchor, true))
+						return true;
 				}
 				catch (e) {
 					this.dropRows();
@@ -3427,10 +3552,10 @@ class PathToNodes extends Path {
 					// just past this window, which placement never writes to — it only fills
 					// positions below newEnd — so it is computed once here instead of on every
 					// pass around the placement loop.
-					if (displaced !== null)
-						this.placeDisplaced(displaced, null, oldNgs, newItems, newNgs, newEnd,
+					if (displaced !== null && this.placeDisplaced(displaced, null, oldNgs, newItems, newNgs, newEnd,
 							newEnd < newLen ? newNgs[newEnd].startNode : (this.wholeParent ? null : this.nodeMarker),
-							parent);
+							parent))
+						return true;
 					fastHandled = true;
 				}
 			}
@@ -3495,7 +3620,7 @@ class PathToNodes extends Path {
 			// arbitrary logic there; the parent is in the document, since the notification storm
 			// only exists on a connected tree; and the list is long enough for the saving to beat
 			// the fixed cost of the detour and the extra MutationObserver records it creates.
-			let detachedFrom = null, reattachBefore = null;
+			let detachedFrom = null, reattachBefore = null, list = this.nodeGroups;
 			if (this.wholeParent && start === 0 && newEnd === newLen && kept === 0 && newRemain > 500
 				&& parent.isConnected && parent.parentNode !== null
 				&& parent.localName.indexOf('-') === -1 && !parent.hasAttribute('is')) {
@@ -3511,6 +3636,11 @@ class PathToNodes extends Path {
 			// list again next to it.  See dropRows().
 			try {
 
+			// Taking the parent out of the document, and taking rows out, can run code that
+			// renders this list; see diffItems().
+			if (this.nodeGroups !== list)
+				return true;
+
 			// 4. Remove unmatched old NodeGroups.  They're discarded, never pooled,
 			// so a later render with new keys always creates new nodes.
 			let removeAll = oldRemain !== 0 && (newRemain === 0 || noneKept);
@@ -3524,9 +3654,14 @@ class PathToNodes extends Path {
 				if (!(start === 0 && newEnd === newLen && kept === 0 && this.fastClear())) {
 					if (removeAll)
 						removals = oldNgs.slice(start, oldEnd);
-					for (let ng of removals)
+					for (let ng of removals) {
 						detachNodes(ng);
+						if (this.nodeGroups !== list)
+							return true;
+					}
 				}
+				if (this.nodeGroups !== list)
+					return true;
 			}
 
 			// 5. Insert new NodeGroups and move kept ones.
@@ -3537,8 +3672,10 @@ class PathToNodes extends Path {
 				// Each row is one native insert; routing rows through a batching
 				// DocumentFragment would double the insert count for no benefit, since
 				// style/layout work is deferred until the next frame either way.
-				if (kept === 0)
-					this.createRows(newItems, start, newEnd, newNgs, parent, anchor, false);
+				if (kept === 0) {
+					if (this.createRows(newItems, start, newEnd, newNgs, parent, anchor, false))
+						return true;
+				}
 
 				// 5b. Mixed: iterate backwards so each item's anchor is already in place.
 				// Kept NodeGroups on a longest increasing subsequence of old positions stay still;
@@ -3547,19 +3684,22 @@ class PathToNodes extends Path {
 					let lis = moved ? longestIncreasingSubsequence(sources) : null;
 					let lisPos = lis !== null ? lis.length - 1 : -1;
 					for (let i=newEnd-1; i>=start; i--) {
-						let ng = newNgs[i];
+						let ng = newNgs[i], move = true;
 						// Asked of sources rather than of newNgs, which can still hold a row that
 						// step 3a kept before it gave up and that step 3 has since removed.
-						if (sources[i-start] === -1) { // Create and insert.
-							ng = this.createNew(newItems[i]);
-							newNgs[i] = ng;
-							insertNodesBefore(parent, ng, anchor);
+						if (sources[i-start] === -1) // Create and insert.
+							newNgs[i] = ng = this.createNew(newItems[i]);
+						else if (lis === null)
+							move = false;
+						else if (lisPos >= 0 && lis[lisPos] === i - start) {
+							lisPos--; // Part of the stable subsequence; doesn't move.
+							move = false;
 						}
-						else if (lis !== null) {
-							if (lisPos >= 0 && lis[lisPos] === i - start)
-								lisPos--; // Part of the stable subsequence; doesn't move.
-							else
-								insertNodesBefore(parent, ng, anchor);
+						if (move) {
+							list = this.nodeGroups;
+							insertNodesBefore(parent, ng, anchor);
+							if (this.nodeGroups !== list)
+								return this.dropStrays(newNgs, i, newEnd);
 						}
 						anchor = ng.startNode;
 					}
@@ -3572,9 +3712,13 @@ class PathToNodes extends Path {
 				throw e;
 			}
 			finally {
-				if (detachedFrom !== null)
+				if (detachedFrom !== null) {
+					list = this.nodeGroups;
 					detachedFrom.insertBefore(parent, reattachBefore);
+				}
 			}
+			if (detachedFrom !== null && this.nodeGroups !== list) // Putting the parent back runs code too.
+				return this.dropStrays(newNgs, start, newEnd);
 
 			} // end if (!fastHandled)
 
@@ -6059,14 +6203,6 @@ class NodeGroup {
 	 *
 	 * The row gets a template of its own because neither of the other two may be changed:
 	 * h.map() hands a row's Template out again for as long as its item stays the same.
-	 *
-	 * The list the row is in forgets which item drew each of its rows.  An h.map() list records
-	 * its items only once every row is drawn, so it still names this row's old item, and the
-	 * rows the render updated before this one by their old items too.  Trusting that, the next
-	 * render would keep a row as the old item's while it shows (some of) the new one, and could
-	 * show an item twice.  Without the items it compares each row's template instead, and those
-	 * say what the rows show.  This runs only when a row throws, so it costs a working render
-	 * nothing.
 	 * @param template {Template} The template that was being applied.
 	 * @param at {int} Index of the expression that threw. */
 	keepReached(template, at) {
@@ -6074,7 +6210,6 @@ class NodeGroup {
 		this.template = Object.assign(new Template(), old, {
 			exprs: template.exprs.map((expr, i) => i > at ? expr : old.exprs[i])
 		});
-		this.parentPath.lastItems = null;
 	}
 
 	/**
@@ -6103,14 +6238,27 @@ class NodeGroup {
 	 * @return {Node[]} A private array, holding at least slots 1 to upTo. */
 	stampSlots(upTo) {
 		let slots = this.stampSlotsCache;
-		if (slots === null || slots[upTo] === undefined) {
+		if (slots === null) {
 			// The copy is required: resolveStampSlots fills the Shell's SHARED scratch array,
 			// which the next row's resolve would overwrite.
 			let shell = this.shell, scratch = this.resolveStampSlots(shell, upTo);
-			if (slots === null)
-				slots = this.stampSlotsCache = new Array(scratch.length + shell.nodesPathIdx.length);
+			slots = this.stampSlotsCache = new Array(scratch.length + shell.nodesPathIdx.length);
 			for (let s=1; s<=upTo; s++)
 				slots[s] = scratch[s];
+		}
+
+		// A row that has some of its slots goes on from the last of them, in its own array, and
+		// keeps the ones it has.  Other code may have put nodes into the row since (a password
+		// manager's icon beside an input), and the program run again from the row's root would
+		// then find other nodes for those: a handler that worked would move to a neighbour, and
+		// an update would write into it.  The program reaches each slot from its parent's or an
+		// earlier sibling's, so the slots after the kept ones are found from the kept nodes.
+		// Slot 1, the row's root, is always kept, which ends the search for the last one.
+		else if (slots[upTo] === undefined) {
+			let k = upTo - 1;
+			while (slots[k] === undefined)
+				k--;
+			runResolveOps(slots, this.shell.resolveOps, k * 2, k + 1, upTo * 2);
 		}
 		return slots;
 	}
@@ -6312,7 +6460,9 @@ class NodeGroup {
  *     Null for a standalone template.  See unrender().
  * @property {?string[]} copiedAttribs - Names of the attributes that were copied from the template's
  *     own root element onto the element, leaving out those a parent's template wrote over them.
- *     Null unless the two were merged. */
+ *     Null unless the two were merged.
+ * @property {boolean} threw - True when the last render threw part-way through applying its
+ *     expressions, so the next one has none to compare with.  See Template.render(). */
 class RootNodeGroup extends NodeGroup {
 
 	/**
@@ -6329,6 +6479,7 @@ class RootNodeGroup extends NodeGroup {
 		// reads the root (delegateAll, rootEl), and the engine keeps that read fast only while
 		// the roots it meets there have few different shapes.
 		this.slotMarks = this.copiedAttribs = null;
+		this.threw = false;
 
 		// Whether every delegatable event in this tree is delegated: any value other than false
 		// or an array of event names means yes.  The stamp program and the dispatcher read this
@@ -6755,9 +6906,13 @@ class Template {
 			// Not while firstApply is set: the group has then never been applied in full, because
 			// its first render threw part-way, or because this render comes from inside it (a slot
 			// child whose connectedCallback renders the element), and an expression that render
-			// has not reached must not be taken as already in place.
+			// has not reached must not be taken as already in place.  Nor after a later render that
+			// threw part-way (threw), which left the paths it reached holding its expressions and
+			// the rest holding older ones than last's; this render clears the mark.
 			if (last.html === this.html) {
-				if (last !== this && !ng.firstApply)
+				if (ng.threw)
+					ng.threw = false;
+				else if (last !== this && !ng.firstApply)
 					lastExprs = last.exprs;
 			}
 
@@ -6777,7 +6932,13 @@ class Template {
 			}
 		}
 
-		ng.applyExprs(this.exprs, true, lastExprs);
+		try {
+			ng.applyExprs(this.exprs, true, lastExprs);
+		}
+		catch (e) {
+			ng.threw = true;
+			throw e;
+		}
 		ng.template = this;
 
 		// A standalone template returns the node it made, which is read only now that the

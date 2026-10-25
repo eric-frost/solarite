@@ -561,14 +561,6 @@ export default class NodeGroup {
 	 *
 	 * The row gets a template of its own because neither of the other two may be changed:
 	 * h.map() hands a row's Template out again for as long as its item stays the same.
-	 *
-	 * The list the row is in forgets which item drew each of its rows.  An h.map() list records
-	 * its items only once every row is drawn, so it still names this row's old item, and the
-	 * rows the render updated before this one by their old items too.  Trusting that, the next
-	 * render would keep a row as the old item's while it shows (some of) the new one, and could
-	 * show an item twice.  Without the items it compares each row's template instead, and those
-	 * say what the rows show.  This runs only when a row throws, so it costs a working render
-	 * nothing.
 	 * @param template {Template} The template that was being applied.
 	 * @param at {int} Index of the expression that threw. */
 	keepReached(template, at) {
@@ -576,7 +568,6 @@ export default class NodeGroup {
 		this.template = Object.assign(new Template(), old, {
 			exprs: template.exprs.map((expr, i) => i > at ? expr : old.exprs[i])
 		});
-		this.parentPath.lastItems = null;
 	}
 
 	/**
@@ -605,14 +596,27 @@ export default class NodeGroup {
 	 * @return {Node[]} A private array, holding at least slots 1 to upTo. */
 	stampSlots(upTo) {
 		let slots = this.stampSlotsCache;
-		if (slots === null || slots[upTo] === undefined) {
+		if (slots === null) {
 			// The copy is required: resolveStampSlots fills the Shell's SHARED scratch array,
 			// which the next row's resolve would overwrite.
 			let shell = this.shell, scratch = this.resolveStampSlots(shell, upTo);
-			if (slots === null)
-				slots = this.stampSlotsCache = new Array(scratch.length + shell.nodesPathIdx.length);
+			slots = this.stampSlotsCache = new Array(scratch.length + shell.nodesPathIdx.length);
 			for (let s=1; s<=upTo; s++)
 				slots[s] = scratch[s];
+		}
+
+		// A row that has some of its slots goes on from the last of them, in its own array, and
+		// keeps the ones it has.  Other code may have put nodes into the row since (a password
+		// manager's icon beside an input), and the program run again from the row's root would
+		// then find other nodes for those: a handler that worked would move to a neighbour, and
+		// an update would write into it.  The program reaches each slot from its parent's or an
+		// earlier sibling's, so the slots after the kept ones are found from the kept nodes.
+		// Slot 1, the row's root, is always kept, which ends the search for the last one.
+		else if (slots[upTo] === undefined) {
+			let k = upTo - 1;
+			while (slots[k] === undefined)
+				k--;
+			runResolveOps(slots, this.shell.resolveOps, k * 2, k + 1, upTo * 2);
 		}
 		return slots;
 	}
