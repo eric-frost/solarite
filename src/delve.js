@@ -45,15 +45,22 @@ export default function delve(obj, path, createVal = d) {
  * Is it an array and a path that can be evaluated by delve() ?
  * We allow the first element to be null/undefined so binding can report errors.
  *
- * The rest is tested with every() rather than by negating a find():  find() returns the element
- * it found, so a found null, undefined or false would read as "none found", and [obj, null]
- * would be a path to the property named "null".
+ * The rest is tested by a loop that stops at the first element that is not a string or a number,
+ * so [obj, null] is not a path.  A parent passes every array it gives a child component through
+ * here on every render, an array of 10,000 row objects included, and the loop looks at its second
+ * element and stops, where a slice() would copy the whole array first.
  * @param arr {Array|*}
  * @returns {boolean} */
 export function isDelvePath(arr) {
-	return Array.isArray(arr) && arr.length >=2  // An array of at least two elements.
-		&& (typeof arr[0] === 'object' || arr[0] === undefined) // Where the first element is an object, null, or undefined.
-		&& arr.slice(1).every(p => typeof p === 'string' || typeof p === 'number'); // Path 1..x is only numbers and strings.
+	// An array of at least two elements, whose first is an object, null, or undefined.
+	if (!Array.isArray(arr) || arr.length < 2 || (typeof arr[0] !== 'object' && arr[0] !== undefined))
+		return false;
+
+	// Then only numbers and strings.
+	for (let i = 1; i < arr.length; i++)
+		if (typeof arr[i] !== 'string' && typeof arr[i] !== 'number')
+			return false;
+	return true;
 }
 
 // d means "don't create"

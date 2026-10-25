@@ -124,9 +124,11 @@ export default class NodeGroup {
 	stampSlotsCache = null;
 
 	/**
-	 * A map between <style> Elements and their text content.
-	 * This lets NodeGroup.updateStyles() see when the style text has changed.
-	 * @type {?Map<HTMLStyleElement, string>} */
+	 * The embeds that have work to do once the expressions are applied, which is when
+	 * updateStyles() runs: each <style> mapped to its text content, so that updateStyles() sees
+	 * when an expression has changed it, and each <script> that has yet to run mapped to null.
+	 * applyExprs() checks this one field, so a group with neither pays for nothing more.
+	 * @type {?Map<HTMLStyleElement|HTMLScriptElement, ?string>} */
 	styles;
 
 	/** @type {Template} */
@@ -708,12 +710,21 @@ export default class NodeGroup {
 		return result;
 	}
 
+	/**
+	 * Scope again each style whose text an expression has changed, and run the scripts that were
+	 * waiting for the expressions to be written (see activateEmbeds).  A script is taken off the
+	 * list before it runs, so it runs once even if it throws. */
 	updateStyles() {
 		if (this.styles)
-			for (let [style, oldText] of this.styles) {
-				let newText = style.textContent;
-				if (oldText !== newText)
-					Util.bindStyles(style, this.rootNg.rootEl);
+			for (let [el, oldText] of this.styles) {
+				if (oldText === null) {
+					this.styles.delete(el);
+					// Indirect eval runs in global scope (correct for a <script> tag) and, unlike a direct
+					// eval, doesn't force terser to keep every top-level name in the bundle unmangled.
+					(0, eval)(el.textContent);
+				}
+				else if (oldText !== el.textContent)
+					Util.bindStyles(el, this.rootNg.rootEl);
 			}
 	}
 
@@ -750,14 +761,23 @@ export default class NodeGroup {
 
 			}
 			// scripts
-			if (options?.scripts !== false) {
+			// A script runs once the template's expressions are written, its own text among them, so
+			// here it is only put on the list that updateStyles() works through when applyExprs() is
+			// done.  Only a script the browser would run as a classic one is listed: with no type, or
+			// a JavaScript type.  Any other type marks data that isn't code, such as a JSON-LD block or
+			// the source of a template, and a module can't be run this way.  The legacy names
+			// text/jscript, text/livescript and text/javascript1.x are left out.
+			if (options?.scripts !== false)
 				for (let path of shell.scripts) {
 					let script = Path.resolve(root, path, pathOffset);
-					// Indirect eval runs in global scope (correct for a <script> tag) and, unlike a direct
-					// eval, doesn't force terser to keep every top-level name in the bundle unmangled.
-					(0, eval)(script.textContent)
+					if (/^((application|text)\/(x-)?(java|ecma)script)?$/i.test(script.type.trim()))
+						(this.styles ??= new Map()).set(script, null);
 				}
-			}
+
+			// A template with no expressions has nothing to wait for, and a list doesn't apply one, so
+			// its scripts run now.
+			if (!shell.paths.length)
+				this.updateStyles();
 		}
 	}
 

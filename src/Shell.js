@@ -158,9 +158,11 @@ export default class Shell {
 		// A chunk is undefined when its part of the template literal holds an escape sequence that JavaScript
 		// rejects, such as the "\2014" of a css content value, which has to be written "\\2014" in a template.
 		// Joined with the other chunks it would count as an empty string, and the template would render without
-		// that part of its html and without a word about it.
+		// that part of its html and without a word about it.  The message quotes the chunks as they were written,
+		// which a tagged template keeps beside them in html.raw, since the chunk that holds the bad escape is the
+		// one that has no other form.
 		if (html.includes(undefined))
-			throw new Error(`Solarite: bad escape sequence in template: ${html.join('${...}')}`);
+			throw new Error(`Solarite: bad escape sequence in template: ${(html.raw || html).join('${...}')}`);
 
 		//#IFDEBUG
 		this._html = html.join('');
@@ -204,7 +206,8 @@ export default class Shell {
 		let node;
 		let toRemove = null; // A placeholder node the walker has not moved off yet.
 
-		// The walker needs no filter: a parsed fragment holds only elements, text and comments.
+		// The walker needs no filter: a parsed fragment holds only elements, text, comments, and in some browsers
+		// processing instructions.
 		let walker = Globals.doc.createTreeWalker(this.docFrag);
 		while (node = walker.nextNode()) {
 
@@ -224,7 +227,7 @@ export default class Shell {
 
 					// The value split around its expressions, and null in place of that when the
 					// whole value is one expression.
-					let parts = attr.value.split(/[\ue000-\uf8ff]/g);
+					let parts = attr.value.split(marks);
 					let nonEmptyParts = (parts.length === 2 && !parts[0] && !parts[1]) ? null : parts;
 
 					// The reserved key attribute identifies this template within a keyed list.
@@ -243,7 +246,7 @@ export default class Shell {
 						if (this.keyIndex >= 0)
 							throw new Error(`Solarite: duplicate key attribute.`);
 
-						this.keyIndex = attr.value.charCodeAt(0) - attribPlaceholder;
+						this.keyIndex = attr.value.charCodeAt(1) - attribPlaceholder;
 
 						// On a component the key still joins componentAttribPaths below, which keeps
 						// PathToComponent's contiguous expression slices aligned; it skips PathToKey
@@ -252,7 +255,7 @@ export default class Shell {
 					}
 
 					// One or more whole attributes
-					else if (name.match(/^[\ue000-\uf8ff]$/)) {
+					else if (name.match(/^\ufdd0[\ue000-\uf8ff]$/)) {
 						path = new PathToAttribs(null, node);
 						nonEmptyParts = null; // So the placeholder attribute is removed below.
 					}
@@ -369,8 +372,9 @@ export default class Shell {
 			// Here we look for expressions in comments.
 			// We don't actually update them dynamically, but we still add paths for them.
 			// That way the expression count still matches.
-			else if (node.nodeType === 8) { // Node.COMMENT_NODE
-				let parts = node.textContent.split(/[\ue000-\uf8ff]/g);
+			// A processing instruction (7), which is what Chrome makes of <?x ...>, holds its marks the same way.
+			else if (node.nodeType === 8 || node.nodeType === 7) { // Node.COMMENT_NODE, Node.PROCESSING_INSTRUCTION_NODE
+				let parts = node.textContent.split(marks);
 				for (let i=0; i<parts.length-1; i++) {
 					let path = new Path(node.previousSibling, node)
 					this.paths.push(path);
@@ -543,9 +547,10 @@ export default class Shell {
 	/**
 	 * Mark where every expression goes in the template's html, in a way the browser's parser carries into the
 	 * nodes it creates, where the constructor then finds the marks:
-	 * 1. A Unicode private-use character for an expression inside a tag, where it is an attribute's value, part of
-	 *    one, or one or more whole attributes.  An expression inside a comment gets one too, so that a block
-	 *    of html that was commented out still has a place for each of its expressions.
+	 * 1. Two characters for an expression inside a tag, where it is an attribute's value, part of one, or one or
+	 *    more whole attributes: the noncharacter U+FDD0, then a Unicode private-use character numbered by the
+	 *    expression (see attribPlaceholder).  An expression inside a comment gets one too, so that a block of
+	 *    html that was commented out still has a place for each of its expressions.
 	 * 2. A comment placeholder for an expression that is a child of a node.
 	 * 3. -solarite-placeholder appended to the tag names of custom components so that we can instantiate them later
 	 *    when we can manually call their constructors with the proper attribute and children arguments from evaluated expressions.
@@ -563,9 +568,16 @@ export default class Shell {
 
 		// A tag or a comment.  Each mark inside it becomes a character of its own, numbered by its expression
 		// because a tag can't have the same attribute more than once.
+		// An unquoted value that is one expression straight before the tag's closing '/>', as in
+		// <input oninput=${f}/> or <circle r=${5}/>, would take the slash in as html reads it, and the
+		// expression would then have text beside it: a handler would be called to make an inline handler of
+		// what it returns, and a value would gain a slash.  Whoever writes that means the tag to close itself,
+		// so a space goes before the slash.  A slash meant for the value is written inside the quotes,
+		// href="${base}/".
 		let inTag = tag => tag
 			.replace(isWebComponentTagName, '$&-SOLARITE-PLACEHOLDER')
-			.replace(/\0/g, () => String.fromCharCode(attribPlaceholder + index++));
+			.replace(/(=\s*\0)\/(?=>$)/, '$1 /')
+			.replace(/\0/g, () => '\ufdd0' + String.fromCharCode(attribPlaceholder + index++));
 
 		// The chunks are joined with a NUL character in every gap an expression goes in, and htmlToken then reads
 		// the whole template as the browser's parser will.  It matches each tag and each comment in one piece,
@@ -732,20 +744,22 @@ let commentPlaceholder = `<!--!✨!-->`;
 //    Before anything else it is text, as it is before an expression: `${a} <${b}` compares two values.
 //        <\/?[a-z](?:[^>=]|=\s*(?:"[^"]*"?|'[^']*'?|[^\s>]*))*>?
 // 4. Whatever else starts with '<!', '<?' or '</': a doctype, a processing instruction, an end tag without a name.
-//    The browser makes a comment of it or drops it, and in every case it ends at the first '>', whatever quotes
-//    come before that.
+//    The browser makes a comment of it, or of <?x ...> a processing instruction in Chrome, or drops it, and in every
+//    case it ends at the first '>', whatever quotes come before that.
 //        <[!?/][^>]*>?
 // 5. A mark that none of the above took, which is an expression among the children of a node.
 //        \0
 let htmlToken = /<!--(?:-?>|[^]*?(?:--!?>|$))|(<(script|style|textarea)(?=[\s/>])(?![^>]*\/>)(?:[^>=]|=\s*(?:"[^"]*"?|'[^']*'?|[^\s>]*))*>?)([^]*?)(?=<\/\2(?=[\s/>])|$)|<\/?[a-z](?:[^>=]|=\s*(?:"[^"]*"?|'[^']*'?|[^\s>]*))*>?|<[!?/][^>]*>?|\0/gi;
 
-// A tag name with a dash in the middle, which is what makes an element a web component.  addPlaceholders()
-// tests this on every tag it finds, and a match gets -solarite-placeholder appended to its tag name.
+// A tag name with a dash in it, which is what makes an element a web component.  addPlaceholders()
+// tests this on every tag it finds, and a match gets -solarite-placeholder appended to its tag name.  The name runs
+// to where the browser's parser ends it, so that one holding other characters custom element names may have, such
+// as my_tag-x or my-tag.v2, gets the suffix at its end.
 // That way we can gather a component's constructor arguments and its children before we call its constructor;
 // later PathToComponent.applyAll() replaces the placeholder tag with the real component.  The suffix is written in
 // caps wherever it appears, so that the several copies of it in this project compress well.
 // Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-let isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i;
+let isWebComponentTagName = /^<\/?[a-z][^\s\/>\0]*-[^\s\/>\0]*/i;
 
 /**
  * Remove whitespace-only text children of table-structure elements, whose whitespace is never
@@ -796,7 +810,13 @@ function renameIsAttribs(docFrag) {
 let lastHtmlStrings = null, lastSvgMode = false, lastShell = null;
 
 
-// We increment the placeholder char as we go because nodes can't have the same attribute more than once.
-let attribPlaceholder = 0xe000; // https://en.wikipedia.org/wiki/Private_Use_Areas  6400.
+// The marks addPlaceholders() puts inside tags and comments, one for each expression there.  The second character of
+// a mark counts up from this one, because a mark can be a whole attribute's name and an element can't have the same
+// attribute twice.  Private-use characters are ones Unicode gives no meaning
+// (https://en.wikipedia.org/wiki/Private_Use_Areas), but icon fonts put their glyphs there, as in
+// data-icon="&#xe600;", so a template can hold them in its own text.  The noncharacter U+FDD0 in front of each mark
+// is what tells the two apart: Unicode keeps the noncharacters for a program's own use, and no font or text has them.
+let attribPlaceholder = 0xe000;
+let marks = /\ufdd0[\ue000-\uf8ff]/g;
 
 

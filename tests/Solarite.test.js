@@ -371,14 +371,16 @@ Testimony.test('Solarite.NodeGroup.rawNodeWholeParent', () => {
   └─────────────────╯*/
 // The html tokenizer lives inside Shell.addPlaceholders(), and the html context it is in at the end of each
 // chunk is what decides which placeholder goes in the gap between that chunk and the next:  a comment when the
-// expression is a child of some node, and a private-use character when it sits inside a tag or attribute value.
+// expression is a child of some node, and a mark (the noncharacter U+FDD0 and a private-use character numbered by
+// the expression) when it sits inside a tag or attribute value.
 // So feeding it the chunks below and reading back the placeholders tells us the context after every chunk.
 // One letter per gap between chunks:  t for text context, a for anything else (tag, attribute or comment).
+let attribMark = i => '\ufdd0' + String.fromCharCode(0xe000 + i);
 let checkHtmlContext = (chunks, contexts) =>
 	assert.eq(Shell.addPlaceholders(chunks), chunks.map((chunk, i) =>
 		i === contexts.length
 			? chunk
-			: chunk + (contexts[i] === 't' ? '<!--!✨!-->' : String.fromCharCode(0xe000 + i))
+			: chunk + (contexts[i] === 't' ? '<!--!✨!-->' : attribMark(i))
 	).join(''));
 
 Testimony.test('Solarite.Util.htmlContext', () => {
@@ -404,7 +406,7 @@ Testimony.test('Solarite.Util.htmlContext', () => {
 	// The open quote has to survive the gap between two chunks, or the closing quote in the second chunk
 	// would be read as the start of a new attribute value instead of the end of this one.
 	assert.eq(Shell.addPlaceholders(['<my-el a="', '">']),
-		'<my-el-SOLARITE-PLACEHOLDER a="' + String.fromCharCode(0xe000) + '">');
+		'<my-el-SOLARITE-PLACEHOLDER a="' + attribMark(0) + '">');
 });
 
 Testimony.test('Solarite.Util.htmlContextTrailingLessThan', `A < that is the last character before an expression, or the last character of a template, is text, as it is to the browser: a template that writes one expression, a less-than sign and another expression compares two values and opens no tag.`, () => {
@@ -475,6 +477,25 @@ Testimony.test('Solarite.Util.htmlContextComment', `Only its end closes an html 
 	assert.eq(Shell.addPlaceholders(['<p>\ue001 ', '</p>']), '<p>\ue001 <!--!✨!--></p>');
 });
 
+Testimony.test('Solarite.Util.privateUseCharacters', `A private-use character written in a template's attributes or comments, as icon fonts have them (data-icon="&#xe600;"), is kept as it was written and is not taken for the mark of an expression, with or without expressions in the template, whatever its code point.  The expressions beside it, keys and whole attributes included, find their places.`, () => {
+	let el = document.createElement('div');
+	h(el)`<i data-icon="\uf00d">x</i><input placeholder="&#xf002; Search"><!-- uses \ue000 -->`;
+	assert.eq(el.firstChild.dataset.icon + el.children[1].placeholder, '\uf00d\uf002 Search');
+
+	let render = (title, attribs) => h(el)`<i data-icon="&#xe000;" title=${title} ${attribs}>x</i><!-- \ue001 ${title} --><span data-icon="a\ue002b" class="c ${title}"></span>`;
+	render('one', 'lang=en');
+	render('two', 'dir=rtl');
+	assert.eq(getHtml(el), '<div><i data-icon="\ue000" title="two" dir="rtl">x</i><span data-icon="a\ue002b" class="c two"></span></div>');
+
+	// The rows of a keyed list, reordered, which find their key by the number in its mark.
+	let renderList = ids => h(el)`${ids.map(id => h`<b data-icon="\ue000" key=${id} title=${id}>\ue001</b>`)}`;
+	renderList([1, 2]);
+	let first = el.firstElementChild;
+	renderList([2, 1]);
+	assert.eq(getHtml(el), '<div><b data-icon="\ue000" title="2">\ue001</b><b data-icon="\ue000" title="1">\ue001</b></div>');
+	assert.eq(el.lastElementChild, first);
+});
+
 Testimony.test('Solarite.Util.htmlContextQuoteOutsideValue', `A quote or an apostrophe opens an attribute value only where one can begin, straight after the =, as in the browser.  Anywhere else in a tag it is an ordinary character, so title=don't does not swallow the rest of the template.`, () => {
 	let check = checkHtmlContext;
 
@@ -528,7 +549,7 @@ Testimony.test('Solarite.Util.htmlContextRawText', `The text of a script, a styl
 	// An element whose name only starts like one of these is an ordinary element,
 	check(['<styles>a<b title="', '">', '</b></styles>'], 'at');
 	assert.eq(Shell.addPlaceholders(['<script-x><b title="', '"></b></script-x>']),
-		'<script-x-SOLARITE-PLACEHOLDER><b title="' + String.fromCharCode(0xe000) + '"></b></script-x-SOLARITE-PLACEHOLDER>');
+		'<script-x-SOLARITE-PLACEHOLDER><b title="' + attribMark(0) + '"></b></script-x-SOLARITE-PLACEHOLDER>');
 
 	// and so is a self-closed one, which inside an svg has no text.
 	check(['<svg><style/><script href="a.js"/><circle r="', '"/></svg>'], 'a');
@@ -536,6 +557,22 @@ Testimony.test('Solarite.Util.htmlContextRawText', `The text of a script, a styl
 	// A component's name written in such text, in a CSS comment for instance, is text and gets no placeholder suffix.
 	assert.eq(Shell.addPlaceholders(['<style>/* the <tool-bar> */</style><tool-bar></tool-bar>']),
 		'<style>/* the <tool-bar> */</style><tool-bar-SOLARITE-PLACEHOLDER></tool-bar-SOLARITE-PLACEHOLDER>');
+});
+
+Testimony.test('Solarite.Util.componentNameCharacters', `A component whose tag name holds a character other than a letter, a digit or a dash, as a custom element's name may, such as _ or a dot, is constructed with its arguments and its children like any other.`, () => {
+	let got = [];
+	class NameUnder extends HTMLElement {
+		constructor(args) { super(); got.push(args?.n); }
+	}
+	class NameDot extends HTMLElement {
+		constructor(args) { super(); got.push(args?.n); }
+	}
+	customElements.define('name-x_under', NameUnder);
+	customElements.define('name-x.dot', NameDot);
+	let el = document.createElement('div');
+	h(el)`<name-x_under n=${1}><b>${'u'}</b></name-x_under><name-x.dot n=${2}>${'d'}</name-x.dot>`;
+	assert.eq(got.sort().join() + '|' + [...el.children].map(c => c.localName + ':' + c.textContent).join(), '1,2|name-x_under:u,name-x.dot:d');
+	assert.eq(el.firstChild instanceof NameUnder && el.lastChild instanceof NameDot, true);
 });
 
 Testimony.test('Solarite.Util.camelToDashes', () => {
@@ -606,6 +643,14 @@ Testimony.test('Solarite.Util.isHtmlProp', `A name is a property when the elemen
 
 	// Only the nearest built-in class is asked, so a property every element inherits does not count.
 	assert.eq(SolariteUtil.isHtmlProp(meter, 'title'), false);
+
+	// The built-in classes between it and HTMLElement are asked for a property holding a boolean or a number, so an
+	// <audio> has the muted and volume of HTMLMediaElement.  Its src, which holds text, stays an attribute.
+	let audio = document.createElement('audio');
+	assert.eq(SolariteUtil.isHtmlProp(audio, 'muted'), true);
+	assert.eq(SolariteUtil.isHtmlProp(audio, 'volume'), true);
+	assert.eq(SolariteUtil.isHtmlProp(audio, 'src'), false);
+	assert.eq(SolariteUtil.isHtmlProp(audio, 'title'), false);
 
 	// The classes of a web component are passed over on the way to that built-in class.
 	class IsHtmlPropBase extends HTMLElement {
@@ -2239,6 +2284,9 @@ Testimony.test('Solarite.expr.badEscape', `An escape sequence that JavaScript re
 		error = e;
 	}
 	assert(error.message.includes('bad escape sequence'));
+
+	// The message shows the part of the template that holds the bad escape, as it was written.
+	assert(error.message.includes('content: "\\2014"'), error.message);
 
 	// With no expression in the template.
 	error = null;
@@ -9239,6 +9287,37 @@ Testimony.test('Solarite.embed.scriptLessThan', `A < in a script's text opens no
 	assert.eq(data.firstChild.textContent, 'if (a<b) c(2)');
 });
 
+Testimony.test('Solarite.embed.scriptTypes', `Only a script the browser would run is run: one with no type, or a JavaScript type.  A script of any other type holds data, such as JSON-LD, which is written with its expressions and left alone, and a module is not run either.`, () => {
+	window.scriptTypesLog = [];
+	let el = document.createElement('div');
+	let render = name => h(el)`<script>scriptTypesLog.push('none')</script><script type="">scriptTypesLog.push('empty')</script>
+		<script type="text/javascript">scriptTypesLog.push('js')</script><script type=" Application/X-JavaScript ">scriptTypesLog.push('x')</script>
+		<script type="application/ld+json">{"@type": "Person", "name": "${name}"}</script><script type="application/json">{"a": 1}</script>
+		<script type="module">scriptTypesLog.push('module')</script><script type="text/plain">scriptTypesLog.push('plain')</script>`;
+	render('Ann');
+	render('Bo');
+	assert.eq(scriptTypesLog.join(), 'none,empty,js,x');
+	assert.eq(JSON.parse(el.querySelector('[type="application/ld+json"]').textContent).name, 'Bo');
+	delete window.scriptTypesLog;
+});
+
+Testimony.test('Solarite.embed.scriptAfterExpressions', `A script runs once its template's expressions are written, its own text and the attributes beside it included: in a root template, in a child template and in a list row.  A script in a template with no expressions runs too, and none runs again on the next render.`, () => {
+	window.scriptAfterLog = [];
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = v => h(el)`<p data-script-after title=${v}></p><script>scriptAfterLog.push('${v}' + document.querySelector('[data-script-after]').title)</script>`;
+	render('a');
+	render('b');
+	assert.eq(scriptAfterLog.join(), 'aa');
+
+	scriptAfterLog = [];
+	let renderChildren = n => h(el)`<div>${h`<script>scriptAfterLog.push('child ${n}')</script>`}</div>${h.map([n], m => h`<section><script>scriptAfterLog.push('row ${m}')</script></section>`)}${h`<script>scriptAfterLog.push('static')</script>`}`;
+	renderChildren(1);
+	assert.eq(scriptAfterLog.sort().join(), 'child 1,row 1,static');
+	el.remove();
+	delete window.scriptAfterLog;
+});
+
 // This feature is disabled because it doesn't seem useful.
 Testimony.test('Solarite.embed._scriptDynamic', () => {
 
@@ -9470,6 +9549,37 @@ Testimony.test('Solarite.attrib.quoteInUnquotedValue', `An attribute value writt
 	assert.eq(getHtml(toEl(h`<div><!x don't><p>${1}</p></ isn't><i>${2}</i></div>`)), '<div><p>1</p><i>2</i></div>');
 });
 
+Testimony.test('Solarite.attrib.unquotedBeforeSelfClose', `An unquoted value that is one whole expression straight before a tag's /> ends there, and the tag closes itself, though html would read the slash as part of the value.  A handler written so is bound and not called while rendering, a value gets no slash, and an svg element is closed, in a template and in the rows of a list.  A slash written inside quotes stays in the value.`, () => {
+	let el = document.createElement('div');
+	document.body.append(el);
+	let calls = 0, f = () => { calls++; return 'ret'; };
+	let render = n => h(el)`<input oninput=${f}/><input type=checkbox onchange=${f}/><img src=${'/a.png'}/><input value=${'v'}/><svg>${svg`<circle r=${n}/><rect/>`}</svg>`;
+	render(5);
+	render(6);
+	let [input, checkbox, img, text] = el.children;
+	assert.eq(calls, 0);
+	assert.eq(input.getAttribute('oninput'), null);
+	input.dispatchEvent(new Event('input', {bubbles: true}));
+	checkbox.dispatchEvent(new Event('change'));
+	assert.eq(calls, 2);
+	assert.eq(img.getAttribute('src') + '|' + text.value, '/a.png|v');
+	assert.eq(el.querySelector('circle').getAttribute('r'), '6');
+	assert.eq(el.querySelector('circle').childNodes.length, 0); // Closed, so the <rect> is beside it.
+
+	// The rows of a list.
+	calls = 0;
+	h(el)`${h.map([1, 2], id => h`<button onclick=${[f, id]} title=${id}/>`)}`;
+	assert.eq(calls, 0);
+	el.lastElementChild.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	assert.eq(calls + '|' + el.lastElementChild.title, '1|2');
+	el.remove();
+
+	// A slash inside the quotes, or followed by more of the value, belongs to the value.
+	let base = '/base';
+	let links = toEl(h`<p><a href="${base}/">a</a><a href=${base}/page>b</a><a href=${base}/ title=t>c</a></p>`);
+	assert.eq([...links.children].map(a => a.getAttribute('href')).join(), '/base/,/base/page,/base/');
+});
+
 Testimony.test('Solarite.attrib.sparse', () => {
 
 	let isEdit = false;
@@ -9648,6 +9758,43 @@ Testimony.test('Solarite.attrib.emptyProperty', 'An empty value clears an html p
 	assert.eq(a.text.value, 'xyz');
 });
 
+Testimony.test('Solarite.attrib.mediaProperties', `A <video> or an <audio> is muted and given a volume through the muted and volume properties it inherits from HTMLMediaElement, in a template and in the rows of a list, instead of being given muted and volume attributes that do nothing.`, () => {
+	let el = document.createElement('div');
+	let render = (muted, volume) => h(el)`<video muted=${muted} volume=${volume}></video>${h.map([{muted, volume}], a => h`<p><audio muted=${a.muted} volume=${a.volume}></audio></p>`)}`;
+	let state = () => [el.querySelector('video'), el.querySelector('audio')].map(m => m.muted + ' ' + m.volume).join();
+	render(true, 0.25);
+	assert.eq(state(), 'true 0.25,true 0.25');
+	render(false, 1);
+	assert.eq(state(), 'false 1,false 1');
+	render(true, 0.5);
+	assert.eq(state(), 'true 0.5,true 0.5');
+});
+
+Testimony.test('Solarite.attrib.emptyBooleanProperty', `null and an empty string turn a boolean property such as disabled off, as false does, given as values or returned by functions, on the first render and later ones, and in the rows of a list as they are created and rewritten.  Zero is an ordinary value, and disabled="0" disables, as in html.`, () => {
+	let el = document.createElement('div');
+	let got = [];
+	for (let v of [true, null, true, '', true, false, true, undefined, true, () => '', true, () => null, 0]) {
+		h(el)`<button disabled=${v}></button>`;
+		got.push(Number(el.firstChild.disabled));
+	}
+	assert.eq(got.join(''), '1010101010101');
+
+	// A first render, on the properties of several elements.
+	h(el)`<button disabled=${null}></button><input required=${''}><select multiple=${null}></select><details open=${''}></details><select multiple><option selected=${null}>b</option></select>`;
+	let [button, input, select, details, multi] = el.children;
+	assert.eq([button.disabled, input.required, select.multiple, details.open, multi.firstChild.selected].map(Number).join(''), '00000');
+
+	// The rows of a list, made and then rewritten.
+	let render = values => h(el)`${h.map(values.map((off, i) => ({id: i, off})), row => h`<p key=${row.id}><button disabled=${row.off}>b</button></p>`)}`;
+	let states = () => [...el.querySelectorAll('button')].map(b => Number(b.disabled)).join('');
+	render([null, '', true]);
+	assert.eq(states(), '001');
+	render([true, true, null]);
+	assert.eq(states(), '110');
+	render(['', null, '']);
+	assert.eq(states(), '000');
+});
+
 Testimony.test('Solarite.attrib.pseudoRoot', () => {
 	let title = 'Hello'
 	class R470 extends Solarite {
@@ -9757,6 +9904,30 @@ Testimony.test('Solarite.attrib.multipleForms', `Whole attributes can be given a
 	render('id=b1');
 	render(null);
 	assert.eq(html(), `<b>x</b>`);
+});
+
+Testimony.test('Solarite.attrib.wholeStringNames', `Whole attributes given as a string are split into the names the browser's own parser finds in them, so a name with a colon, a dot or an @ arrives whole, on an element and on a component.`, () => {
+	let attribs = `x-on:click.prevent="go()" xml:lang=en @click='c' hx-on:click=h title="t" data-a.b`;
+	let names = el => [...el.attributes].map(a => a.name + '=' + a.value).sort().join();
+	let t = document.createElement('template');
+	t.innerHTML = `<p ${attribs}></p>`;
+	let expected = names(t.content.firstChild);
+
+	let el = document.createElement('div');
+	h(el)`<p ${attribs}></p>`;
+	assert.eq(names(el.firstChild), expected);
+
+	let got = null;
+	class WholeStringNames extends HTMLElement {
+		constructor(args) {
+			super();
+			got = Object.keys(args || {}).sort().join();
+		}
+	}
+	customElements.define('whole-string-names', WholeStringNames);
+	h(el)`<whole-string-names ${attribs}></whole-string-names>`;
+	assert.eq(names(el.firstChild), expected);
+	assert.eq(got, '@click,dataA.b,hxOn:click,title,xOn:click.prevent,xml:lang');
 });
 
 Testimony.test('Solarite.attrib.ids1', () => {
@@ -10081,7 +10252,7 @@ Testimony.test('Solarite.comments.punctuation', `An html comment may hold apostr
 
 	// The comment is kept as it was written, with a mark where its expression was.
 	let kept = toEl(h`<div><!-- it's ${1} > 0 -->${2}</div>`);
-	assert.eq(kept.firstChild.nodeValue.replace(/[\ue000-\uf8ff]/, '?'), ` it's ? > 0 `);
+	assert.eq(kept.firstChild.nodeValue.replace(/\ufdd0[\ue000-\uf8ff]/, '?'), ` it's ? > 0 `);
 	assert.eq(kept.textContent, '2');
 
 	// A conditional comment, a comment ended by --!>, and one that is never closed.
@@ -10096,6 +10267,14 @@ Testimony.test('Solarite.comments.punctuation', `An html comment may hold apostr
 	// In svg.
 	let chart = toEl(h`<svg>${svg`<!-- the circle's r > 0 --><circle r=${5}></circle>`}</svg>`);
 	assert.eq(chart.firstElementChild.getAttribute('r'), '5');
+});
+
+Testimony.test('Solarite.comments.processingInstruction', `An expression inside <?x ...>, which some browsers make a comment of and Chrome a processing instruction, is counted as one in a comment is, and the expressions after it find their places.`, () => {
+	let el = document.createElement('article');
+	let render = (a, b) => h(el)`<p>a<?x ${a} ?>b</p><i>${b}</i>`;
+	render('y', 1);
+	render('z', 2);
+	assert.eq(el.querySelector('p').textContent + '|' + el.querySelector('i').textContent, 'ab|2');
 });
 
 Testimony.test('Solarite.comments.inRows', `A comment that holds an apostrophe, a quote or > does not break the rows of a list, a component's template, or the render after one that threw.`, () => {
@@ -13878,6 +14057,16 @@ Testimony.test('Solarite.events.classicWithExprs', `An event attribute written a
 	input.dispatchEvent(new MouseEvent('click', {bubbles: true}));
 	assert.eq(clicks, 1);
 	el.remove();
+});
+
+Testimony.test('Solarite.events.handlerWithTextThrows', `A handler with text beside it in an event attribute, such as a stray space inside the quotes, throws instead of being called while rendering to make an inline handler of what it returns.  The same for a [fn, ...args] array, and in the rows of a list.`, () => {
+	let el = document.createElement('div');
+	let calls = 0, f = () => { calls++; return 'ret'; };
+	assert.throws(() => h(el)`<button onclick="${f} ">b</button>`, 'mixes a handler with text');
+	assert.throws(() => h(el)`<button onclick=${f}/ disabled>b</button>`, 'mixes a handler with text');
+	assert.throws(() => h(el)`<button onclick="go(${[f, 1]})">b</button>`, 'mixes a handler with text');
+	assert.throws(() => h(el)`${h.map([1], id => h`<button onclick=" ${[f, id]}">b</button>`)}`, 'mixes a handler with text');
+	assert.eq(calls, 0);
 });
 
 Testimony.test('Solarite.events.rebind', 'Ensure function is unbound/rebound on render', () => {

@@ -37,18 +37,31 @@ export default class PathToEvent extends PathToAttribValue {
 	}
 
 	/**
+	 * A value with text around its expressions, such as onclick="alert(${1})", is a classic
+	 * inline handler: the joined text is the code the browser runs.  A handler given there would
+	 * be called while rendering to make that text, and what it returned would be run as code
+	 * when the event fires, which is never what was meant.  It is nearly always a stray
+	 * character beside the expression, as in onclick="${f} ", so it throws instead.  Anything
+	 * else goes on to the inherited applyAll(), which joins a multi-part value and otherwise
+	 * comes to applySingle().
+	 * @param exprs {Expr[]} */
+	applyAll(exprs) {
+		if (this.attrValue && exprs.some(isHandler))
+			throw new Error(`Solarite: ${this.attribName}="...\${...}..." mixes a handler with text.`);
+		return super.applyAll(exprs);
+	}
+
+	/**
 	 * Handle attributes for event binding, such as:
 	 * onclick=${(e, el) => this.doSomething(el, 'meow')}
 	 * oninput=${[this.doSomething, 'meow']}
-	 *
-	 * applyAll() is inherited: it joins a multi-part value, and otherwise comes here.
 	 * @param expr {Expr} */
 	applySingle(expr) {
 		// Tested by Solarite.events.classicWithExpr
 		// Expressions within a string attribute value that's not a Solarite event.  E.g.
 		// <div onclick="alert(${1});"
 		if (this.attrValue)
-			return super.applyAll([expr]);
+			return this.applyAll([expr]);
 
 		// Don't bind events to component placeholders.
 		// PathToComponent will do the binding later when it instantiates the component.

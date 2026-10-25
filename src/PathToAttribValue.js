@@ -160,9 +160,11 @@ export default class PathToAttribValue extends Path {
 			// absent already.  makePrimitive() above turns null into '', so plain null lands here
 			// too; the explicit null test still matters for a function expression returning null,
 			// which skips makePrimitive.
-			// An html property is exempt: on those, '' is a real value meaning "empty", as when
-			// clearing an <input>, so it belongs on the assignment path below.
-			if (expr === undefined || expr === false || expr === null || (expr === '' && !isProp)) {
+			// An html property that holds text is exempt: there '' is a real value meaning "empty",
+			// as when clearing an <input>, so it belongs on the assignment path below.  A boolean
+			// property such as disabled is not, because the assignment below also writes the
+			// attribute, and an attribute that is present, even empty, turns it on.
+			if (expr === undefined || expr === false || expr === null || (expr === '' && (!isProp || typeof node[this.attribName] === 'boolean'))) {
 				if (isProp) {
 					// Clear the property with a value of its own type.  Assigning false to a string
 					// property such as input.value would put the text "false" in the field.

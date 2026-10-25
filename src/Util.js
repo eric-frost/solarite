@@ -239,9 +239,20 @@ let Util = {
 			// Find the first HTMLElement that we inherit from (not our own classes)
 			while (proto && !/^HTML.*Element$/.test(proto.constructor.name))
 				proto = Object.getPrototypeOf(proto);
-			Globals.htmlProps[key] = result = (proto
-				? !!Object.getOwnPropertyDescriptor(proto, prop)?.set
-				: false);
+			result = !!proto && !!Object.getOwnPropertyDescriptor(proto, prop)?.set;
+
+			// The built-in classes between that one and HTMLElement are asked too, which is how a
+			// <video> or an <audio> finds the muted and volume it inherits from HTMLMediaElement.
+			// From those only a property holding a boolean or a number counts, state the element
+			// keeps in itself.  One holding text reflects an attribute, which is where it is written:
+			// src as a property reads back as the absolute address, so a relative one would differ on
+			// every render and be written again, which reloads a video.  HTMLElement itself is left
+			// out, unless it is the first one found, as for a web component: its title, hidden and
+			// lang are attributes too, and taking them for properties would mark every list row that
+			// binds one as needing a visit on every render.
+			while (!result && proto && /^HTML.+Element$/.test((proto = Object.getPrototypeOf(proto)).constructor.name))
+				result = !!Object.getOwnPropertyDescriptor(proto, prop)?.set && (typeof el[prop] === 'boolean' || typeof el[prop] === 'number');
+			Globals.htmlProps[key] = result;
 		}
 		return result;
 	},
@@ -260,11 +271,13 @@ let Util = {
 		// One scan collects every name and its value.  The value is optional so a boolean attribute
 		// written on its own ('disabled') still lands in the result with an empty value, and the three
 		// value alternatives capture *inside* the quotes so no separate quote-trimming pass is needed.
-		// Whatever doesn't look like an attribute name is skipped rather than becoming a bogus key.
+		// A name is everything up to a space, a quote, '>', '/' or '=', which is what the browser's
+		// parser takes for one but for the quotes, so that names such as xlink:href, x-on:click and
+		// @click arrive whole.
 		// This must stay a loop that reads each match.  Written as a String.replace() whose callback
 		// filled result, the minifier deleted the whole call: it takes replace() on a string to have
 		// no side effects, and nothing used what it returned.
-		let regex = /([\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g, m;
+		let regex = /([^\s"'>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g, m;
 		while (m = regex.exec(str))
 			result[m[1]] = m[2] ?? m[3] ?? m[4] ?? '';
 
