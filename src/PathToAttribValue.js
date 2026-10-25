@@ -16,7 +16,7 @@ export default class PathToAttribValue extends Path {
 
 	// isComponentAttrib and isHtmlProperty are declared on the Path base class.
 
-	constructor(nodeBefore, nodeMarker, attribName=null, attrValue=null) {
+	constructor(nodeBefore, nodeMarker, attribName, attrValue) {
 		super(null, nodeMarker);
 		this.attribName = attribName;
 		this.attrValue = attrValue;
@@ -98,11 +98,11 @@ export default class PathToAttribValue extends Path {
 
 			else {
 				// TODO: should we remove isFalsy, since these are always props?
-				const strValue = Util.isFalsy(value) ? '' : value;
+				let strValue = Util.isFalsy(value) ? '' : value;
 
 				// Special case for contenteditable
 				if (this.attribName === 'value' && node.hasAttribute('contenteditable')) {
-					const existingValue = node.innerHTML;
+					let existingValue = node.innerHTML;
 					if (strValue !== existingValue)
 						node.innerHTML = strValue;
 				}
@@ -127,7 +127,7 @@ export default class PathToAttribValue extends Path {
 			// We use capture so we update the values before other events added by the user.
 			// TODO: Bind to scroll events also?
 			// What about resize events and width/height?
-			this.bindEvent(node, this.parentNg.getRootEl(), this.attribName, 'input', func, null, true);
+			this.bindEvent(node, this.parentNg.getRootEl(), this.attribName, 'input', func, true);
 		}
 
 		// Regular attribute
@@ -186,10 +186,12 @@ export default class PathToAttribValue extends Path {
 			else {
 				// Only update attributes if the value has changed.
 				// This is needed for setting input.value, .checked, option.selected, etc.
-				// Non-property attributes never reach here with '', since that removes above.
+				// Non-property attributes never reach here with '', since that removes above.  So
+				// an attribute that is absent, which reads as null, always differs from expr, and
+				// the test is spelled exactly as the one in applyAll().
 				let oldVal = isProp
 					? node[this.attribName]
-					: node.getAttribute(this.attribName) ?? '';
+					: node.getAttribute(this.attribName);
 				if (oldVal !== expr) {
 
 					// <textarea value=${expr}></textarea>
@@ -233,49 +235,48 @@ export default class PathToAttribValue extends Path {
 			return exprs[0];
 		}
 
-		let result = [];
 		let values = this.attrValue;
-		for (let i = 0; i < values.length; i++) {
-			result.push(values[i]);
-			if (i < values.length - 1) {
-				// A selection binding has to own the whole attribute, because its whole point is
-				// writing that attribute without re-rendering, which it can't do if the rest of
-				// the value comes from expressions it doesn't know about.  Whether a selector sits
-				// inside a multi-part attribute is fixed by the shape of the template and never by
-				// the data, so this can only be an authoring mistake, and it always surfaces on the
-				// template's very first render -- exactly like the placement check in
-				// SelectorRef.bind().  Like that check it ships in the built file: without it
-				// makePrimitive() turns the ref into '' and the attribute is silently written
-				// from its constant parts alone.
-				if (typeof exprs[i] === 'object' && exprs[i] instanceof SelectorRef)
-					throw new Error(`Solarite: a selector must own the whole ${this.attribName} attribute.`);
-				let val = Util.makePrimitive(exprs[i]);
-				if (!Util.isFalsy(val))
-					result.push(val);
-			}
+		let result = values[0];
+		for (let i = 1; i < values.length; i++) {
+			let expr = exprs[i-1];
+
+			// A selection binding has to own the whole attribute, because its whole point is
+			// writing that attribute without re-rendering, which it can't do if the rest of
+			// the value comes from expressions it doesn't know about.  Whether a selector sits
+			// inside a multi-part attribute is fixed by the shape of the template and never by
+			// the data, so this can only be an authoring mistake, and it always surfaces on the
+			// template's very first render -- exactly like the placement check in
+			// SelectorRef.bind().  Like that check it ships in the built file: without it
+			// makePrimitive() turns the ref into '' and the attribute is silently written
+			// from its constant parts alone.
+			if (typeof expr === 'object' && expr instanceof SelectorRef)
+				throw new Error(`Solarite: a selector must own the whole ${this.attribName} attribute.`);
+			let val = Util.makePrimitive(expr);
+			if (!Util.isFalsy(val))
+				result += val;
+			result += values[i];
 		}
-		return result.join('')
+		return result;
 	}
 
 	/**
-	 * Call function when eventName is triggered on node.
+	 * Call handler when eventName is triggered on node.
 	 * @param node {HTMLElement}
 	 * @param root {HTMLElement}
 	 * @param key {string}
 	 * @param eventName {string}
-	 * @param func {function}
-	 * @param funcAndArgs {?Array} The [func, ...args] array from the template, or null if func stands alone.
+	 * @param handler {function|Array} A function, or the [func, ...args] array from the template.
 	 * @param capture {boolean} */
-	bindEvent(node, root, key, eventName, func, funcAndArgs, capture=false) {
+	bindEvent(node, root, key, eventName, handler, capture=false) {
 		//#IFDEBUG
-		// Both callers already guarantee a function, so this only catches a future third caller.
-		// PathToEvent.applySingle() rejects every shape a template can produce and names the
-		// offending value, and the two-way binding path above passes a closure it just made
+		// Both callers already guarantee a handler, so this only catches a future third caller.
+		// PathToEvent.applySingle() rejects every other shape a template can produce and names
+		// the offending value, and the two-way binding path above passes a closure it just made
 		// here, so nothing a page author writes can reach this line.  That makes it dev-only:
 		// stripping it from the built file costs no diagnostic that the surviving throw in
 		// PathToEvent doesn't already give, with a better message.
-		if (typeof func !== 'function')
-			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attribName}=\${${func}}> because it's not a function.`);
+		if (!isHandler(handler))
+			throw new Error(`Solarite cannot bind to <${node.tagName.toLowerCase()} ${this.attribName}=\${${handler}}> because it's not a function.`);
 		//#ENDIF
 
 		// Delegated path: a bubbling event (when the root's options allow it, the default)
@@ -300,109 +301,76 @@ export default class PathToAttribValue extends Path {
 					return;
 				if (node[dk] === undefined) // First binding of this type on this node.
 					ensureDelegatedDispatcher(root, eventName);
-				// Array-form bindings (onclick=${[fn, arg]}, the hot per-row case) store the
-				// template's own [func, ...args] array; a plain function is stored bare.
-				// Either way, nothing is allocated.
-				node[dk] = funcAndArgs || func;
+				// The template's own value is stored, a function or a [func, ...args] array
+				// (onclick=${[fn, arg]}, the hot per-row case), so nothing is allocated.
+				node[dk] = handler;
 				node[delegatedRootKey] = root;
 				return;
 			}
 		}
 
 		// Direct path: capture bindings, non-bubbling events, and eventDelegation:false.
-		// Store the callable as a single [func, ...args] array.
-		let args = funcAndArgs || [func];
-
 		// One stable EventBinding object per node+key is registered with addEventListener
-		// and dispatches to the current args.  This way, assigning a new function
+		// and dispatches to the current handler.  This way, assigning a new function
 		// (e.g. a fresh arrow function on each render) never needs add/removeEventListener.
-		// Most nodes have one binding, stored directly; a second key upgrades to a map.
-		let nodeEvents = node[eventBindingsKey];
-		if (nodeEvents === undefined) {
-			let b = node[eventBindingsKey] = new EventBinding(root, node, key, args);
-			node.addEventListener(eventName, b, capture);
-			return;
-		}
-
-		let binding;
-
-		// The node already has a single EventBinding stored directly at node[eventBindingsKey].
-		// If it's for this same key (e.g. 'click' rebound on re-render), just update it below.
-		// Otherwise this is the node's second event key, so upgrade the slot to a
-		// {key: EventBinding} map holding both.  Nodes with one handler (the common case)
-		// never pay for that map object.
-		if (nodeEvents instanceof EventBinding) {
-			if (nodeEvents.key === key)
-				binding = nodeEvents;
-			else {
-				let map = node[eventBindingsKey] = {};
-				map[nodeEvents.key] = nodeEvents;
-				binding = map[key] = new EventBinding(root, node, key, args);
-				node.addEventListener(eventName, binding, capture);
-				return;
-			}
+		// The node holds it under a Symbol of the key's own, see bindingKeys.
+		let sym = bindingKeys[key] ??= Symbol(key);
+		let binding = node[sym];
+		if (binding === undefined) {
+			binding = node[sym] = new EventBinding(root, node, handler);
+			node.addEventListener(eventName, binding, capture);
 		}
 		else {
-			binding = nodeEvents[key];
-			if (!binding) {
-				binding = nodeEvents[key] = new EventBinding(root, node, key, args);
-				node.addEventListener(eventName, binding, capture);
-				return;
-			}
+			binding.rootEl = root;
+			binding.handler = handler;
 		}
-		binding.rootEl = root;
-		binding.args = args;
 	}
 }
 
-const eventBindingsKey = Symbol('solariteEvents');
+/**
+ * One Symbol per binding key (an event name, or the attribute name of a two-way binding).  A
+ * node stores its EventBinding for that key under it, so a node with several bindings needs
+ * no table of its own.  The table has no prototype, so that a key named like a member of
+ * Object.prototype ("constructor") is not found in it before it has been added.
+ * @type {Object<string, symbol>} */
+let bindingKeys = {__proto__: null};
 
 /**
  * Get the EventBinding registered for a node+key, or undefined.
  * Lets a component invoke its own two-way binding (e.g. flush a bound value before
- * dispatching a change event) without exposing the private storage Symbol.
+ * dispatching a change event) without exposing the private storage Symbols.
  * @param node {Node}
  * @param key {string}
  * @return {EventBinding|undefined} */
 export function getEventBinding(node, key) {
-	let b = node[eventBindingsKey];
-	if (b === undefined)
-		return undefined;
-	return b instanceof EventBinding ? (b.key === key ? b : undefined) : b[key];
+	let sym = bindingKeys[key];
+	return sym && node[sym];
 }
-
-// Bubbling events the just-in-time dispatcher handles.  Same set Solid.js delegates.
-const delegatableEvents = new Set(['beforeinput', 'click', 'contextmenu', 'dblclick', 'focusin', 'focusout',
-	'input', 'keydown', 'keyup', 'mousedown', 'mousemove', 'mouseout', 'mouseover', 'mouseup',
-	'pointerdown', 'pointermove', 'pointerout', 'pointerover', 'pointerup', 'touchend', 'touchmove', 'touchstart']);
-
-// One Symbol per delegated event type; nodes store their delegated handler under it.
-// Symbols (vs string expandos like Solid's $$click) can't collide with user properties.
-const delegatedKeys = {};
 
 /**
- * Get the per-event-type Symbol key, or undefined for non-delegatable events.
- * Called once per PathToEvent construction, never per bind.
- * @param eventName {string}
- * @return {symbol|undefined} */
-export function delegatedKeyFor(eventName) {
-	if (!delegatableEvents.has(eventName))
-		return undefined;
-	return delegatedKeys[eventName] ??= Symbol('sol$' + eventName);
-}
+ * The Symbol a node stores its delegated handler of each event type under, for the bubbling
+ * events the just-in-time dispatcher handles (the same set Solid.js delegates).  Symbols (vs
+ * string expandos like Solid's $$click) can't collide with user properties.  An event that
+ * isn't listed is bound directly; PathToEvent looks its name up here once per path.
+ * @type {Object<string, symbol>} */
+export let delegatedKeys = {__proto__: null};
+for (let name of ['beforeinput', 'click', 'contextmenu', 'dblclick', 'focusin', 'focusout',
+	'input', 'keydown', 'keyup', 'mousedown', 'mousemove', 'mouseout', 'mouseover', 'mouseup',
+	'pointerdown', 'pointermove', 'pointerout', 'pointerover', 'pointerup', 'touchend', 'touchmove', 'touchstart'])
+	delegatedKeys[name] = Symbol('sol$' + name);
 
 // The component root a node's delegated handlers run with as `this`.
-const delegatedRootKey = Symbol('solariteDelegatedRoot');
+let delegatedRootKey = Symbol('solariteDelegatedRoot');
 
 // A list row's root element points back at its NodeGroup under this key, which is how the
 // dispatcher finds the row's handlers.  See isAnchored().
-export const rowNgKey = Symbol('solariteRow');
+export let rowNgKey = Symbol('solariteRow');
 
 // The Shell whose delegated dispatchers a root last registered, kept on the RootNodeGroup so
 // that a run of rows checks one field instead of asking at every bound node.  A Symbol rather
 // than a declared field, since only root NodeGroups ever carry it and a declared field would
 // cost a slot on every row.
-export const stampedShellKey = Symbol('solariteStampedShell');
+export let stampedShellKey = Symbol('solariteStampedShell');
 
 /**
  * Is this NodeGroup a row whose delegated handlers the dispatcher reads from its template?
@@ -439,15 +407,14 @@ export function isAnchored(ng) {
  * @param rootNg {RootNodeGroup}
  * @param shell {Shell} */
 export function registerRowDispatchers(rootNg, shell) {
-	let names = shell.stampEventNames, root = rootNg.rootEl;
-	for (let k=0; k<names.length; k++)
-		ensureDelegatedDispatcher(root, names[k]);
+	for (let name in shell.stampEventsByType)
+		ensureDelegatedDispatcher(rootNg.rootEl, name);
 	rootNg[stampedShellKey] = shell;
 }
 
 // Set of event types that already have the dispatcher registered, kept on each root element
 // and on each document.
-const delegatedTypesKey = Symbol('solariteDelegatedTypes');
+let delegatedTypesKey = Symbol('solariteDelegatedTypes');
 
 /**
  * Register the just-in-time dispatcher for eventName on root and on root's document, once
@@ -458,7 +425,15 @@ const delegatedTypesKey = Symbol('solariteDelegatedTypes');
  * chrome).  The root's listener is what reaches what the document cannot see: a component
  * that isn't in the document at all, nodes inside a closed shadow root, and a synthetic
  * event dispatched inside any shadow root without composed:true, which never leaves it.
- * @param root {HTMLElement|Document}
+ *
+ * A standalone template (toEl(), h()`...`) is the one root that isn't in the document its nodes
+ * will be used in.  It is cloned from a <template>, whose content belongs to an inert document
+ * of its own: one with no window, which no event ever passes through.  Its nodes are on their
+ * way into the page, so the page's document registers in that document's place.  This matters
+ * most when the template has several root nodes, or a component as its only node: its root is
+ * then the DocumentFragment they are made in, which is left behind empty as soon as they are
+ * appended somewhere, and the document's listener is the only one their events reach.
+ * @param root {HTMLElement|DocumentFragment|Document}
  * @param eventName {string} */
 function ensureDelegatedDispatcher(root, eventName) {
 	let types = root[delegatedTypesKey] ??= new Set();
@@ -470,14 +445,14 @@ function ensureDelegatedDispatcher(root, eventName) {
 		// The document registers the same way.  It has no document of its own, which ends this.
 		let doc = root.ownerDocument;
 		if (doc !== null)
-			ensureDelegatedDispatcher(doc, eventName);
+			ensureDelegatedDispatcher(doc.defaultView ? doc : Globals.doc, eventName);
 	}
 }
 
 /**
  * The capture-phase listener of each delegated event type, made by createDispatcher().
  * @type {Object<string, function(Event)>} */
-const dispatchers = {};
+let dispatchers = {};
 
 // For an event a dispatcher has walked, the path that walk saw.  A dispatcher on a nested root
 // further down finds its own element in that path and skips the walk.  A root inside a closed
@@ -490,9 +465,9 @@ const dispatchers = {};
 // event's whole prototype chain.  Measured on the first click after a page has been idle, the
 // WeakMap is the cheaper of the two by 5 to 10 microseconds per click, about a tenth of what
 // the dispatcher costs altogether.
-const walked = new WeakMap();
+let walked = new WeakMap();
 
-const hasOwn = Object.hasOwn;
+let hasOwn = Object.hasOwn;
 
 /**
  * Build the dispatcher for one event type: the capture-phase listener ensureDelegatedDispatcher()
@@ -533,7 +508,7 @@ function createDispatcher(type) {
 	 * Remove the trampolines.  Housekeeping only: one left in place is harmless, because the
 	 * next dispatch of this type removes it before attaching its own, and the trampoline reads
 	 * its handler fresh. */
-	const sweep = () => {
+	let sweep = () => {
 		for (let i=0; i<count; i++) {
 			nodes[i].removeEventListener(type, trampoline);
 			nodes[i] = rows[i] = null;
@@ -552,7 +527,7 @@ function createDispatcher(type) {
 	 * then does nothing, and the new event finds it in the place the outer event gave it.
 	 * The unused slots of evs hold null, and an event that is over has no currentTarget.
 	 * @param node {Element} */
-	const detach = node => {
+	let detach = node => {
 		if (!evs.some(ev => ev?.currentTarget === node))
 			node.removeEventListener(type, trampoline);
 	};
@@ -562,7 +537,7 @@ function createDispatcher(type) {
 	 * record after it is over when it never reached its last node: propagation was stopped, or
 	 * the event doesn't bubble.  An event's phase is 0 once it is over.
 	 * @return {int} The depth that is left, which counts the dispatches still in progress. */
-	const unwind = () => {
+	let unwind = () => {
 		while (depth !== 0 && evs[depth - 1].eventPhase === 0)
 			evs[--depth] = lasts[depth] = null;
 		return depth;
@@ -621,19 +596,24 @@ function createDispatcher(type) {
 			ended = d === 0;
 		}
 
-		// 3. Call the handler: a function, or a [function, ...args] array.  Anything else
-		// cannot be reached through a template, which rejects a non-function at render; the
-		// test only keeps a damaged row from throwing here.
+		// 3. Call the handler.  Anything that isn't one cannot be reached through a template,
+		// which rejects it at render; the test only keeps a damaged row from throwing here.
 		try {
+			// Written out here rather than through callHandler(): that one more call per handler
+			// showed on the select-row benchmark (measured on the M1, 2026-10-02).  Each call is
+			// spelled exactly as callHandler() spells it, returns included, so that the two
+			// compress as one: change one and the other must follow.  Only the test for an
+			// array is this copy's own.  The browser ignores what a listener returns.
 			if (typeof a === 'function')
-				a.call(root, ev, node);
-			else if (Array.isArray(a) && typeof a[0] === 'function')
+				return a.call(root, ev, node);
+			if (Array.isArray(a) && typeof a[0] === 'function') {
 				switch (a.length) {
-					case 1: a[0].call(root, ev, node); break;
-					case 2: a[0].call(root, a[1], ev, node); break;
-					case 3: a[0].call(root, a[1], a[2], ev, node); break;
-					default: a[0].call(root, ...a.slice(1), ev, node);
+					case 1: return a[0].call(root, ev, node);
+					case 2: return a[0].call(root, a[1], ev, node);
+					case 3: return a[0].call(root, a[1], a[2], ev, node);
 				}
+				return a[0].call(root, ...a.slice(1), ev, node);
+			}
 		}
 		finally {
 			if (ended)
@@ -651,7 +631,7 @@ function createDispatcher(type) {
 	 * @param rowIndex {int} Where the row's root sits in path; its other nodes sit before it.
 	 * @param removeFirst {boolean} See the dispatcher.
 	 * @return {int} The highest index in path a trampoline was attached at, or -1. */
-	const attachRow = (rowEl, ng, path, rowIndex, removeFirst) => {
+	let attachRow = (rowEl, ng, path, rowIndex, removeFirst) => {
 		let shell = ng.shell;
 		if (shell !== memoShell) {
 			memoShell = shell;
@@ -771,25 +751,48 @@ function createDispatcher(type) {
 }
 
 class EventBinding {
-	constructor(root, node, key, args) {
+	constructor(root, node, handler) {
 		this.rootEl = root;
 		this.node = node;
-		this.key = key;
 
-		/** @type {Array} [func, ...args]; always at least [func]. */
-		this.args = args;
+		/** @type {function|Array} A function or a [func, ...args] array; see callHandler(). */
+		this.handler = handler;
 	}
 
 	// Called by the browser via the addEventListener(name, object) form.
 	// Sets the "this" variable to be the current Solarite component.
 	// Quoted so the minifier's property mangling doesn't rename it, since the browser looks it up by name.
 	'handleEvent'(event) {
-		let a = this.args;
-		switch (a.length) {
-			case 1: return a[0].call(this.rootEl, event, this.node);
-			case 2: return a[0].call(this.rootEl, a[1], event, this.node);
-			case 3: return a[0].call(this.rootEl, a[1], a[2], event, this.node);
-		}
-		return a[0].call(this.rootEl, ...a.slice(1), event, this.node);
+		return callHandler(this.handler, this.rootEl, event, this.node);
 	}
+}
+
+/**
+ * Is v something an event attribute accepts: a function, or a [function, ...args] array?
+ * @param v {*}
+ * @return {boolean} */
+export function isHandler(v) {
+	return typeof v === 'function' || (Array.isArray(v) && typeof v[0] === 'function');
+}
+
+/**
+ * Call an event handler the way a template promises: `this` is the component the template
+ * belongs to, and the event and the element it was bound on follow the handler's own
+ * arguments.  Used by directly bound handlers (EventBinding); the trampoline of delegated
+ * ones carries the same calls written out, see there.  The common argument counts are
+ * spelled out so that calling them allocates nothing.
+ * @param a {function|Array} A function, or a [function, ...args] array; see isHandler().
+ * @param root {HTMLElement}
+ * @param ev {Event}
+ * @param node {HTMLElement}
+ * @return {*} What the handler returned. */
+function callHandler(a, root, ev, node) {
+	if (typeof a === 'function')
+		return a.call(root, ev, node);
+	switch (a.length) {
+		case 1: return a[0].call(root, ev, node);
+		case 2: return a[0].call(root, a[1], ev, node);
+		case 3: return a[0].call(root, a[1], a[2], ev, node);
+	}
+	return a[0].call(root, ...a.slice(1), ev, node);
 }

@@ -9,23 +9,13 @@ export default class MultiValueMap {
 	/** @type {Record<string, Array>} */
 	data = {};
 
-	// Add a new value for a key
-	add(key, value) {
-		let data = this.data;
-		let array = data[key]
-		if (!array)
-			data[key] = [value];
-		else
-			array.push(value);
-	}
-
 	/**
 	 * Add a new value for a key, unless the key already holds max values.
-	 * Used to bound pooled NodeGroup memory.
+	 * The cap bounds pooled NodeGroup memory; without one every value is added.
 	 * @param key {string}
 	 * @param value
-	 * @param max {int} */
-	addCapped(key, value, max) {
+	 * @param [max] {int} */
+	addCapped(key, value, max=Infinity) {
 		let data = this.data;
 		let array = data[key]
 		if (!array)

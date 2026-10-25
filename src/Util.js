@@ -5,7 +5,7 @@ import delve from "./delve.js";
  * Prefix that asks for a handler to bypass event delegation: `<button native:onclick=\${...}>`
  * is bound with addEventListener at render time, taking its normal place in the browser's own
  * dispatch order.  Shared by Util.isEvent() and PathToEvent, which strips it. */
-export const nativeEventPrefix = 'native:';
+export let nativeEventPrefix = 'native:';
 
 let Util = {
 
@@ -29,9 +29,9 @@ let Util = {
 	 * Converts dash (kebob-case) attribute names to camelCase.
 	 * See also Solarite.getAttribs()
 	 * @param el {HTMLElement}
-	 * @param ignore {?string} Optionally ignore this attribute.
+	 * @param [ignore] {string} Optionally ignore this attribute.
 	 * @return {Object} */
-	attribsToObject(el, ignore=null) {
+	attribsToObject(el, ignore) {
 		let result = {};
 		for (let attrib of el.attributes)
 			if (attrib.name !== ignore)
@@ -171,14 +171,17 @@ let Util = {
 	 *     use this instead of re-deriving the name, which guesses wrong for any class registered
 	 *     under a name that isn't camelToDashes(Class.name). */
 	defineClass(Class, tagName) {
-		let defined = customElements[getName](Class);
+		// getName is written in quotes so that the minifier keeps the name.  It renames every
+		// property it does not know to be the browser's, and its list of browser names is older
+		// than getName().  define() is on that list.  Dist.customElementsNotMangled checks both.
+		let defined = customElements['getName'](Class);
 		if (defined) // Previously defined.
 			return defined;
 
 		tagName = tagName || Util.camelToDashes(Class.name)
 		if (!tagName.includes('-')) // Browsers require that web components always have a dash in the name.
 			tagName += '-element';
-		customElements[define](tagName, Class)
+		customElements.define(tagName, Class)
 		return tagName;
 	},
 
@@ -187,18 +190,18 @@ let Util = {
 	 * @param node {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|HTMLElement}
 	 * @return {string|string[]|number|[]|File[]|Date|boolean} */
 	getInputValue(node) {
-		// .type is a built-in DOM property
-		if (node.type === 'checkbox')
+		let type = node.type; // A built-in DOM property.
+		if (type === 'checkbox')
 			return node.checked; // Boolean
-		if (node.type === 'radio')
+		if (type === 'radio')
 			return node.value; // String value of the selected radio in the group
-		if (node.type === 'file')
+		if (type === 'file')
 			return [...node.files]; // FileList
-		if (node.type === 'number' || node.type === 'range')
+		if (type === 'number' || type === 'range')
 			return node.valueAsNumber; // Number
-		if (node.type === 'date' || node.type === 'time' || node.type === 'datetime-local')
+		if (type === 'date' || type === 'time' || type === 'datetime-local')
 			return node.valueAsDate; // Date Object
-		if (node.type === 'select-multiple') // <select multiple>
+		if (type === 'select-multiple') // <select multiple>
 			return [...node.selectedOptions].map(option => option.value); // Array of Strings
 		if (node.hasAttribute('contenteditable'))
 			return node.innerHTML;
@@ -275,7 +278,7 @@ let Util = {
 
 	/**
 	 * If val is a function, evaluate it recursively until the result is not a function.
-	 * If it's an array or an object, convert it to Json.
+	 * If it's an array, an object or null, the result is an empty string.
 	 * If it's a Date, format it as Y-m-d H:i:s
 	 * @param val
 	 * @returns {string|number|boolean} */
@@ -284,8 +287,8 @@ let Util = {
 			return Util.makePrimitive(val());
 		else if (val instanceof Date)
 			return val.toISOString().replace(/T/, ' ');
-		else if (Array.isArray(val) || typeof val === 'object')
-			return ''; // JSON.stringify(val);
+		else if (typeof val === 'object') // An array is an object too, and so is null.
+			return '';
 		return val;
 	},
 
@@ -316,10 +319,6 @@ let Util = {
 };
 
 
-
-// Trick to prevent minifier from renaming these methods.
-let define = 'define';
-let getName = 'getName';
 
 export default Util;
 

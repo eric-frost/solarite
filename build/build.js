@@ -6,7 +6,8 @@
  * deno run build.js input.js output.js
  *
  * ------------------------
- * How to create the dependencies for build.js  Tested with Rollup v2.23.0 and Terser 5.3.2
+ * How to create the dependencies for build.js.  The copies in the lib folder are Rollup 2.50.3 and a Terser
+ * between 5.20 and 5.24; a newer Terser was measured and makes the bundle no smaller.
  * 1.  Start in a blank folder.
  * 2.  npm install rollup terser
  * 3.  npm install -g rollup terser
@@ -18,7 +19,8 @@
  * 9.  npm uninstall -g rollup terser
  * 10. Copy terser.min.js, rollup.min.js, and source-map.min.js to the lib folder, and delete our temporary working folder.
  *
- * After that, Deno is the only external dependency needed to build.
+ * After that, Deno is the only external dependency this file needs.  The next build step, redeal.js, also needs
+ * @babel/parser and @babel/traverse from node_modules (run `npm install` once).
  */
 
 const packageJson = JSON.parse(Deno.readTextFileSync(new URL('../package.json', import.meta.url)));

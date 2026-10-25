@@ -12,11 +12,8 @@ export default class PathToAttribs extends Path {
 
 	/** @type {PathToEvent|PathToAttribValue|undefined} Cached sub-path for the JSX
 	 * whole-attribute fast path; see applyJsxAttr().  Declared so the first assignment
-	 * doesn't transition the hidden class. */
+	 * doesn't transition the hidden class.  Its attribName is the name it was built for. */
 	jsxSub;
-
-	/** @type {?string} The attribute name jsxSub was built for. */
-	jsxSubName;
 
 	constructor(nodeBefore, nodeMarker) {
 		// nodeBefore is discarded: an attribute path has no nodes of its own.  The marker goes
@@ -44,24 +41,17 @@ export default class PathToAttribs extends Path {
 			if (typeof expr === 'function')
 				expr = expr();
 
-			// Attribute as name: value object.
-			if (typeof expr === 'object') {
-				for (let name in expr) {
-					let value = expr[name];
-					if (value === undefined || value === false || value === null)
-						continue;
-					node.setAttribute(name, value);
-					this.attrNames.add(name)
-				}
-			}
+			// Attributes as a string become the same name: value object as the other form.  The
+			// values of one made from a string are all strings, so none is skipped below.
+			if (typeof expr !== 'object')
+				expr = Util.splitAttribs(expr);
 
-			// Attributes as string
-			else {
-				let attribs = Util.splitAttribs(expr);
-				for (let name in attribs) {
-					node.setAttribute(name, attribs[name]);
-					this.attrNames.add(name);
-				}
+			for (let name in expr) {
+				let value = expr[name];
+				if (value === undefined || value === false || value === null)
+					continue;
+				node.setAttribute(name, value);
+				this.attrNames.add(name)
 			}
 		}
 
@@ -85,7 +75,7 @@ export default class PathToAttribs extends Path {
 		let value = attr.value;
 
 		let sub = this.jsxSub;
-		if (sub === undefined || this.jsxSubName !== name) {
+		if (sub === undefined || sub.attribName !== name) {
 			let node = this.nodeMarker;
 			if (Util.isEvent(name))
 				sub = new PathToEvent(null, node, name, null);
@@ -95,7 +85,6 @@ export default class PathToAttribs extends Path {
 			}
 			sub.isComponentAttrib = this.isComponentAttrib;
 			this.jsxSub = sub;
-			this.jsxSubName = name;
 		}
 		sub.nodeMarker = this.nodeMarker;
 		sub.parentNg = this.parentNg;

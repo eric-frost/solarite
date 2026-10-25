@@ -19,11 +19,11 @@ export function svg(htmlStrings, ...exprs) {
 	return template;
 }
 
-const renderTemplateKey = Symbol('solariteRender');
+let renderTemplateKey = Symbol('solariteRender');
 
 // Unique default that detects h() called with no arguments.
 // Using `arguments` alongside rest params would force the engine to materialize both per call.
-const noArg = Symbol();
+let noArg = Symbol();
 
 // The /** @type {*} */ cast on the default keeps TypeScript from inferring the parameter as
 // `symbol` from noArg: TS can't parse the closure-style @param type below (function() without
@@ -54,12 +54,13 @@ const noArg = Symbol();
  * Add children to an element.
  * 3. h(el, h`<b>${'Hi'}</b>`, ?options)
  * 4. h(el, ?options)`<b>${'Hi'}</b>`   // typical path used in render(). Create template and render its nodes to el.
+ *    el may also be a DocumentFragment or a ShadowRoot, and the template's nodes become its children.
  *
  * Create top-level element
  * 5. h()`Hello<b>${'World'}!</b>`
  *
  * 6. h(string, object, ...)           // Used for JSX
- * @param htmlStrings {?HTMLElement|string|string[]|function():Template|{render:function()}}
+ * @param htmlStrings {?HTMLElement|DocumentFragment|string|string[]|function():Template|{render:function()}}
  * @param exprs {*[]|string|Template|Object}
  * @return {Node|HTMLElement|Template|Function} */
 export default function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
@@ -78,7 +79,7 @@ export default function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 
 /**
  * Every form of h() other than the tagged template.  See the numbered list above h().
- * @param htmlStrings {?HTMLElement|string|function():Template|{render:function()}|symbol}
+ * @param htmlStrings {?HTMLElement|DocumentFragment|string|function():Template|{render:function()}|symbol}
  * @param exprs {*[]} The rest of h()'s arguments.
  * @return {Node|HTMLElement|Template|Function} */
 function hOther(htmlStrings, exprs) {
@@ -88,13 +89,10 @@ function hOther(htmlStrings, exprs) {
 		let tagOrHtml = htmlStrings;
 
 		// 2a. JSX classic factory: h("tag", {props}, ...children)
-		if (exprs.length && (typeof exprs[0] === 'object' || exprs[0] === null)) {
-			let tag = tagOrHtml + '';
-			let props = exprs[0] || {};
-			let children = exprs.slice(1);
-
-			return jsxToTemplate(tag, props, children);
-		}
+		// The transform always passes props, as an object or null, and typeof null is 'object' too.
+		// With no second argument it is 'undefined'.  jsxToTemplate() takes null props as none.
+		if (typeof exprs[0] === 'object')
+			return jsxToTemplate(tagOrHtml + '', exprs[0], exprs.slice(1));
 
 		// 2b. Plain html string => template: h('<div>...</div>')
 		else {
@@ -109,7 +107,7 @@ function hOther(htmlStrings, exprs) {
 	// 2c. JSX classic factory for a component or Fragment: h(Component, {props}, ...children)
 	// The transform passes the class/function (or the Fragment symbol) as the first argument.
 	else if (typeof htmlStrings === 'function' || htmlStrings === Fragment) {
-		return jsxToTemplate(htmlStrings, exprs[0] || {}, exprs.slice(1));
+		return jsxToTemplate(htmlStrings, exprs[0], exprs.slice(1));
 	}
 
 	else if (htmlStrings instanceof HTMLElement || htmlStrings instanceof DocumentFragment) {
@@ -129,8 +127,9 @@ function hOther(htmlStrings, exprs) {
 			let parent = htmlStrings, options = exprs[0];
 
 			// The closure is cached on the element so repeated renders don't recreate it.
-			// Options are cached with it: they only take effect when the element's
-			// RootNodeGroup is first created, so a later render passing different ones is
+			// Options are cached with it: they only take effect when a RootNodeGroup is
+			// created for the element (on its first render, and when it is given another
+			// template than the one it holds), so a later render passing different ones is
 			// ignored either way, and caching regardless of them saves an allocation on every
 			// render of a component that passes an options object — which is how render() is
 			// usually written.
@@ -140,10 +139,6 @@ function hOther(htmlStrings, exprs) {
 
 			// Return a tagged template function that applies the tagged template to parent.
 			let renderTemplate = (htmlStrings, ...exprs) => {
-				// Remove shadowroot if present.  TODO: This could mess up paths?
-				if (parent.shadowRoot)
-					parent.innerHTML = '';
-
 				Globals.rendered.add(parent)
 				let template = new Template(htmlStrings, exprs);
 				return template.render(parent, options);
@@ -179,11 +174,11 @@ function hOther(htmlStrings, exprs) {
 
 		// h(this)`<div>...</div>`
 		else
-			return function(...args) {
+			return (...args) => {
 				let template = h(...args);
 				let el = template.render();
 				Globals.objToEl.set(obj, el);
-			}.bind(obj);
+			};
 	}
 	// TODO: Handle other primitive types?
 	else if (Util.isFalsy(htmlStrings))

@@ -54,5 +54,9 @@
   "bugs": {
     "url": "https://github.com/eric-frost/solarite/issues"
   },
-  "homepage": "https://eric-frost.github.io/solarite/"
+  "homepage": "https://eric-frost.github.io/solarite/",
+  "devDependencies": {
+    "@babel/parser": "^8.0.0",
+    "@babel/traverse": "^8.0.0"
+  }
 }

@@ -121,16 +121,6 @@ export default class Shell {
 	 * where the row keeps that child's Text node.  Null otherwise. */
 	stampAux;
 
-	/** @type {?string[]} The delegatable event names this shell binds, each listed once, so a
-	 * loop can register their dispatchers once for the whole run of rows instead of testing
-	 * every bound node. */
-	stampEventNames;
-
-	/** @type {?Uint8Array} Per-path flags the in-place rewrite loop needs, so it reads one byte
-	 * from a flat array instead of two properties from a Path object it otherwise wouldn't
-	 * touch.  Bit 1 = the path binds a live HTML property, bit 2 = it's a whole-parent child. */
-	stampFlags;
-
 	/** @type {?HTMLElement} A copy of the root element with an empty text node inside every
 	 * whole-parent child marker.  A new row writes its primitive child text into those text
 	 * nodes and clones this instead of docFrag, so the clone carries the text natively and
@@ -142,16 +132,14 @@ export default class Shell {
 	/** @type {?Text[]} The master's text nodes, in nodesPathIdx order. */
 	stampMasterTexts;
 
-	/** @type {?HTMLElement[]} The master's whole-parent markers, the elements those text nodes
-	 * sit in, in the same order. */
-	stampMasterCells;
-
-	/** @type {?boolean[]} Whether each master text node is currently detached from its cell,
-	 * which is how a row with an empty-string child is cloned without an empty text node. */
+	/** @type {?(HTMLElement|null)[]} For each master text node, null while it sits in its cell,
+	 * and the cell (the whole-parent marker it belongs in) while it is detached from it, which
+	 * is how a row with an empty-string child is cloned without an empty text node. */
 	stampMasterEmpty;
 
 	/** @type {?Object<string, int[]>} For each delegatable event name this shell binds, a flat
-	 * list of [path index, marker slot] pairs.  A row's delegated handlers are never written
+	 * list of [path index, marker slot] pairs.  Its keys are also what a loop registers the
+	 * dispatchers from, once for the whole run of rows.  A row's delegated handlers are never written
 	 * onto its nodes; when an event starts, the dispatcher finds the row through its root
 	 * element, looks the event's targets up here, and reads the handlers from the row's
 	 * template.  Null when the shell binds no delegatable events, and for every shell that
@@ -166,6 +154,13 @@ export default class Shell {
 	constructor(html=null, svgMode=false) {
 		if (!html)
 			return;
+
+		// A chunk is undefined when its part of the template literal holds an escape sequence that JavaScript
+		// rejects, such as the "\2014" of a css content value, which has to be written "\\2014" in a template.
+		// Joined with the other chunks it would count as an empty string, and the template would render without
+		// that part of its html and without a word about it.
+		if (html.includes(undefined))
+			throw new Error(`Solarite: bad escape sequence in template: ${html.join('${...}')}`);
 
 		//#IFDEBUG
 		this._html = html.join('');
@@ -210,7 +205,7 @@ export default class Shell {
 		let toRemove = null; // A placeholder node the walker has not moved off yet.
 
 		// The walker needs no filter: a parsed fragment holds only elements, text and comments.
-		const walker = Globals.doc.createTreeWalker(this.docFrag);
+		let walker = Globals.doc.createTreeWalker(this.docFrag);
 		while (node = walker.nextNode()) {
 
 			// Remove the placeholder the previous step was done with, now that the walker has moved
@@ -220,9 +215,9 @@ export default class Shell {
 			
 			// Replace attributes
 			if (node.nodeType === 1) {
-				const hasIs = node.hasAttribute('_is'); // Renamed from `is` in step 1c.
-				const isComponent = (hasIs || node.tagName.includes('-'));
-				const componentAttribPaths = [];
+				let hasIs = node.hasAttribute('_is'); // Renamed from `is` in step 1c.
+				let isComponent = (hasIs || node.tagName.includes('-'));
+				let componentAttribPaths = [];
 
 				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes with placeholders as we go.
 					let name = attr.name, path;
@@ -467,16 +462,18 @@ export default class Shell {
 			// child text, 3 = delegatable single-expression event (left in the row's template
 			// for the dispatcher when the root delegates every event, the default; otherwise
 			// bound by the shared stamper), 4 = a plain attribute holding one whole expression
-			// (see the branch that assigns it below).  The same pass decides whether the shell
-			// is stampable at all, and fills the dispatcher's lookup table (stampEventsByType).
+			// (see the branch that assigns it below), 5 = generic, for a live HTML property,
+			// which the in-place rewrite must not skip when its expression is unchanged.  The
+			// opcode is also all NodeGroup.rewriteStamp() reads to know a path's kind, so it
+			// never loads the Path object.  The same pass decides whether the shell is stampable
+			// at all, and fills the dispatcher's lookup table (stampEventsByType).
 			let n = this.paths.length;
-			let ops = new Uint8Array(n), slots = new Uint16Array(n), flags = new Uint8Array(n);
+			let ops = new Uint8Array(n), slots = new Uint16Array(n);
 			let aux = new Array(n).fill(null);
 			let nodesIdx = [], byType = null, ok = true;
 			for (let i=0; i<n; i++) {
 				let path = this.paths[i];
 				slots[i] = path.markerSlot;
-				flags[i] = (path.isHtmlProperty ? 1 : 0) | (path.wholeParent ? 2 : 0);
 				if (path instanceof PathToKey)
 					ops[i] = 1;
 				else if (path.wholeParent) {
@@ -503,7 +500,9 @@ export default class Shell {
 				// without first reading back what's there.  It is never a component's attribute:
 				// a shell that holds a component isn't pathsSingleExpr.
 				else if (path instanceof PathToAttribValue) {
-					if (!path.attrValue && !path.isHtmlProperty) {
+					if (path.isHtmlProperty)
+						ops[i] = 5;
+					else if (!path.attrValue) {
 						ops[i] = 4;
 						aux[i] = path.attribName;
 					}
@@ -522,22 +521,19 @@ export default class Shell {
 				this.stampOp = ops;
 				this.stampSlot = slots;
 				this.stampAux = aux;
-				this.stampFlags = flags;
 				this.stampEventsByType = byType;
-				this.stampEventNames = byType && Object.keys(byType);
 
 				// The master rows are cloned from, see stampMaster.  Its text nodes are made in the
 				// template's inert document with the rest of the shell, since cloning there is
 				// cheaper than in the page's document (the exp2 note in optimization-log.md).
 				let master = this.stampMaster = this.docFrag.firstChild.cloneNode(true);
 				let doc = master.ownerDocument;
-				this.stampMasterCells = nodesIdx.map(i => Path.resolve(master, this.paths[i].nodeMarkerPath, 1));
-				this.stampMasterTexts = this.stampMasterCells.map(el => {
+				this.stampMasterTexts = nodesIdx.map(i => {
 					let tn = doc.createTextNode('');
-					el.append(tn);
+					Path.resolve(master, this.paths[i].nodeMarkerPath, 1).append(tn);
 					return tn;
 				});
-				this.stampMasterEmpty = nodesIdx.map(() => false);
+				this.stampMasterEmpty = nodesIdx.map(() => null);
 			}
 		}
 
@@ -545,71 +541,46 @@ export default class Shell {
 	}
 
 	/**
-	 * 1. Add a Unicode placeholder char for where expressions go within attributes.
-	 * 2. Add a comment placeholder for where expressions are children of other nodes.
-	 * 3. Append -solarite-placeholder to the tag names of custom components so that we can instantiate them later
+	 * Mark where every expression goes in the template's html, in a way the browser's parser carries into the
+	 * nodes it creates, where the constructor then finds the marks:
+	 * 1. A Unicode private-use character for an expression inside a tag, where it is an attribute's value, part of
+	 *    one, or one or more whole attributes.  An expression inside a comment gets one too, so that a block
+	 *    of html that was commented out still has a place for each of its expressions.
+	 * 2. A comment placeholder for an expression that is a child of a node.
+	 * 3. -solarite-placeholder appended to the tag names of custom components so that we can instantiate them later
 	 *    when we can manually call their constructors with the proper attribute and children arguments from evaluated expressions.
 	 * @param htmlChunks {string[]}
 	 * @returns {string} Html with the placeholders in place. */
 	static addPlaceholders(htmlChunks) {
-		let result = '';
+		let index = 0; // Which expression the next mark is for.
 
-		// Where the tokenizer is as it walks the chunks.  An expression can sit in the middle of an attribute
-		// value, so both of these have to survive from one chunk to the next.  Nothing else has to: an
-		// expression anywhere inside a tag gets the same attribute placeholder, so the machine only has to
-		// know whether it is inside a tag at all, and whether a quoted value is currently open.
-		let inTag = false; // True from the '<' that opens a tag or comment through the '>' that closes it.
-		let quote = null; // The quote character that opened the attribute value we're inside of: null, '"', or "'".
+		// A mark outside every tag and comment: the expression is a child node.  A comment stands in for it,
+		// because text can't be put everywhere a node can, between two <tr> tags for example.
+		let child = () => {
+			index++;
+			return commentPlaceholder;
+		};
 
-		for (let i = 0; i < htmlChunks.length; i++) {
-			let html = htmlChunks[i];
+		// A tag or a comment.  Each mark inside it becomes a character of its own, numbered by its expression
+		// because a tag can't have the same attribute more than once.
+		let inTag = tag => tag
+			.replace(isWebComponentTagName, '$&-SOLARITE-PLACEHOLDER')
+			.replace(/\0/g, () => String.fromCharCode(attribPlaceholder + index++));
 
-			// Append -solarite-placholder to web component tags, so we can pass args to them when they're instantiated.
-			let lastIndex = 0; // Start of the run of this chunk not yet copied into result.
-			for (let j = 0; j < html.length; j++) {
-				const char = html[j];
+		// The chunks are joined with a NUL character in every gap an expression goes in, and htmlToken then reads
+		// the whole template as the browser's parser will.  It matches each tag and each comment in one piece,
+		// together with the marks inside it, which is why the template is read whole and not chunk by chunk: an
+		// expression can sit in the middle of an attribute value or of a comment.  What remains outside its
+		// matches is text, and a mark there is matched on its own.
+		return htmlChunks.join('\0').replace(htmlToken, (token, rawTag, rawName, rawText) => {
 
-				if (!inTag) {
-					if (char === '<' && html[j + 1].match(/[/a-z!]/i)) { // Start of a tag or comment.
-						inTag = true;
+			// A <script>, <style> or <textarea>.  Its start tag is a tag like any other, and the marks in its text
+			// are children, like those in any other text.
+			if (rawTag)
+				return inTag(rawTag) + rawText.replace(/\0/g, child);
 
-						// A component suffix can only ever be added right here, at the '<' that opens the tag, so
-						// the name is matched on the spot with a sticky regex rather than collected into a buffer
-						// and matched later.  The greedy tag-name class can't run past the name, because every
-						// character that can follow a tag name is outside it.
-						isWebComponentTagName.lastIndex = j;
-						let match = isWebComponentTagName.exec(html);
-						if (match) {
-							let end = j + match[0].length;
-							result += html.slice(lastIndex, end) + '-SOLARITE-PLACEHOLDER';
-							lastIndex = end;
-						}
-					}
-				}
-
-				// Inside a tag, only two characters end anything: the quote that closes the value we're in, or,
-				// when we're not in one, the '>' that closes the tag.  Attribute names, '=', unquoted values and
-				// whitespace all need no handling at all.
-				else if (quote) {
-					if (char === quote)
-						quote = null;
-				}
-				else if (char === '"' || char === "'")
-					quote = char;
-				else if (char === '>')
-					inTag = false;
-			}
-
-			result += html.slice(lastIndex);
-
-			// Insert placeholders
-			if (i < htmlChunks.length - 1)
-				result += inTag
-					? String.fromCharCode(attribPlaceholder + i)
-					: commentPlaceholder; // Comment Placeholder. because we can't put text in between <tr> tags for example.
-		}
-
-		return result;
+			return token === '\0' ? child() : inTag(token);
+		});
 	}
 
 	/**
@@ -706,15 +677,13 @@ export default class Shell {
 		if (htmlStrings === lastHtmlStrings && svgMode === lastSvgMode)
 			return lastShell;
 
+		// The cache holds a pair of shells for each html: [parsed as html, parsed as svg].
 		let entry = Globals.shells.get(htmlStrings);
 		if (!entry) {
-			entry = {};
+			entry = [];
 			Globals.shells.set(htmlStrings, entry); // cache
 		}
-		let key = svgMode ? 'svg' : 'html';
-		let result = entry[key];
-		if (!result)
-			result = entry[key] = new Shell(htmlStrings, svgMode);
+		let result = entry[+svgMode] ??= new Shell(htmlStrings, svgMode);
 
 		lastHtmlStrings = htmlStrings;
 		lastSvgMode = svgMode;
@@ -736,16 +705,47 @@ export default class Shell {
 }
 
 
-const commentPlaceholder = `<!--!✨!-->`;
+let commentPlaceholder = `<!--!✨!-->`;
+
+// What addPlaceholders() reads a template with, as the browser's own parser will read it.  The template arrives with
+// a NUL character wherever an expression goes, and each alternative matches one thing in one piece, whatever marks
+// are inside it.  Every alternative that has begun can end, at the end of the html if nowhere else, so the pattern
+// never backtracks and its time grows with the length of the html and no faster.  The alternatives, in the order
+// they are written in the pattern:
+// 1. A comment.  Only its end closes it, so the quotes, apostrophes and '>' in its text mean nothing.  As in the
+//    browser, <!--> and <!---> are whole comments, --!> ends one as --> does, and one that is never closed runs to
+//    the end of the html.
+//        <!--(?:-?>|[^]*?(?:--!?>|$))
+// 2. The start tag of a <script>, <style> or <textarea> (group 1) and the text that follows it (group 3), up to
+//    its end tag.  That text is not html: a '<' in it opens nothing and a quote in it means nothing, so `i<n` in a
+//    script or `/* <b */` in a style must not be taken for a tag.  A self-closed <script/> or <style/> is left to
+//    the next alternative, because inside an <svg> such a tag has no text, and outside one nobody writes it.
+//    Two things the browser does are not followed here, because no template was found that needs them.  Inside
+//    an <svg> the content of these elements is markup, so an expression in a tag or in a comment written there is
+//    not found, and the template throws.  And <title>, <xmp>, <iframe>, <noembed> and <noframes> have such text
+//    too but are not in the list (an <svg> <title> may hold markup), so a '<!--' that is never closed, or a
+//    '<letter' before an expression, in the text of one of them is still read as html.
+//        (<(script|style|textarea)(?=[\s/>])(?![^>]*\/>)(?:[^>=]|=\s*(?:"[^"]*"?|'[^']*'?|[^\s>]*))*>?)([^]*?)(?=<\/\2(?=[\s/>])|$)
+// 3. A tag, from its '<' through the '>' that closes it.  A quote opens a value only where a value can begin,
+//    after '=', and the '>' inside a quoted value doesn't close the tag.  Anywhere else in the tag a quote is an
+//    ordinary character, as the apostrophe is in title=don't.  A '<' opens a tag only before a letter or '/'.
+//    Before anything else it is text, as it is before an expression: `${a} <${b}` compares two values.
+//        <\/?[a-z](?:[^>=]|=\s*(?:"[^"]*"?|'[^']*'?|[^\s>]*))*>?
+// 4. Whatever else starts with '<!', '<?' or '</': a doctype, a processing instruction, an end tag without a name.
+//    The browser makes a comment of it or drops it, and in every case it ends at the first '>', whatever quotes
+//    come before that.
+//        <[!?/][^>]*>?
+// 5. A mark that none of the above took, which is an expression among the children of a node.
+//        \0
+let htmlToken = /<!--(?:-?>|[^]*?(?:--!?>|$))|(<(script|style|textarea)(?=[\s/>])(?![^>]*\/>)(?:[^>=]|=\s*(?:"[^"]*"?|'[^']*'?|[^\s>]*))*>?)([^]*?)(?=<\/\2(?=[\s/>])|$)|<\/?[a-z](?:[^>=]|=\s*(?:"[^"]*"?|'[^']*'?|[^\s>]*))*>?|<[!?/][^>]*>?|\0/gi;
 
 // A tag name with a dash in the middle, which is what makes an element a web component.  addPlaceholders()
-// tests this at each '<' that opens a tag, and a match gets -solarite-placeholder appended to its tag name.
+// tests this on every tag it finds, and a match gets -solarite-placeholder appended to its tag name.
 // That way we can gather a component's constructor arguments and its children before we call its constructor;
 // later PathToComponent.applyAll() replaces the placeholder tag with the real component.  The suffix is written in
-// caps wherever it appears, so that the several copies of it in this project compress well.  It's sticky rather
-// than anchored so it can be tested at an offset within the chunk instead of against a sliced-out token.
+// caps wherever it appears, so that the several copies of it in this project compress well.
 // Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
-const isWebComponentTagName = /<\/?[a-z][a-z0-9]*-[a-z0-9-]+/iy;
+let isWebComponentTagName = /^<\/?[a-z][a-z0-9]*-[a-z0-9-]+/i;
 
 /**
  * Remove whitespace-only text children of table-structure elements, whose whitespace is never
@@ -797,6 +797,6 @@ let lastHtmlStrings = null, lastSvgMode = false, lastShell = null;
 
 
 // We increment the placeholder char as we go because nodes can't have the same attribute more than once.
-const attribPlaceholder = 0xe000; // https://en.wikipedia.org/wiki/Private_Use_Areas  6400.
+let attribPlaceholder = 0xe000; // https://en.wikipedia.org/wiki/Private_Use_Areas  6400.
 
 

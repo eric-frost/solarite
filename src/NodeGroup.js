@@ -6,7 +6,7 @@ import Path from "./Path.js";
 import Globals from './Globals.js';
 import PathToComponent from "./PathToComponent.js";
 import PathToNodes from "./PathToNodes.js";
-import {isAnchored, registerRowDispatchers, rowNgKey, stampedShellKey} from "./PathToAttribValue.js";
+import {isAnchored, isHandler, registerRowDispatchers, rowNgKey, stampedShellKey} from "./PathToAttribValue.js";
 import {SelectorRef} from "./Selector.js";
 
 /** @typedef {boolean|string|number|function|Object|Array|Date|Node|Template} Expr */
@@ -14,15 +14,7 @@ import {SelectorRef} from "./Selector.js";
 /** Stand-in Shell for text NodeGroups, which are never parsed from html.  Its default field
  * values (no components, no live properties, no single-expression paths) are exactly what the
  * per-row code must see for a bare Text node, so ng.shell is never null. */
-const textShell = new Shell();
-
-/**
- * Is v something an event attribute accepts: a function, or a [function, ...args] array?
- * @param v {*}
- * @return {boolean} */
-function isHandler(v) {
-	return typeof v === 'function' || (Array.isArray(v) && typeof v[0] === 'function');
-}
+let textShell = new Shell();
 
 /**
  * Are the child-node expressions of a stampable shell all primitives, so a row can carry them
@@ -170,7 +162,7 @@ export default class NodeGroup {
 
 		else {
 			// Get a cached version of the parsed and instantiated html, and Paths:
-			const shell = this.shell = Shell.get(template.html, template.svgMode);
+			let shell = this.shell = Shell.get(template.html, template.svgMode);
 
 			// The shell caches the close key so each new template doesn't repeat the WeakMap lookup.
 			this.closeKey = shell.closeKey ??= template.getCloseKey();
@@ -199,16 +191,18 @@ export default class NodeGroup {
 						if (typeof v !== 'string' && typeof v !== 'number')
 							break;
 						// An empty string leaves no text node at all, as every other path renders it.
+						// The master's text node is taken out for such a row, and its cell is
+						// remembered so the next row that has text can put it back.
 						if (v === '') {
 							if (!empty[i]) {
+								empty[i] = tn.parentNode;
 								tn.remove();
-								empty[i] = true;
 							}
 						}
 						else {
 							if (empty[i]) {
-								shell.stampMasterCells[i].append(tn);
-								empty[i] = false;
+								empty[i].append(tn);
+								empty[i] = null;
 							}
 							tn.nodeValue = v;
 						}
@@ -218,7 +212,7 @@ export default class NodeGroup {
 				if (primitive)
 					this.startNode = this.endNode = shell.stampMaster.cloneNode(true);
 				else {
-					const clone = shell.docFrag.firstChild.cloneNode(true);
+					let clone = shell.docFrag.firstChild.cloneNode(true);
 					this.startNode = this.endNode = clone;
 					this.setPathsFromFragment(clone, shell, 0, true);
 				}
@@ -239,7 +233,7 @@ export default class NodeGroup {
 				}
 			}
 			else {
-				const shellFragment = shell.docFrag.cloneNode(true);
+				let shellFragment = shell.docFrag.cloneNode(true);
 
 				if (shellFragment.nodeType === 11) { // DocumentFragment
 					this.startNode = shellFragment.firstChild;
@@ -266,11 +260,8 @@ export default class NodeGroup {
 	instantiate(shell, shellFragment, el, options) {
 		// A non-stampable group must keep a non-null paths array; null is the stamped/text
 		// sentinel, and reuse would otherwise route a path-less group through rewriteStamp(),
-		// which only exists for stampable shells.  Zero-expression shells have no paths to build.
-		if (shell.paths.length)
-			this.setPathsFromFragment(shellFragment, shell);
-		else
-			this.paths = [];
+		// which only exists for stampable shells.  A zero-expression shell gets an empty array.
+		this.setPathsFromFragment(shellFragment, shell);
 
 		if (shell.hasEmbeds)
 			this.activateEmbeds(shellFragment, shell);
@@ -300,8 +291,13 @@ export default class NodeGroup {
 		if (this.shell.pathsSingleExpr) {
 			if (includeNonComponents) {
 				if (paths === null) { // Created from a stampable shell; no paths yet.
-					this.applyStamp(exprs);
-					return;
+					// The constructor already proved a fresh row's children primitive.  A pooled
+					// row whose child is no longer one gets real paths and is applied as usual.
+					if (this.firstApply || childrenArePrimitive(exprs, this.shell.nodesPathIdx)) {
+						this.applyStamp(exprs);
+						return;
+					}
+					paths = this.materializePaths();
 				}
 				for (let i = paths.length - 1; i >= 0; i--) {
 					let path = paths[i];
@@ -384,24 +380,13 @@ export default class NodeGroup {
 	 * row's child text in from the master, and delegated handlers are left in the template for
 	 * the dispatcher to find (see isAnchored).  Only an attribute, a non-delegated event, or an
 	 * unusual value resolves the row's nodes.  A pooled row being re-applied writes its child
-	 * text, and if a child expression is no longer a primitive it falls back to materializing
-	 * real paths and applying normally.
-	 * @param exprs {Expr[]} */
+	 * text.
+	 * @param exprs {Expr[]} Its child-node expressions are all primitives; applyExprs() checks. */
 	applyStamp(exprs) {
 		let shell = this.shell;
 		let firstApply = this.firstApply;
 
-		// 1. The constructor already proved a fresh row's children primitive.
-		if (!firstApply && !childrenArePrimitive(exprs, shell.nodesPathIdx)) {
-			let paths = this.materializePaths(shell);
-			for (let i = paths.length - 1; i >= 0; i--)
-				paths[i].applySingle(exprs[i]);
-			this.nodesCache = null;
-			this.firstApply = false;
-			return;
-		}
-
-		// 2. Run the shell's compiled stamp program: a flat opcode per path replaces per-path
+		// Run the shell's compiled stamp program: a flat opcode per path replaces per-path
 		// applySingle() dispatch (see Shell.stampOp).  Nodes are resolved only when an op needs
 		// one below the root, since each resolved node costs a JS wrapper.
 		let ops = shell.stampOp, slotIdx = shell.stampSlot, aux = shell.stampAux;
@@ -417,80 +402,58 @@ export default class NodeGroup {
 			let v = exprs[i];
 			let o = ops[i];
 
-			// A delegatable event on an anchored row: the handler lives in the template, where
-			// the dispatcher reads it when the handler's turn comes.  An invalid value falls
-			// through to the stamper, which names the mistake.
-			if (o === 3) {
-				if (anchored && isHandler(v))
-					continue;
-			}
-
-			// Whole-parent child text.  A fresh row had it cloned in from the master.
-			else if (o === 2) {
-				if (firstApply)
-					continue;
-				if (typeof v === 'number')
-					v += '';
-				let s = slotIdx[i];
-				if (s > resolved) {
-					resolved = s;
-					this.resolveStampSlots(shell, s);
-				}
-				slots[s].textContent = v;
-
-				// textContent replaced the Text node rewriteStamp() may have kept for this child.
-				let kept = this.stampSlotsCache;
-				if (kept !== null)
-					kept[aux[i]] = undefined;
-				continue;
-			}
-
 			// The list key never touches the DOM.
-			else if (o === 1) {
+			if (o === 1) {
 				this.key = v;
 				continue;
 			}
 
-			// A plain attribute holding one whole expression.
-			else if (o === 4) {
-				let s = slotIdx[i];
+			// These need no node either.  Whole-parent child text: a fresh row had it cloned in
+			// from the master.  A delegatable event on an anchored row: the handler lives in the
+			// template, where the dispatcher reads it when the handler's turn comes (an invalid
+			// value goes on to the stamper, which names the mistake).  A plain attribute on a
+			// freshly cloned row: the shell left the attribute off, so an empty value means there
+			// is simply nothing to write.
+			if ((o === 2 && firstApply)
+				|| (o === 3 && anchored && isHandler(v))
+				|| (o === 4 && firstApply && v === ''))
+				continue;
 
-				// On a freshly cloned row the shell left the attribute off, so an empty value
-				// means there is simply nothing to write, and any other string can go straight in
-				// without reading the attribute back first.
-				if (firstApply && typeof v === 'string') {
-					if (v !== '') {
-						if (s > resolved) {
-							resolved = s;
-							this.resolveStampSlots(shell, s);
-						}
-						slots[s].setAttribute(aux[i], v);
-					}
-					continue;
-				}
-
-				// A selection binding (h.selector().when()) does its own two stores.
-				if (typeof v === 'object' && v instanceof SelectorRef) {
-					if (s > resolved) {
-						resolved = s;
-						this.resolveStampSlots(shell, s);
-					}
-					v.bind(slots[s], aux[i], this);
-					continue;
-				}
-			}
-
-			// Everything else (odd attribute values, non-delegated events) goes through the
-			// shared stamper's full applySingle() semantics.
-			let stamper = stampers[i];
+			// Everything else writes to the path's node.
 			let s = slotIdx[i];
 			if (s > resolved) {
 				resolved = s;
 				this.resolveStampSlots(shell, s);
 			}
-			stamper.nodeMarker = slots[s];
-			stamper.parentNg = this;
-			stamper.applySingle(v);
+			let node = slots[s];
+
+			// Whole-parent child text of a pooled row.
+			if (o === 2) {
+				node.textContent = v;
+
+				// textContent replaced the Text node rewriteStamp() may have kept for this child.
+				let kept = this.stampSlotsCache;
+				if (kept !== null)
+					kept[aux[i]] = undefined;
+			}
+
+			// A plain attribute holding one whole expression.  On a freshly cloned row it is known
+			// to be absent, so a string can go straight in without reading the attribute back first.
+			else if (o === 4 && firstApply && typeof v === 'string')
+				node.setAttribute(aux[i], v);
+
+			// A selection binding (h.selector().when()) does its own two stores.
+			else if (o === 4 && typeof v === 'object' && v instanceof SelectorRef)
+				v.bind(node, aux[i], this);
+
+			// Everything else (odd attribute values, non-delegated events) goes through the
+			// shared stamper's full applySingle() semantics.
+			else {
+				let stamper = stampers[i];
+				stamper.nodeMarker = node;
+				stamper.parentNg = this;
+				stamper.applySingle(v);
+			}
 		}
 
 		this.nodesCache = null;
@@ -510,7 +473,7 @@ export default class NodeGroup {
 			return false;
 
 		let oldExprs = this.template.exprs;
-		let stampers = shell.stampPaths, slotIdx = shell.stampSlot, flags = shell.stampFlags;
+		let stampers = shell.stampPaths, slotIdx = shell.stampSlot;
 		let ops = shell.stampOp, aux = shell.stampAux;
 		let anchored = isAnchored(this);
 		let slots = this.stampSlotsCache; // Nodes are resolved only if something actually changed, then kept.
@@ -520,47 +483,38 @@ export default class NodeGroup {
 			// handler from the row's template when the handler's turn comes, and the caller
 			// assigns the new template as soon as this returns.  If an expression before this
 			// one throws instead, keepReached() records this one as applied.
-			if (ops[i] === 3 && anchored && isHandler(newExprs[i]))
+			let o = ops[i];
+			if (o === 3 && anchored && isHandler(newExprs[i]))
 				continue;
 			let oldExpr = oldExprs[i], newExpr = newExprs[i];
-			let flag = flags[i];
 
 			// A whole-parent text child.  Old and new are both primitives here (a stamped row's
 			// children always are, and the new ones were checked above), so identity is the
 			// whole comparison.  The row keeps the Text node it wrote last time next to its
-			// resolved slots: reaching it again through the marker would cost three DOM calls
-			// and, after a garbage collection, a fresh JS wrapper for a node the row will write
-			// on every later update anyway.  Writing the Text node's value is cheaper than
-			// textContent, which replaces the node.
-			if (flag & 2) {
+			// resolved slots, so that the node's JS wrapper stays alive: after a garbage
+			// collection, reading it through the marker would otherwise make a fresh wrapper for
+			// a node the row will write on every later update anyway.  Writing the Text node's
+			// value is cheaper than textContent, which replaces the node.
+			if (o === 2) {
 				if (oldExpr !== newExpr) {
 					let v = typeof newExpr === 'number' ? newExpr + '' : newExpr;
 					let ti = aux[i], s = slotIdx[i];
-					let tn = slots !== null ? slots[ti] : undefined, marker;
+					if (slots === null || slots[s] === undefined)
+						slots = this.stampSlots(s);
+					let marker = slots[s], tn = marker.firstChild;
 
-					// The kept node is trusted only while it is still the marker's one child.  Other
-					// code may have changed the cell since (a highlighter splitting the text, a
+					// The marker holds one text node or nothing (an empty string leaves none), unless
+					// other code has changed the cell since (a highlighter splitting the text, a
 					// translator wrapping it, normalize() dropping an empty node), and the write
-					// must then replace whatever is there, as it would for a row written for the
-					// first time.  Both nodes' wrappers are held by the row, so the two reads make
-					// none.
-					if (tn !== undefined && (marker = slots[s]).firstChild === tn && marker.lastChild === tn)
+					// must then replace whatever is there.  The node the row kept is known to be a
+					// Text node, which spares asking the browser for its type.
+					if (tn !== null && tn === marker.lastChild && (tn === slots[ti] || tn.nodeType === 3))
 						tn.nodeValue = v;
 					else {
-						if (slots === null || slots[s] === undefined)
-							slots = this.stampSlots(s);
-						marker = slots[s];
-
-						// The marker holds one text node or nothing (an empty string leaves none).
+						marker.textContent = v;
 						tn = marker.firstChild;
-						if (tn !== null && tn.nodeType === 3 && tn === marker.lastChild)
-							tn.nodeValue = v;
-						else {
-							marker.textContent = v;
-							tn = marker.firstChild;
-						}
-						slots[ti] = tn !== null ? tn : undefined;
 					}
+					slots[ti] = tn;
 				}
 				continue;
 			}
@@ -571,7 +525,7 @@ export default class NodeGroup {
 			// The identity test is inline because most expressions are unchanged, and reaching
 			// exprSame() only to be told so costs more than the comparison itself.
 			if ((oldExpr !== newExpr && !exprSame(oldExpr, newExpr))
-				|| ((flag & 1) && typeof newExpr === 'boolean')) {
+				|| (o === 5 && typeof newExpr === 'boolean')) {
 				let s = slotIdx[i];
 				let stamper = stampers[i];
 				stamper.nodeMarker = s === 1 ? this.startNode : (slots === null || slots[s] === undefined ? (slots = this.stampSlots(s))[s] : slots[s]);
@@ -656,11 +610,10 @@ export default class NodeGroup {
 	 * Create the real Path objects for a NodeGroup that was created by applyStamp().
 	 * Called lazily, the first time the group is rewritten in place.
 	 * Recovers the bare-text state of child-node paths that stamped a primitive.
-	 * @param shell {?Shell}
 	 * @return {Path[]} */
-	materializePaths(shell=null) {
-		shell ??= this.shell;
-		let result = this.clonePathsFromSlots(shell, this.resolveStampSlots(shell));
+	materializePaths() {
+		let shell = this.shell;
+		let result = this.setPathsFromFragment(this.startNode, shell, 0, true);
 
 		// A wholeParent child-node path that stamped a primitive left exactly one Text child.
 		// The real paths track their own text from here on, so the Text nodes rewriteStamp()
@@ -716,7 +669,8 @@ export default class NodeGroup {
 	 * @param shell {Shell}
 	 * @param startingPathDepth {int}
 	 * @param isRootClone {boolean} True when fragment is a direct clone of a singleRoot
-	 * shell's root element: it fills slot 1 itself and the first op pair is skipped. */
+	 * shell's root element: it fills slot 1 itself and the first op pair is skipped.
+	 * @return {Path[]} this.paths */
 	setPathsFromFragment(fragment, shell, startingPathDepth=0, isRootClone=false) {
 
 		// Fast path: run the shell's precomputed resolve program (see Shell.buildResolveProgram).
@@ -727,9 +681,8 @@ export default class NodeGroup {
 		// Paths then copy themselves via cloneWithNodes() using their precomputed slot indexes.
 		// Only built for component-free shells, since PathToComponent.clone() has special
 		// attribPaths behavior; pathOffset!==0 (root grafting) also uses the fallback.
-		let ops = shell.resolveOps;
+		let ops = shell.resolveOps, slots = null;
 		if (ops && startingPathDepth === 0) {
-			let slots;
 			if (isRootClone) // The root element is also this.startNode, so it seeds slot 1 itself.
 				slots = this.resolveStampSlots(shell);
 			else {
@@ -737,33 +690,18 @@ export default class NodeGroup {
 				slots[0] = fragment;
 				runResolveOps(slots, ops, 0, 1);
 			}
-			this.clonePathsFromSlots(shell, slots);
 		}
-		else {
-			let paths = shell.paths;
-			let pathLength = paths.length; // For faster iteration
-			let result = this.paths = new Array(pathLength);
-			for (let i=0; i<pathLength; i++) {
-				let path = paths[i].clone(fragment, startingPathDepth)
-				path.parentNg = this;
-				result[i] = path;
-			}
-		}
-	}
 
-	/**
-	 * Copy the shell's Paths onto this NodeGroup's own nodes, taking each path's marker and
-	 * before-node from the slots the resolve program just filled.
-	 * @param shell {Shell}
-	 * @param slots {Node[]} The shell's shared scratch slots, already resolved.
-	 * @return {Path[]} */
-	clonePathsFromSlots(shell, slots) {
+		// Each path copies itself onto this NodeGroup's own nodes: from the slots the resolve
+		// program just filled when there is one, by its own walk from the root otherwise.
 		let paths = shell.paths;
-		let pathLength = paths.length;
+		let pathLength = paths.length; // For faster iteration
 		let result = this.paths = new Array(pathLength);
 		for (let i=0; i<pathLength; i++) {
 			let p = paths[i];
-			let path = p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot]);
+			let path = slots !== null
+				? p.cloneWithNodes(p.beforeSlot >= 0 ? slots[p.beforeSlot] : null, slots[p.markerSlot])
+				: p.clone(fragment, startingPathDepth);
 			path.parentNg = this;
 			result[i] = path;
 		}
@@ -877,7 +815,7 @@ export default class NodeGroup {
 			assert(path.parentNg === this)
 
 			// Fails for detached NodeGroups.
-			// NodeGroups get detached when their nodes are removed by reconcileNodes()
+			// NodeGroups get detached when their nodes are removed by removeNodes()
 			let parentNode = this.getParentNode();
 			if (parentNode)
 				assert(this.getParentNode().contains(path.getParentNode()))

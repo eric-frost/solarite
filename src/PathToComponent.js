@@ -2,11 +2,10 @@ import Path from "./Path.js";
 import Util from "./Util.js";
 import delve, {isDelvePath} from "./delve.js";
 import assert from "./assert.js";
-import PathToAttribValue from "./PathToAttribValue.js";
 import PathToKey from "./PathToKey.js";
-import PathToEvent from "./PathToEvent.js";
 import Globals from "./Globals.js";
 import {getObjectHash, getPlainHash} from "./Template.js";
+import {JsxAttr, styleToCss} from "./jsx.js";
 
 export default class PathToComponent extends Path {
 
@@ -77,29 +76,41 @@ export default class PathToComponent extends Path {
 		for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
 			if (attribPath instanceof PathToKey) // The list key is never a component arg.
 				continue;
-			// Event attributes like onchange=${...} are bound with addEventListener when the
-			// PathToEvent itself is applied.  They must not also become constructor fields:
-			// a component that assigns its fields onto itself would set the native on*
-			// property, making the handler fire a second time with only the (event) argument
-			// instead of Solarite's documented (event, element) signature.
-			if (attribPath instanceof PathToEvent)
-				continue;
 
 			// The whole expression, or the joined text of an attribute with several parts.
 			let value = attribPath.getValue(exprs[i]);
-			if (attribPath instanceof PathToAttribValue) {
+			let name = attribPath.attribName;
+
+			// A precompiled JSX attribute, as in `<my-list items={rows}>`, is a name and a value
+			// in one hole.  It is passed on as the attribute of that name in a tagged template
+			// is, with a style object as the css text PathToAttribs writes.  Taken for an object
+			// of attributes, it used to reach the component as two arguments called `name` and
+			// `value`.
+			if (value instanceof JsxAttr) {
+				name = value.name;
+				value = name === 'style' ? styleToCss(value.value) : value.value;
+			}
+
+			if (name) {
+				// Event attributes like onchange=${...} are bound with addEventListener when the
+				// PathToEvent itself is applied.  They must not also become constructor fields:
+				// a component that assigns its fields onto itself would set the native on*
+				// property, making the handler fire a second time with only the (event) argument
+				// instead of Solarite's documented (event, element) signature.
+				if (Util.isEvent(name))
+					continue;
 
 				// Resolve a two-way binding path before we pass it to the component.  Joined
 				// text is a string, which is never one.
 				if (isDelvePath(value))
 					value = delve(value[0], value.slice(1));
-				attribs[Util.dashesToCamel(attribPath.attribName)] = value;
+				attribs[Util.dashesToCamel(name)] = value;
 			}
 			else { // PathToAttribs: an object of attributes, or a string of them.
 				if (typeof value === 'string')
 					value = Util.splitAttribs(value);
 				if (typeof value === 'object')
-					for (let name in value)
+					for (name in value)
 						attribs[Util.dashesToCamel(name)] = value[name];
 			}
 		}
@@ -130,9 +141,31 @@ export default class PathToComponent extends Path {
 						customElements.whenDefined(tagName).then(() => {
 							let deferred = this.deferredExprs;
 							this.deferredExprs = null;
-							// Skip if a newer render already instantiated or replaced the placeholder.
-							if (this.nodeMarker === el && el.tagName.endsWith('-SOLARITE-PLACEHOLDER'))
+							// Skip if a newer render has built the component already: building it is
+							// what points nodeMarker at the new element.  The placeholder's tag name
+							// can't answer that, because it never changes, and the placeholder of a
+							// customized built-in (<p is="my-p">) doesn't carry the suffix at all.
+							if (this.nodeMarker === el) {
 								this.applyAll(deferred);
+
+								// The component is built here outside any render, so no list is
+								// being drawn that would read its nodes again when it is done.
+								// When the placeholder was a row of a list, or one of a row's
+								// nodes, every list it stands in still names the placeholder
+								// among its nodes.  Those lists are read from the DOM again.
+								// And one that is inside an element that doesn't render through
+								// Solarite has the placeholder among the nodes it looks for
+								// before it draws (see PathToNodes.applyAll()), and would take
+								// the component that now stands there for the element's doing.
+								let ng = this.parentNg;
+								ng.nodesCache = null;
+								for (let path = ng.parentPath; path; path = path.parentNg.parentPath) {
+									path.nodesCache = path.parentNg.nodesCache = null;
+									let nodes = path.kept?.nodes, i = nodes ? nodes.indexOf(el) : -1;
+									if (i >= 0)
+										nodes[i] = this.nodeMarker;
+								}
+							}
 						});
 					}
 					this.deferredExprs = exprs;
@@ -144,10 +177,17 @@ export default class PathToComponent extends Path {
 				// to be parked before new Constructor(), because a Solarite constructor may call
 				// this.render() itself, and the element that would otherwise carry them does not
 				// exist yet.
-				Globals.currentSlotChildren = {Constructor, nodes: [...el.childNodes]};
+				let ng = this.parentNg;
+				Globals.currentSlotChildren = {Constructor, nodes: [...el.childNodes], paths: ng.paths};
 				let newEl = new Constructor(attribs);
 
-				// 2b. Copy attributes over.
+				// 2b. Copy attributes over.  The placeholder holds everything the element should
+				// start with: the attributes written in the template, and the values of the
+				// dynamic ones, because NodeGroup.applyExprs() applies a component's attribute
+				// paths before the component itself.  Nothing is written from attribs.  Its names
+				// are camelCase and setAttribute() lowercases them, so `font-size` used to get a
+				// twin named `fontsize` that no later render updated and that came back, stale,
+				// as one more argument to every later render().
 				if (isAttrib) {
 					newEl.setAttribute('is', isAttrib);
 				//	el.removeAttribute('_is');
@@ -156,30 +196,12 @@ export default class PathToComponent extends Path {
 					if (attrib.name !== '_is')
 						newEl.setAttribute(attrib.name, attrib.value);
 
-				// Set dynamic attributes if they are primitive types.
-				for (let name in attribs) {
-					let val = attribs[name];
-					let valType = typeof val;
-					// Only true and false can reach here, so the undefined/null halves of the
-					// falsy test this used to spell out could never have decided anything.
-					if (valType === 'boolean') {
-						if (val)
-							newEl.setAttribute(name, '');
-					}
-
-					// If type is a non-boolean primitive, set the attribute value.
-					else if (valType==='string' || valType === 'number' || valType==='bigint')
-						newEl.setAttribute(name, val);
-				}
-
-
 				// 2c. If an id pointed at the placeholder, update it to point to the new element.
 				let id = newEl.getAttribute('data-id') || newEl.getAttribute('id');
 				if (id)
 					delve(this.parentNg.getRootEl(), id.split(/\./g), newEl);
 
 				// 2d. Update paths to use replaced element.
-				let ng = this.parentNg;
 				this.nodeMarker = newEl;
 				for (let path of ng.paths) {
 					if (path.nodeMarker === el)
@@ -192,11 +214,52 @@ export default class PathToComponent extends Path {
 				if (ng.endNode === el)
 					ng.endNode = newEl;
 
-				// 2f. Call render() if it wasn't called by the constructor.
+				// 2e. Call render() if it wasn't called by the constructor.
 				// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
 				// Because that path renders it without the attribute expressions.
 				if (typeof newEl.render === 'function' && !Globals.rendered.has(newEl))
 					this.callRender(newEl, attribs, exprs);
+
+				// 2f. Keep the children declared inside the tag when no render took them.  A
+				// component that renders through h() has moved them out of the placeholder and
+				// into its <slot> by now, and nothing is left here to move.  Any other element
+				// leaves them behind: one from another library, one that fills a shadow root, one
+				// whose first h() render comes later.  They belong inside it all the same, where
+				// the browser would have put them had it parsed the tag, and they go in before
+				// step 2g because a <select is="..."> can only take a value one of its options has.
+				//
+				// Such an element may move the children it was given, all together, into its
+				// shadow root or a wrapper of its own, and Solarite goes on updating them there.
+				// It must not take them apart.  So every expression written inside the tag, at
+				// any depth, is told which element it is in and which nodes it drew, and looks
+				// for them before it draws again; see PathToNodes.applyAll().  It is told before
+				// the children are moved: a child taken out of the document by the move can run
+				// code that renders the host, and that render reaches the element.
+				//
+				// The expressions are those of this template, and those of the template that
+				// is constructing a Solarite component around this one, when this element holds
+				// that component's <slot>: what the outer template drew for the slot is inside
+				// this element too.  An expression that is inside a deeper such element already
+				// stays with that one, which is the one it is written in.  One that is being
+				// drawn at this moment, by a render this one started inside, reads its nodes
+				// itself when that draw is done.
+				//
+				// One whose two markers enclose nothing that can be read is left as it is.  A
+				// Solarite component inside this element has then put the node before the
+				// expression in one of its slots and the node after it in another, so there
+				// is no run of nodes to compare, and the expression is drawn as it is in that
+				// component anywhere else.
+				if (el.firstChild) {
+					for (let path of ng.paths.concat(prevSlotChildren?.paths || [])) {
+						let kept = path.kept;
+						if (path.standing && el.contains(path.nodeMarker) && !el.contains(kept?.el)) {
+							let drawn = kept && !kept.nodes, nodes = drawn ? null : path.standing();
+							if (drawn || nodes)
+								path.kept = {el: newEl, nodes};
+						}
+					}
+					newEl.append(...el.childNodes);
+				}
 
 				// 2g. Update attribute paths to use the new element and re-apply them.
 				for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
@@ -205,11 +268,11 @@ export default class PathToComponent extends Path {
 					attribPath.applyAll(exprs[i]);
 				}
 
-				// 2e. Swap it to the DOM.
+				// 2h. Swap it to the DOM.
 				el.replaceWith(newEl);
 			}
 
-			// 2f. Render
+			// 3. Render a component that exists already.
 			else if (typeof el.render === 'function')
 				this.callRender(el, attribs, exprs);
 

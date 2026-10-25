@@ -1,5 +1,5 @@
 import assert from "./assert.js";
-import PathToAttribValue, {delegatedKeyFor} from "./PathToAttribValue.js";
+import PathToAttribValue, {delegatedKeys, isHandler} from "./PathToAttribValue.js";
 import {nativeEventPrefix} from "./Util.js";
 
 // TODO: Merge this into PathToAttribValue?
@@ -14,54 +14,40 @@ export default class PathToEvent extends PathToAttribValue {
 	 * native: bindings; bindEvent() then binds directly. */
 	delegatedKey;
 
-	/** @type {boolean} True for `native:onclick`: the handler is registered with addEventListener
-	 * when the template renders, so it keeps the place in its element's listener order that it
-	 * was given at render, instead of being attached by the dispatcher when an event starts. */
-	native;
-
-	constructor(nodeBefore, nodeMarker, attribName=null, attrValue=null) {
+	/**
+	 * `native:onclick` registers the handler with addEventListener when the template renders,
+	 * so it keeps the place in its element's listener order that it was given at render,
+	 * instead of being attached by the dispatcher when an event starts.  Such a binding leaves
+	 * delegatedKey undefined.  That is the single switch both bindEvent() and the compiled
+	 * stamp program test to choose the direct addEventListener path, so nothing else has to
+	 * know about the prefix.
+	 * @param nodeBefore {null} Unused; an attribute path has no nodes of its own.
+	 * @param nodeMarker {HTMLElement}
+	 * @param attribName {string} `onclick` or `native:onclick`.
+	 * @param attrValue {?string[]} */
+	constructor(nodeBefore, nodeMarker, attribName, attrValue) {
 		super(null, nodeMarker, attribName, attrValue);
 		this.skipIfSame = true;
 		let name = attribName;
-		this.native = name !== null && name.startsWith(nativeEventPrefix);
-		if (this.native)
+		let native = name.startsWith(nativeEventPrefix);
+		if (native)
 			name = name.slice(nativeEventPrefix.length);
-		this.eventName = name ? name.slice(2) : null;
-
-		// A native binding leaves delegatedKey undefined.  That is the single switch both
-		// bindEvent() and the compiled stamp program test to choose the direct
-		// addEventListener path, so nothing else has to know about the prefix.
-		this.delegatedKey = (this.eventName !== null && !this.native) ? delegatedKeyFor(this.eventName) : undefined;
+		this.eventName = name.slice(2);
+		this.delegatedKey = native ? undefined : delegatedKeys[this.eventName];
 	}
 
 	/**
 	 * Handle attributes for event binding, such as:
 	 * onclick=${(e, el) => this.doSomething(el, 'meow')}
 	 * oninput=${[this.doSomething, 'meow']}
-	 * onclick=${[this, 'doSomething', 'meow']}
 	 *
-	 * @param exprs {Expr[]} Only the first is used.*/
-	applyAll(exprs) {
-		//#IFDEBUG
-		assert(Array.isArray(exprs));
-		//#ENDIF
-
-		// Tested by Solariate.events.classicWithExpr
-		// We have expressions within a string attribute value that's not a Solarite event.  E.g.
-		// <div onclick="alert(${1});"
-		if (this.attrValue?.length > 1) {
-			super.applyAll(exprs);
-			return;
-		}
-
-		this.applySingle(exprs[0]);
-	}
-
-	/**
+	 * applyAll() is inherited: it joins a multi-part value, and otherwise comes here.
 	 * @param expr {Expr} */
 	applySingle(expr) {
-		// Expressions within a string attribute value that's not a Solarite event.
-		if (this.attrValue?.length > 1)
+		// Tested by Solarite.events.classicWithExpr
+		// Expressions within a string attribute value that's not a Solarite event.  E.g.
+		// <div onclick="alert(${1});"
+		if (this.attrValue)
 			return super.applyAll([expr]);
 
 		// Don't bind events to component placeholders.
@@ -71,29 +57,19 @@ export default class PathToEvent extends PathToAttribValue {
 
 		let root = this.parentNg.rootNg.rootEl
 
+		// The root is an element, or a DocumentFragment (11): the fragment or shadow root that
+		// h(fragment)`...` rendered into, or the fragment a standalone template with several root
+		// nodes is returned in.
 		/*#IFDEBUG*/
-		assert(root?.nodeType === 1);
+		assert(root?.nodeType === 1 || root?.nodeType === 11);
 		/*#ENDIF*/
 
-		let node = this.nodeMarker;
-
-		let eventName = this.eventName;
-		let func;
-
-		// Array form: oninput=${[this.doSomething, 'meow']}
-		// The whole array is passed to bindEvent so no args array has to be allocated here.
-		if (Array.isArray(expr) && typeof expr[0] === 'function')
-			func = expr[0];
-		else if (typeof expr === 'function') {
-			func = expr;
-			expr = null;
-		}
-		else
+		if (!isHandler(expr))
 			throw new Error(`Solarite: ${this.attribName}=\${...} is not a function.`);
 
-		this.bindEvent(node, root, eventName, eventName, func, expr);
+		// The template's value is handed over as it is, a function or a [func, ...args] array
+		// (oninput=${[this.doSomething, 'meow']}), so nothing is allocated here.
+		let eventName = this.eventName;
+		this.bindEvent(this.nodeMarker, root, eventName, eventName, expr);
 	}
-
-
-
 }

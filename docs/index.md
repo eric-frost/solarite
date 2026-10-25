@@ -155,6 +155,19 @@ When you call `h(this)` followed by a template string, it renders that `Template
 
 When an element is first added to the DOM, `render()` is called automatically, unless you have already called it yourself.
 
+`render()` may give the element a different template from one call to the next, for instance a message while the data loads and a list once it has arrived:
+
+```javascript
+render() {
+  if (!this.rows)
+    h(this)`<p>Loading...</p>`;
+  else
+    h(this)`<ul>${this.rows.map(row => h`<li>${row.name}</li>`)}</ul>`;
+}
+```
+
+The new template replaces everything the previous one put in the element.  The elements of the previous template are discarded rather than kept for the next time it is shown, so anything they held, such as text typed into an input or the state of a child component, is lost.  To keep elements across such a change, render one template and put the part that changes in an expression, as in ``${this.rows ? h`<ul>...</ul>` : h`<p>Loading...</p>`}``.
+
 #### Manual Rendering
 
 Unlike many frameworks, Solarite does not automatically re-render when data changes.  You call `render()` when you want the DOM updated.  That means you can change as much data as you like without triggering a render, and nothing redraws at a moment you didn't choose.
@@ -238,6 +251,10 @@ These types of values can be used in expressions within `h` tagged template lite
 5. DOM Nodes, including other web components.
 6. Arrays of any of the above.
 7. Functions that return any of the above.
+
+A DOM node can only be in one place.  Give it to a different expression on a later render and it moves there.  If one render gives the same node to more than one expression, it is shown in only one of them, the one written last: the expressions of one template are written from the last to the first, and the rows of a list from the first to the last.  A row or nested template whose values did not change is not written again, so it gets the node back only when its own values change.  A node that every render gives to two expressions is also taken out of the document and put back on each of those renders, so an input inside it loses the focus and an iframe loads again: give a node to one place at a time.
+
+A `DocumentFragment`, which is also what `toEl()` returns for html of several nodes, can be given on every render.  Placing its children empties the fragment, and it keeps standing for those nodes until it is given with new children.  To show nothing, give `null` instead.
 
 ### Attributes
 
@@ -418,6 +435,8 @@ h(this)`
   <textarea native:onkeydown=${e => this.handleTab(e)}></textarea>
 </text-editor>`
 ```
+
+A template made by `h()` or `toEl()` with several top-level nodes, or with an expression at its top level, has no root element to listen on.  Its nodes come back in a `DocumentFragment`, which is left empty as soon as they are appended somewhere, so only the document's listener serves them.  Their handlers run wherever the page's document sees the event, which is anywhere in the page outside a closed shadow root.  In an element that isn't in the page yet, inside a closed shadow root, or in another document such as an iframe's, wrap the nodes in one element or give the handlers the `native:` prefix.  A handler written on the tag of a component that is the only node of such a call, as in ``toEl(h`<my-dialog onclick=${close}></my-dialog>`)``, is served the same way; the handlers inside the component are its own and run everywhere.
 
 ### Two-Way Binding
 
@@ -863,6 +882,22 @@ Elements without a `slot` attribute go into the unnamed (default) slot. Multiple
 
 If a component has no `<slot>` elements, any provided children are appended to the end of the component by default.
 
+A custom element that isn't rendered by Solarite at all, such as one from another library, keeps the children written inside its tag in the same way.  If it has a shadow root, the `<slot>` elements there show them, as they would for children written in plain html.
+
+Solarite goes on updating what each `${...}` inside the tag drew, so such an element has to leave those nodes together, in the order it was given them.  It may:
+
+- change the children themselves: their attributes, classes, styles and listeners;
+- put nodes of its own before the first child it was given or after the last one, as an element that renders its own content beside its children does;
+- move all of the children together, in the order given: into its shadow root, into a wrapper of its own, to another part of the page, or into a fragment it keeps aside while they are hidden.
+
+When it takes them apart instead, the next `render()` of the template throws an error that names it: ``Solarite: <fancy-list> changed the nodes ${...} drew inside it; wrap the ${...} in an element it leaves alone.``  That is what happens when the element replaces its content (sets its own `innerHTML`), takes some of the children out, sorts or filters them, wraps each of them, puts a node of its own between them, or strips the comments and the white space among them: white space is a node like any other, and Solarite draws an expression between the two nodes that stand beside it in the template.  The render that throws draws nothing in that place, and every later render throws the same error until the element has put the nodes back as they were.  An element that is itself a row of a list, and changed its children while the list had taken it out and kept it for reuse (one that empties itself when it leaves the document, say), throws the error when the list shows it again; the list is then emptied, and that element is not used again.  Whatever else changes those nodes gets the element named too: the browser's page translation, which replaces text nodes, or an extension that adds nodes of its own to the page.
+
+As the message says, an expression in an element of its own, `<fancy-list><div>${rows}</div></fancy-list>`, leaves the other element free to do what it likes with that `<div>`: move it, hide it, or throw it away, in which case the expression is updated where nobody sees it.  What it still may not do is reach into the `<div>` and rearrange what the expression drew there.
+
+Two things are not looked at.  A DOM node that your own code made and gave to the template is yours to move, here as anywhere else.  And what a list row drew inside itself is known to the row alone: an element that reaches into a row, to remove an item of a list written inside it for example, is not named, and the render that trips over the missing node throws the browser's own error.  The list is then drawn again from nothing by the next render.
+
+The children a component was given stay with it when its `render()` shows a different template: they move to the slots of the new template, or to its end.  A template with nothing in it (``h(this)`` ``) shows none of them, and they are back in place with the next template that is rendered.
+
 
 
 ### Child Components
@@ -954,6 +989,8 @@ document.body.append(list);
 #### Attribute Name Conversion
 
 Since HTML attributes are case-insensitive, Solarite automatically converts dash-case (kebab-case) attribute names to camelCase when passing them to component constructors. For example, the `font-size` attribute becomes the `fontSize` property of  the first argument passed to the constructor and to the `render()` function.
+
+The element itself carries the attribute under the name you wrote, `font-size`, when its value is text, a number or `true`.  An object, an array or a function is passed as an argument only.  So is a two-way binding such as `value=${[this, 'name']}`: it passes the current value as the `value` argument and sets the component's `value` property, and writes no attribute.
 
 #### assignAttributes()
 
@@ -1052,6 +1089,10 @@ let el = h()`<b>Hello ${"World"}!</b>`;
 // Convert a template string with multiple-top-level nodes to a DocumentFragment
 let el = h()`Hello <b>${"World"}!</b>`;
 
+// An expression at the top level counts as top-level nodes of its own,
+// so this is a DocumentFragment too, which shows "Total: 5" once appended.
+let el = h()`Total: ${5}`;
+
 // h(HTMLElement)`string`
 // Create template and render its node(s) as a child of HTMLElement el.
 h(el)`<b>Hello ${'World'}</b>`;
@@ -1062,8 +1103,10 @@ h(el)`<b>Hello ${'World'}</b>`;
 The `toEl()` function converts a string or a template created via the `h` function into a DOM element.  It enforces these rules:
 
 - If the html begins with a start tag and ends with an end tag (minus whitespace before or after it), that whitespace is trimmed.
-- If the HTML contains more than one `Node`, all nodes will be created with a `DocumentFragment` as their parent, which will be returned.
-- Otherwise a single `Node` will be returned.
+- If the HTML contains more than one `Node`, all nodes will be created with a `DocumentFragment` as their parent, which will be returned.  In a template, an expression written at the top level, beside the nodes rather than inside one of them, counts as nodes of its own, whatever it draws.  So ``toEl(h`Total: ${n}`)`` and ``toEl(h`<h1>Fruit</h1>${rows}`)`` return a `DocumentFragment` that holds everything they draw, and so does ``toEl(h`<b>Hi</b>${false}`)``: a template always returns the same kind of node, whatever its values are.
+- Otherwise a single `Node` will be returned.  When that node is a component in a template, as in ``toEl(h`<my-list items=${items}></my-list>`)``, it is the component itself, constructed with those attributes.
+
+A `DocumentFragment` is empty once its nodes have been appended somewhere.  When you need an element to keep, to give it a class or remove it later, write the template inside one element, as in ``toEl(h`<p>Total: ${n}</p>`)``.
 
 ```javascript
 import h, {toEl} from './dist/Solarite.min.js';
@@ -1074,8 +1117,9 @@ let c = toEl('<b>Hi</b><u>Bye</u>'); // Create document fragment as a parent to 
 
 let template = h`<div>${'Waz'+'up'}</div>`;
 let d = toEl(template)               // Render Template
+let e = toEl(h`Total: ${5}`);        // DocumentFragment of "Total: " and 5
 
-document.body.append(a, b, c, d);
+document.body.append(a, b, c, d, e);
 ```
 
 #### getEventBinding()
@@ -1217,9 +1261,32 @@ list.render();
 // list.render();
 ```
 
+### Page Translation
+
+Browsers can translate a page for the person reading it.  Chrome's translator replaces each piece of text it translates with a `<font>` element that holds the translation, and it translates text that appears later as well.  A library that kept hold of the text it drew is then left holding a node that is no longer on the page.
+
+Solarite handles this for text that has an element to itself.  So when dynamic text sits beside other text, give it an element of its own:
+
+```javascript
+// On a translated page the name can keep showing its old, translated value.
+h(this)`<p>Hello ${this.name}!</p>`
+
+// The name shows every new value, translated page or not.
+h(this)`<p>Hello <span>${this.name}</span>!</p>`
+```
+
+Text that is already alone in its element, such as `<td>${row.label}</td>` or `<button>${label}</button>`, needs nothing more.  A new value appears in the page's original language until the translator, which watches the page, translates it a moment later.
+
+The same rule covers everything else an expression can draw.  Words that stand directly beside an expression are replaced by the translator too, and they are what Solarite finds the expression's place by.  So an expression that switches between text and a template (``${saved ? 'Saved' : h`<b>Not saved</b>`}``), or one that draws a list, can show the old translation next to the new value, or throw an error, when it is written directly beside other text on a translated page.  In an element of its own it can't, provided that what it draws is text or begins and ends with an element: write a row as ``h`<li>${tag}</li>` `` rather than as a plain string or as ``h`${tag}, ` ``.
+
+Where translation can't be tolerated at all, turn it off instead, at the price of leaving that text untranslated for the visitors who need it:
+
+- `translate="no"` on an element turns it off for that element and everything inside it, such as a user name, a code sample or a whole editor: `<span translate="no">${user.handle}</span>`.  Google's translator also honors `class="notranslate"`.
+- `<meta name="google" content="notranslate">` in the page's `<head>` turns it off for the whole page in Chrome.
+
 ### Non-Component Elements
 
-The `toEl()` function (discussed above) can also be given an object with a `render()` method.  The object's properties and methods become properties and methods of the resulting element.
+The `toEl()` function (discussed above) can also be given an object with a `render()` method.  The object's properties and methods become properties and methods of the resulting element.  When its template has more than one top-level node, or an expression at its top level, the result is a `DocumentFragment` and they become the fragment's.  The fragment is empty once it is appended, but `render()` still updates its nodes wherever they were put, as long as it renders the same template.  To show one thing first and another later, such as a loading message and then a list, choose between them in an expression of that template.
 
 ```javascript
 import h, {toEl} from './dist/Solarite.min.js';
@@ -1363,6 +1430,7 @@ If you can use Deno or a plugin, do.  Otherwise the no-setup option is fast enou
 You can use your own components as JSX tags:
 
 - A class that extends `HTMLElement` (for example `<MyButton/>`) renders as its custom-element tag, just like any other Solarite child component.
+- A custom element can also be written by its tag name, `<my-button size={3}/>`.  Its attributes become the component's arguments the same way.
 - A plain function is called with its props, with its children arriving as `props.children`, and should return a `Template`.
 
 ## How Solarite Works

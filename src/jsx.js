@@ -18,7 +18,7 @@ import Util from "./Util.js";
  *   as static. */
 
 // Fragment for <>...</> in the classic/automatic factories.  Tier 1 fragments need no import.
-export const Fragment = Symbol('Fragment');
+export let Fragment = Symbol('Fragment');
 
 /**
  * A whole-attribute hole from Tier 1, e.g. `<a ` + jsxAttr("href", v) + `>`.  It lands at a
@@ -31,10 +31,17 @@ export class JsxAttr {
 	}
 }
 
-const selfClosingTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
+let selfClosingTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
 
 // Tier 2 shape cache: `tag\0name1\0name2\0#childCount` => htmlStrings array (stable identity).
-const shapeCache = new Map();
+let shapeCache = new Map();
+
+// The html of a fragment, by child count: an empty string around each child hole and nothing
+// else.  One array is kept per count, because a template is recognised by the identity of its
+// html array.  Given a new array on every render, a fragment would each time be a template never
+// seen before: its html parsed again, its children removed and built again (losing focus, typed
+// text and the state of child components), and the removed copy kept for a reuse that never comes.
+let fragmentShapes = [];
 
 /**
  * Serialize a style object to css text.  {color:'red', fontSize:'1px'} => 'color:red;font-size:1px'.
@@ -54,11 +61,6 @@ export function styleToCss(value) {
 	return css;
 }
 
-/** Escape a static attribute value for inlining into the html string. */
-function escapeAttr(value) {
-	return ('' + value).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-}
-
 /**
  * Build a Template for a Tier 2 (classic/automatic) JSX element.
  * @param tag {string|Function|symbol} Intrinsic tag name, component class/function, or Fragment.
@@ -71,12 +73,8 @@ export function jsxToTemplate(tag, props, children=[], key=undefined) {
 	props = props || {};
 
 	// 1. Fragment: only child holes, no element wrapper.
-	if (tag === Fragment) {
-		let html = [''];
-		for (let i = 0; i < children.length; i++)
-			html.push('');
-		return new Template(html, children);
-	}
+	if (tag === Fragment)
+		return new Template(fragmentShapes[children.length] ??= Array(children.length + 1).fill(''), children);
 
 	// 2. Component (class or function).
 	if (typeof tag === 'function') {
@@ -133,7 +131,8 @@ function buildIntrinsic(tag, props, children, key) {
 		// string-valued ones (the usual case) instead of making them holes.  Tier 1 transforms
 		// already inline static attributes; this keeps the Tier 2 classic factory on par.
 		if ((name === 'id' || name === 'data-id') && typeof value === 'string') {
-			openStatic += ` ${name}="${escapeAttr(value)}"`;
+			// Escaped for its place between double quotes in the html.
+			openStatic += ` ${name}="${value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`;
 			continue;
 		}
 

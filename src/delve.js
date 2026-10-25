@@ -44,12 +44,16 @@ export default function delve(obj, path, createVal = d) {
 /**
  * Is it an array and a path that can be evaluated by delve() ?
  * We allow the first element to be null/undefined so binding can report errors.
+ *
+ * The rest is tested with every() rather than by negating a find():  find() returns the element
+ * it found, so a found null, undefined or false would read as "none found", and [obj, null]
+ * would be a path to the property named "null".
  * @param arr {Array|*}
  * @returns {boolean} */
 export function isDelvePath(arr) {
 	return Array.isArray(arr) && arr.length >=2  // An array of at least two elements.
 		&& (typeof arr[0] === 'object' || arr[0] === undefined) // Where the first element is an object, null, or undefined.
-		&& !arr.slice(1).find(p => typeof p !== 'string' && typeof p !== 'number'); // Path 1..x is only numbers and strings.
+		&& arr.slice(1).every(p => typeof p === 'string' || typeof p === 'number'); // Path 1..x is only numbers and strings.
 }
 
 // d means "don't create"

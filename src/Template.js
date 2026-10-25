@@ -69,61 +69,91 @@ export default class Template {
 	 * Render the main (root) template.
 	 * @param el {?HTMLElement} Null if we're rendering to a standalone element.
 	 * @param options {RenderOptions}
-	 * @return {?DocumentFragment|HTMLElement} */
+	 * @return {?DocumentFragment|HTMLElement} el, or what a standalone template made. */
 	'render'(el=null, options={}) {
-
-
-
 		let ng = el && Globals.rootNodeGroups.get(el);
-		if (!ng) {
+
+		// The expressions the element holds now, when it holds this same template.
+		let lastExprs = null;
+
+		// Creating the root nodegroup also instantiates it into el.  It registers itself under
+		// its own rootEl, which is the element we were given, or -- when we were given none --
+		// the root it made.
+		if (!ng)
 			ng = new RootNodeGroup(this, null, el, options);
-			if (!el) // null if it's a standalone elment.
-				el = ng.getRootEl();
-
-			// RootNodeGroup.instantiate() ends by registering itself under its own rootEl, which
-			// is the element we were given, or -- when we were given none -- the very element
-			// getRootEl() just handed back.  Registering it a second time here stored the same
-			// group under the same key.
-		}
-
-		// Make sure the expresion count matches match the Path "hole" count.
-		// This can happen if we try manually rendering one template to a NodeGroup that was created expecting a different template.
-		// These don't always have the same length, for example if one attribute has multiple expressions.
-		// if (ng.paths.length === 0 && this.exprs.length || ng.paths.length > this.exprs.length)
-		// 	throw new Error(
-		// 		`Solarite Error:  Parent HTMLElement ${ng.template.html.join('${...}')} and ${ng.paths.length} \${value} ` +
-		// 		`placeholders can't accomodate a Template with ${this.exprs.length} values.`);
-
-		// Creating the root nodegroup also renders it.
-		// If we didn't just create it, we need to render it.
-		if (this.html?.length === 1 && !this.html[0]) // An empty string.
-			el.innerHTML = ''; // Fast path for empty component.
 		else {
-			// A component renders the same template every time, so hand over the expressions it
-			// applied last time; paths that can prove an unchanged expression is a no-op skip.
 			let last = ng.template;
-			ng.applyExprs(this.exprs, true, last !== this && last.html === this.html ? last.exprs : null);
-			ng.template = this;
+
+			// A component renders the same template every time, so this one comparison is all
+			// that the usual render pays for the two cases below.  Hand over the expressions it
+			// applied last time; paths that can prove an unchanged expression is a no-op skip.
+			// Not while firstApply is set: the group has then never been applied in full, because
+			// its first render threw part-way, or because this render comes from inside it (a slot
+			// child whose connectedCallback renders the element), and an expression that render
+			// has not reached must not be taken as already in place.
+			if (last.html === this.html) {
+				if (last !== this && !ng.firstApply)
+					lastExprs = last.exprs;
+			}
+
+			// Another template than the one the element holds, such as a list where a loading
+			// message was.  Its expressions mean nothing to the paths of the old one, so the old
+			// template is taken out and the render starts over, on an element that is as it
+			// was before its first render.  Only a difference in the html itself counts.  Another
+			// array holding the same strings has the same paths, and its expressions are applied to
+			// the content the element holds, which stays: that is a template made from a string
+			// (h('<b>Hi</b>')) or by code that builds the array for each render, and the same
+			// literal written at two places.  The strings are compared in a function of their own
+			// so that this one, which every render of every component runs, stays short and
+			// creates nothing.
+			else if (!sameStrings(last.html, this.html)) {
+				ng.unrender();
+				return this.render(el, options);
+			}
 		}
 
-		return el;
+		ng.applyExprs(this.exprs, true, lastExprs);
+		ng.template = this;
+
+		// A standalone template returns the node it made, which is read only now that the
+		// expressions are applied.  It is the group's root, except for a template whose only
+		// node is a component: the component is constructed while its attribute expressions
+		// are applied, and takes the place of the placeholder that stood for it until then.
+		return el || ng.startNode;
 	}
 
 	getCloseKey() {
-		if (this.closeKey===undefined) {
-			if (this.exprs.length)
-				this.closeKey = getObjectId(this.html);
-			else
-				this.closeKey = this.html[0];
-		}
 		// Use the joined html when debugging?  But it breaks some tests.
 		//return '@'+this.html.join('|')
-
-		return this.closeKey;
+		return this.closeKey ??= this.exprs.length ? getObjectId(this.html) : this.html[0];
 	}
 
 }
 
+
+/**
+ * Do two arrays of html hold the same strings?  Used when the arrays are not the same array, to
+ * tell a template that only looks new from one that is.
+ *
+ * This is Util.arraySame() over again, written exactly as that one is so that the two compress
+ * as one.  It is a function of its own all the same, because the engine keeps what it has
+ * learned about a function's arguments with the function.  Util.arraySame() is only ever given
+ * arrays of nodes, which it compares at the speed of a pointer test.  Given the frozen arrays
+ * of strings of a root that changes template a few times, it compares every array more slowly
+ * for the rest of the page's life: a list of raw nodes then renders about a tenth slower
+ * (measured in Chrome 154, 2026-10-02).
+ * @param a {string[]}
+ * @param b {string[]}
+ * @return {boolean} */
+function sameStrings(a, b) {
+	let aLength = a.length;
+	if (aLength !== b.length)
+		return false;
+	for (let i=0; i<aLength; i++)
+		if (a[i] !== b[i])
+			return false;
+	return true;
+}
 
 /**
  * Do two templates produce identical content?
@@ -161,7 +191,7 @@ export function templatesSame(a, b) {
  * @param obj {*}
  * @returns {string} */
 export function getObjectHash(obj) {
-	const seen = new Set();
+	let seen = new Set();
 	return JSON.stringify(obj, (key, value) => {
 		if (typeof value === 'function')
 			return getObjectId(value);

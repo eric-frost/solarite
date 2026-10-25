@@ -43,6 +43,62 @@ window.getHtml = (item, includeComments=false) => {
 	return result.replace(/^\s+</g, '<').replace(/>\s+</g, '><').replace(/>\s+$/g, '>');
 }
 
+/** The inner <font> elements translatePage() made, whose text it has translated already. */
+let translatedFonts = new WeakSet();
+
+/** The Text node each outer <font> made by translatePage() took the place of. */
+let translatedFrom = new WeakMap();
+
+/**
+ * Do to everything under root what Chrome's page translator (Google Translate) does to a page.
+ * Every Text node with words in it, outside script, style and textarea and outside an element
+ * marked translate="no" or class="notranslate", is taken out of the page and replaced with
+ * <font style="vertical-align: inherit;"><font style="vertical-align: inherit;">translation</font></font>.
+ * The Text node taken out is left as it was, and nothing else is told.  The title, alt and
+ * placeholder attributes, and the value of an input button, are translated where they are.
+ * The translation is the text with "T:" in front, so that a test can tell it from text drawn
+ * since, and textContent.replaceAll('T:', '') is what the page would show untranslated.
+ *
+ * The real translator watches the page and translates text that is added later.  Calling this
+ * again after a render does the same: it translates what is new and leaves alone what it
+ * translated before.
+ * @param root {Node}
+ * @return {int} How many Text nodes it translated this time. */
+function translatePage(root) {
+	let texts = [], walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	for (let node; node = walker.nextNode(); )
+		if (/\S/.test(node.nodeValue) && !translatedFonts.has(node.parentNode)
+			&& !node.parentElement?.closest('script, style, textarea, [translate="no"], .notranslate'))
+			texts.push(node);
+	for (let node of texts) {
+		let outer = document.createElement('font'), inner = document.createElement('font');
+		outer.style.verticalAlign = inner.style.verticalAlign = 'inherit';
+		inner.textContent = 'T:' + node.nodeValue;
+		outer.append(inner);
+		translatedFonts.add(inner);
+		translatedFrom.set(outer, node);
+		node.replaceWith(outer);
+	}
+	for (let el of root.querySelectorAll?.('[title], [alt], [placeholder], input[type=button], input[type=submit]') || [])
+		if (!el.closest('[translate="no"], .notranslate'))
+			for (let name of el.matches('input[type=button], input[type=submit]') ? ['title', 'value'] : ['title', 'alt', 'placeholder'])
+				if (el.getAttribute(name)?.startsWith('T:') === false)
+					el.setAttribute(name, 'T:' + el.getAttribute(name));
+	return texts.length;
+}
+
+/**
+ * Show the text under root untranslated again, as a translator does when the reader asks for the
+ * page in its own language: every <font> translatePage() put in the page is replaced with the
+ * Text node it took the place of, as that node is now.  (That Chrome puts back its original nodes
+ * rather than new ones is an assumption; either way the Text nodes Solarite holds are found.)
+ * @param root {Node} */
+function untranslatePage(root) {
+	for (let font of root.querySelectorAll('font'))
+		if (translatedFrom.has(font))
+			font.replaceWith(translatedFrom.get(font));
+}
+
 
 
 //region shell
@@ -245,7 +301,7 @@ Testimony.test('Solarite.NodeGroup.arrayReverse', () => {
 	assert(getHtml(ng), '<div>ba</div')
 });
 
-// Exercises the raw-Node fallback (PathToNodes.applyGeneric -> reconcileNodes).
+// Exercises the raw-Node fallback (PathToNodes.applyGeneric -> removeNodes, placeNodes).
 // Raw DOM nodes in an expression array can't be tracked positionally, so they go through the
 // identity-based reconciler.  These assert correct order AND that node identity is preserved
 // (the same DOM objects are reused, never recreated) across insert/remove/swap/reverse/move.
@@ -317,15 +373,16 @@ Testimony.test('Solarite.NodeGroup.rawNodeWholeParent', () => {
 // chunk is what decides which placeholder goes in the gap between that chunk and the next:  a comment when the
 // expression is a child of some node, and a private-use character when it sits inside a tag or attribute value.
 // So feeding it the chunks below and reading back the placeholders tells us the context after every chunk.
-Testimony.test('Solarite.Util.htmlContext', () => {
+// One letter per gap between chunks:  t for text context, a for anything else (tag, attribute or comment).
+let checkHtmlContext = (chunks, contexts) =>
+	assert.eq(Shell.addPlaceholders(chunks), chunks.map((chunk, i) =>
+		i === contexts.length
+			? chunk
+			: chunk + (contexts[i] === 't' ? '<!--!✨!-->' : String.fromCharCode(0xe000 + i))
+	).join(''));
 
-	// One letter per gap between chunks:  t for text context, a for anything else (tag or attribute).
-	let check = (chunks, contexts) =>
-		assert.eq(Shell.addPlaceholders(chunks), chunks.map((chunk, i) =>
-			i === contexts.length
-				? chunk
-				: chunk + (contexts[i] === 't' ? '<!--!✨!-->' : String.fromCharCode(0xe000 + i))
-		).join(''));
+Testimony.test('Solarite.Util.htmlContext', () => {
+	let check = checkHtmlContext;
 
 	check([
 		'<div class="test',            // attribute:  the quote is still open
@@ -348,6 +405,137 @@ Testimony.test('Solarite.Util.htmlContext', () => {
 	// would be read as the start of a new attribute value instead of the end of this one.
 	assert.eq(Shell.addPlaceholders(['<my-el a="', '">']),
 		'<my-el-SOLARITE-PLACEHOLDER a="' + String.fromCharCode(0xe000) + '">');
+});
+
+Testimony.test('Solarite.Util.htmlContextTrailingLessThan', `A < that is the last character before an expression, or the last character of a template, is text, as it is to the browser: a template that writes one expression, a less-than sign and another expression compares two values and opens no tag.`, () => {
+	assert.eq(Shell.addPlaceholders(['<p>', ' <', '</p>']), '<p><!--!✨!--> <<!--!✨!--></p>');
+
+	// Rendered twice, so each expression is seen to have a place of its own on either side of the sign.
+	let el = document.createElement('div');
+	let render = (a, b) => h(el)`<p>${a} <${b}</p><b>${a}</b> <`;
+	render(1, 2);
+	assert.eq(getHtml(el), '<div><p>1 &lt;2</p><b>1</b> &lt;</div>');
+	render(3, 4);
+	assert.eq(getHtml(el), '<div><p>3 &lt;4</p><b>3</b> &lt;</div>');
+
+	// A template with no expressions, given as a string.
+	assert.eq(toEl('a <').textContent, 'a <');
+
+	// The rows of a keyed list, which are built by a route of their own.
+	let list = document.createElement('ul');
+	let renderList = items => h(list)`${h.map(items, item => h`<li key=${item.id}>${item.min} <${item.max}</li>`)}`;
+	renderList([{id: 1, min: 1, max: 2}, {id: 2, min: 3, max: 4}]);
+	assert.eq(getHtml(list), '<ul><li>1 &lt;2</li><li>3 &lt;4</li></ul>');
+	renderList([{id: 2, min: 3, max: 5}, {id: 1, min: 1, max: 2}]);
+	assert.eq(getHtml(list), '<ul><li>3 &lt;5</li><li>1 &lt;2</li></ul>');
+
+	// A style's text isn't markup, and each expression in it gets a text node of its own.
+	let host = document.createElement('div');
+	let renderStyle = name => h(host, {styles: false})`<style>/* <${name} */</style>`;
+	renderStyle('a');
+	assert.eq(host.firstChild.textContent, '/* <a */');
+	renderStyle('b');
+	assert.eq(host.firstChild.textContent, '/* <b */');
+
+	// The same in svg, whose parser has rules of its own.
+	let chart = toEl(h`<svg>${svg`<text>${1} <${2}</text>`}</svg>`);
+	assert.eq(chart.firstElementChild.textContent, '1 <2');
+	assert.eq(chart.firstElementChild.namespaceURI, 'http://www.w3.org/2000/svg');
+});
+
+Testimony.test('Solarite.Util.htmlContextComment', `Only its end closes an html comment, as in the browser, so the apostrophes, quotes and > in its text change nothing for the expressions after it, and an expression inside it is still inside it.`, () => {
+	let check = checkHtmlContext;
+
+	// A quote in a comment opens no attribute value, and a '>' in one closes nothing.
+	check([`<p><!-- don't -->`, '</p>'], 't');
+	check(['<p><!-- say "hi -->', '</p>'], 't');
+	check(['<!-- a > b ', ` "c" isn't -->`, ''], 'at');
+	check(['<!-- <b title="', `" class='c'>`, '</b> --><p>', '</p>'], 'aat');
+
+	// The ways the browser ends a comment: at once for <!--> and <!--->, at --!> as at -->, and never if neither
+	// is written, in which case the rest of the template is the comment.
+	check(['<!-->', '<!--->', '<!---->', '<!-- x --!>', ''], 'tttt');
+	check(['<p>', `</p><!-- isn't closed <i>`, '</i>'], 'ta');
+
+	// What does not end one: dashes with an expression between them and the '>', and the '>' of <!--!>.
+	check(['<!-- a --', '> b -->', ''], 'at');
+	check(['<!--!>', ' -->', ''], 'at');
+
+	// Conditional comments are comments.
+	check(['<!--[if IE]><p>', '</p><![endif]-->', ''], 'at');
+	check(['<!--[if !IE]><!--><p>', '</p><!--<![endif]-->', ''], 'tt');
+
+	// A tag inside a comment is text of the comment, so a component named there gets no placeholder suffix.
+	assert.eq(Shell.addPlaceholders([`<!-- don't use <my-el> --><my-el>`]), `<!-- don't use <my-el> --><my-el-SOLARITE-PLACEHOLDER>`);
+
+	// Comment-like text inside a quoted attribute value is part of the value.
+	check(['<p title="<!-- ', ` -->" data-x='-->'>`, '</p>'], 'at');
+
+	// A private-use character written in the template's own text is not one of the marks, and is left alone.
+	assert.eq(Shell.addPlaceholders(['<p>\ue001 ', '</p>']), '<p>\ue001 <!--!✨!--></p>');
+});
+
+Testimony.test('Solarite.Util.htmlContextQuoteOutsideValue', `A quote or an apostrophe opens an attribute value only where one can begin, straight after the =, as in the browser.  Anywhere else in a tag it is an ordinary character, so title=don't does not swallow the rest of the template.`, () => {
+	let check = checkHtmlContext;
+
+	// In a value written without quotes, which ends at the next space or '>'.
+	check([`<p title=don't>`, '</p>'], 't');
+	check(['<p data-x=a"b class=c>', '</p>'], 't');
+	check([`<a href=/s?q=it's&n=`, ' class=x>', '</a>'], 'at');
+	check(['<p title=a="b>', '</p>'], 't');
+
+	// As part of an attribute's name.
+	check([`<p title="a" 'b>`, '</p>'], 't');
+
+	// A quoted value still begins after the =, with or without spaces around it, and still hides a '>'.
+	check([`<p title = "a>b" class='c>d' data-x=e>`, '</p>'], 't');
+	check(['<p title= "', `>" class='`, `>'>`, '</p>'], 'aat');
+
+	// Whatever else starts with '<!', '<?' or '</' ends at the first '>', whatever quotes it holds: the browser
+	// makes a comment of it, or drops it.
+	check([`<!DOCTYPE html><!x don't>`, `</ isn't>`, `<?x "y ?>`, ''], 'ttt');
+	check(['</', '>', ''], 'at');
+});
+
+Testimony.test('Solarite.Util.htmlContextRawText', `The text of a script, a style or a textarea is not html, as it isn't to the browser: a < in it opens no tag and a quote in it opens no value, so an expression after one is still a child of the element.`, () => {
+	let check = checkHtmlContext;
+
+	// A '<' before a letter, which anywhere else opens a tag.
+	check(['<script>if (a<b) c(', ')</script>'], 't');
+	check(['<style>/* <b> */ p { color: ', ' } @media (1px<width) { p { margin: ', 'px } }</style><p>', '</p>'], 'ttt');
+	check([`<script>if (i<n) // don't\n</script><p title="`, '">', '</p>'], 'at');
+	check([`<textarea>a<b c="d <!-- e's</textarea><p title="`, '">', '</p>'], 'at');
+
+	// What looks like a comment in it is text too.
+	check(['<style><!-- p { color: ', ' } --></style><p>', '</p>'], 'tt');
+
+	// The element's own start tag is a tag, where a quoted '>' closes nothing.
+	check(['<script type="', '" data-a="x>y">a<b; c = ', ';</script>'], 'at');
+	check(['<style media="(width > 1px)" class="', '">p { color: ', ' }</style>'], 'at');
+
+	// An expression in the text is counted, so the ones in the tags after it keep their own numbers, which is
+	// what a key attribute is found by.
+	check(['<style>a<b { color: ', ' }</style><p title="', '">', '</p>'], 'tat');
+
+	// The text ends at the element's end tag, in capitals or with a space before its '>', and not at an end tag
+	// whose name only starts the same.
+	check(['<SCRIPT>a<b</SCRIPT><p ', '>', '</p><script>c<d</script ><i ', '>', '</i>'], 'atat');
+	check(['<script>a = "</scripty>"; if (a<b) c = ', ';</script><p>', '</p>'], 'tt');
+
+	// Never ended: the rest of the template is its text.
+	check(['<style>a<b { color: ', ' }'], 't');
+
+	// An element whose name only starts like one of these is an ordinary element,
+	check(['<styles>a<b title="', '">', '</b></styles>'], 'at');
+	assert.eq(Shell.addPlaceholders(['<script-x><b title="', '"></b></script-x>']),
+		'<script-x-SOLARITE-PLACEHOLDER><b title="' + String.fromCharCode(0xe000) + '"></b></script-x-SOLARITE-PLACEHOLDER>');
+
+	// and so is a self-closed one, which inside an svg has no text.
+	check(['<svg><style/><script href="a.js"/><circle r="', '"/></svg>'], 'a');
+
+	// A component's name written in such text, in a CSS comment for instance, is text and gets no placeholder suffix.
+	assert.eq(Shell.addPlaceholders(['<style>/* the <tool-bar> */</style><tool-bar></tool-bar>']),
+		'<style>/* the <tool-bar> */</style><tool-bar-SOLARITE-PLACEHOLDER></tool-bar-SOLARITE-PLACEHOLDER>');
 });
 
 Testimony.test('Solarite.Util.camelToDashes', () => {
@@ -672,6 +860,613 @@ Testimony.test('Solarite.basic.instanceof', () => {
 
 
 
+//region switch
+/*┌─────────────────╮
+  | Template switch |
+  └─────────────────╯*/
+Testimony.test('Solarite.switch.component', `A render() that gives its element one template and later another shows the one it gave last.`, () => {
+	class W10 extends Solarite {
+		rows = null;
+		keyed = false;
+		render() {
+			if (!this.rows)
+				h(this)`<p>Loading</p>`;
+			else if (this.keyed)
+				h(this)`<ul>${h.map(this.rows, row => h`<li key=${row.id}>${row.text}</li>`)}</ul>`;
+			else
+				h(this)`<ol>${this.rows.map(row => h`<li>${row.text}</li>`)}</ol>`;
+		}
+	}
+	W10.define();
+
+	// 1. A message, then a list, then the message again.
+	let a = new W10();
+	a.render();
+	assert.eq(getHtml(a), '<w-10><p>Loading</p></w-10>');
+	let p = a.firstChild;
+	a.rows = [{id: 1, text: 'a'}, {id: 2, text: 'b'}];
+	a.render();
+	assert.eq(getHtml(a), '<w-10><ol><li>a</li><li>b</li></ol></w-10>');
+
+	// 2. Away from a list that has rows.  The rows went to the list's place in the first
+	// template as long as nothing compared the two, so the list was emptied instead.
+	let li = a.querySelector('li');
+	a.rows = null;
+	a.render();
+	assert.eq(getHtml(a), '<w-10><p>Loading</p></w-10>');
+
+	// 3. A template that comes back is built again.  Its old elements are not kept.
+	assert.neq(a.firstChild, p);
+	a.rows = [{id: 2, text: 'b'}, {id: 3, text: 'c'}];
+	a.render();
+	assert.eq(getHtml(a), '<w-10><ol><li>b</li><li>c</li></ol></w-10>');
+	assert.neq(a.querySelector('li'), li);
+
+	// 4. From one list to another kind of list, and the same template again updates in place.
+	a.keyed = true;
+	a.render();
+	assert.eq(getHtml(a), '<w-10><ul><li>b</li><li>c</li></ul></w-10>');
+	li = a.querySelector('li');
+	a.rows = [a.rows[1], a.rows[0]];
+	a.render();
+	assert.eq(getHtml(a), '<w-10><ul><li>c</li><li>b</li></ul></w-10>');
+	assert.eq(a.querySelectorAll('li')[1], li);
+});
+
+Testimony.test('Solarite.switch.element', `h(el) with another template than the one el holds replaces what the first one put there, in an element, a DocumentFragment and a shadow root.`, () => {
+	let html = root => getHtml([...root.childNodes]);
+	for (let makeRoot of [
+		() => document.createElement('div'),
+		() => document.createDocumentFragment(),
+		() => document.createElement('div').attachShadow({mode: 'closed'})
+	]) {
+		// 1. More expressions, fewer, and of other kinds.  Each used to be given to whatever
+		// the first template had at the same position: text became a title, a handler was
+		// called as if it were a child.
+		let root = makeRoot(), called = 0;
+		h(root)`<p title=${'t'} class=${'c'}>${1}</p>`;
+		h(root)`<i>${2}</i><b>${3}</b>`;
+		assert.eq(html(root), '<i>2</i>|<b>3</b>');
+		h(root)`<p>${4}</p>`;
+		assert.eq(html(root), '<p>4</p>');
+		h(root)`<button onclick=${() => called++}>${5}</button>`;
+		assert.eq(html(root), '<button>5</button>');
+		assert.eq(called, 0);
+
+		// 2. Templates that differ only in their static text.
+		root = makeRoot();
+		h(root)`<p>Loading</p>`;
+		h(root)`<p>Done</p>`;
+		assert.eq(html(root), '<p>Done</p>');
+
+		// 3. Text alone, and nothing at all, are templates like any other.
+		root = makeRoot();
+		let text = () => h(root)`Loading`, empty = () => h(root)``, full = v => h(root)`<p>${v}</p>`;
+		text();
+		full(1);
+		assert.eq(html(root), '<p>1</p>');
+		empty();
+		assert.eq(root.childNodes.length, 0);
+		empty();
+		full(2);
+		assert.eq(html(root), '<p>2</p>');
+		text();
+		assert.eq(html(root), 'Loading');
+		empty();
+		assert.eq(root.childNodes.length, 0);
+	}
+
+	// 4. The same html is the same template, also when it is made from a string each time,
+	// which gives it a new array of html each time.  The elements stay.
+	let el = document.createElement('div');
+	h(el, h('<p>Same</p>'));
+	let p = el.firstChild;
+	h(el, h('<p>Same</p>'));
+	assert.eq(el.firstChild, p);
+	h(el, h('<p>Other</p>'));
+	assert.eq(getHtml(el), '<div><p>Other</p></div>');
+
+	// 4a. So do they when the template has expressions and its array is built for each render,
+	// as a helper that prepares the strings does, and when the same literal is written at two
+	// places.  Taking either for another template would rebuild the input on every render,
+	// and the text typed into it would be lost.
+	el = document.createElement('div');
+	let built = v => h(el, h(['<input><b>', '</b>'], v));
+	built('a');
+	let input = el.firstChild;
+	input.value = 'typed';
+	built('b');
+	assert.eq(el.firstChild, input);
+	assert.eq(input.value, 'typed');
+	assert.eq(getHtml(el), '<div><input><b>b</b></div>');
+
+	el = document.createElement('div');
+	let twice = (first, v) => first ? h(el)`<input><b>${v}</b>` : h(el)`<input><b>${v}</b>`;
+	twice(true, 'a');
+	input = el.firstChild;
+	twice(false, 'b');
+	twice(true, 'c');
+	assert.eq(el.firstChild, input);
+	assert.eq(getHtml(el), '<div><input><b>c</b></div>');
+
+	// 4b. One string more or less, or one that differs, is another template.
+	h(el, h(['<input><b>', '</b>!'], 'e'));
+	assert.neq(el.firstChild, input);
+	assert.eq(getHtml(el), '<div><input><b>e</b>!</div>');
+	h(el, h(['<input><b>', '</b>', '!'], 'f', 'g'));
+	assert.eq(getHtml(el), '<div><input><b>f</b>g!</div>');
+
+	// 5. The render options given with a template are the ones it is built with.
+	el = document.createElement('div');
+	h(el, h`<p data-id="one">a</p>`, {ids: false});
+	h(el, h`<i data-id="two">b</i>`);
+	assert.eq(el.one, undefined);
+	assert.eq(el.two, el.firstChild);
+});
+
+Testimony.test('Solarite.switch.manyNodes', `An element that holds more nodes than a function call takes arguments can be given another template.`, () => {
+	// The old template's nodes used to be handed to one append() call as arguments, and a list
+	// of 150,000 rows at the top of a template made that call throw a RangeError.
+	let el = document.createElement('div');
+	h(el)`<p>a</p>`;
+	el.insertAdjacentHTML('beforeend', '<!---->'.repeat(150_000));
+	h(el)`<p>b</p>`;
+	assert.eq(el.childNodes.length, 1);
+	assert.eq(getHtml(el), '<div><p>b</p></div>');
+});
+
+Testimony.test('Solarite.switch.host', `When the template's own root stands for the element, the attributes and handlers it put on the element follow the template.`, () => {
+	let log = [];
+	class W20 extends Solarite {
+		mode = 'a';
+		render() {
+			if (this.mode === 'a')
+				h(this)`<w-20 class="tpl-a" role="list" title=${'A'} data-n="x ${1} y" ${{lang: 'en'}}
+					onclick=${() => log.push('click a')} onscroll=${() => log.push('scroll a')}>a</w-20>`;
+			else if (this.mode === 'b')
+				h(this)`<w-20 class="tpl-b" hidden=${true} onmouseup=${() => log.push('up b')}>b</w-20>`;
+			else
+				h(this)`plain`;
+		}
+	}
+	W20.define();
+
+	// 1. An attribute the page gave the element wins over the template's, and stays through
+	// every template.
+	let div = toEl('<div><w-20 class="page" id="keep"></w-20></div>');
+	document.body.append(div);
+	let a = div.firstChild;
+	assert.eq(a.outerHTML, '<w-20 class="page" id="keep" role="list" data-n="x 1 y" lang="en" title="A">a</w-20>');
+
+	// 2. What the first template put there is gone, whichever way it was written.
+	a.mode = 'b';
+	a.render();
+	assert.eq(a.outerHTML, '<w-20 class="page" id="keep" hidden="">b</w-20>');
+
+	// 3. So are its handlers: a delegated one, and one bound with addEventListener.
+	a.click();
+	a.dispatchEvent(new Event('scroll'));
+	a.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+	assert.eq(log.join(), 'up b');
+
+	// 4. A template with no root of its own leaves nothing of either on the element.
+	a.mode = 'c';
+	a.render();
+	assert.eq(a.outerHTML, '<w-20 class="page" id="keep">plain</w-20>');
+	a.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+	assert.eq(log.join(), 'up b');
+
+	// 5. And back.
+	a.mode = 'a';
+	a.render();
+	assert.eq(a.outerHTML, '<w-20 class="page" id="keep" role="list" data-n="x 1 y" lang="en" title="A">a</w-20>');
+	a.click();
+	assert.eq(log.join(), 'up b,click a');
+
+	// 6. Without an attribute of the page's in the way, each template's own class shows.
+	let b = new W20();
+	b.render();
+	assert.eq(b.className, 'tpl-a');
+	b.mode = 'b';
+	b.render();
+	assert.eq(b.className, 'tpl-b');
+
+	div.remove();
+});
+
+Testimony.test('Solarite.switch.idsAndStyles', `Element references and scoped styles are those of the template the element holds.`, () => {
+	class W30Child extends Solarite {
+		render() { h(this)`<w-30-child><input data-id="value"></w-30-child>`; }
+	}
+	W30Child.define();
+
+	class W30 extends Solarite {
+		value = 5;
+		mode = 'a';
+		render() {
+			if (this.mode === 'a')
+				h(this)`<style>:host { color: red }</style><w-30-child data-id="kid"></w-30-child><i data-id="parts.icon">i</i><u data-id="both">a</u>`;
+			else
+				h(this)`<style>:host { color: blue }</style><b data-id="parts.bold">b</b><s data-id="both">b</s>`;
+		}
+	}
+	W30.define();
+
+	let a = new W30();
+	a.render();
+	let kid = a.kid;
+	assert.eq(kid.tagName, 'W-30-CHILD');
+	assert.eq(a.parts.icon.tagName, 'I');
+
+	a.mode = 'b';
+	a.render();
+
+	// 1. A name only the first template had no longer gives an element that was removed.
+	assert.eq(a.kid, null);
+	assert.eq(a.parts.icon, null);
+
+	// 2. The second template's names are bound, and a name both have gives the new element.
+	assert.eq(a.parts.bold.tagName, 'B');
+	assert.eq(a.both.tagName, 'S');
+
+	// 3. A field that only shares its name with an id inside a child component is left alone.
+	assert.eq(a.value, 5);
+	assert.eq(kid.value.tagName, 'INPUT');
+
+	// 4. One scoped style, the new one, under the same data-style number.
+	assert.eq(a.querySelectorAll('style').length, 1);
+	assert.eq(a.querySelector('style').textContent, 'w-30[data-style="1"] { color: blue }');
+	assert.eq(a.getAttribute('data-style'), '1');
+});
+
+Testimony.test('Solarite.switch.slots', `The children an element was given go to the slots of whichever template it holds.`, () => {
+	class W40 extends Solarite {
+		constructor({mode='a'}={}) {
+			super();
+			this.mode = mode;
+		}
+		render(attribs) {
+			if (attribs?.mode)
+				this.mode = attribs.mode;
+			if (this.mode === 'a')
+				h(this)`<p>Loading</p><slot></slot>`;
+			else if (this.mode === 'b')
+				h(this)`<header><slot name="head"></slot></header><main><slot>:</slot></main>`;
+			else if (this.mode === 'c')
+				h(this)`<h1>no slot</h1>`;
+			else if (this.mode === 'd')
+				h(this)`text`;
+			else
+				h(this)``;
+		}
+	}
+	W40.define();
+
+	// 1. Children from the page's html: into a slot, into named slots, to the end of a
+	// template that has no slot, after a template that is only text, and back.
+	let div = document.createElement('div');
+	div.innerHTML = '<w-40><b slot="head">h</b><i>i</i></w-40>';
+	let a = div.firstChild;
+	a.render();
+	assert.eq(getHtml(a), '<w-40><p>Loading</p><slot><b slot="head">h</b><i>i</i></slot></w-40>');
+	let b = a.querySelector('b'), i = a.querySelector('i');
+	let show = mode => {
+		a.mode = mode;
+		a.render();
+		assert.eq(a.querySelector('b'), b); // The same nodes, never copies.
+		assert.eq(a.querySelector('i'), i);
+		return getHtml(a);
+	};
+	assert.eq(show('b'), '<w-40><header><slot name="head"><b slot="head">h</b></slot></header><main><slot>:<i>i</i></slot></main></w-40>');
+	assert.eq(show('c'), '<w-40><h1>no slot</h1><b slot="head">h</b><i>i</i></w-40>');
+	assert.eq(show('d'), '<w-40>text<b slot="head">h</b><i>i</i></w-40>');
+	assert.eq(show('b'), '<w-40><header><slot name="head"><b slot="head">h</b></slot></header><main><slot>:<i>i</i></slot></main></w-40>');
+	assert.eq(show('a'), '<w-40><p>Loading</p><slot><b slot="head">h</b><i>i</i></slot></w-40>');
+
+	// 2. An empty template shows nothing, and the children are there again for the next one.
+	a.mode = 'e';
+	a.render();
+	assert.eq(a.childNodes.length, 0);
+	assert.eq(show('a'), '<w-40><p>Loading</p><slot><b slot="head">h</b><i>i</i></slot></w-40>');
+
+	// 3. A child the page has since taken out stays out, and one it added to the slot stays
+	// in, also when the child taken out was the first one.
+	i.remove();
+	a.querySelector('slot').append(document.createElement('u'));
+	a.mode = 'c';
+	a.render();
+	assert.eq(getHtml(a), '<w-40><h1>no slot</h1><b slot="head">h</b><u></u></w-40>');
+	b.remove();
+	a.mode = 'a';
+	a.render();
+	assert.eq(getHtml(a), '<w-40><p>Loading</p><slot><u></u></slot></w-40>');
+
+	// 4. A template without a slot whose last node is a child component.  The children follow
+	// the component, which was still a placeholder when they were put there.
+	class W40Foot extends HTMLElement {
+		render() { h(this)`foot`; }
+	}
+	customElements.define('w-40-foot', W40Foot);
+	let el = toEl('<div><b>kid</b></div>');
+	h(el)`<h2>${'title'}</h2><w-40-foot></w-40-foot>`;
+	assert.eq(getHtml(el), '<div><h2>title</h2><w-40-foot>foot</w-40-foot><b>kid</b></div>');
+	h(el)`<main><slot></slot></main>`;
+	assert.eq(getHtml(el), '<div><main><slot><b>kid</b></slot></main></div>');
+
+	// 5. Children declared in a parent's template, with a list among them.  The parent goes
+	// on drawing its list wherever the child's template has put it, also while the child
+	// shows nothing.
+	let host = document.createElement('div');
+	let render = (mode, items) => h(host)`<w-40 mode=${mode}><b>kid</b>${items.map(item => h`<i>${item}</i>`)}</w-40>`;
+	render('a', [1]);
+	assert.eq(getHtml(host), '<div><w-40 mode="a"><p>Loading</p><slot><b>kid</b><i>1</i></slot></w-40></div>');
+	render('b', [1, 2]);
+	assert.eq(getHtml(host), '<div><w-40 mode="b"><header><slot name="head"></slot></header><main><slot>:<b>kid</b><i>1</i><i>2</i></slot></main></w-40></div>');
+	render('b', [3]);
+	assert.eq(getHtml(host), '<div><w-40 mode="b"><header><slot name="head"></slot></header><main><slot>:<b>kid</b><i>3</i></slot></main></w-40></div>');
+	render('e', [3, 4]);
+	assert.eq(getHtml(host), '<div><w-40 mode="e"></w-40></div>');
+	render('e', [5]);
+	render('c', [5, 6]);
+	assert.eq(getHtml(host), '<div><w-40 mode="c"><h1>no slot</h1><b>kid</b><i>5</i><i>6</i></w-40></div>');
+	render('c', []);
+	assert.eq(getHtml(host), '<div><w-40 mode="c"><h1>no slot</h1><b>kid</b></w-40></div>');
+
+	// 6. A component that changes its template while a parent's template is constructing
+	// another component of the same class.  The children on their way to that one are not
+	// for this one, which has its own.
+	let first = document.createElement('div');
+	class W40Poke extends HTMLElement {
+		constructor({poke}={}) {
+			super();
+			this.mode = 'a';
+			if (poke) {
+				first.firstChild.mode = 'b';
+				first.firstChild.render();
+			}
+		}
+		render() {
+			if (this.mode === 'a')
+				h(this)`<p>a</p><slot></slot>`;
+			else
+				h(this)`<section><slot></slot></section>`;
+		}
+	}
+	customElements.define('w-40-poke', W40Poke);
+	first.innerHTML = '<w-40-poke><b>mine</b></w-40-poke>';
+	first.firstChild.render();
+	let second = document.createElement('div');
+	h(second)`<w-40-poke poke=${true}><i>other</i></w-40-poke>`;
+	assert.eq(getHtml(first), '<div><w-40-poke><section><slot><b>mine</b></slot></section></w-40-poke></div>');
+	assert.eq(getHtml(second), '<div><w-40-poke poke=""><p>a</p><slot><i>other</i></slot></w-40-poke></div>');
+});
+
+Testimony.test('Solarite.switch.nested', `A child component that changes its template inside the rows of its parent, while the parent moves the rows.`, () => {
+	class W50 extends HTMLElement {
+		constructor({item}={}) {
+			super();
+			this.item = item;
+		}
+		render(attribs) {
+			if (attribs?.item)
+				this.item = attribs.item;
+			if (this.item.loading)
+				h(this)`<i>loading ${this.item.id}</i>`;
+			else
+				h(this)`<b>${this.item.id}</b><input value=${this.item.text}>`;
+		}
+	}
+	customElements.define('w-50', W50);
+
+	let el = document.createElement('div');
+	let items = [{id: 1, loading: true, text: 'x'}, {id: 2, loading: true, text: 'y'}, {id: 3, loading: false, text: 'z'}];
+	let render = () => h(el)`<ul>${items.map(item => h`<li key=${item.id}><w-50 item=${item}></w-50></li>`)}</ul>`;
+	render();
+	let first = el.querySelector('w-50');
+	assert.eq(getHtml([...el.querySelectorAll('li')]), '<li><w-50><i>loading 1</i></w-50></li>|<li><w-50><i>loading 2</i></w-50></li>|<li><w-50><b>3</b><input value="z"></w-50></li>');
+
+	items[0].loading = false;
+	render();
+	assert.eq(getHtml(first), '<w-50><b>1</b><input value="x"></w-50>');
+	assert.eq(first.querySelector('input').value, 'x');
+
+	items.reverse();
+	items[2].loading = true;
+	items[0].loading = true;
+	render();
+	assert.eq(getHtml([...el.querySelectorAll('li')]), '<li><w-50><i>loading 3</i></w-50></li>|<li><w-50><i>loading 2</i></w-50></li>|<li><w-50><i>loading 1</i></w-50></li>');
+	assert.eq(el.querySelectorAll('w-50')[2], first);
+});
+
+Testimony.test('Solarite.switch.reentrant', `A template that is changed from inside a render of the element, or from one of its own handlers.`, () => {
+	// 1. A child component that renders its parent with another template while the parent is
+	// still building it.  The parent's first render carries on when the child returns, with
+	// two expressions for the parent's own element still to apply; they must not land there.
+	class W60Child extends HTMLElement {
+		constructor({owner}={}) {
+			super();
+			if (owner?.mode === 'a') {
+				owner.mode = 'b';
+				owner.render();
+			}
+		}
+		render() { h(this)`child`; }
+	}
+	customElements.define('w-60-child', W60Child);
+
+	let log = [];
+	class W60 extends HTMLElement {
+		mode = 'a';
+		render() {
+			if (this.mode === 'a')
+				h(this)`<w-60 class=${'a'} onclick=${() => log.push('a')}><w-60-child owner=${this}></w-60-child><em>${'after'}</em></w-60>`;
+			else
+				h(this)`<w-60 title=${this.mode}><p>${this.mode}</p></w-60>`;
+		}
+	}
+	customElements.define('w-60', W60);
+
+	let a = new W60();
+	a.render();
+	document.body.append(a);
+	assert.eq(a.outerHTML, '<w-60 title="b"><p>b</p></w-60>');
+	a.click();
+	assert.eq(log.length, 0);
+	a.render();
+	assert.eq(a.outerHTML, '<w-60 title="b"><p>b</p></w-60>');
+	a.remove();
+
+	// 2. An h.map() callback that changes the template of the element it is drawing in.
+	let el = document.createElement('div');
+	let mode = 'list', items = [{id: 1}, {id: 2}, {id: 3}];
+	let render = () => mode === 'list'
+		? h(el)`${h.map(items, item => {
+			if (item.id === 2 && mode === 'list') {
+				mode = 'other';
+				render();
+			}
+			return h`<p>${item.id}</p>`;
+		})}`
+		: h(el)`<h1>${mode}</h1>`;
+	render();
+	assert.eq(getHtml(el), '<div><h1>other</h1></div>');
+	mode = 'list';
+	items = [{id: 4}];
+	render();
+	assert.eq(getHtml(el), '<div><p>4</p></div>');
+
+	// 3. A click handler in one template that shows the other: on a plain element, on a row
+	// of a keyed list, and bound with native:.  The event goes on through the elements it
+	// started in, as it would with listeners added by hand, and a handler further up the
+	// same row still has the element as its `this`.
+	document.body.append(el);
+	let rows = [{id: 1}, {id: 2}, {id: 3}], picked = null, outer = [];
+	let pick = row => {
+		picked = row;
+		draw();
+	};
+	let draw = () => picked
+		? h(el)`<h1 native:onclick=${() => pick(null)}>${picked.id}</h1><button onclick=${() => pick(null)}>back</button>`
+		: h(el)`<ul>${h.map(rows, row => h`<li key=${row.id} onclick=${function() { outer.push(this) }}><a onclick=${[pick, row]}>${row.id}</a></li>`)}</ul>`;
+	draw();
+	el.querySelectorAll('a')[1].click();
+	assert.eq(getHtml(el), '<div><h1>2</h1><button>back</button></div>');
+	assert.eq(outer.length, 1);
+	assert.eq(outer[0], el);
+	el.querySelector('button').click();
+	assert.eq(getHtml(el), '<div><ul><li><a>1</a></li><li><a>2</a></li><li><a>3</a></li></ul></div>');
+	el.querySelectorAll('a')[2].click();
+	assert.eq(getHtml(el), '<div><h1>3</h1><button>back</button></div>');
+	el.querySelector('h1').click();
+	assert.eq(el.querySelectorAll('li').length, 3);
+	el.remove();
+
+	// 4. A child of the old template that renders its parent when it leaves the document,
+	// which it does in the middle of the change.  That render is the one that puts the new
+	// template in place, with the parent's slot children, and the render it interrupted then
+	// finds it there.
+	let host = document.createElement('div'), renders = 0;
+	class W60Leaving extends HTMLElement {
+		disconnectedCallback() {
+			renders++;
+			show();
+		}
+	}
+	customElements.define('w-60-leaving', W60Leaving);
+	host.innerHTML = '<b>kid</b>';
+	let leaving = document.createElement('w-60-leaving');
+	let show = () => mode === 'first'
+		? h(host)`<p>${mode}</p>${leaving}<slot></slot>`
+		: h(host)`<section>${mode}<slot></slot></section>`;
+	mode = 'first';
+	document.body.append(host);
+	show();
+	assert.eq(getHtml(host), '<div><p>first</p><w-60-leaving></w-60-leaving><slot><b>kid</b></slot></div>');
+	mode = 'second';
+	show();
+	assert.eq(renders, 1);
+	assert.eq(getHtml(host), '<div><section>second<slot><b>kid</b></slot></section></div>');
+	show();
+	assert.eq(getHtml(host), '<div><section>second<slot><b>kid</b></slot></section></div>');
+	host.remove();
+
+	// 5. A child the element was given that renders the element whenever it enters the
+	// document, which it does each time a template takes it into a slot.
+	let tabs = document.createElement('div'), armed = false, draws = 0;
+	class W60Tab extends HTMLElement {
+		connectedCallback() {
+			if (armed)
+				draw2();
+		}
+	}
+	customElements.define('w-60-tab', W60Tab);
+	tabs.innerHTML = '<w-60-tab>tab</w-60-tab>';
+	let draw2 = () => {
+		draws++;
+		if (mode === 'first')
+			h(tabs)`<p>${mode}</p><slot></slot>`;
+		else
+			h(tabs)`<nav><slot></slot></nav><b>${mode}</b>`;
+	};
+	mode = 'first';
+	document.body.append(tabs);
+	draw2();
+	armed = true;
+	mode = 'second';
+	draw2();
+	armed = false;
+	assert.eq(getHtml(tabs), '<div><nav><slot><w-60-tab>tab</w-60-tab></slot></nav><b>second</b></div>');
+	assert(draws < 8); // A few renders from the callback, and an end to them.
+	tabs.remove();
+});
+
+Testimony.test('Solarite.switch.afterError', `A new template that throws leaves an element the next render can fill.`, () => {
+	// 1. Html that cannot be parsed.  The old template is gone by then; the children the
+	// element was given are not, and either template renders afterward.
+	let el = toEl('<div><b>kid</b></div>');
+	let first = v => h(el)`<p>${v}</p><slot></slot>`;
+	let bad = v => h(el)`<p class="a" class=${v}>bad</p>`;
+	let second = v => h(el)`<section><slot></slot>${v}</section>`;
+	first(1);
+	assert.throws(() => bad(2));
+	assert.eq(getHtml(el), '<div><b>kid</b></div>');
+	first(3);
+	assert.eq(getHtml(el), '<div><p>3</p><slot><b>kid</b></slot></div>');
+	assert.throws(() => bad(2));
+	second(4);
+	assert.eq(getHtml(el), '<div><section><slot><b>kid</b></slot>4</section></div>');
+
+	// 2. An expression of the new template that throws when it is applied.  The same template
+	// with a good value then renders, and so does the first one.
+	el = document.createElement('div');
+	document.body.append(el);
+	let clicked = 0;
+	let plain = v => h(el)`<p>${v}</p>`;
+	let button = (v, handler) => h(el)`<button onclick=${() => clicked++}>${v}</button><input onfocus=${handler}>`;
+	plain(1);
+	assert.throws(() => button(2, 'not a function'));
+	button(3, () => {});
+	assert.eq(getHtml(el), '<div><button>3</button><input></div>');
+	el.querySelector('button').click();
+	assert.eq(clicked, 1);
+	plain(4);
+	assert.eq(getHtml(el), '<div><p>4</p></div>');
+
+	// 3. The handlers of the new template are bound by the render that follows the one that
+	// threw, also when they are the same functions as in that render.
+	let onClick = () => clicked++;
+	let stable = handler => h(el)`<button onclick=${onClick}>x</button><input onfocus=${handler}>`;
+	assert.throws(() => stable('not a function'));
+	stable(() => {});
+	clicked = 0;
+	el.querySelector('button').click();
+	assert.eq(clicked, 1);
+	el.remove();
+});
+//endregion
+
+
+
 //region expr
 /*┌─────────────────╮
   | Expr            |
@@ -761,6 +1556,98 @@ Testimony.test('Solarite.expr.documentFragment', () => {
 
 	a.render();
 	assert.eq(getHtml(a), '<r-44>This text is <b>Bold</b><i>Italic</i>!</r-44>');
+});
+
+Testimony.test('Solarite.expr.documentFragmentGivenAgain', `A DocumentFragment keeps showing the nodes it brought when the same fragment is given again on a later render.`, () => {
+	// Placing a fragment's children moves them out of the fragment, so the second render used
+	// to be given an empty fragment and removed everything the first had shown.
+	const clean = el => el.firstElementChild.innerHTML.replace(/<!--.*?-->/g, '');
+	const element = (tag, text) => Object.assign(document.createElement(tag), {textContent: text});
+
+	// 1. The same fragment on every render, as a component that keeps its content in a field
+	// gives it: toEl() returns a fragment for html of several nodes.
+	let el = document.createElement('div');
+	let content = toEl('<b>Hi</b><u>Bye</u>');
+	for (let n of [1, 2, 3]) {
+		h(el)`<div>${n}: ${content}</div>`;
+		assert.eq(clean(el), n + ': <b>Hi</b><u>Bye</u>');
+	}
+
+	// 2. Dropped and shown again, moved to an expression in another element, among other
+	// items, from a function.
+	el = document.createElement('div');
+	let fragment = document.createDocumentFragment();
+	fragment.append(element('i', 'a'), 'T', element('b', 'b'));
+	let steps = [
+		[fragment, 'x', '<p><i>a</i>T<b>b</b></p><s>x</s>'], [fragment, 'y', '<p><i>a</i>T<b>b</b></p><s>y</s>'], [null, fragment, '<p></p><s><i>a</i>T<b>b</b></s>'],
+		[null, null, '<p></p><s></s>'], [['[', fragment, ']'], null, '<p>[<i>a</i>T<b>b</b>]</p><s></s>'], [() => fragment, 'z', '<p><i>a</i>T<b>b</b></p><s>z</s>']
+	];
+	for (let [a, b, expected] of steps) {
+		h(el)`<div><p>${a}</p><s>${b}</s></div>`;
+		assert.eq(clean(el), expected);
+	}
+
+	// 3. A fragment given with new children shows those, and no longer the ones before.
+	el = document.createElement('div');
+	fragment = document.createDocumentFragment();
+	fragment.append(element('i', 'a'));
+	let render = () => h(el)`<div><s>h</s>${fragment}<s>t</s></div>`;
+	render();
+	fragment.append(element('b', 'b'));
+	for (let i=0; i<2; i++) {
+		render();
+		assert.eq(clean(el), '<s>h</s><b>b</b><s>t</s>');
+	}
+
+	// 4. As the rows of a list, in any order.
+	el = document.createElement('div');
+	let items = ['a', 'b', 'c'].map(text => {
+		let rowNodes = document.createDocumentFragment();
+		rowNodes.append(element('i', text), element('b', text));
+		return {rowNodes};
+	});
+	for (let [order, expected] of [[[0, 1, 2], 'aabbcc'], [[0, 1, 2], 'aabbcc'], [[2, 0], 'ccaa'], [[0, 1, 2], 'aabbcc']]) {
+		h(el)`<div>${h.map(order.map(i => items[i]), item => item.rowNodes)}</div>`;
+		assert.eq(el.textContent, expected);
+	}
+
+	// 5. A fragment whose first render threw before anything was placed still has its
+	// children, and shows them from the next render on.
+	el = document.createElement('div');
+	fragment = document.createDocumentFragment();
+	fragment.append(element('i', 'a'));
+	let threw = false;
+	try {
+		h(el)`<div>${[fragment, h`<p onclick=${'not a function'}>bad</p>`]}</div>`;
+	}
+	catch (e) {
+		threw = true;
+	}
+	assert.eq(threw, true);
+	for (let i=0; i<2; i++) {
+		h(el)`<div>${[fragment]}</div>`;
+		assert.eq(clean(el), '<i>a</i>');
+	}
+
+	// 6. A fragment that never had children shows nothing, and a new fragment per render
+	// shows its own nodes each time.
+	el = document.createElement('div');
+	for (let text of ['a', 'b']) {
+		fragment = document.createDocumentFragment();
+		fragment.append(element('i', text));
+		h(el)`<div>${[document.createDocumentFragment(), fragment]}</div>`;
+		assert.eq(clean(el), '<i>' + text + '</i>');
+	}
+});
+
+Testimony.test('Solarite.expr.documentFragmentMovesPlaces', `A DocumentFragment given to another expression of the same parent element, or to two at once, shows its nodes in the place written last.`, () => {
+	let el = document.createElement('div');
+	let fragment = document.createDocumentFragment();
+	fragment.append(Object.assign(document.createElement('i'), {textContent: 'a'}), 'T');
+	for (let [a, b, expected] of [[fragment, 'x', '<i>a</i>T|x'], ['x', fragment, 'x|<i>a</i>T'], [fragment, 'x', '<i>a</i>T|x'], [fragment, fragment, '<i>a</i>T|'], ['x', fragment, 'x|<i>a</i>T']]) {
+		h(el)`<div>${a}|${b}</div>`;
+		assert.eq(el.firstElementChild.innerHTML.replace(/<!--.*?-->/g, ''), expected);
+	}
 });
 
 Testimony.test('Solarite.expr.undefined', () => {
@@ -1082,6 +1969,46 @@ Testimony.test('Solarite.expr.textareaGrandchild', 'Make sure we throw if an exp
 	}
 	assert(error);
 	assert(error.message.includes(`no \${...} inside textarea`));
+});
+
+Testimony.test('Solarite.expr.textareaHtmlLikeText', `A textarea's text is not html: what looks like a tag, a quote or a comment in it changes nothing for the expressions after the textarea, and an expression inside it gets the error that says what to do.`, () => {
+	let el = document.createElement('div');
+	let render = value => h(el)`<textarea>a<b c="d <!-- e's</textarea><p title="${value}">${value}</p>`;
+	render(1);
+	assert.eq(el.firstChild.value, `a<b c="d <!-- e's`);
+	assert.eq(el.lastChild.outerHTML, '<p title="1">1</p>');
+	render(2);
+	assert.eq(el.lastChild.outerHTML, '<p title="2">2</p>');
+
+	let error;
+	try {
+		toEl(h`<div><textarea>a<b ${1}</textarea></div>`);
+	}
+	catch (e) {
+		error = e;
+	}
+	assert(error.message.includes(`no \${...} inside textarea`));
+});
+
+Testimony.test('Solarite.expr.badEscape', `An escape sequence that JavaScript rejects in a template, such as the "\\2014" of a css content value, leaves that part of the template undefined.  The template throws and says why, and does not render without that part.`, () => {
+	let error;
+	try {
+		toEl(h`<div><style>p::before { content: "\2014" } p { color: ${'red'} }</style><p>${1}</p></div>`);
+	}
+	catch (e) {
+		error = e;
+	}
+	assert(error.message.includes('bad escape sequence'));
+
+	// With no expression in the template.
+	error = null;
+	try {
+		toEl(h`<p title="\00a0">a</p>`);
+	}
+	catch (e) {
+		error = e;
+	}
+	assert(error.message.includes('bad escape sequence'));
 });
 
 Testimony.test('Solarite.expr.contenteditableChild', 'Make sure we throw if an expression is the child of a contenteditable.', () => {
@@ -2559,6 +3486,497 @@ Testimony.test('Solarite.map.reentrantRawNodes', `A row that is created while a 
 	}
 });
 
+Testimony.test('Solarite.map.reentrantRawNodesMovedRows', `Two rows change places in the render in which a new row renders its host with a raw DOM node where the list is.  The rows that were moved are then in the list only, not also kept for reuse, so the renders after it draw every row whole.`, () => {
+	for (let between of [true, false]) {
+		let el = document.createElement('div');
+		let raw = document.createElement('em');
+		let showRaw = false, beside = false, armed = false;
+		let a = {id: 1}, b = {id: 2}, c = {id: 3}, d = {id: 4};
+		let rows = [a, b, c, d];
+		let row = r => h`<dt key=${r.id}>${r.id !== 9 ? r.id : () => {
+			if (armed) {
+				armed = false;
+				showRaw = true;
+				render();
+				showRaw = false;
+			}
+			return r.id;
+		}}</dt><dd>${r.id}</dd>`;
+		let list = () => showRaw ? [raw] : beside ? [raw, h.map(rows, row)] : h.map(rows, row);
+		let render = () => between ? h(el)`<dl><b>head</b><hr>${list()}<hr><i>tail</i></dl>` : h(el)`<dl>${list()}</dl>`;
+		const text = () => (between ? 'head' : '') + rows.map(r => '' + r.id + r.id).join('') + (between ? 'tail' : '');
+		render();
+		assert.eq(el.textContent, text());
+
+		// 1. Two rows change places and the last row gets a new key.  The function in the new
+		// row renders the host with the raw node, which takes every old row out; the render it
+		// interrupted then puts the two rows that changed places back.
+		rows = [a, c, b, {id: 9}];
+		armed = true;
+		render();
+		assert.eq(armed, false);
+
+		// 2. Fewer rows, so that the two are removed again, then more rows than the list has,
+		// beside the raw node, which takes rows from the ones kept for reuse.
+		rows = [a, c];
+		render();
+		assert.eq(el.textContent, text(), 'between=' + between);
+		rows = [a, c, {id: 5}, {id: 6}, {id: 7}, {id: 8}];
+		beside = true;
+		render();
+		assert.eq(el.textContent, text(), 'between=' + between);
+		assert.eq(el.querySelectorAll('dd').length, 6);
+		beside = false;
+		render();
+		assert.eq(el.textContent, text(), 'between=' + between);
+		assert.eq(el.querySelectorAll('dt, dd').length, 12);
+	}
+});
+
+Testimony.test('Solarite.map.reentrantMovedRowsThenThrow', `Two rows change places in the render in which a new row renders its host with a raw DOM node where the list is, and another new row then throws.  The list is left empty, and the rows that had been moved are not kept for reuse in pieces: the renders after it draw every row whole.`, () => {
+	for (let between of [true, false]) {
+		let el = document.createElement('div');
+		let raw = document.createElement('em');
+		let showRaw = false, armed = false;
+		let a = {id: 1}, b = {id: 2}, c = {id: 3}, d = {id: 4}, nine = {id: 9};
+		let rows = [a, b, c, d];
+		let row = r => r.id === 8 ? h`<p key=${r.id} onclick=${'not a function'}>8</p>` : h`<dt key=${r.id}>${r.id !== 9 ? r.id : () => {
+			if (armed) {
+				armed = false;
+				showRaw = true;
+				render();
+				showRaw = false;
+			}
+			return r.id;
+		}}</dt><dd>${r.id}</dd>`;
+		let render = () => between
+			? h(el)`<dl><b>head</b><hr>${showRaw ? [raw] : h.map(rows, row)}<hr><i>tail</i></dl>`
+			: h(el)`<dl>${showRaw ? [raw] : h.map(rows, row)}</dl>`;
+		const text = () => (between ? 'head' : '') + rows.map(r => '' + r.id + r.id).join('') + (between ? 'tail' : '');
+		render();
+		assert.eq(el.textContent, text());
+
+		// 1. The last row is created first and renders the host with the raw node; row 1 is then
+		// put back in front of it, and row 8 throws.
+		rows = [b, {id: 8}, a, nine];
+		armed = true;
+		let threw = false;
+		try { render(); } catch (e) { threw = true; }
+		assert.eq(threw, true);
+		assert.eq(armed, false);
+
+		// 2. The same rows without the one that throws.
+		rows = [b, a, nine];
+		for (let i=0; i<2; i++) {
+			render();
+			assert.eq(el.textContent, text(), 'between=' + between);
+			assert.eq(el.querySelectorAll('dd').length, 3);
+		}
+	}
+});
+
+Testimony.test('Solarite.map.reentrantBesideRawNode', `A row of a list that stands beside a raw DOM node may render its host while the list is drawn, with anything where the list is.  The render it interrupted then draws its own list, and the renders after it draw every row once, whole and in its place.`, () => {
+	// A list with a raw node in it is drawn from the rows now standing in the DOM, taken one by
+	// one.  A render that started inside that loop took its rows from the same ones, so a row
+	// was used twice, and the rows the outer render had not taken yet were kept for reuse while
+	// they still stood in the list.
+	for (let nested of ['rawOnly', 'otherRows', 'text', 'nothing'])
+		for (let mapped of [false, true])
+			for (let between of [true, false]) {
+				let el = document.createElement('div');
+				let raw = document.createElement('em');
+				let inner = false, armed = false, withRaw = true;
+				let ids = [1, 2, 3, 4];
+				const row = id => h`<dt>${() => {
+					if (armed && id === 3) {
+						armed = false;
+						inner = true;
+						render();
+						inner = false;
+					}
+					return id;
+				}}</dt><dd>${id}</dd>`;
+				const rows = list => mapped ? h.map(list, row) : list.map(row);
+				let plain = null;
+				const content = () => !inner
+					? plain ?? (withRaw ? [raw, rows(ids)] : rows(ids))
+					: nested === 'rawOnly' ? [raw] : nested === 'otherRows' ? rows([7, 8, 9]) : nested === 'text' ? 'plain' : [];
+				const render = () => between ? h(el)`<dl><b>head</b>${content()}<i>tail</i></dl>` : h(el)`<dl>${content()}</dl>`;
+				const text = () => (between ? 'head' : '') + ids.map(id => '' + id + id).join('') + (between ? 'tail' : '');
+				const check = () => {
+					render();
+					assert.eq(el.textContent, text(), nested + ' mapped=' + mapped + ' between=' + between);
+					assert.eq(el.querySelectorAll('dt, dd').length, ids.length * 2);
+					assert.eq(el.querySelectorAll('em').length, withRaw ? 1 : 0);
+				};
+				check();
+
+				// 1. The third row renders the host while the list beside the raw node is drawn.
+				armed = true;
+				check();
+				assert.eq(armed, false);
+
+				// 2. The renders after it.
+				check();
+				ids = [1, 2];
+				check();
+				ids = [1, 2, 21, 22, 23, 24];
+				check();
+				withRaw = false;
+				check();
+				ids = [...ids, 31, 32];
+				check();
+				ids = [];
+				check();
+
+				// 3. Again, from a row that is new, in a render that has no raw node itself.
+				withRaw = true;
+				ids = [5, 6];
+				check();
+				withRaw = false;
+				ids = [5, 6, 3];
+				armed = true;
+				check();
+				assert.eq(armed, false);
+				ids = [5, 6, 3, 41, 42];
+				check();
+
+				// 4. And from the one row that replaces the raw node standing alone.  A render that
+				// puts plain text there must not leave its text node remembered when the render it
+				// interrupted has taken the node out again.
+				withRaw = true;
+				ids = [];
+				check();
+				withRaw = false;
+				ids = [3];
+				armed = true;
+				check();
+				assert.eq(armed, false);
+				plain = 'after';
+				render();
+				assert.eq(el.textContent, (between ? 'head' : '') + 'after' + (between ? 'tail' : ''), nested + ' mapped=' + mapped + ' between=' + between);
+				plain = null;
+				ids = [1, 2];
+				check();
+			}
+});
+
+Testimony.test('Solarite.map.reentrantBesideRawNodeSameRow', `A render that starts inside a row of a list beside a raw DOM node may redraw that very row with other values.  The render it interrupted writes all of its own values to the row afterward, not only the ones it had not reached.`, () => {
+	let el = document.createElement('div');
+	let raw = document.createElement('em');
+	let armed = 0;
+	let render = rows => h(el)`<dl><b>head</b>${[raw, rows]}<i>tail</i></dl>`;
+	const row = (id, level) => h`<dt>${level ? () => {
+		// A row of level 2 renders the host with rows 7 and 8, and row 8, of level 1, renders
+		// it once more with the raw node alone.
+		if (armed === 2 && level === 2) {
+			armed = 1;
+			render([row(7), row(8, 1)]);
+		}
+		else if (armed === 1 && level === 1) {
+			armed = 0;
+			render([]);
+		}
+		return id;
+	} : id}</dt><dd>${id}</dd>`;
+	render([row(1), row(2), row(3)]);
+
+	// 1. The first row is redrawn as 7 by the render its own function starts, while its <dt>
+	// is still waiting for what the function returns.
+	armed = 2;
+	render([row(1, 2), row(2), row(3)]);
+	assert.eq(armed, 0);
+	assert.eq(el.textContent, 'head112233tail');
+	assert.eq(el.querySelectorAll('dt, dd').length, 6);
+
+	// 2. The renders after it.
+	render([row(1), row(2), row(3), row(4)]);
+	assert.eq(el.textContent, 'head11223344tail');
+	render([row(1)]);
+	render([row(5), row(6), row(7), row(8), row(9)]);
+	assert.eq(el.textContent, 'head5566778899tail');
+	assert.eq(el.querySelectorAll('dt, dd').length, 10);
+});
+
+Testimony.test('Solarite.map.reentrantBesideRawNodeEveryCall', `A row of a list beside a raw DOM node may render its host every time its function is called, behind a guard against calling itself.  The render it interrupts starts over once and then keeps what the nested render drew, so it finishes.`, () => {
+	// Starting over calls the functions in the rows again.  A function that answers every call
+	// by rendering the host would be started over for ever, where the render used to finish.
+	for (let mapped of [false, true]) {
+		let el = document.createElement('div');
+		let raw = document.createElement('em');
+		let busy = false, armed = false, renders = 0;
+		let ids = [1, 2, 3];
+		const row = id => h`<dt>${() => {
+			if (armed && !busy) {
+				busy = true;
+				try {
+					render();
+				}
+				finally {
+					busy = false;
+				}
+			}
+			return id;
+		}}</dt><dd>${id}</dd>`;
+		const render = () => {
+			// The limit turns a render that never finishes into a failure of this test.
+			if (++renders > 20)
+				throw new Error('The host was rendered more than 20 times.');
+			h(el)`<dl><b>head</b>${[raw, mapped ? h.map(ids, row) : ids.map(row)]}<i>tail</i></dl>`;
+		};
+		const check = () => {
+			renders = 0;
+			render();
+			assert.eq(el.textContent, 'head' + ids.map(id => '' + id + id).join('') + 'tail', 'mapped=' + mapped);
+			assert.eq(el.querySelectorAll('dt, dd').length, ids.length * 2);
+			assert.eq(el.querySelectorAll('em').length, 1);
+		};
+		check();
+
+		// 1. Every row's function renders the host: with the same rows, with other rows, with
+		// none, and with rows that are all new.
+		armed = true;
+		check();
+		ids = [3, 4, 1, 5];
+		check();
+		ids = [];
+		check();
+		ids = [6, 7];
+		check();
+
+		// 2. The renders after it.
+		armed = false;
+		check();
+		ids = [6, 8, 7];
+		check();
+	}
+
+	// 3. Every render draws other values (a counter), so the render that is kept is not the one
+	// that was interrupted.  The row whose function started it holds values of both, and the
+	// next render, which brings the kept render's values again, has to write the ones that
+	// differ: also when the function is the same object every time, so that nothing but those
+	// values tells the two renders apart.
+	for (let stable of [false, true]) {
+		let el = document.createElement('div');
+		let raw = document.createElement('em');
+		let busy = false, armed = false, renders = 0, count = 0, counting = true;
+		let ids = [1, 2, 3];
+		const label = () => {
+			if (armed && !busy) {
+				busy = true;
+				try {
+					render();
+				}
+				finally {
+					busy = false;
+				}
+			}
+			return 'row';
+		};
+		const row = id => h`<dt title=${'t' + count}>${stable ? label : () => label()}</dt><dd>${id + ':' + count}</dd>`;
+		const render = () => {
+			if (++renders > 20)
+				throw new Error('The host was rendered more than 20 times.');
+			if (counting)
+				count++;
+			h(el)`<dl>${[raw, ids.map(row)]}</dl>`;
+		};
+		render();
+		armed = true;
+		render();
+		armed = false;
+		counting = false;
+		render();
+		assert.eq(el.textContent, ids.map(id => 'row' + id + ':' + count).join(''), 'stable=' + stable);
+		assert.eq([...el.querySelectorAll('dt')].map(dt => dt.title).join(), ids.map(() => 't' + count).join(), 'stable=' + stable);
+	}
+});
+
+Testimony.test('Solarite.map.reentrantBesideRawNodeTwice', `A row of a list that follows a raw DOM node may render its host twice in a row while the list is drawn, the second time with plain text or an h.map() where the list is.  The render it interrupted leaves neither behind.`, () => {
+	// Only the first render that starts inside is sent the way of the one it interrupts.  The
+	// second may put a bare text node there, or remember the items of its h.map(), and the
+	// render that starts over has to take both over: a later render otherwise wrote its text
+	// into a node that had left the document, or took the rows for the rows of those items.
+	const others = [{id: 7}, {id: 8}, {id: 9}];
+	const otherRow = item => h`<dt>${item.id}</dt>`;
+	for (let second of ['text', 'map'])
+		for (let between of [true, false]) {
+			let el = document.createElement('div');
+			let raw = document.createElement('em');
+			let inner = null, later = null, armed = false, withRaw = true;
+			let ids = [1, 2, 3];
+			const row = id => h`<dt>${() => {
+				if (armed && id === 2) {
+					armed = false;
+					inner = [];
+					render();
+					inner = second === 'text' ? 'plain' : h.map(others, otherRow);
+					render();
+					inner = null;
+				}
+				return id;
+			}}</dt>`;
+			const content = () => inner ?? later ?? (withRaw ? [raw, ids.map(row)] : ids.map(row));
+			const render = () => between ? h(el)`<dl><b>head</b>${content()}<i>tail</i></dl>` : h(el)`<dl>${content()}</dl>`;
+			const check = (expected, step) => {
+				render();
+				assert.eq(el.textContent, between ? 'head' + expected + 'tail' : expected, step + ' second=' + second + ' between=' + between);
+			};
+			check('123', 'first');
+
+			// 1. The list no longer has the raw node, but is still drawn the way a list with one is.
+			withRaw = false;
+			armed = true;
+			check('123', 'interrupted');
+			assert.eq(armed, false);
+
+			// 2. What the second nested render drew, given again, and the list after it.
+			later = second === 'text' ? 'after' : h.map(others, otherRow);
+			check(second === 'text' ? 'after' : '789', 'later');
+			later = null;
+			check('123', 'rows');
+			withRaw = true;
+			ids = [1, 2, 3, 4];
+			check('1234', 'with the raw node');
+			assert.eq(el.querySelectorAll('dt').length, 4);
+			assert.eq(el.querySelectorAll('em').length, 1);
+		}
+});
+
+Testimony.test('Solarite.map.reentrantDisconnectBesideRawNode', `An element in a row of a list beside a raw DOM node may render its host from its disconnectedCallback, as the row is removed.  The render that removed the row then draws its own list, and the renders after it draw every row once and whole.`, () => {
+	// The render that the element starts runs between the removing of the old nodes and the
+	// placing of the new ones.  The outer render used to carry on and place its nodes over
+	// what that render had drawn, while the list remembered that render's rows.
+	let leaving = null;
+	class LeavingBesideRaw extends HTMLElement {
+		disconnectedCallback() {
+			if (leaving)
+				leaving(this);
+		}
+	}
+	customElements.define(uniqueTag(), LeavingBesideRaw);
+
+	for (let mapped of [false, true])
+		for (let layout of ['between', 'whole', 'root']) {
+			let el = document.createElement('div');
+			document.body.append(el);
+			let raw = document.createElement('em');
+			let inner = null, extra = false;
+			let ids = [1, 2, 3, 4];
+			const row = id => h`<dt>${id}</dt><dd>${id}</dd>`;
+			const content = () => inner || [raw, mapped ? h.map(ids, row) : ids.map(row), ...(extra ? [h`<p>last</p>`] : [])];
+			const render = () => layout === 'between' ? h(el)`<dl><b>head</b>${content()}<i>tail</i></dl>`
+				: layout === 'whole' ? h(el)`<dl>${content()}</dl>` : h(el)`${content()}`;
+			const text = () => (layout === 'between' ? 'head' : '') + ids.map(id => '' + id + id).join('') + (extra ? 'last' : '') + (layout === 'between' ? 'tail' : '');
+			const check = step => {
+				render();
+				assert.eq(el.textContent, text(), step + ' mapped=' + mapped + ' ' + layout);
+				assert.eq(el.querySelectorAll('dt, dd').length, ids.length * 2);
+				assert.eq(el.querySelectorAll('em').length, 1);
+			};
+			const arm = nested => {
+				el.querySelectorAll('dd')[ids.length - 1].append(new LeavingBesideRaw());
+				leaving = element => {
+					leaving = null;
+					inner = nested();
+					render();
+					inner = null;
+					element.remove();
+				};
+			};
+			check('first');
+
+			// 1. The last two rows go, and the element in the last one renders the host with the
+			// raw node alone.
+			arm(() => [raw]);
+			ids = [1, 2];
+			check('raw alone');
+			assert.eq(leaving, null);
+			check('after');
+			ids = [1, 2, 5, 6, 7];
+			check('grown');
+
+			// 2. The last row goes, and the element renders the host with other rows.
+			arm(() => [raw, row(8), row(9)]);
+			ids = [1, 2, 5, 6];
+			check('other rows');
+			assert.eq(leaving, null);
+			ids = [1, 2, 5, 6, 10, 11];
+			check('grown again');
+
+			// 3. Every row goes, and the element renders the host with plain text.
+			arm(() => 'plain');
+			ids = [];
+			check('emptied');
+			assert.eq(leaving, null);
+			ids = [12, 13, 14];
+			check('filled');
+
+			// 4. The last row goes and a row of another kind comes, and the element renders the
+			// host with that same list.  Its render must not take the new row for placed
+			// already, because the render it interrupts was about to place it.
+			arm(() => null);
+			ids = [12, 13];
+			extra = true;
+			check('same list');
+			assert.eq(leaving, null);
+			assert.eq(el.querySelectorAll('p').length, 1);
+			el.remove();
+		}
+});
+
+Testimony.test('Solarite.map.removedRunRendersRawNodes', `An element inside a removed row may render the host from its disconnectedCallback with a raw DOM node where the list is.  The rows removed together with that row are kept for reuse whole.`, () => {
+	// The rows of a removed run leave one after another.  The render that the element starts
+	// finds the rows still waiting in the DOM but not in the list, and removes them one node at
+	// a time; a row was then kept for reuse holding its first node only.
+	let gone = null;
+	class LeavingRun extends HTMLElement {
+		disconnectedCallback() {
+			if (gone)
+				gone(this);
+		}
+	}
+	customElements.define(uniqueTag(), LeavingRun);
+
+	for (let runLength of [2, 3]) {
+		let el = document.createElement('div');
+		document.body.append(el);
+		let raw = document.createElement('em');
+		let showRaw = false;
+		let rows = [1, 2, 3, 4, 5].map(id => ({id}));
+		let render = () => h(el)`<dl><b>head</b>${showRaw ? [raw] : h.map(rows, r => h`<dt>${r.id}</dt><dd>${r.id}</dd>`)}<i>tail</i></dl>`;
+		const text = () => 'head' + rows.map(r => '' + r.id + r.id).join('') + 'tail';
+		render();
+
+		// 1. Code outside the template puts such an element in the second row.  That row and
+		// the ones after it are then removed as one run, and the element renders the host
+		// while the others are still waiting.
+		el.querySelectorAll('dd')[1].append(new LeavingRun());
+		gone = element => {
+			gone = null;
+			showRaw = true;
+			render();
+			showRaw = false;
+			element.remove();
+		};
+		rows = [rows[0], ...rows.slice(1 + runLength)];
+		render();
+		assert.eq(gone, null);
+
+		// 2. The renders after it draw every row whole, also the ones taken from the rows kept
+		// for reuse.
+		render();
+		assert.eq(el.textContent, text(), 'runLength=' + runLength);
+		rows = [...rows, {id: 6}, {id: 7}, {id: 8}];
+		for (let i=0; i<2; i++) {
+			render();
+			assert.eq(el.textContent, text(), 'runLength=' + runLength);
+			assert.eq(el.querySelectorAll('dt, dd').length, rows.length * 2);
+		}
+		el.remove();
+	}
+});
+
 Testimony.test('Solarite.map.keyedNeverPooled', `Keyed rows removed by any shape of removal are never reused, and nothing is retained after a clear`, () => {
 	class A extends Solarite {
 		rows = [1, 2, 3, 4, 5, 6].map(id => ({id, label: 'r' + id}));
@@ -2823,6 +4241,39 @@ Testimony.test('Solarite.map.oddResultAnywhere', `An h.map() callback may return
 		}
 });
 
+Testimony.test('Solarite.map.oddResultNested', `An h.map() list that is inside an array, returned by a function, or returned by the callback of another h.map() draws whatever its callback returns the same way a list given directly does: an array, a raw node, a number or nothing for an item, as well as templates and strings.`, () => {
+	const results = {
+		template: n => h`<p>${n}</p>`,
+		string: n => 's' + n,
+		number: n => n,
+		null: () => null,
+		undefined: () => undefined,
+		array: n => [h`<b>${n}</b>`, h`<i>${n}</i>`],
+		node: n => Object.assign(document.createElement('u'), {textContent: n}),
+		nestedMap: n => h.map([1, 2], m => m === 1 ? n + '.' + m : h`<i>${n}.${m}</i>`),
+		mixed: n => n % 2 ? h`<p>${n}</p>` : n
+	};
+	const html = el => el.innerHTML.replace(/<!--.*?-->/g, '');
+
+	// 1. Each kind of result, in each way of nesting, shows what the same values show as a plain array.
+	for (let kind in results)
+		for (let wrap of [list => [list], list => () => list, list => [h`<hr>`, list, 'end']]) {
+			let el = document.createElement('div'), direct = document.createElement('div');
+			for (let items of [[1, 2], [2, 3, 1], [], [4]]) {
+				h(el)`<div>${wrap(h.map(items, results[kind]))}</div>`;
+				h(direct)`<div>${wrap(items.map(results[kind]))}</div>`;
+				assert.eq(html(el), html(direct), kind);
+			}
+		}
+
+	// 2. A list of lists given directly, whose inner callback hides the even items.
+	let el = document.createElement('div');
+	for (let groups of [[[1, 2], [3]], [[3], [], [2, 1], [4, 5]]]) {
+		h(el)`<div>${h.map(groups, group => h.map(group, n => n % 2 ? n : null))}</div>`;
+		assert.eq(html(el), '<div>' + groups.flat().filter(n => n % 2).join('') + '</div>');
+	}
+});
+
 Testimony.test('Solarite.map.oddResultKeepsOtherRows', `When a row that is an array, or nothing at all, joins a keyed h.map() list, the rows whose items did not change keep their elements, in that render and the ones after it.`, () => {
 	for (let odd of [r => [h`<i>${r.id}a</i>`, h`<i>${r.id}b</i>`], () => null])
 		for (let shape of ['replaced', 'appended', 'prepended']) {
@@ -2903,6 +4354,125 @@ Testimony.test('Solarite.map.throwingRowAmongReplacedRows', `A new row that thro
 			render();
 			assert.eq(el.textContent, next.join(''), 'mapped=' + mapped);
 		}
+	}
+});
+
+Testimony.test('Solarite.map.throwingRowKeepsPooledRows', `Rows of several nodes that were removed in the same render in which a new row throws can still be reused: each comes back whole when a later render needs a row of its kind, and what follows the list stays in place.`, () => {
+	for (let mapped of [true, false]) {
+		let el = document.createElement('div');
+		let rows = [1, 2], bad = false;
+		let pair = id => h`<dt>${id}</dt><dd>${id}</dd>`;
+		let single = id => h`<p onclick=${bad ? 'not a function' : () => {}}>${id}</p>`;
+		let row = pair;
+		// The list has two neighbours on each side, so it can't be emptied by clearing its parent.
+		let render = () => h(el)`<div><b>head</b><hr>${mapped ? h.map(rows, id => row(id)) : rows.map(row)}<hr><i>tail</i></div>`;
+		render();
+		assert.eq(el.textContent, 'head1122tail');
+
+		// 1. Both two-node rows are removed, and kept for reuse, before the row replacing them throws.
+		rows = [3];
+		row = single;
+		bad = true;
+		let threw = false;
+		try { render(); } catch (e) { threw = true; }
+		assert.eq(threw, true);
+		assert.eq(el.textContent, 'headtail', 'mapped=' + mapped);
+
+		// 2. Rows of the first kind again, which are taken from the ones kept above.
+		bad = false;
+		row = pair;
+		rows = [4, 5, 6];
+		render();
+		assert.eq(el.textContent, 'head445566tail', 'mapped=' + mapped);
+		assert.eq(el.querySelectorAll('dt').length, 3);
+		assert.eq(el.querySelectorAll('dd').length, 3);
+
+		// 3. And the template still renders.
+		rows = [7];
+		render();
+		assert.eq(el.textContent, 'head77tail', 'mapped=' + mapped);
+	}
+});
+
+Testimony.test('Solarite.map.throwingRowForgetsNestedText', `Plain text that a row put where its list is, by rendering its host while the list was being drawn, is forgotten with the rows when a later row throws: the same text given afterwards is shown.`, () => {
+	for (let between of [true, false]) {
+		let el = document.createElement('div');
+		let armed = false, loading = false, content = [];
+		let render = () => between
+			? h(el)`<div><b>head</b><hr>${loading ? 'Loading' : content}<hr><i>tail</i></div>`
+			: h(el)`<div>${loading ? 'Loading' : content}</div>`;
+		let row = id => h`<p>${() => {
+			if (armed) {
+				armed = false;
+				loading = true;
+				render();
+				loading = false;
+			}
+			return id;
+		}}</p>`;
+		render();
+
+		// 1. The first row renders the host with text in the list's place; the second row throws.
+		content = [row(1), h`<p onclick=${'not a function'}>2</p>`];
+		armed = true;
+		let threw = false;
+		try { render(); } catch (e) { threw = true; }
+		assert.eq(threw, true);
+		assert.eq(armed, false);
+
+		// 2. The text is shown when it is given again, and so are rows after it.
+		loading = true;
+		render();
+		assert.eq(el.textContent, between ? 'headLoadingtail' : 'Loading', 'between=' + between);
+		loading = false;
+		content = [row(3)];
+		render();
+		assert.eq(el.textContent, between ? 'head3tail' : '3', 'between=' + between);
+	}
+});
+
+Testimony.test('Solarite.map.throwingRowDroppedRowRenders', `When a row throws, the rows that are dropped may hold an element that renders the host from its disconnectedCallback.  What that render draws is the list from then on: the next render does not draw a second copy beside it.`, () => {
+	let gone = null;
+	class Leaving extends HTMLElement {
+		disconnectedCallback() {
+			if (gone)
+				gone();
+		}
+	}
+	customElements.define(uniqueTag(), Leaving);
+
+	for (let between of [true, false]) {
+		let el = document.createElement('div');
+		document.body.append(el);
+		let rows = [1, 2, 3], bad = false;
+		let row = id => h`<p key=${id} onclick=${bad && id === 9 ? 'not a function' : () => {}}>${id}</p>`;
+		let render = () => between
+			? h(el)`<div><b>head</b><hr>${rows.map(row)}<hr><i>tail</i></div>`
+			: h(el)`<div>${rows.map(row)}</div>`;
+		render();
+
+		// 1. Code outside the template puts such an element in the first row.  Row 9 then
+		// throws; the first row had been kept, and taking it out renders the host with rows
+		// that are valid.
+		el.querySelector('p').append(new Leaving());
+		gone = () => {
+			gone = null;
+			bad = false;
+			rows = [1, 7, 8];
+			render();
+		};
+		bad = true;
+		rows = [1, 9];
+		let threw = false;
+		try { render(); } catch (e) { threw = true; }
+		assert.eq(threw, true);
+		assert.eq(gone, null);
+
+		// 2. The same rows again are drawn once.
+		render();
+		assert.eq(el.textContent, between ? 'head178tail' : '178', 'between=' + between);
+		assert.eq(el.querySelectorAll('p').length, 3);
+		el.remove();
 	}
 });
 
@@ -3701,6 +5271,73 @@ Testimony.test('Solarite.loop.zeroExprReuse', `A pooled zero-expression, multi-r
 	a.remove();
 });
 
+Testimony.test('Solarite.loop.multiNodeRowsAfterRawNodes', `Rows of several nodes that were taken out while raw DOM nodes stood in their place come back whole when rows of their kind are drawn again, whether the list is then drawn beside a raw node or as plain rows.`, () => {
+	for (let besideNode of [true, false]) {
+		let el = document.createElement('div');
+		let node = document.createElement('u');
+		let row = id => h`<dt>${id}</dt>-<dd>${id}</dd>`;
+		let content = [1, 2, 3].map(row);
+		let render = () => h(el)`<dl><b>head</b>${content}<i>tail</i></dl>`;
+		render();
+		assert.eq(el.textContent, 'head1-12-23-3tail');
+
+		// 1. A raw node replaces the rows, which are kept for reuse.
+		content = [node];
+		render();
+		assert.eq(el.textContent, 'headtail');
+
+		// 2. Rows again: next to the node, or after plain text has stood there in between.
+		if (besideNode)
+			content = [node, row(4), row(5)];
+		else {
+			content = 'plain';
+			render();
+			assert.eq(el.textContent, 'headplaintail');
+			content = [4, 5].map(row);
+		}
+		render();
+		assert.eq(el.textContent, 'head4-45-5tail', 'besideNode=' + besideNode);
+		assert.eq(el.querySelectorAll('dt').length, 2);
+		assert.eq(el.querySelectorAll('dd').length, 2);
+	}
+});
+
+Testimony.test('Solarite.loop.throwingRowBesideRawNode', `A row that throws in a list that also holds a raw DOM node leaves the rows that were shown as the list.  The renders after it draw every row whole and in its place.`, () => {
+	for (let between of [true, false]) {
+		let el = document.createElement('div');
+		let node = document.createElement('u');
+		let bad = 0;
+		let row = id => h`<dt onclick=${id === bad ? 'not a function' : () => {}}>${id}</dt><dd>${id}</dd>`;
+		let content = [node, row(1), row(2), row(3)];
+		let render = () => between ? h(el)`<dl><b>head</b>${content}<i>tail</i></dl>` : h(el)`<dl>${content}</dl>`;
+		const text = ids => (between ? 'head' : '') + ids.map(id => '' + id + id).join('') + (between ? 'tail' : '');
+		render();
+		assert.eq(el.textContent, text([1, 2, 3]));
+
+		// 1. The second row throws while it is rewritten.  The three rows stay where they were.
+		bad = 2;
+		content = [node, row(1), row(2), row(3)];
+		let threw = false;
+		try { render(); } catch (e) { threw = true; }
+		assert.eq(threw, true);
+		assert.eq(el.textContent, text([1, 2, 3]), 'between=' + between);
+
+		// 2. The node alone, then rows again: none of them comes back in pieces.
+		bad = 0;
+		content = [node];
+		render();
+		assert.eq(el.textContent, text([]));
+		content = [node, row(5), row(6), row(7)];
+		render();
+		assert.eq(el.textContent, text([5, 6, 7]), 'between=' + between);
+		assert.eq(el.querySelectorAll('dd').length, 3);
+		content = [5, 6, 7, 8].map(row);
+		render();
+		assert.eq(el.textContent, text([5, 6, 7, 8]), 'between=' + between);
+		assert.eq(el.querySelectorAll('dt, dd').length, 8);
+	}
+});
+
 Testimony.test('Solarite.loop.rawNodeSwitch', `A raw DOM node shown by one of two templates is in place again each time the expression switches back to that template.`, () => {
 	const span = text => Object.assign(document.createElement('span'), {textContent: text});
 	let node = span('N'), other = span('O');
@@ -3741,6 +5378,277 @@ Testimony.test('Solarite.loop.rawNodeSwitch', `A raw DOM node shown by one of tw
 	show([other], '<span>O</span>');
 	show([p(b), other], '<p><span>B</span></p><span>O</span>');
 	show([p(a), p(b), other], '<p><span>A</span></p><p><span>B</span></p><span>O</span>');
+});
+
+Testimony.test('Solarite.loop.rawNodeMovesToAnotherPlace', `A raw DOM node that moves from one expression to another under the same parent element is shown in its new place.`, () => {
+	// The place that gives the node up can be written after the place that takes it, and its
+	// list of the nodes it drew last time still names the node then.  It used to remove the
+	// node from the parent, although the node stood in its new place already.
+	const clean = html => html.replace(/<!--.*?-->/g, '');
+	const html = v => [v].flat().map(item => item?.nodeType ? item.outerHTML || item.nodeValue : (item || '')).join('');
+	let node = document.createElement('hr'), other = document.createElement('b');
+
+	// 1. Between two expressions of one template, in both directions and drawn again unchanged:
+	// in an element, as children of the render root, and in a shadow root.
+	for (let where of ['element', 'root', 'shadow']) {
+		let el = document.createElement('div');
+		let root = where === 'shadow' ? el.attachShadow({mode: 'open'}) : el;
+		let render = (a, b) => where === 'root' ? h(root)`${a}|${b}` : h(root)`<div>${a}|${b}</div>`;
+		for (let [a, b] of [[node, 'x'], ['x', node], ['x', node], [node, 'x'], [node, 'x'], ['x', node], [null, null], [null, node], [node, null]]) {
+			render(a, b);
+			assert.eq(clean((where === 'root' ? root : root.firstElementChild).innerHTML), html(a) + '|' + html(b), where);
+		}
+	}
+
+	// 2. Through three places, and given by a function or inside an array.
+	let el = document.createElement('div');
+	for (let at of [0, 1, 2, 1, 0, 2, 0, 2, 2, 1]) {
+		let v = ['a', 'b', 'c'];
+		v[at] = node;
+		h(el)`<div>${v[0]}|${() => v[1]}|${[[v[2]]]}</div>`;
+		assert.eq(clean(el.firstElementChild.innerHTML), v.map(html).join('|'));
+	}
+
+	// 3. Between two lists, when the list that gives the node up has other nodes to remove,
+	// and when it becomes empty.
+	el = document.createElement('div');
+	let steps = [
+		[[other, node, h`<i>1</i>`], 'x', '<b></b><hr><i>1</i>|x'], [['y'], [node, 'x'], 'y|<hr>x'], [[node, other], null, '<hr><b></b>|'],
+		[[other], [h`<i>2</i>`, node], '<b></b>|<i>2</i><hr>'], [[other], [h`<i>2</i>`, node], '<b></b>|<i>2</i><hr>'],
+		[[node, other], [h`<i>2</i>`], '<hr><b></b>|<i>2</i>'], [[], [other, node], '|<b></b><hr>'], [[node], [other], '<hr>|<b></b>']
+	];
+	for (let [a, b, expected] of steps) {
+		h(el)`<div>${a}|${b}</div>`;
+		assert.eq(clean(el.firstElementChild.innerHTML), expected);
+	}
+
+	// 4. A text node, and several nodes changing sides at once, between siblings.
+	el = document.createElement('div');
+	let text = document.createTextNode('N'), bold = Object.assign(document.createElement('b'), {textContent: 'M'});
+	for (let [a, b] of [[[text, bold], []], [[bold], [text]], [[], [text, bold]], [[text], [bold]], [[bold, text], 'x'], ['x', [bold, text]], [bold, text], [text, bold]]) {
+		h(el)`<div><i>h</i>${a}<i>m</i>${b}<i>t</i></div>`;
+		assert.eq(clean(el.firstElementChild.innerHTML), '<i>h</i>' + html(a) + '<i>m</i>' + html(b) + '<i>t</i>');
+	}
+});
+
+Testimony.test('Solarite.loop.rawNodeMovesBetweenRows', `A raw DOM node that moves between rows which have no element of their own, or between such a row and an expression beside the list, is shown in its new place.`, () => {
+	// A row without an element of its own puts the nodes of its expressions among the nodes of
+	// the list, so the row, the list and every expression in them have one parent element.
+	const clean = el => el.firstElementChild.innerHTML.replace(/<!--.*?-->/g, '');
+	const html = v => v?.nodeType ? v.outerHTML : (v || '');
+	let node = document.createElement('hr'), other = document.createElement('b');
+
+	// 1. From row to row, in an array and in h.map(), with rows coming and going.
+	for (let mapped of [false, true]) {
+		let el = document.createElement('div');
+		const row = r => h`${r[0]}${r[1]}`;
+		let steps = [
+			[['p', 'q'], [node, 'r']], [[node, 'r'], ['p', 'q']], [['p', 'q'], [node, 'r']], [['p', node], ['s', 'r']], [['p', 'q'], ['s', node]],
+			[[node, 'q'], ['s', 't']], [['u', 'q'], ['s', 't'], [node, 'w']], [['u', node]], [['u', 'v'], [node, 'w']], [[node, 'w']], [], [['p', node], ['s', 'r']]
+		];
+		for (let rows of steps) {
+			h(el)`<div>${mapped ? h.map(rows, row) : rows.map(row)}</div>`;
+			assert.eq(clean(el), rows.map(r => html(r[0]) + html(r[1])).join(''), 'mapped=' + mapped);
+		}
+	}
+
+	// 2. Between a row and an expression beside the list.  With a raw node of its own, the list
+	// is drawn by the route that reads each row's nodes from a list the row keeps, which named
+	// the node after it had left; a row removed in the same render then took the node with it.
+	for (let withRaw of [false, true]) {
+		let el = document.createElement('div');
+		const row = v => h`<i>r</i>${v}`;
+		let steps = [[[node], 'x'], [['q'], node], [[node], 'x'], [[], node], [[node], null], [['a', node], 'x'], [['a'], node], [['a', 'b'], node], [[node, 'b'], null], [[], null], [[], node]];
+		for (let [rows, side] of steps) {
+			h(el)`<div>${withRaw ? [other, rows.map(row)] : rows.map(row)}|${side}</div>`;
+			assert.eq(clean(el), (withRaw ? '<b></b>' : '') + rows.map(v => '<i>r</i>' + html(v)).join('') + '|' + html(side), 'withRaw=' + withRaw);
+		}
+	}
+
+	// 3. Between the rows of two lists that are themselves rows of a list.
+	let el = document.createElement('div');
+	const inner = v => h`${v}.`;
+	const outer = group => h`[${group.map(inner)}]`;
+	for (let groups of [[['a', node], ['c', 'd']], [['a', 'b'], ['c', node]], [['a', 'b'], [node, 'd']], [[node, 'b'], ['c', 'd']], [['a', 'b'], ['c', 'd'], [node]], [['a', node]], [[node], ['e']], [['e'], [node]]]) {
+		h(el)`<div>${groups.map(outer)}</div>`;
+		assert.eq(clean(el), groups.map(group => '[' + group.map(v => html(v) + '.').join('') + ']').join(''));
+	}
+
+	// 4. A template of several root nodes beside an expression, inside a component.
+	class RawNodeMoves extends Solarite {
+		inside = node;
+		beside = 'x';
+		render() {
+			h(this)`<raw-node-moves>${h`<i>1</i>${this.inside}<u>2</u>`}|${this.beside}</raw-node-moves>`;
+		}
+	}
+	RawNodeMoves.define('raw-node-moves');
+	let component = new RawNodeMoves();
+	for (let [inside, beside] of [[node, 'x'], ['t', node], ['t', node], [node, 'x'], [null, node], [node, null]]) {
+		Object.assign(component, {inside, beside});
+		component.render();
+		assert.eq(component.innerHTML.replace(/<!--.*?-->/g, ''), '<i>1</i>' + html(inside) + '<u>2</u>|' + html(beside));
+	}
+});
+
+Testimony.test('Solarite.loop.rawNodeMovesWhenRenderFails', `A raw DOM node still moves to the place it is given to when the render that first moved it threw, or started inside another render.`, () => {
+	const clean = el => el.firstElementChild.innerHTML.replace(/<!--.*?-->/g, '');
+	let node = document.createElement('hr');
+	let bad = false;
+	const row = () => h`<p onclick=${bad ? 'not a function' : () => {}}>r</p>`;
+	const throws = fn => {
+		try { fn(); } catch (e) { return true; }
+		return false;
+	};
+
+	// 1. The place that takes the node throws after it was given the node, before anything moved.
+	let el = document.createElement('div');
+	let render = (a, b) => h(el)`<div>${a}|${b}</div>`;
+	render(node, 'x');
+	bad = true;
+	assert.eq(throws(() => render('x', [node, row()])), true);
+	bad = false;
+	render('x', [node, row()]);
+	assert.eq(clean(el), 'x|<hr><p>r</p>');
+	render(node, [row()]);
+	assert.eq(clean(el), '<hr>|<p>r</p>');
+	bad = true;
+	assert.eq(throws(() => render('y', [node, row(), row()])), true);
+	bad = false;
+	render(node, 'z');
+	assert.eq(clean(el), '<hr>|z');
+	render('z', node);
+	assert.eq(clean(el), 'z|<hr>');
+
+	// 2. The place that gives the node up throws while it is rewritten.
+	el = document.createElement('div');
+	render([node, row()], 'x');
+	bad = true;
+	assert.eq(throws(() => render([row(), row()], node)), true);
+	bad = false;
+	render([row()], node);
+	assert.eq(clean(el), '<p>r</p>|<hr>');
+	render([node, row()], 'x');
+	assert.eq(clean(el), '<hr><p>r</p>|x');
+
+	// 3. A function in the second expression renders the host with the node moved, and the
+	// render it interrupted then puts the node back where it had it.
+	el = document.createElement('div');
+	let state = {a: node, b: 'x'}, armed = false;
+	render = () => h(el)`<div>${state.a}|${() => {
+		if (armed) {
+			armed = false;
+			let outer = state;
+			state = {a: 'q', b: node};
+			render();
+			state = outer;
+		}
+		return state.b;
+	}}</div>`;
+	render();
+	armed = true;
+	render();
+	assert.eq(clean(el), '<hr>|x');
+	state = {a: 'y', b: node};
+	render();
+	assert.eq(clean(el), 'y|<hr>');
+});
+
+Testimony.test('Solarite.loop.rawNodeGivenTwice', `A raw DOM node that one render gives to two places is shown in the place written last, and in the place that is given it alone afterward.`, () => {
+	// A node can stand in one place only.  Expressions of one template are written from the
+	// last to the first, so of two that are given the same node the first one holds it.
+	const clean = el => el.firstElementChild.innerHTML.replace(/<!--.*?-->/g, '');
+	const html = v => v?.nodeType ? v.outerHTML : (v || '');
+	let node = document.createElement('hr'), other = document.createElement('b');
+
+	// 1. Two expressions: both, then either alone, in every order.
+	let el = document.createElement('div');
+	let steps = [
+		[node, node], [node, node], ['x', node], [node, node], [node, 'x'], [node, node], ['x', node], ['x', node], [node, node], [null, null],
+		[node, node], ['x', node], [node, 'x'], [node, node], [node, 'x']
+	];
+	for (let [a, b] of steps) {
+		h(el)`<div>${a}|${b}</div>`;
+		assert.eq(clean(el), a === node && b === node ? '<hr>|' : html(a) + '|' + html(b));
+	}
+
+	// 2. Twice in one array: the first position holds it.
+	el = document.createElement('div');
+	for (let [items, expected] of [[[node, node], '<hr>'], [[node, other, node], '<hr><b></b>'], [[other, node], '<b></b><hr>'], [[node, other, node], '<hr><b></b>'], [[], ''], [[other, node, node], '<b></b><hr>']]) {
+		h(el)`<div><i>h</i>${items}<i>t</i></div>`;
+		assert.eq(clean(el), '<i>h</i>' + expected + '<i>t</i>');
+	}
+
+	// 3. Two rows.  Rows are written from the first to the last, so the last row holds it.
+	// Known limit: a row whose values did not change is not written again, so the first row
+	// does not take the node back when the last one lets go of it, until its own values change.
+	el = document.createElement('div');
+	let render = (a, b) => h(el)`<div>${[a, b].map(v => h`<p>${v}</p>`)}</div>`;
+	render(node, node);
+	assert.eq(clean(el), '<p></p><p><hr></p>');
+	render(node, 'x');
+	assert.eq(clean(el), '<p></p><p>x</p>');
+	render('y', 'x');
+	render(node, 'x');
+	assert.eq(clean(el), '<p><hr></p><p>x</p>');
+	render(node, node);
+	assert.eq(clean(el), '<p></p><p><hr></p>');
+	render('y', node);
+	assert.eq(clean(el), '<p>y</p><p><hr></p>');
+
+	// 4. A list item and a row of the same list.  The list places its own items after its rows
+	// are built, so the item holds the node.  The row takes it when it is given it alone, in a
+	// render that writes all of the row's expressions again because another of them changed.
+	el = document.createElement('div');
+	const titled = (title, v) => h`<p title="${title} ${title}">${v}</p>`;
+	steps = [
+		[[node, titled('a', 'v')], '<hr><p title="a a">v</p>'], [[node, titled('a', node)], '<hr><p title="a a"></p>'],
+		[['x', titled('b', node)], 'x<p title="b b"><hr></p>'], [[node, titled('c', node)], '<hr><p title="c c"></p>'],
+		[[titled('d', node)], '<p title="d d"><hr></p>']
+	];
+	for (let [items, expected] of steps) {
+		h(el)`<div>${items}</div>`;
+		assert.eq(clean(el), expected);
+	}
+});
+
+Testimony.test('Solarite.loop.rawNodesFuzz', `Raw DOM nodes that are each given to one place per render are shown where they are given, through random moves between expressions, a child element, and rows that have no element of their own.`, () => {
+	const clean = el => el.firstElementChild.innerHTML.replace(/<!--.*?-->/g, '');
+	const html = v => [v].flat().map(item => item?.nodeType ? item.outerHTML : (item || '')).join('');
+	const row = r => h`${r.a}-${r.b}`;
+	for (let mapped of [false, true])
+		for (let start of [11, 12345, 987654]) {
+
+			// The deterministic generator Solarite.map.fuzz uses, which explains its two details.
+			let seed = start;
+			const rnd = n => {
+				seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff;
+				return (seed >>> 8) % n;
+			};
+			let el = document.createElement('div');
+			let nodes = ['A', 'B', 'C', 'D'].map(text => Object.assign(document.createElement('i'), {textContent: text}));
+			for (let step=0; step<150; step++) {
+
+				// Each node goes to one of seven places or to none: either expression of one
+				// of two rows, the expression beside the list, the one inside the <p>, or the
+				// last one.  A place with several nodes gets an array, sometimes with text.
+				let rows = Array.from({length: 1 + rnd(2)}, () => ({a: [], b: []}));
+				let places = [...rows.flatMap(r => [r.a, r.b]), [], [], []];
+				for (let node of nodes) {
+					let at = rnd(8);
+					if (at < places.length)
+						places[at].push(node);
+				}
+				let [side, inside, last] = places.slice(-3).map(place => place.length === 0 ? (rnd(2) ? 'x' : null) : place.length === 1 && rnd(2) ? place[0] : (rnd(2) ? place : [...place, 'y']));
+				for (let r of rows) {
+					r.a = r.a.length ? r.a : 'x';
+					r.b = r.b.length === 1 ? r.b[0] : r.b;
+				}
+				h(el)`<div>${mapped ? h.map(rows, row) : rows.map(row)}|${side}|<p>${inside}</p>|${last}</div>`;
+				assert.eq(clean(el), rows.map(r => html(r.a) + '-' + html(r.b)).join('') + '|' + html(side) + '|<p>' + html(inside) + '</p>|' + html(last),
+					'mapped ' + mapped + ' seed ' + start + ' step ' + step);
+			}
+		}
 });
 
 Testimony.test('Solarite.loop.rawNodeListReusesDroppedRows', `Rows dropped from a list that holds a raw node are kept, and come back as the same elements`, () => {
@@ -4149,7 +6057,6 @@ Testimony.test('Solarite.loop.conditionalNested', () => {
 
 
 Testimony.test('Solarite.loop.tripleNested', 'Triple nested grid', () => {
-	Globals.reset();
 
 	class R250 extends Solarite {
 		rows = [[[0]]];
@@ -4393,6 +6300,44 @@ Testimony.test('Solarite.keyed.multiRoot', `Keyed templates with multiple root n
 	assert.eq(el.children[1], dd2);
 
 	el.remove();
+});
+
+Testimony.test('Solarite.keyed.multiRootRemoved', `Keyed rows of several root nodes that leave a list are taken out whole, each with all of its nodes, whether a few rows go or all of them are replaced, and the rows that stay keep their elements.`, () => {
+	for (let mapped of [true, false]) {
+		let el = document.createElement('div');
+		let rows = [1, 2, 3, 4, 5, 6].map(id => ({id}));
+		let row = r => h`<dt key=${r.id}>${r.id}</dt>-<dd>${r.id}</dd>`;
+		// The list has two neighbours on each side, so it is never emptied by clearing its parent.
+		let render = () => h(el)`<dl><b>head</b><hr>${mapped ? h.map(rows, row) : rows.map(row)}<hr><i>tail</i></dl>`;
+		const text = () => 'head' + rows.map(r => r.id + '-' + r.id).join('') + 'tail';
+		render();
+		assert.eq(el.textContent, text());
+		let dts = [...el.querySelectorAll('dt')], dds = [...el.querySelectorAll('dd')];
+
+		// 1. Rows 2, 3 and 5 go, in two places.
+		rows = [rows[0], rows[3], rows[5]];
+		render();
+		assert.eq(el.textContent, text(), 'mapped=' + mapped);
+		assert.eq([...el.querySelectorAll('dt')], [dts[0], dts[3], dts[5]]);
+		assert.eq([...el.querySelectorAll('dd')], [dds[0], dds[3], dds[5]]);
+		for (let i of [1, 2, 4])
+			assert.eq(el.contains(dts[i]) || el.contains(dds[i]), false);
+
+		// 2. Rows move while others go and new ones arrive.
+		rows = [rows[2], {id: 7}, rows[0]];
+		render();
+		assert.eq(el.textContent, text(), 'mapped=' + mapped);
+		assert.eq(el.querySelectorAll('dt')[0], dts[5]);
+		assert.eq(el.querySelectorAll('dd')[2], dds[0]);
+		assert.eq(el.contains(dts[3]) || el.contains(dds[3]), false);
+
+		// 3. Every row is replaced by rows with other keys.
+		rows = [{id: 8}, {id: 9}];
+		render();
+		assert.eq(el.textContent, text(), 'mapped=' + mapped);
+		assert.eq(el.querySelectorAll('dt, dd').length, 4);
+		assert.eq(el.contains(dts[0]) || el.contains(dds[5]), false);
+	}
 });
 
 Testimony.test('Solarite.keyed.component', `Keys work on component rows and aren't passed as args.`, () => {
@@ -5822,6 +7767,132 @@ Testimony.test('Solarite.delegation.closedShadowRows', `List rows inside a close
 	outer.remove();
 });
 
+Testimony.test('Solarite.delegation.shadowRootTarget', `Handlers of a template rendered straight into a shadow root fire, open or closed, with or without delegation: on the template's own elements and on the rows of a list, for a real click, for a synthetic event that never leaves the shadow root and for one that doesn't bubble.`, () => {
+	for (let mode of ['open', 'closed'])
+		for (let opt of [true, false]) {
+			let log = [];
+			let host = attachedDiv();
+			let root = host.attachShadow({mode});
+			let render = (label, rows) => h(root, {eventDelegation: opt})`<div onclick=${() => log.push('div')}>
+				<button onclick=${() => log.push(label)} onfocus=${() => log.push('focus')} native:onmousedown=${() => log.push('down')}>x</button>
+				${h.map(rows, row => h`<p key=${row.id}><a onclick=${[x => log.push('a' + x.id), row]}>x</a></p>`)}</div>`;
+			let rows = [{id: 1}, {id: 2}];
+			render('one', rows);
+			let button = root.querySelector('button'), as = root.querySelectorAll('a');
+			let said = (expected, what) => {
+				assert.eq(log.join(), expected, `${mode}, eventDelegation=${opt}, ${what}`);
+				log.length = 0;
+			};
+
+			// click() is composed and reaches the document, which can't see into a closed shadow root.
+			button.click();
+			said('one,div', 'click()');
+			as[1].click();
+			said('a2,div', 'click() on a row');
+
+			// composed defaults to false, so these stop at the shadow root, and the dispatcher
+			// registered on the shadow root itself is the only one that sees them.
+			button.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+			said('one,div', 'not composed');
+			as[0].dispatchEvent(new MouseEvent('click', {bubbles: true}));
+			said('a1,div', 'not composed, on a row');
+			button.dispatchEvent(new MouseEvent('click'));
+			said('one', 'not bubbling');
+
+			// Events that are bound when the template renders.
+			button.dispatchEvent(new FocusEvent('focus'));
+			button.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+			said('focus,down', 'bound at render');
+
+			// A second render through the same shadow root replaces the handlers and reorders the rows.
+			render('two', [rows[1], rows[0], {id: 3}]);
+			assert.eq(root.querySelector('button'), button);
+			button.click();
+			for (let a of root.querySelectorAll('a'))
+				a.click();
+			said('two,div,a2,div,a1,div,a3,div', 'second render');
+
+			host.remove();
+		}
+});
+
+Testimony.test('Solarite.delegation.standaloneFragment', `Delegated handlers of a standalone template with several root nodes run once its nodes are in the page: on its root elements, below them, and on the rows of a list at its top level.  Such a template is cloned in the inert document of a template element, and registering the dispatcher on that document left its handlers unreachable unless something else in the page had bound the same event type.`, () => {
+	// contextmenu and mouseover are delegated event types that no other test binds, so nothing
+	// else has registered their dispatchers on the page's document.
+	let log = [];
+	let items = [{id: 1}, {id: 2}];
+	let fragment = h()`<button oncontextmenu=${() => log.push('a')}>a</button><p><button oncontextmenu=${() => log.push('b')}>b</button></p>${
+		h.map(items, item => h`<i key=${item.id} onmouseover=${[x => log.push('row' + x.id), item]}>${item.id}</i>`)}`;
+	assert(fragment instanceof DocumentFragment);
+	let host = attachedDiv();
+	host.append(fragment);
+	let [a, b] = host.querySelectorAll('button');
+	b.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true}));
+	a.dispatchEvent(new MouseEvent('contextmenu')); // One that doesn't bubble.
+	host.querySelectorAll('i')[1].dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
+	assert.eq(log.join(), 'b,a,row2');
+
+	// A delegated handler still runs after a listener its element already had.
+	a.addEventListener('contextmenu', () => log.push('own'));
+	a.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true}));
+	assert.eq(log.join(), 'b,a,row2,own,a');
+	host.remove();
+});
+
+Testimony.test('Solarite.delegation.standaloneReparented', `An element moved out of the one root element of a standalone template keeps its delegated handler, as one moved out of a component does.  The root element listens for itself, but the document that listened for what leaves it was the inert one the template was cloned in.`, () => {
+	// pointerup is bound by no other test; see standaloneFragment.
+	let count = 0;
+	let el = h()`<div><button onpointerup=${() => count++}>x</button></div>`;
+	let host = attachedDiv();
+	host.append(el);
+	let button = el.firstChild;
+	button.dispatchEvent(new Event('pointerup', {bubbles: true}));
+	host.append(button); // Now a sibling of its root instead of a descendant.
+	button.dispatchEvent(new Event('pointerup', {bubbles: true}));
+	assert.eq(count, 2);
+	host.remove();
+});
+
+Testimony.test('Solarite.delegation.standaloneFragmentUnseen', `Known limit: a standalone template with several root nodes has no root element to listen on, so its delegated handlers run only where the page's document can see the event.  In a detached element, or inside a closed shadow root, they don't; a native: handler does, and so does the handler of a standalone template with one root element.`, () => {
+	for (let where of ['detached', 'closed']) {
+		let log = [];
+		let several = h()`<button onmouseout=${() => log.push('delegated')} native:onmouseout=${() => log.push('native')}>a</button><i>i</i>`;
+		let one = h()`<button onmouseout=${() => log.push('one')}>a</button>`;
+		let host = document.createElement('div');
+		let parent = host;
+		if (where === 'closed') {
+			document.body.append(host);
+			parent = host.attachShadow({mode: 'closed'});
+		}
+		parent.append(several, one);
+		for (let button of parent.querySelectorAll('button'))
+			button.dispatchEvent(new MouseEvent('mouseout', {bubbles: true, composed: true}));
+		assert.eq(log.join(), 'native,one', where);
+		host.remove();
+	}
+});
+
+Testimony.test('Solarite.delegation.standaloneTopLevelExpression', `Delegated handlers of a standalone template with an expression at its top level run once its nodes are in the page: on an element beside the expression, and on the rows of a list that is the expression.  Such a template gives a DocumentFragment, so it is the page's document that listens, as for a template with several root nodes, and the same limit holds: in an element that isn't in the page, or in a closed shadow root, only the native: handler runs.  The rows used to be dropped, and the element came back alone as the root, listening for itself.`, () => {
+	for (let where of ['page', 'detached', 'closed']) {
+		let log = [];
+		let items = [{id: 1}, {id: 2}];
+		let fragment = h()`<button onpointerover=${() => log.push('button')} native:onpointerover=${() => log.push('native')}>a</button>${
+			h.map(items, item => h`<i key=${item.id} onpointerover=${[x => log.push('row' + x.id), item]}>${item.id}</i>`)}`;
+		assert(fragment instanceof DocumentFragment);
+		let host = document.createElement('div');
+		let parent = host;
+		if (where !== 'detached')
+			document.body.append(host);
+		if (where === 'closed')
+			parent = host.attachShadow({mode: 'closed'});
+		parent.append(fragment);
+		for (let el of parent.querySelectorAll('button, i'))
+			el.dispatchEvent(new MouseEvent('pointerover', {bubbles: true, composed: true}));
+		assert.eq(log.join(), where === 'page' ? 'native,button,row1,row2' : 'native', where);
+		host.remove();
+	}
+});
+
 Testimony.test('Solarite.delegation.redispatchSameTarget', `One Event object dispatched twice on the same element runs the handler twice, in the document, in a detached root and inside a shadow root.`, () => {
 	for (let where of ['document', 'detached', 'shadow'])
 		for (let opt of [true, false]) {
@@ -6800,6 +8871,29 @@ Testimony.test('Solarite.embed.styleHostSplit', () => {
 	a.remove();
 });
 
+Testimony.test('Solarite.embed.styleLessThan', `A < in a style's text opens no tag, so the expressions after it in the style are written and the style applies.`, () => {
+	let color = 'rgb(0, 0, 128)';
+
+	class R329 extends Solarite {
+		render() {
+			h(this)`<style>/* <b> isn't html */ @media (1px<width) { :host { color: ${color} } }</style>Text that should be navy.`;
+		}
+	}
+
+	let a = new R329();
+	a.render();
+	document.body.append(a);
+
+	assert.eq(a.querySelector('style').textContent, `/* <b> isn't html */ @media (1px<width) { r-329[data-style="1"] { color: rgb(0, 0, 128) } }`);
+	assert.eq(getComputedStyle(a).color, 'rgb(0, 0, 128)');
+
+	color = 'rgb(128, 0, 0)';
+	a.render();
+	assert.eq(getComputedStyle(a).color, 'rgb(128, 0, 0)');
+
+	a.remove();
+});
+
 Testimony.test('Solarite.embed.svg', () => {
 	class R330 extends Solarite {
 		render() {
@@ -6883,6 +8977,26 @@ Testimony.test('Solarite.embed.scriptStatic', () => {
 	assert.eq(window.scriptStaticCount, 1);
 
 	delete window.scriptStaticCount;
+});
+
+Testimony.test('Solarite.embed.scriptLessThan', `A < in a script's text opens no tag: the script runs, once, and the expressions after it find their places.`, () => {
+	window.scriptLessThanCount = 0;
+	let el = document.createElement('div');
+	let render = value => h(el)`<script>for (let i=0, n=2; i<n; i++) window.scriptLessThanCount++; // isn't html</script><p title="${value}">${value}</p>`;
+	render(1);
+	assert.eq(window.scriptLessThanCount, 2);
+	render(2);
+	assert.eq(window.scriptLessThanCount, 2);
+	assert.eq(el.lastChild.outerHTML, '<p title="2">2</p>');
+	delete window.scriptLessThanCount;
+
+	// An expression in the script's own text, after the '<'.
+	let data = document.createElement('div');
+	let renderData = value => h(data, {scripts: false})`<script type="text/plain">if (a<b) c(${value})</script>`;
+	renderData(1);
+	assert.eq(data.firstChild.textContent, 'if (a<b) c(1)');
+	renderData(2);
+	assert.eq(data.firstChild.textContent, 'if (a<b) c(2)');
 });
 
 // This feature is disabled because it doesn't seem useful.
@@ -7093,6 +9207,27 @@ Testimony.test('Solarite.attrib.duplicate', 'Warn on duplicate attributes', () =
 		errorMessage = e.message;	}
 
 	assert(errorMessage.includes('duplicate attrib'));
+});
+
+Testimony.test('Solarite.attrib.quoteInUnquotedValue', `An attribute value written without quotes may hold an apostrophe or a quote, as it may in any html file.  The expressions after it, in the same value or anywhere later, still find their places.`, () => {
+	let el = document.createElement('div');
+	let render = value => h(el)`<p title=don't data-x=a"b>${value}</p><a href=/s?q=it's&n=${value} class=x>${value}</a>`;
+	render(1);
+	assert.eq(getHtml(el), `<div><p title="don't" data-x="a&quot;b">1</p><a href="/s?q=it's&amp;n=1" class="x">1</a></div>`);
+	render(2);
+	assert.eq(getHtml(el), `<div><p title="don't" data-x="a&quot;b">2</p><a href="/s?q=it's&amp;n=2" class="x">2</a></div>`);
+
+	// In the rows of a keyed list, reordered.
+	let list = document.createElement('ul');
+	let renderList = ids => h(list)`${ids.map(id => h`<li key=${id} title=it's>${id}</li>`)}`;
+	renderList([1, 2]);
+	let first = list.firstElementChild;
+	renderList([2, 1]);
+	assert.eq(getHtml(list), `<ul><li title="it's">2</li><li title="it's">1</li></ul>`);
+	assert.eq(list.lastElementChild, first);
+
+	// A quote inside what the browser makes a comment of: <!...> and a '</' that no letter follows.
+	assert.eq(getHtml(toEl(h`<div><!x don't><p>${1}</p></ isn't><i>${2}</i></div>`)), '<div><p>1</p><i>2</i></div>');
 });
 
 Testimony.test('Solarite.attrib.sparse', () => {
@@ -7683,6 +9818,104 @@ Testimony.test('Solarite.comments.two', () => {
 	assert.eq(getHtml(a), `<a-482><div>3</div></a-482>`)
 	a.remove();
 });
+
+Testimony.test('Solarite.comments.punctuation', `An html comment may hold apostrophes, quotes and >, as it may in any html file.  The expressions after it and the ones commented out inside it still find their places.`, () => {
+	let el = document.createElement('div');
+	let render = value => h(el)`
+		<!-- Don't show this to guests -->
+		<p title=${value}>${value}</p>
+		<!-- when a > b, "quoted" ${value} or 'not' -->
+		<i class="a ${value}">${value}</i>`;
+	render(1);
+	assert.eq(getHtml(el), '<div><p title="1">1</p><i class="a 1">1</i></div>');
+	render(2);
+	assert.eq(getHtml(el), '<div><p title="2">2</p><i class="a 2">2</i></div>');
+
+	// A block of html that was commented out, with the quoted attributes and the expressions it had.
+	let block = document.createElement('div');
+	let renderBlock = (a, b) => h(block)`<b>${a}</b><!-- <a href="${a}" title='it's'>${b}</a> > --><u>${b}</u>`;
+	renderBlock(1, 2);
+	assert.eq(getHtml(block), '<div><b>1</b><u>2</u></div>');
+	renderBlock(3, 4);
+	assert.eq(getHtml(block), '<div><b>3</b><u>4</u></div>');
+
+	// The comment is kept as it was written, with a mark where its expression was.
+	let kept = toEl(h`<div><!-- it's ${1} > 0 -->${2}</div>`);
+	assert.eq(kept.firstChild.nodeValue.replace(/[\ue000-\uf8ff]/, '?'), ` it's ? > 0 `);
+	assert.eq(kept.textContent, '2');
+
+	// A conditional comment, a comment ended by --!>, and one that is never closed.
+	assert.eq(getHtml(toEl(h`<div><!--[if IE]><p>${1}</p><![endif]--><p>${2}</p></div>`)), '<div><p>2</p></div>');
+	assert.eq(toEl(h`<div><!-- don't --!><p title="${1}">${2}</p></div>`).lastChild.outerHTML, '<p title="1">2</p>');
+	assert.eq(toEl(h`<div><p>${1}</p><!-- isn't closed <i>${2}</i></div>`).firstChild.outerHTML, '<p>1</p>');
+
+	// Between the rows of a table, where the parser allows a comment and no text.
+	let table = toEl(h`<table><tbody><!-- can't "skip" > --><tr><td>${1}</td></tr><!-- ${2}'s row --><tr><td>${3}</td></tr></tbody></table>`);
+	assert.eq(getHtml(table), '<table><tbody><tr><td>1</td></tr><tr><td>3</td></tr></tbody></table>');
+
+	// In svg.
+	let chart = toEl(h`<svg>${svg`<!-- the circle's r > 0 --><circle r=${5}></circle>`}</svg>`);
+	assert.eq(chart.firstElementChild.getAttribute('r'), '5');
+});
+
+Testimony.test('Solarite.comments.inRows', `A comment that holds an apostrophe, a quote or > does not break the rows of a list, a component's template, or the render after one that threw.`, () => {
+
+	// Keyed rows, reordered.  The row's elements are kept.
+	let list = document.createElement('ul');
+	let renderList = ids => h(list)`${ids.map(id => h`<li key=${id}><!-- the row's "id" > 0 --><a href=${'#' + id}>${id}</a></li>`)}`;
+	renderList([1, 2]);
+	let first = list.firstElementChild;
+	assert.eq(getHtml(list), '<ul><li><a href="#1">1</a></li><li><a href="#2">2</a></li></ul>');
+	renderList([2, 1]);
+	assert.eq(getHtml(list), '<ul><li><a href="#2">2</a></li><li><a href="#1">1</a></li></ul>');
+	assert.eq(list.lastElementChild, first);
+
+	// Rows of an h.map() without keys, with an expression inside the comment, updated in place.
+	let mapped = document.createElement('ul');
+	let renderMapped = items => h(mapped)`${h.map(items, item => h`<li><!-- can't show ${item.id} --><b>${item.text}</b></li>`)}`;
+	let a = {id: 1, text: 'a'};
+	renderMapped([a, {id: 2, text: 'b'}]);
+	assert.eq(getHtml(mapped), '<ul><li><b>a</b></li><li><b>b</b></li></ul>');
+	renderMapped([{id: 3, text: 'c'}, a]);
+	assert.eq(getHtml(mapped), '<ul><li><b>c</b></li><li><b>a</b></li></ul>');
+
+	// A component with a slot, declared inside another template and rendered twice.
+	class C484 extends Solarite {
+		constructor(attribs={}) {
+			super(attribs);
+		}
+		render(attribs={}) {
+			h(this)`<c-484><!-- it's "the" label > ${attribs.label} --><b>${attribs.label}</b><slot></slot></c-484>`;
+		}
+	}
+	C484.define();
+	let host = document.createElement('div');
+	let renderHost = label => h(host)`<!-- the parent's --><c-484 label=${label}><i>child</i></c-484>`;
+	renderHost('x');
+	assert.eq(getHtml(host), '<div><c-484 label="x"><b>x</b><slot><i>child</i></slot></c-484></div>');
+	renderHost('y');
+	assert.eq(getHtml(host), '<div><c-484 label="y"><b>y</b><slot><i>child</i></slot></c-484></div>');
+
+	// A template that throws for another reason leaves nothing behind: the same comment renders afterward.
+	let error;
+	try {
+		toEl(h`<!-- it's --><p a=${1} a=${2}></p>`);
+	}
+	catch (e) {
+		error = e;
+	}
+	assert(error.message.includes('duplicate attribute'));
+	assert.eq(toEl(h`<!-- it's --><p a=${1}>${2}</p>`).outerHTML, '<p a="1">2</p>');
+
+	// A render that starts another render of a template with such a comment, from inside an expression.
+	let inner = document.createElement('div'), outer = document.createElement('div');
+	h(outer)`<!-- outer's --><p>${() => {
+		h(inner)`<!-- inner's > --><i>${1}</i>`;
+		return 2;
+	}}</p>`;
+	assert.eq(getHtml(inner), '<div><i>1</i></div>');
+	assert.eq(getHtml(outer), '<div><p>2</p></div>');
+});
 //endregion
 
 
@@ -7728,6 +9961,139 @@ Testimony.test('Solarite.toEl.fragment', () => {
 	let fragment = toEl(`Hello <button>hi</button>`);
 	assert(fragment instanceof DocumentFragment);
 	assert.eq(getHtml(fragment), `Hello |<button>hi</button>`)
+});
+
+Testimony.test('Solarite.toEl.topLevelExpression', `A template with an expression at its top level, beside its nodes rather than inside one of them, gives a DocumentFragment holding all of its top-level nodes in order, with what the expression drew among them.  It used to give the one node beside the expression alone and drop what the expression drew: Total: \${n} gave the text "Total: ", and a heading followed by a list gave the heading.  A template whose top level is one element or one component, with only white space or comments around it, still gives that element or component.`, () => {
+	// What a result shows once it is appended somewhere, without the comments that mark where
+	// the expressions are.
+	let shown = node => {
+		let div = document.createElement('div');
+		div.append(node);
+		return div.innerHTML.replace(/<!--.*?-->/g, '');
+	};
+	let rows = () => [1, 2].map(i => h`<p>${i}</p>`);
+
+	// 1. Every such shape gives a DocumentFragment, which shows everything once it is appended.
+	for (let [result, html] of [
+		[toEl(h`Total: ${5}`), 'Total: 5'],
+		[toEl(h`${5} items`), '5 items'],
+		[toEl(h`<h1>Fruit</h1>${rows()}`), '<h1>Fruit</h1><p>1</p><p>2</p>'],
+		[toEl(h` ${'x'} <b>y</b> `), ' x <b>y</b> '],
+		[toEl(h`<tr><th>h</th></tr>${[1].map(i => h`<tr><td>${i}</td></tr>`)}`), '<tr><th>h</th></tr><tr><td>1</td></tr>'],
+		[toEl(svg`<circle r="1"></circle>${svg`<g></g>`}`), '<circle r="1"></circle><g></g>'],
+		[toEl(jsxTemplate(['<h1>Fruit</h1>', ''], jsxEscape(rows()))), '<h1>Fruit</h1><p>1</p><p>2</p>'], // Precompiled <><h1>Fruit</h1>{rows}</>
+
+		// The template decides, not the value: one that draws nothing this time is a fragment too.
+		[toEl(h`<b>x</b>${false}`), '<b>x</b>'],
+
+		// These were fragments already.
+		[toEl(h`${'x'}`), 'x'],
+		[toEl(h`<h2>List</h2><ul>${rows()}</ul>`), '<h2>List</h2><ul><p>1</p><p>2</p></ul>']
+	]) {
+		assert(result instanceof DocumentFragment, html);
+		assert.eq(shown(result), html);
+	}
+
+	// 2. A component beside an expression comes in the fragment too, constructed.
+	class TopLevelComponent extends Solarite {
+		constructor({a} = {}) {
+			super();
+			this.a = a;
+		}
+		render() {
+			h(this)`<b>${this.a}</b>`;
+		}
+	}
+	customElements.define('top-level-component', TopLevelComponent);
+	let withComponent = toEl(h`<top-level-component a=${1}></top-level-component>${'beside'}`);
+	assert(withComponent.firstChild instanceof TopLevelComponent);
+	assert.eq(shown(withComponent), '<top-level-component a="1"><b>1</b></top-level-component>beside');
+
+	// 3. One element, with white space and comments around it, is still given alone, also when one
+	// of those comments holds an expression that was commented out, and so is one component.  An
+	// expression inside the element or in a <style> is not at the top level.
+	let one = h()`
+		<!-- a comment -->
+		<b title=${'t'}>${'x'}</b>
+		<!-- ${'commented out'} -->`;
+	assert(one instanceof HTMLElement);
+	assert.eq(getHtml(one), '<b title="t">x</b>');
+	assert(toEl(h`<div>Total: ${5}</div>`) instanceof HTMLDivElement);
+	assert(toEl(h`<style>b { color: ${'red'} }</style>`) instanceof HTMLStyleElement);
+	assert(toEl(h` <top-level-component a=${2}></top-level-component> `) instanceof TopLevelComponent);
+});
+
+Testimony.test('Solarite.toEl.topLevelList', `The rows of a list at the top level of a standalone template come back in its fragment, beside the template's other nodes, keyed or not and made by h.map() or not.  Rendering the template again through what it returned, as the render() of an object given to toEl() does, updates the rows where they were put.  An empty list leaves only the comment that marks where its rows go.`, () => {
+	for (let mode of ['keyed', 'unkeyed', 'map', 'mapKeyed']) {
+		let keyed = mode === 'keyed' || mode === 'mapKeyed';
+		let list = toEl({
+			items: [{id: 1}, {id: 2}],
+			render() {
+				let row = keyed ? item => h`<p key=${item.id}>${item.id}</p>` : item => h`<p>${item.id}</p>`;
+				h(this)`<h1>Fruit</h1>${mode.startsWith('map') ? h.map(this.items, row) : this.items.map(row)}`;
+			}
+		});
+		assert(list instanceof DocumentFragment, mode);
+		assert.eq(getHtml(list), '<h1>Fruit</h1>|<p>1</p>|<p>2</p>', mode);
+
+		// Appended between two nodes of the page, then reordered, emptied and filled again.
+		let host = attachedDiv();
+		host.append('[', list, ']');
+		let second = host.querySelectorAll('p')[1];
+		list.items = [list.items[1], list.items[0], {id: 3}];
+		list.render();
+		assert.eq(getHtml(host), '<div>[<h1>Fruit</h1><p>2</p><p>1</p><p>3</p>]</div>', mode);
+		if (keyed)
+			assert.eq(host.querySelector('p'), second, mode);
+		list.items = [];
+		list.render();
+		assert.eq(getHtml(host), '<div>[<h1>Fruit</h1>]</div>', mode);
+		list.items = [{id: 4}];
+		list.render();
+		assert.eq(getHtml(host), '<div>[<h1>Fruit</h1><p>4</p>]</div>', mode);
+		host.remove();
+	}
+
+	// An empty list: beside the heading the fragment holds the comment its rows go before.  Alone,
+	// it holds that comment and the one they go after.
+	assert.eq(getHtml(h()`<h1>t</h1>${[]}`, true), '<h1>t</h1>|<!--PathEnd:0-->');
+	assert.eq(getHtml(h()`${h.map([], item => h`<p>${item}</p>`)}`, true), '<!--Path:0-->|<!--PathEnd:0-->');
+});
+
+Testimony.test('Solarite.toEl.fragmentUpdate', `A standalone template that gives a DocumentFragment is updated by rendering the same template into that fragment again, while its nodes are still in it and after they were appended somewhere.  Appending them empties the fragment, and the update reaches them where they are: in the page, in a shadow root, or in an element that is not in the page.`, () => {
+	// 1. h(fragment, template), before and after the nodes are appended.
+	let total = n => h`Total: ${n}`;
+	let fragment = toEl(total(5));
+	h(fragment, total(6));
+	let host = attachedDiv();
+	host.append(fragment);
+	assert.eq(fragment.childNodes.length, 0);
+	h(fragment, total(7));
+	assert.eq(getHtml(host), '<div>Total: 7</div>');
+	host.remove();
+
+	// 2. An object given to toEl() renders itself again from its own method.
+	for (let where of ['page', 'open', 'closed', 'detached']) {
+		let counter = toEl({
+			count: 1,
+			add() {
+				this.count++;
+				this.render();
+			},
+			render() {
+				h(this)`Count: ${this.count}`;
+			}
+		});
+		let el = document.createElement('div');
+		let parent = where === 'open' || where === 'closed' ? el.attachShadow({mode: where}) : el;
+		if (where !== 'detached')
+			document.body.append(el);
+		parent.append(counter);
+		counter.add();
+		counter.add();
+		assert.eq(parent.textContent, 'Count: 3', where);
+		el.remove();
+	}
 });
 
 Testimony.test('Solarite.toEl.standalone1', () => {
@@ -7944,6 +10310,150 @@ Testimony.test('Solarite.toEl.standaloneChild', () => {
 	list.remove();
 });
 
+Testimony.test('Solarite.toEl.component', `A template whose only node is a component gives the component itself, constructed with its attribute expressions and given the children declared inside its tag, exactly as when it has a sibling beside it or a wrapper around it.  It used to give the placeholder element that stands for a component until it is constructed, named to-el-component-solarite-placeholder, and to construct nothing.`, () => {
+	let constructed = [];
+	class ToElComponent extends Solarite {
+		constructor({count = 0} = {}) {
+			super();
+			this.count = count;
+			constructed.push(count);
+		}
+		add() {
+			this.count++;
+			this.render();
+		}
+		render() {
+			h(this)`<button onclick=${this.add}>${this.count}</button><slot></slot>`;
+		}
+	}
+	customElements.define('to-el-component', ToElComponent);
+
+	// 1. toEl(), with an attribute expression, a static attribute and a child that has an expression.
+	let a = toEl(h`<to-el-component count=${1} title="t"><i>${'kid'}</i></to-el-component>`);
+	assert(a instanceof ToElComponent);
+	assert.eq(getHtml(a), '<to-el-component title="t" count="1"><button>1</button><slot><i>kid</i></slot></to-el-component>');
+
+	// 2. h(), with whitespace and a comment around the tag, and with no expressions at all.
+	let b = h()`
+		<!-- comment -->
+		<to-el-component count=${2}></to-el-component>
+	`;
+	assert(b instanceof ToElComponent);
+	let c = h()`<to-el-component></to-el-component>`;
+	assert(c instanceof ToElComponent);
+	assert.eq(constructed.join(), '1,2,0');
+
+	// 3. It is a working component: its own handler renders it again, in the page.
+	document.body.append(a);
+	a.firstChild.click();
+	assert.eq(getHtml(a), '<to-el-component title="t" count="1"><button>2</button><slot><i>kid</i></slot></to-el-component>');
+	a.remove();
+
+	// 4. Events written on the component's own tag are bound to the component.
+	let log = [];
+	let d = toEl(h`<to-el-component native:onkeyup=${() => log.push('keyup')} onfocus=${() => log.push('focus')}></to-el-component>`);
+	d.dispatchEvent(new KeyboardEvent('keyup'));
+	d.dispatchEvent(new FocusEvent('focus'));
+	assert.eq(log.join(), 'keyup,focus');
+
+	// 5. A customized built-in, written with is="...".
+	class ToElParagraph extends HTMLParagraphElement {
+		constructor({text} = {}) {
+			super();
+			this.text = text;
+		}
+		render() {
+			h(this)`<b>${this.text}</b>`;
+		}
+	}
+	customElements.define('to-el-paragraph', ToElParagraph, {extends: 'p'});
+	let p = toEl(h`<p is="to-el-paragraph" text=${'hi'}></p>`);
+	assert(p instanceof ToElParagraph);
+	assert.eq(getHtml(p), '<p is="to-el-paragraph" text="hi"><b>hi</b></p>');
+
+	// 6. With a sibling it comes in a fragment, and inside a wrapper in the wrapper, as before.
+	let fragment = toEl(h`<to-el-component count=${3}></to-el-component><hr>`);
+	assert(fragment instanceof DocumentFragment);
+	assert(fragment.firstChild instanceof ToElComponent);
+	let div = toEl(h`<div><to-el-component count=${4}></to-el-component></div>`);
+	assert(div.firstChild instanceof ToElComponent);
+	assert.eq(constructed.join(), '1,2,0,0,3,4');
+});
+
+Testimony.test('Solarite.toEl.componentDelegated', `A delegated handler written on the tag of a component that is a template's only node runs once the component is in the page.  The template's root is the fragment the component is made in, so this is the page's document listening for a standalone template, and the component being constructed at all.`, () => {
+	class ToElDelegated extends Solarite {
+		render() {
+			h(this)`<button>x</button>`;
+		}
+	}
+	customElements.define('to-el-delegated', ToElDelegated);
+
+	// pointerdown is bound by no other test; see Solarite.delegation.standaloneFragment.
+	let log = [];
+	let el = toEl(h`<to-el-delegated onpointerdown=${(ev, node) => log.push(node.tagName)}></to-el-delegated>`);
+	let host = document.createElement('div');
+	document.body.append(host);
+	host.append(el);
+	el.firstChild.dispatchEvent(new Event('pointerdown', {bubbles: true}));
+	assert.eq(log.join(), 'TO-EL-DELEGATED');
+	host.remove();
+});
+
+Testimony.test('Solarite.toEl.componentThrows', `A component that is a template's only node and whose constructor throws lets the error through and leaves nothing behind for the next one: neither the children that were on their way to its slot nor a half-made root.`, () => {
+	class ToElThrows extends Solarite {
+		constructor({fail} = {}) {
+			super();
+			if (fail)
+				throw new Error('constructor failed');
+		}
+		render() {
+			h(this)`<b>ok</b><slot></slot>`;
+		}
+	}
+	customElements.define('to-el-throws', ToElThrows);
+	let error;
+	try {
+		toEl(h`<to-el-throws fail=${true}><i>lost</i></to-el-throws>`);
+	}
+	catch (e) {
+		error = e;
+	}
+	assert.eq(error?.message, 'constructor failed');
+	assert.eq(Globals.currentSlotChildren, null);
+	let good = toEl(h`<to-el-throws fail=${false}></to-el-throws>`);
+	assert.eq(getHtml(good), '<to-el-throws><b>ok</b><slot></slot></to-el-throws>');
+});
+
+Testimony.test('Solarite.toEl.componentDefinedLater', `A template whose only node is a component that isn't defined yet gives the placeholder, as it does for one nested deeper, and the component is built in the placeholder's place when customElements.define() is called.`, async () => {
+	let warn = console.warn;
+	console.warn = (...args) => {
+		if (!(args[0] + '').includes('<to-el-late'))
+			warn(...args);
+	};
+	try {
+		let el = toEl(h`<to-el-late name=${'one'}><i>kid</i></to-el-late>`);
+		let host = document.createElement('div');
+		host.append(el);
+		assert.eq(host.querySelector('to-el-late'), null);
+
+		customElements.define('to-el-late', class extends HTMLElement {
+			constructor(attribs) {
+				super();
+				this.name = attribs?.name;
+			}
+			render() {
+				h(this)`<b>${this.name}</b><slot></slot>`;
+			}
+		});
+		await customElements.whenDefined('to-el-late');
+		await Promise.resolve();
+		assert.eq(getHtml(host), '<div><to-el-late name="one"><b>one</b><slot><i>kid</i></slot></to-el-late></div>');
+	}
+	finally {
+		console.warn = warn;
+	}
+});
+
 //endregion
 
 
@@ -7956,6 +10466,22 @@ Testimony.test('Solarite.h.fragment2', () => {
 	let fragment = h()`Hello <button>hi</button>`;
 	assert(fragment instanceof DocumentFragment);
 	assert.eq(getHtml(fragment), `Hello |<button>hi</button>`)
+});
+
+Testimony.test('Solarite.h.topLevelExpression', `h()\`...\` gives a DocumentFragment for a template with an expression at its top level, and appending it shows everything the template draws.  Total: \${n} used to give only the text "Total: ", and a heading followed by a list only the heading.  One element is still given as that element.`, () => {
+	let n = 5;
+	let rows = () => [1, 2].map(i => h`<li>${i}</li>`);
+	let a = h()`<div>Total: ${n}</div>`;
+	let b = h()`Total: ${n}`;
+	let c = h()`<h2>List</h2><ul>${rows()}</ul>`;
+	let d = h()`<h1>Fruit</h1>${rows()}`;
+	assert(a instanceof HTMLDivElement);
+	for (let result of [b, c, d])
+		assert(result instanceof DocumentFragment);
+	let host = attachedDiv();
+	host.append(a, '|', b, '|', c, '|', d);
+	assert.eq(getHtml(host), '<div><div>Total: 5</div>|Total: 5|<h2>List</h2><ul><li>1</li><li>2</li></ul>|<h1>Fruit</h1><li>1</li><li>2</li></div>');
+	host.remove();
 });
 
 Testimony.test('Solarite.h.staticElement3', () => {
@@ -7978,6 +10504,139 @@ Testimony.test('Solarite.h.element', () => {
 
 	assert.eq(getHtml(button), `<button>I'm a <b>better</b> button</button>`)
 })
+
+Testimony.test('Solarite.h.fragmentRoot', `A template renders into a DocumentFragment or a shadow root as it does into an element, whether it has one root element or several: its nodes become children of the fragment, and a second render updates them in place.`, () => {
+	for (let makeRoot of [
+		() => document.createDocumentFragment(),
+		() => document.createElement('div').attachShadow({mode: 'open'}),
+		() => document.createElement('div').attachShadow({mode: 'closed'})
+	]) {
+		// 1. One root element.  A fragment has no tag for that element to be matched against.
+		let root = makeRoot();
+		let render = value => h(root)`<p title=${value}>${value}</p>`;
+		render('a');
+		let p = root.firstChild;
+		assert.eq(getHtml(root), '<p title="a">a</p>');
+		render('b');
+		assert.eq(getHtml(root), '<p title="b">b</p>');
+		assert.eq(root.firstChild, p);
+
+		// 2. The same through h(root, template), and for a template with no expressions.
+		root = makeRoot();
+		h(root, h`<p>${1}</p>`);
+		assert.eq(getHtml(root), '<p>1</p>');
+		root = makeRoot();
+		h(root)`<p>x</p>`;
+		assert.eq(getHtml(root), '<p>x</p>');
+
+		// 3. A keyed list inside the one root.
+		root = makeRoot();
+		let renderList = ids => h(root)`<ul>${ids.map(id => h`<li key=${id}>${id}</li>`)}</ul>`;
+		renderList([1, 2]);
+		let first = root.firstChild.firstElementChild;
+		renderList([2, 1, 3]);
+		assert.eq(getHtml(root), '<ul><li>2</li><li>1</li><li>3</li></ul>');
+		assert.eq(root.firstChild.children[1], first);
+
+		// 4. Several root nodes, and text.
+		root = makeRoot();
+		let renderTwo = value => h(root)`<b>${value}</b> and <i>${value}</i>`;
+		renderTwo(1);
+		renderTwo(2);
+		assert.eq(getHtml(root), '<b>2</b>| and |<i>2</i>');
+
+		// 5. What the fragment held before is kept after the template's nodes, as in an element.
+		root = makeRoot();
+		root.append(document.createElement('hr'));
+		h(root)`<p>${1}</p>`;
+		assert.eq(getHtml(root), '<p>1</p>|<hr>');
+	}
+
+	// 6. A custom element's own tag as the one root is merged into that element when the template
+	// is rendered into it, and is an ordinary child when rendered into a fragment.
+	class FragmentRootChild extends Solarite {
+		render() {
+			h(this)`<fragment-root-child><em>mine</em></fragment-root-child>`;
+		}
+	}
+	customElements.define('fragment-root-child', FragmentRootChild);
+	let root = document.createDocumentFragment();
+	h(root)`<fragment-root-child title="t"></fragment-root-child>`;
+	assert.eq(getHtml(root), '<fragment-root-child title="t"><em>mine</em></fragment-root-child>');
+});
+
+Testimony.test('Solarite.h.shadowHost', `An element that has a shadow root of its own is rendered into like any other element, whether the shadow root is open or closed.  With an open one every render used to empty the element first: the second render left it blank for good, and what it held before its first render was thrown away instead of being kept as slot content.`, () => {
+	for (let mode of ['open', 'closed']) {
+		// 1. Rendered three times.  What the element held before stays, after the template's nodes.
+		let el = document.createElement('div');
+		el.attachShadow({mode}).innerHTML = '<slot></slot>';
+		el.append(document.createElement('hr'));
+		let render = value => h(el)`<p>${value}</p>`;
+		render(1);
+		let p = el.firstChild;
+		assert.eq(getHtml(el), '<div><p>1</p><hr></div>', mode);
+		render(2);
+		render(3);
+		assert.eq(getHtml(el), '<div><p>3</p><hr></div>', mode);
+		assert.eq(el.firstChild, p);
+
+		// 2. A keyed list with a handler: the rows keep their elements and their handlers.
+		let log = [];
+		el = attachedDiv();
+		el.attachShadow({mode}).innerHTML = '<slot></slot>';
+		let renderList = ids => h(el)`<ul>${ids.map(id => h`<li key=${id} onclick=${() => log.push(id)}>${id}</li>`)}</ul>`;
+		renderList([1, 2]);
+		let first = el.firstChild.firstChild;
+		renderList([2, 1, 3]);
+		assert.eq(getHtml(el), '<div><ul><li>2</li><li>1</li><li>3</li></ul></div>', mode);
+		assert.eq(el.firstChild.children[1], first);
+		first.click();
+		assert.eq(log.join(), '1', mode);
+		el.remove();
+	}
+});
+
+Testimony.test('Solarite.h.shadowHostComponent', `A component that has an open shadow root holding a slot, and renders its own content with h(this), keeps that content when it renders again: from its own click handler, and when the template it is declared in renders again.  The children declared inside its tag go to the slot of its template.`, () => {
+	class ShadowHostCounter extends Solarite {
+		count = 0;
+		constructor({label = ''} = {}) {
+			super();
+			this.label = label;
+			this.attachShadow({mode: 'open'}).innerHTML = '<slot></slot>';
+		}
+		add() {
+			this.count++;
+			this.render();
+		}
+		render(attribs) {
+			if (attribs?.label)
+				this.label = attribs.label;
+			h(this)`<button onclick=${this.add}>${this.label}${this.count}</button><slot></slot>`;
+		}
+	}
+	customElements.define('shadow-host-counter', ShadowHostCounter);
+
+	// 1. On its own, in the page, clicked twice.
+	let counter = new ShadowHostCounter({label: 'n'});
+	document.body.append(counter);
+	let button = counter.firstChild;
+	button.click();
+	button.click();
+	assert.eq(getHtml(counter), '<shadow-host-counter><button>n2</button><slot></slot></shadow-host-counter>');
+	assert.eq(counter.firstChild, button);
+	counter.remove();
+
+	// 2. Declared in a parent template with a child, and the parent rendered twice.
+	let parent = attachedDiv();
+	let render = label => h(parent)`<section><shadow-host-counter label=${label}><b>kid</b></shadow-host-counter></section>`;
+	render('a');
+	counter = parent.firstChild.firstChild;
+	counter.firstChild.click();
+	render('b');
+	assert.eq(getHtml(parent), '<div><section><shadow-host-counter label="b"><button>b1</button><slot><b>kid</b></slot></shadow-host-counter></section></div>');
+	assert.eq(parent.firstChild.firstChild, counter);
+	parent.remove();
+});
 
 Testimony.test('Solarite.h.otherArgs', `What h() makes of an argument that is no template, string, function or element`, () => {
 	// 1. Nothing to render gives an empty template.
@@ -8034,6 +10693,39 @@ Testimony.test('Solarite.component.tr', () => {
 	assert.eq(table.outerHTML, `<table><tr is="tr-510"><td>hello</td></tr></table>`)
 
 	table.remove();
+});
+
+Testimony.test('Solarite.component.arrayAttribWithEmptyItem', `An array of an object and an empty value reaches a child component as that array`, () => {
+	// An attribute value of [object, 'name'] is a two-way binding path, which a component
+	// receives as the value at that path.  [object, null] is not one, since null names nothing,
+	// so the child gets the array itself.
+	let got = [];
+	class ArrayAttribChild extends Solarite {
+		constructor(attribs) {
+			super();
+			got.push(attribs.items);
+		}
+		render() {
+			h(this)`<array-attrib-child>x</array-attrib-child>`;
+		}
+	}
+	ArrayAttribChild.define('array-attrib-child');
+
+	let first = {a: 1, list: ['x']};
+	const give = items => {
+		h(document.createElement('div'))`<div><array-attrib-child items=${items}></array-attrib-child></div>`;
+		return got.pop();
+	};
+	for (let empty of [null, undefined, false]) {
+		let items = [first, empty];
+		assert(give(items) === items);
+		items = [first, 'a', empty];
+		assert(give(items) === items);
+	}
+
+	// A path is still followed.
+	assert.eq(give([first, 'a']), 1);
+	assert.eq(give([first, 'list', 0]), 'x');
 });
 
 Testimony.test('Solarite.component.attribsFromDOM', () => {
@@ -8557,6 +11249,115 @@ Testimony.test('Solarite.component.attribsFromObjectOrString', `Whole attributes
 	assert.eq(constructed.length, 6);
 });
 
+Testimony.test('Solarite.component.dashedAttribs', `A component's element carries each attribute once, under the name the template gives it, and render() receives the same arguments on every render.  An attribute with a dash in its name used to get a second copy without the dash, which kept its first value and came back as one more argument.`, () => {
+	let calls = [];
+	class B526 extends HTMLElement {
+		constructor(attribs) {
+			super();
+			calls.push(JSON.stringify(attribs));
+		}
+		render(attribs) {
+			calls.push(JSON.stringify(attribs));
+		}
+	}
+	customElements.define('b-526', B526);
+	let names = el => el.getAttributeNames().sort().map(name => `${name}=${el.getAttribute(name)}`).join(' ');
+
+	// 1. Attributes written in the template, with and without expressions.
+	let el = document.createElement('div');
+	let render = size => h(el)`<div><b-526 data-foo="1" plain="p" max-size=${size} aria-label="x ${size}" tab-index=${0}></b-526></div>`;
+	render(3);
+	let b = el.querySelector('b-526');
+	assert.eq(names(b), `aria-label=x 3 data-foo=1 max-size=3 plain=p tab-index=0`);
+	assert.eq(calls[0], `{"dataFoo":"1","plain":"p","ariaLabel":"x 3","tabIndex":0,"maxSize":3}`);
+	assert.eq(calls[1], calls[0]);
+
+	// A twin named tabindex made the component focusable.
+	assert.eq(b.tabIndex, -1);
+
+	render(4);
+	assert.eq(names(b), `aria-label=x 4 data-foo=1 max-size=4 plain=p tab-index=0`);
+	assert.eq(calls[2], `{"dataFoo":"1","plain":"p","ariaLabel":"x 4","tabIndex":0,"maxSize":4}`);
+	assert.eq(calls.length, 3);
+
+	// 2. Whole attributes, as an object and as a string.  The ones a render leaves out are gone.
+	calls = [];
+	el = document.createElement('div');
+	render = attribs => h(el)`<div><b-526 ${attribs}></b-526></div>`;
+	render({'max-size': 3, 'data-k': 'a'});
+	b = el.querySelector('b-526');
+	assert.eq(names(b), `data-k=a max-size=3`);
+	render({'max-size': 4});
+	assert.eq(names(b), `max-size=4`);
+	render(`max-size=5 data-k="b"`);
+	assert.eq(names(b), `data-k=b max-size=5`);
+	assert.eq(calls.join(), `{"maxSize":3,"dataK":"a"},{"maxSize":3,"dataK":"a"},{"maxSize":4},{"maxSize":"5","dataK":"b"}`);
+
+	// 3. Rows of a list, built for one item and rewritten for another.
+	calls = [];
+	el = document.createElement('div');
+	render = ids => h(el)`<div>${ids.map(id => h`<b-526 row-id=${id}></b-526>`)}</div>`;
+	render([1, 2]);
+	render([5, 6]);
+	assert.eq([...el.querySelectorAll('b-526')].map(names).join(), `row-id=5,row-id=6`);
+	assert.eq(calls.slice(4).join(), `{"rowId":5},{"rowId":6}`);
+
+	// 4. The example of the documentation: every render passes the same arguments.
+	calls = [];
+	let item = {name: 'English'};
+	el = document.createElement('div');
+	render = size => h(el)`<div><b-526 item=${item} font-size=${size} data-id="item"></b-526></div>`;
+	render(15);
+	render(16);
+	assert.eq(names(el.querySelector('b-526')), `data-id=item font-size=16`);
+	assert.eq(calls.join(), `{"dataId":"item","fontSize":15,"item":{"name":"English"}},{"dataId":"item","fontSize":15,"item":{"name":"English"}},{"dataId":"item","fontSize":16,"item":{"name":"English"}}`);
+});
+
+Testimony.test('Solarite.component.boundAttrib', `A two-way binding on a component reaches it as the constructor argument, the render() argument and the property of that name, each holding the value of the latest render.  It used to leave an attribute behind as well, which kept the first value for good, so a component that read its attributes with assignAttributes() on every render was handed the first value again each time.`, () => {
+	let seen = [];
+	class B528 extends HTMLElement {
+		value = 'unset';
+		constructor(attribs) {
+			super();
+			seen.push('new ' + attribs.value);
+		}
+		render(attribs) {
+			assignAttributes(this);
+			seen.push(`render ${attribs.value} ${this.value}`);
+		}
+		connectedCallback() {
+			seen.push(`connected ${this.value} ${this.getAttribute('value')}`);
+		}
+	}
+	customElements.define('b-528', B528);
+
+	let model = {name: 'a'};
+	let el = document.createElement('div');
+	document.body.append(el);
+	let render = () => h(el)`<div><b-528 value=${[model, 'name']} max-size=${3}></b-528></div>`;
+	render();
+	let b = el.querySelector('b-528');
+
+	// The first render() runs before the binding is applied, so the property is still the
+	// component's own there; the argument has the value.
+	assert.eq(seen.join(), `new a,render a unset,connected a null`);
+	assert.eq(b.getAttributeNames().join(), 'max-size');
+
+	// Later renders write the property before they call render().  The stale attribute had
+	// assignAttributes() put the first value back over it.
+	model.name = 'b';
+	render();
+	assert.eq(seen[3], `render b b`);
+	assert.eq(b.value, 'b');
+	assert.eq(b.getAttributeNames().join(), 'max-size');
+
+	// The component's own change travels back.
+	b.value = 'c';
+	b.dispatchEvent(new Event('input', {bubbles: true}));
+	assert.eq(model.name, 'c');
+	el.remove();
+});
+
 Testimony.test('Solarite.component.definedLater', `A component whose tag isn't defined yet is built when customElements.define() is called, from the expressions of the latest render.  One warning is logged however many renders happen meanwhile, and a render that runs straight after the define builds it at once, and only once.`, async () => {
 	let warnings = 0;
 	let warn = console.warn;
@@ -8616,6 +11417,65 @@ Testimony.test('Solarite.component.definedLater', `A component whose tag isn't d
 	finally {
 		console.warn = warn;
 	}
+});
+
+Testimony.test('Solarite.component.definedLaterIs', `A customized built-in (is="...") whose class isn't defined yet is built when customElements.define() is called, the same as a component with a tag of its own: once, from the expressions of the latest render, with the children declared inside it in its slot.`, async () => {
+	// console.warn is left alone, unlike in definedLater: async tests run interleaved, and two
+	// of them swapping console.warn would each put back the other's replacement.
+	let constructed = [];
+	const define = (tag, Base) => customElements.define(tag, class extends Base {
+		constructor(attribs) {
+			super();
+			constructed.push(tag + ':' + attribs?.name);
+		}
+		render(attribs) {
+			h(this)`<b>${attribs?.name}</b><slot></slot>`;
+		}
+	}, {extends: Base === HTMLLIElement ? 'li' : 'p'});
+
+	// 1. Rendered twice before it is defined.
+	let el = document.createElement('div');
+	let render = name => h(el)`<div><p is="late-is-a" name=${name}><i>kid</i></p></div>`;
+	render('one');
+	render('two');
+	assert.eq(constructed.length, 0);
+	define('late-is-a', HTMLParagraphElement);
+	await customElements.whenDefined('late-is-a');
+	await Promise.resolve();
+	assert.eq(constructed.join(), 'late-is-a:two');
+	assert.eq(getHtml(el), `<div><div><p is="late-is-a" name="two"><b>two</b><slot><i>kid</i></slot></p></div></div>`);
+
+	// It renders the usual way from then on.
+	render('three');
+	assert.eq(constructed.length, 1);
+	assert.eq(getHtml(el), `<div><div><p is="late-is-a" name="three"><b>three</b><slot><i>kid</i></slot></p></div></div>`);
+
+	// 2. Rendered again straight after the define, before the wait is over: built once.
+	let el2 = document.createElement('div');
+	let render2 = name => h(el2)`<div><p is="late-is-b" name=${name}></p></div>`;
+	render2('one');
+	define('late-is-b', HTMLParagraphElement);
+	render2('two');
+	assert.eq(constructed.join(), 'late-is-a:two,late-is-b:two');
+	await customElements.whenDefined('late-is-b');
+	await Promise.resolve();
+	assert.eq(constructed.join(), 'late-is-a:two,late-is-b:two');
+	assert.eq(getHtml(el2), `<div><div><p is="late-is-b" name="two"><b>two</b><slot></slot></p></div></div>`);
+
+	// 3. Rows of a keyed list.  Each row is built in place and stays the element of its key.
+	let el3 = document.createElement('ul');
+	let items = [{id: 1, name: 'a'}, {id: 2, name: 'b'}, {id: 3, name: 'c'}];
+	let render3 = () => h(el3)`<ul>${h.map(items, item => h`<li is="late-is-c" key=${item.id} name=${item.name}></li>`)}</ul>`;
+	render3();
+	define('late-is-c', HTMLLIElement);
+	await customElements.whenDefined('late-is-c');
+	await Promise.resolve();
+	let rows = [...el3.querySelectorAll('li')];
+	assert.eq(rows.map(row => row.getAttribute('is') + ':' + row.textContent).join(), 'late-is-c:a,late-is-c:b,late-is-c:c');
+	items = [items[2], items[0]];
+	render3();
+	assert.eq([...el3.querySelectorAll('li')].map(row => rows.indexOf(row)).join(), '2,0');
+	assert.eq(constructed.length, 5);
 });
 
 Testimony.test('Solarite.component.nested', () => {
@@ -9322,6 +12182,1157 @@ Testimony.test('Solarite.slots.slotless', `Add children even when no slots prese
 	div.remove();
 });
 
+Testimony.test('Solarite.slots.elementWithoutRender', `A custom element that doesn't render through Solarite keeps the children declared inside its tag, and they go on being updated.  They used to be left in the placeholder the element replaces, so the element came out empty.`, () => {
+
+	// 1. No render() at all, as with an element from another library.
+	class S31 extends HTMLElement {}
+	customElements.define('s-31', S31);
+
+	let clicks = 0;
+	let div = document.createElement('div');
+	document.body.append(div);
+	let render = (text, items) => h(div)`<div><s-31 title=${text}><b>${text}</b> and <button onclick=${() => clicks++}>go</button>${items.map(item => h`<p>${item}</p>`)}</s-31></div>`;
+	render('one', [1, 2]);
+	assert.eq(getHtml(div), `<div><div><s-31 title="one"><b>one</b> and <button>go</button><p>1</p><p>2</p></s-31></div></div>`);
+	div.querySelector('button').click();
+	assert.eq(clicks, 1);
+
+	let s31 = div.querySelector('s-31');
+	let p2 = div.querySelectorAll('p')[1];
+	render('two', [2, 3, 1]);
+	assert.eq(getHtml(div), `<div><div><s-31 title="two"><b>two</b> and <button>go</button><p>2</p><p>3</p><p>1</p></s-31></div></div>`);
+	assert.eq(div.querySelector('s-31'), s31);
+	assert.eq(div.querySelectorAll('p')[1], p2); // Rows are rewritten in place, not drawn again.
+	render('two', []);
+	assert.eq(getHtml(div), `<div><div><s-31 title="two"><b>two</b> and <button>go</button></s-31></div></div>`);
+	div.remove();
+
+	// 2. A shadow root with a <slot> of its own shows them, as it would for children in plain html.
+	class S32 extends HTMLElement {
+		constructor() {
+			super();
+			this.attachShadow({mode: 'open'}).innerHTML = `<i><slot></slot></i>`;
+		}
+	}
+	customElements.define('s-32', S32);
+	div = document.createElement('div');
+	document.body.append(div);
+	render = items => h(div)`<div><s-32><b>${items.length}</b>${h.map(items, item => h`<p key=${item.id}>${item.id}</p>`)}</s-32></div>`;
+	let a = {id: 'a'}, b = {id: 'b'}, c = {id: 'c'};
+	render([a, b]);
+	assert.eq(getHtml(div), `<div><div><s-32><b>2</b><p>a</p><p>b</p></s-32></div></div>`);
+	let slot = div.querySelector('s-32').shadowRoot.querySelector('slot');
+	assert.eq(slot.assignedNodes().filter(node => node.nodeType === 1).map(node => node.textContent).join(), '2,a,b');
+	let pa = div.querySelector('p');
+	render([c, b, a]);
+	assert.eq(getHtml(div), `<div><div><s-32><b>3</b><p>c</p><p>b</p><p>a</p></s-32></div></div>`);
+	assert.eq(div.querySelectorAll('p')[2], pa);
+	assert.eq(slot.assignedNodes().filter(node => node.nodeType === 1).map(node => node.textContent).join(), '3,c,b,a');
+	div.remove();
+
+	// 3. Components declared among the children are kept with them, each with its own children.
+	class S33 extends Solarite {
+		render() {
+			h(this)`<s-33><u><slot></slot></u></s-33>`;
+		}
+	}
+	S33.define('s-33');
+	div = document.createElement('div');
+	h(div)`<div><s-31><s-31><em>${'a'}</em></s-31><s-33>${'b'}</s-33></s-31></div>`;
+	assert.eq(getHtml(div), `<div><div><s-31><s-31><em>a</em></s-31><s-33><u><slot>b</slot></u></s-33></s-31></div></div>`);
+
+	// 4. A render() that adds content of its own, without Solarite: the children come after
+	// it, as they do in a Solarite component that has no slot.
+	class S34 extends HTMLElement {
+		render() {
+			if (!this.firstChild)
+				this.append(document.createElement('hr'));
+		}
+	}
+	customElements.define('s-34', S34);
+	div = document.createElement('div');
+	render = text => h(div)`<div><s-34><b>${text}</b></s-34></div>`;
+	render('one');
+	assert.eq(getHtml(div), `<div><div><s-34><hr><b>one</b></s-34></div></div>`);
+	render('two');
+	assert.eq(getHtml(div), `<div><div><s-34><hr><b>two</b></s-34></div></div>`);
+
+	// 5. A customized built-in: a <select> needs its options before it can be given its value.
+	class S3h extends HTMLSelectElement {}
+	customElements.define('s-3h', S3h, {extends: 'select'});
+	div = document.createElement('div');
+	render = value => h(div)`<div><select is="s-3h" value=${value}><option value="a">A</option>${['b', 'c'].map(v => h`<option value=${v}>${v}</option>`)}</select></div>`;
+	render('c');
+	let select = div.querySelector('select');
+	assert(select instanceof S3h);
+	assert.eq(select.options.length, 3);
+	assert.eq(select.value, 'c');
+	render('b');
+	assert.eq(select.value, 'b');
+});
+
+Testimony.test('Solarite.slots.renderedLater', `A component whose first render through Solarite comes after it was created still gets the children declared inside its tag, in its slot.`, () => {
+
+	// 1. render() does nothing until the component is ready.
+	class S36 extends Solarite {
+		ready = false;
+		render() {
+			if (this.ready)
+				h(this)`<s-36><u><slot></slot></u></s-36>`;
+		}
+	}
+	S36.define('s-36');
+
+	let div = document.createElement('div');
+	let render = (text, items) => h(div)`<div><s-36><b>${text}</b>${items.map(item => h`<p key=${item}>${item}</p>`)}</s-36></div>`;
+	render('one', [1, 2]);
+	assert.eq(getHtml(div), `<div><div><s-36><b>one</b><p>1</p><p>2</p></s-36></div></div>`);
+
+	let s36 = div.querySelector('s-36');
+	let p1 = div.querySelector('p');
+	s36.ready = true;
+	s36.render();
+	assert.eq(getHtml(div), `<div><div><s-36><u><slot><b>one</b><p>1</p><p>2</p></slot></u></s-36></div></div>`);
+	render('two', [2, 3, 1]);
+	assert.eq(getHtml(div), `<div><div><s-36><u><slot><b>two</b><p>2</p><p>3</p><p>1</p></slot></u></s-36></div></div>`);
+	assert.eq(div.querySelectorAll('p')[2], p1); // The rows moved into the slot are the ones updated.
+
+	// 2. A class that renders only when it is connected, inside a parent that isn't connected yet.
+	class S37 extends HTMLElement {
+		connectedCallback() {
+			h(this)`<s-37><u><slot></slot></u></s-37>`;
+		}
+	}
+	customElements.define('s-37', S37);
+
+	div = document.createElement('div');
+	render = text => h(div)`<div><s-37><b>${text}</b></s-37></div>`;
+	render('one');
+	document.body.append(div);
+	assert.eq(getHtml(div), `<div><div><s-37><u><slot><b>one</b></slot></u></s-37></div></div>`);
+	render('two');
+	assert.eq(getHtml(div), `<div><div><s-37><u><slot><b>two</b></slot></u></s-37></div></div>`);
+
+	div.remove();
+});
+
+/**
+ * The message render() throws when a custom element that doesn't render through Solarite has
+ * taken apart the nodes an expression drew inside its tag.
+ * @param tag {string} The element's tag name.
+ * @return {string} */
+const elementChanged = tag => `Solarite: <${tag}> changed the nodes \${...} drew inside it; wrap the \${...} in an element it leaves alone.`;
+
+/**
+ * The message of the error fn throws, or null when it throws nothing.
+ * @param fn {function()}
+ * @return {?string} */
+function thrownBy(fn) {
+	try {
+		fn();
+	}
+	catch (e) {
+		return e.message;
+	}
+	return null;
+}
+
+Testimony.test('Solarite.slots.elementDiscardsChildren', `An element that replaces its own content throws away the children it was given.  The next render throws an error that names the element, and so does every render after it.  Nothing is removed, drawn again or put back, and the expressions written after the element still get their values.`, () => {
+
+	// 1. The content is replaced on every render(), the way a component written without
+	// Solarite renders.  The first render() runs before the children are handed over, so they
+	// show until the second.
+	class S38 extends HTMLElement {
+		render(attribs) {
+			this.innerHTML = `<s>${attribs.name}</s>`;
+		}
+	}
+	customElements.define('s-38', S38);
+
+	let kinds = {
+		array: items => items.map(item => h`<p>${item}</p>`),
+		keyed: items => items.map(item => h`<p key=${item}>${item}</p>`),
+		map: items => h.map(items, item => h`<p>${item}</p>`),
+		template: items => items.length % 2 ? h`<i>${items.length}</i>` : h`<u>${items.length}</u>`,
+		text: items => items.join()
+	};
+	let lists = [[1, 2], [1, 2, 3], [3, 1], [5, 3, 1, 6], [], [9], [9, 5]];
+	for (let kind in kinds) {
+		let div = document.createElement('div');
+		let render = (name, items) => h(div)`<div title=${name}><s-38 name=${name}><b>${name}</b>${kinds[kind](items)}</s-38><em>${items.length}</em></div>`;
+		render('n0', lists[0]);
+		assert.eq(getHtml(div.querySelector('s-38')).startsWith(`<s-38 name="n0"><s>n0</s><b>n0</b>`), true);
+
+		// The second render draws into the children, which are as Solarite left them, and
+		// then calls the element's render(), which discards them.
+		render('n1', lists[1]);
+		assert.eq(getHtml(div), `<div><div title="n1"><s-38 name="n1"><s>n1</s></s-38><em>3</em></div></div>`);
+
+		// From then on every render throws, before it draws anything inside the element.  The
+		// template's expressions are applied last to first, so the one after the element has
+		// its new value, and the element's own attribute and the one before it have not.
+		for (let i=2; i<lists.length; i++) {
+			assert.eq(thrownBy(() => render('n' + i, lists[i])), elementChanged('s-38'));
+			assert.eq(getHtml(div), `<div><div title="n1"><s-38 name="n1"><s>n1</s></s-38><em>${lists[i].length}</em></div></div>`);
+		}
+	}
+
+	// 2. The content is replaced once, when the element is connected.
+	class S39 extends HTMLElement {
+		connectedCallback() {
+			this.innerHTML = `<s>mine</s>`;
+		}
+	}
+	customElements.define('s-39', S39);
+	for (let kind in kinds) {
+		let div = document.createElement('div');
+		document.body.append(div);
+		let render = items => h(div)`<div><s-39>${kinds[kind](items)}</s-39></div>`;
+		render(lists[0]);
+		for (let i=1; i<lists.length; i++) {
+			assert.eq(thrownBy(() => render(lists[i])), elementChanged('s-39'));
+			assert.eq(getHtml(div), `<div><div><s-39><s>mine</s></s-39></div></div>`);
+		}
+		div.remove();
+	}
+
+	// 3. An element that removes only the comments and text among its children takes the
+	// markers a list is drawn between.  The rows stay where the element left them, showing
+	// the items of the last render that worked.
+	class S3a extends HTMLElement {
+		connectedCallback() {
+			for (let node of [...this.childNodes])
+				if (node.nodeType !== 1)
+					node.remove();
+		}
+	}
+	customElements.define('s-3a', S3a);
+	let div = document.createElement('div');
+	document.body.append(div);
+	let render = items => h(div)`<div><s-3a>${items.map(item => h`<p>${item}</p>`)}</s-3a></div>`;
+	render([1, 2]);
+	assert.eq(getHtml(div), `<div><div><s-3a><p>1</p><p>2</p></s-3a></div></div>`);
+	for (let items of [[2, 3], [], [4]]) {
+		assert.eq(thrownBy(() => render(items)), elementChanged('s-3a'));
+		assert.eq(getHtml(div), `<div><div><s-3a><p>1</p><p>2</p></s-3a></div></div>`);
+	}
+	div.remove();
+
+	// 4. An expression inside a child element is another matter.  The element threw the
+	// child away whole, and the expression's nodes are inside it as Solarite left them, so
+	// nothing is thrown: the child goes on being updated where nobody sees it.
+	class S6a extends HTMLElement {
+		connectedCallback() {
+			this.given = this.firstChild;
+			this.innerHTML = `<s>mine</s>`;
+		}
+	}
+	customElements.define('s-6a', S6a);
+	div = document.createElement('div');
+	document.body.append(div);
+	render = text => h(div)`<div><s-6a><b>${text}</b></s-6a></div>`;
+	render('one');
+	assert.eq(thrownBy(() => render('two')), null);
+	assert.eq(getHtml(div), `<div><div><s-6a><s>mine</s></s-6a></div></div>`);
+	assert.eq(div.querySelector('s-6a').given.outerHTML, `<b>two</b>`);
+	div.remove();
+});
+
+Testimony.test('Solarite.slots.elementMovesChildren', `An element that moves the children it was given, into its shadow root or into a wrapper, has them updated where it put them.`, () => {
+
+	// 1. Everything is moved into the shadow root.
+	class S3b extends HTMLElement {
+		connectedCallback() {
+			if (!this.shadowRoot)
+				this.attachShadow({mode: 'open'}).append(...this.childNodes);
+		}
+	}
+	customElements.define('s-3b', S3b);
+
+	let clicked = [];
+	let div = document.createElement('div');
+	document.body.append(div);
+	let render = (text, items) => h(div)`<div><s-3b><b>${text}</b>${items.map(item => h`<button key=${item} onclick=${() => clicked.push(item)}>${item}</button>`)}<i>${text}</i></s-3b></div>`;
+	render('one', [1, 2, 3]);
+	let s3b = div.querySelector('s-3b');
+	assert.eq(getHtml(s3b), `<s-3b></s-3b>`);
+	assert.eq(getHtml(s3b.shadowRoot), `<b>one</b>|<button>1</button>|<button>2</button>|<button>3</button>|<i>one</i>`);
+
+	let button2 = s3b.shadowRoot.querySelectorAll('button')[1];
+	render('two', [3, 2, 4]);
+	assert.eq(getHtml(s3b), `<s-3b></s-3b>`);
+	assert.eq(getHtml(s3b.shadowRoot), `<b>two</b>|<button>3</button>|<button>2</button>|<button>4</button>|<i>two</i>`);
+	assert.eq(s3b.shadowRoot.querySelectorAll('button')[1], button2);
+	button2.click();
+	assert.eq(clicked.join(), '2');
+
+	render('three', []);
+	assert.eq(getHtml(s3b.shadowRoot), `<b>three</b>|<i>three</i>`);
+	render('four', [5]);
+	assert.eq(getHtml(s3b.shadowRoot), `<b>four</b>|<button>5</button>|<i>four</i>`);
+	div.remove();
+
+	// 2. Everything is moved into a wrapper of the element's own.
+	class S3c extends HTMLElement {
+		connectedCallback() {
+			if (!this.firstElementChild?.matches('section')) {
+				let section = document.createElement('section');
+				section.append(...this.childNodes);
+				this.append(section);
+			}
+		}
+	}
+	customElements.define('s-3c', S3c);
+	div = document.createElement('div');
+	document.body.append(div);
+	render = items => h(div)`<div><s-3c>${h.map(items, item => h`<p>${item.name}</p>`)}</s-3c></div>`;
+	let a = {name: 'a'}, b = {name: 'b'}, c = {name: 'c'};
+	render([a, b]);
+	assert.eq(getHtml(div), `<div><div><s-3c><section><p>a</p><p>b</p></section></s-3c></div></div>`);
+	let pb = div.querySelectorAll('p')[1];
+	render([c, b]);
+	assert.eq(getHtml(div), `<div><div><s-3c><section><p>c</p><p>b</p></section></s-3c></div></div>`);
+	assert.eq(div.querySelectorAll('p')[1], pb);
+	render([]);
+	render([a]);
+	assert.eq(getHtml(div), `<div><div><s-3c><section><p>a</p></section></s-3c></div></div>`);
+	div.remove();
+});
+
+Testimony.test('Solarite.slots.elementMovesSomeChildren', `An element that takes apart the nodes Solarite drew inside it (moves the rows of a list without the markers around them, takes a row out, puts the rows in another order, puts a node of its own between them, wraps each of them) makes the next render throw an error that names it.  The render changes nothing inside the element, and when the element puts the nodes back as they were, rendering works again on the same rows.`, () => {
+
+	// 1. The elements among the children are moved into the shadow root, and the comments
+	// that mark where the list goes are left behind.
+	class S3d extends HTMLElement {
+		connectedCallback() {
+			if (!this.shadowRoot)
+				this.attachShadow({mode: 'open'}).append(...this.children);
+		}
+	}
+	customElements.define('s-3d', S3d);
+
+	let div = document.createElement('div');
+	document.body.append(div);
+	let render = items => h(div)`<div><s-3d>${items.map(item => h`<p key=${item}>${item}</p>`)}</s-3d></div>`;
+	render([1, 2, 3]);
+	let s3d = div.querySelector('s-3d');
+	assert.eq(getHtml(s3d.shadowRoot), `<p>1</p>|<p>2</p>|<p>3</p>`);
+
+	// A keyed reorder moves rows before one another, and used to throw from the DOM here:
+	// the rows it measures against were no longer children of the element.
+	assert.eq(thrownBy(() => render([3, 1, 2, 4])), elementChanged('s-3d'));
+	assert.eq(thrownBy(() => render([])), elementChanged('s-3d'));
+	assert.eq(getHtml(s3d.shadowRoot), `<p>1</p>|<p>2</p>|<p>3</p>`);
+	assert.eq(getHtml(s3d), `<s-3d></s-3d>`);
+
+	// The element puts the rows back between the comments, and they are updated in place.
+	let p1 = s3d.shadowRoot.querySelector('p');
+	s3d.lastChild.before(...s3d.shadowRoot.childNodes);
+	render([3, 1, 2, 4]);
+	assert.eq(getHtml(s3d), `<s-3d><p>3</p><p>1</p><p>2</p><p>4</p></s-3d>`);
+	assert.eq(s3d.querySelectorAll('p')[1], p1);
+	div.remove();
+
+	class S3e extends HTMLElement {}
+	customElements.define('s-3e', S3e);
+	for (let keyed of [false, true]) {
+		div = document.createElement('div');
+		render = items => h(div)`<div><s-3e><h2>List</h2>${items.map(item => keyed ? h`<p key=${item}>${item}</p>` : h`<p>${item}</p>`)}<hr></s-3e></div>`;
+		render([1, 2, 3]);
+		let s3e = div.querySelector('s-3e');
+		let rows = [...s3e.querySelectorAll('p')];
+		let asGiven = `<div><div><s-3e><h2>List</h2><p>1</p><p>2</p><p>3</p><hr></s-3e></div></div>`;
+
+		// What the element does, what the element then holds, and how it undoes it.
+		let changes = [
+			// 2. A row is removed, as a list that lets its items be dismissed or filtered would.
+			[() => rows[0].remove(), `<h2>List</h2><p>2</p><p>3</p>`, () => rows[1].before(rows[0])],
+
+			// 3. The rows are put in another order, as a list that sorts its items would.
+			[() => s3e.querySelector('hr').before(...[...rows].reverse()), `<h2>List</h2><p>3</p><p>2</p><p>1</p>`, () => s3e.querySelector('hr').before(...rows)],
+
+			// 4. A node of the element's own is put among them.
+			[() => rows[0].after(document.createElement('br')), `<h2>List</h2><p>1</p><br><p>2</p><p>3</p>`, () => s3e.querySelector('br').remove()],
+
+			// 5. Each row is wrapped in an element of its own.
+			[() => {
+				for (let row of rows) {
+					let li = document.createElement('li');
+					row.replaceWith(li);
+					li.append(row);
+				}
+			}, `<h2>List</h2><li><p>1</p></li><li><p>2</p></li><li><p>3</p></li>`, () => {
+				for (let li of [...s3e.querySelectorAll('li')])
+					li.replaceWith(li.firstChild);
+			}],
+
+			// 6. Everything is taken out, one node at a time, as an element that hides its
+			// content would, and put back later in the same order.
+			[() => {
+				s3e.saved = [...s3e.childNodes];
+				s3e.replaceChildren();
+			}, ``, () => s3e.append(...s3e.saved)],
+
+			// 7. A child that has no expression in it, but stands next to one that has, is
+			// taken out: it is where the list starts.
+			[() => s3e.querySelector('h2').remove(), `<p>1</p><p>2</p><p>3</p>`, () => s3e.prepend(s3e.saved[0])]
+		];
+		for (let [change, html, undo] of changes) {
+			change();
+			html = `<div><div><s-3e>${html}${html ? '<hr>' : ''}</s-3e></div></div>`;
+			assert.eq(getHtml(div), html);
+			assert.eq(thrownBy(() => render([3, 2, 1, 4])), elementChanged('s-3e'));
+			assert.eq(thrownBy(() => render([])), elementChanged('s-3e'));
+			assert.eq(getHtml(div), html); // Nothing was removed, drawn or put back.
+			undo();
+			assert.eq(getHtml(div), asGiven);
+			render([1, 2, 3]);
+			assert.eq(getHtml(div), asGiven);
+			assert.eq([...s3e.querySelectorAll('p')].every((p, i) => p === rows[i]), true);
+		}
+
+		// Left alone, the list is updated as any other.
+		render([3, 1]);
+		assert.eq(getHtml(div), `<div><div><s-3e><h2>List</h2><p>3</p><p>1</p><hr></s-3e></div></div>`);
+	}
+
+	// 8. The same holds a level down, for a list written inside a child of the element: the
+	// element reaches into the child and takes a row.
+	div = document.createElement('div');
+	render = items => h(div)`<div><s-3e><ul>${items.map(item => h`<li key=${item}>${item}</li>`)}</ul><b>${items.length}</b></s-3e></div>`;
+	render([1, 2, 3]);
+	let li1 = div.querySelector('li');
+	li1.remove();
+	assert.eq(thrownBy(() => render([3, 1, 2, 4])), elementChanged('s-3e'));
+	assert.eq(getHtml(div), `<div><div><s-3e><ul><li>2</li><li>3</li></ul><b>4</b></s-3e></div></div>`);
+	div.querySelector('ul').prepend(li1);
+	render([3, 1, 2, 4]);
+	assert.eq(getHtml(div), `<div><div><s-3e><ul><li>3</li><li>1</li><li>2</li><li>4</li></ul><b>4</b></s-3e></div></div>`);
+	assert.eq(div.querySelectorAll('li')[1], li1);
+});
+
+Testimony.test('Solarite.slots.elementReachesIntoRows', `Only the nodes an expression drew itself are looked for.  What a ROW drew inside itself, such as an item of a list written inside the row, is known to the row alone, so an element that takes such a node out is not named: the row's own list throws the DOM's error when it trips over the missing node.  That error, like every error thrown while an expression inside the element is drawn, reaches the caller as it is, the first time and every time.  Nothing is drawn a second time in the same render, and the next render draws the expression from nothing.`, () => {
+	class S3g extends HTMLElement {}
+	customElements.define('s-3g', S3g);
+	let inner = items => items.map(item => h`<b key=${item}>${item}</b>`);
+
+	// 1. The element removes an item of a keyed list inside a row.  The next render of that
+	// list moves its rows before the missing one, and the DOM throws.
+	for (let keyed of [true, false]) {
+		let div = document.createElement('div');
+		let render = rows => h(div)`<div><s-3g>${rows.map(row => keyed
+			? h`<li key=${row.id}><ul>${inner(row.items)}</ul></li>`
+			: h`<li><ul>${inner(row.items)}</ul></li>`)}</s-3g></div>`;
+		render([{id: 1, items: [1, 2, 3]}, {id: 2, items: [3, 1]}]);
+		div.querySelector('b').remove();
+		let error;
+		try {
+			render([{id: 1, items: [3, 1]}, {id: 2, items: [5, 3, 1, 6]}, {id: 3, items: []}]);
+		}
+		catch (e) {
+			error = e;
+		}
+		assert.eq(error?.name, 'NotFoundError');
+
+		// Nothing the expression drew is left standing, so no later render trips over it.
+		assert.eq(getHtml(div), `<div><div><s-3g></s-3g></div></div>`);
+		render([{id: 1, items: [3, 1]}, {id: 2, items: [5, 3, 1, 6]}, {id: 3, items: []}]);
+		assert.eq(getHtml(div), `<div><div><s-3g><li><ul><b>3</b><b>1</b></ul></li><li><ul><b>5</b><b>3</b><b>1</b><b>6</b></ul></li><li><ul></ul></li></s-3g></div></div>`);
+
+		// Left alone, the rows are updated in place again.
+		let li = div.querySelector('li');
+		render([{id: 1, items: [1]}, {id: 2, items: [6, 5]}]);
+		assert.eq(getHtml(div), `<div><div><s-3g><li><ul><b>1</b></ul></li><li><ul><b>6</b><b>5</b></ul></li></s-3g></div></div>`);
+		assert.eq(div.querySelector('li'), li);
+	}
+
+	// 2. The element empties its rows, and the rows are then taken out and kept for reuse.
+	// Drawn again, the first of them fails over the place its own list has lost.  The rows
+	// kept for reuse go with the rest, so the render after that makes every row anew.
+	let div = document.createElement('div');
+	let render = rows => h(div)`<div><s-3g>${rows.map(row => h`<li><i>${row.id}</i>${inner(row.items)}<hr></li>`)}</s-3g></div>`;
+	render([{id: 1, items: [1, 2]}, {id: 2, items: [3]}]);
+	for (let li of div.querySelectorAll('li'))
+		li.textContent = 'mine';
+	render([]);
+	let rows = [{id: 1, items: [2, 1]}, {id: 2, items: [3, 4]}, {id: 3, items: [5]}];
+	assert.eq(thrownBy(() => render(rows)) !== null, true);
+	assert.eq(getHtml(div), `<div><div><s-3g></s-3g></div></div>`);
+	render(rows);
+	assert.eq(getHtml(div), `<div><div><s-3g><li><i>1</i><b>2</b><b>1</b><hr></li><li><i>2</i><b>3</b><b>4</b><hr></li><li><i>3</i><b>5</b><hr></li></s-3g></div></div>`);
+
+	// 3. A mistake in the template is thrown as it is, and the rows are built once: the
+	// expression used to be drawn a second time before the error got out.
+	div = document.createElement('div');
+	let built = 0;
+	render = (items, handler) => h(div)`<div><s-3g>${h.map(items, item => {
+		built++;
+		return h`<p onclick=${item.id === 2 ? handler : () => 1}>${item.id}</p>`;
+	})}</s-3g></div>`;
+	let one = {id: 1}, two = {id: 2};
+	render([one], () => 1);
+	built = 0;
+	assert.eq(thrownBy(() => render([one, two], 'not a function')), 'Solarite: onclick=${...} is not a function.');
+	assert.eq(built, 1);
+	render([one, two], () => 1);
+	assert.eq(getHtml(div), `<div><div><s-3g><p>1</p><p>2</p></s-3g></div></div>`);
+
+	// 4. A row whose constructor throws once is not tried a second time either: the error
+	// reaches the caller the first time it happens.
+	let failures = 1;
+	class S6b extends HTMLElement {
+		constructor() {
+			super();
+			if (failures-- > 0)
+				throw new Error('once');
+		}
+	}
+	customElements.define('s-6b', S6b);
+	div = document.createElement('div');
+	render = items => h(div)`<div><s-3g>${items.map(item => h`<s-6b key=${item}></s-6b>`)}</s-3g></div>`;
+	assert.eq(thrownBy(() => render([1, 2])), 'once');
+	render([1, 2]);
+	assert.eq(getHtml(div), `<div><div><s-3g><s-6b></s-6b><s-6b></s-6b></s-3g></div></div>`);
+});
+
+Testimony.test('Solarite.slots.elementRendersBesideChildren', `An element that renders its own content beside the children it was given, as an element made with Lit does when it renders into itself, leaves them where they are, and they go on being updated.`, async () => {
+
+	// Lit renders after the element is connected, in a microtask, in front of the children it
+	// finds there, and from then on changes only its own nodes.
+	class S3f extends HTMLElement {
+		count = 0;
+		connectedCallback() {
+			this.before = this.firstChild;
+			this.update();
+		}
+		async update() {
+			await null;
+			this.own?.remove();
+			this.own = document.createElement('s');
+			this.own.textContent = 'own ' + this.count++;
+			this.insertBefore(this.own, this.before);
+		}
+	}
+	customElements.define('s-3f', S3f);
+
+	let div = document.createElement('div');
+	document.body.append(div);
+	let render = items => h(div)`<div><s-3f>${items.map(item => h`<p key=${item}>${item}</p>`)}</s-3f></div>`;
+	render([1, 2]);
+	let s3f = div.querySelector('s-3f');
+	await null;
+	await null;
+	assert.eq(getHtml(div), `<div><div><s-3f><s>own 0</s><p>1</p><p>2</p></s-3f></div></div>`);
+
+	let p2 = div.querySelectorAll('p')[1];
+	render([2, 1, 3]);
+	s3f.update();
+	await null;
+	await null;
+	assert.eq(getHtml(div), `<div><div><s-3f><s>own 1</s><p>2</p><p>1</p><p>3</p></s-3f></div></div>`);
+	assert.eq(div.querySelector('p'), p2);
+	render([]);
+	render([4]);
+	assert.eq(getHtml(div), `<div><div><s-3f><s>own 1</s><p>4</p></s-3f></div></div>`);
+	div.remove();
+});
+
+Testimony.test('Solarite.slots.elementMayDo', `What an element that doesn't render through Solarite may do with the children it was given, without an error: change the children themselves, put nodes of its own before the first of them or after the last, and move all of them together, in the order given, into a wrapper, another part of the page or a fragment it keeps aside.  White space is a node like any other: it may be added around the children, not among them, and the white space between tags in the template may not be removed.`, () => {
+	class S6c extends HTMLElement {}
+	customElements.define('s-6c', S6c);
+	let clicks = 0;
+
+	// What the element does, and where its children are afterwards.
+	let may = {
+		changesTheChildren: x => {
+			for (let el of x.children) {
+				el.className = 'mine';
+				el.setAttribute('slot', 'a');
+				el.addEventListener('click', () => clicks++);
+			}
+			return x;
+		},
+		addsItsOwnBefore: x => {
+			x.prepend(document.createElement('s'), ' ');
+			return x;
+		},
+		addsItsOwnAfter: x => {
+			x.append(' ', document.createElement('s'));
+			return x;
+		},
+		movesAllOneAtATime: x => {
+			x.wrapper ??= x.appendChild(document.createElement('section'));
+			for (let node of [...x.childNodes])
+				if (node !== x.wrapper)
+					x.wrapper.appendChild(node);
+			return x.wrapper;
+		},
+		movesAllElsewhere: x => {
+			x.portal ??= document.createElement('aside');
+			x.portal.append(...x.childNodes);
+			return x.portal;
+		},
+		setsAllAside: x => {
+			x.aside ??= document.createDocumentFragment();
+			x.aside.append(...x.childNodes);
+			return x.aside;
+		},
+		takesOneOutAndPutsItBack: x => {
+			let p = x.querySelector('p'), next = p.nextSibling;
+			p.remove();
+			next.before(p);
+			return x;
+		}
+	};
+	for (let name in may) {
+		let div = document.createElement('div');
+		let render = items => h(div)`<div><s-6c><h2>List</h2>${items.map(item => h`<p key=${item}>${item}</p>`)}<hr></s-6c></div>`;
+		render([1, 2, 3]);
+		let x = div.querySelector('s-6c'), p1 = x.querySelector('p');
+		let home = may[name](x);
+		render([3, 1, 2, 4]);
+		assert.eq(textsOf(home, 'p'), '3,1,2,4');
+		assert.eq(home.querySelectorAll('p')[1], p1); // The rows are updated, not drawn again.
+		home = may[name](x);
+		render([2]);
+		assert.eq(textsOf(home, 'p'), '2');
+		assert.eq(home.querySelector('h2').nextElementSibling.textContent, '2');
+	}
+
+	// White space between two rows is a node of the element's own among them.
+	let div = document.createElement('div');
+	let render = items => h(div)`<div><s-6c><h2>List</h2>${items.map(item => h`<p key=${item}>${item}</p>`)}<hr></s-6c></div>`;
+	render([1, 2]);
+	div.querySelector('p').after(' ');
+	assert.eq(thrownBy(() => render([2, 1])), elementChanged('s-6c'));
+
+	// A template written over several lines has white space between its tags, and an
+	// expression is drawn between the two nodes beside it, whatever they are: here two text
+	// nodes of white space.  An element that strips those has taken the place away.
+	div = document.createElement('div');
+	render = items => h(div)`<div><s-6c>
+		<h2>List</h2>
+		${items.map(item => h`<p key=${item}>${item}</p>`)}
+		<hr>
+	</s-6c></div>`;
+	render([1, 2]);
+	render([2, 1]);
+	assert.eq(textsOf(div, 'p'), '2,1');
+	for (let node of [...div.querySelector('s-6c').childNodes])
+		if (node.nodeType === 3 && !node.nodeValue.trim())
+			node.remove();
+	assert.eq(thrownBy(() => render([1, 2])), elementChanged('s-6c'));
+
+	// An expression in an element of its own leaves the other element free to do what it
+	// likes with that element: here it takes it out, and later puts it back in a wrapper.
+	div = document.createElement('div');
+	render = items => h(div)`<div><s-6c><div>${items.map(item => h`<p key=${item}>${item}</p>`)}</div><hr></s-6c></div>`;
+	render([1, 2]);
+	let x = div.querySelector('s-6c'), inner = x.firstChild;
+	inner.remove();
+	render([2, 1, 3]);
+	assert.eq(getHtml(div), `<div><div><s-6c><hr></s-6c></div></div>`);
+	assert.eq(textsOf(inner, 'p'), '2,1,3');
+	x.append(document.createElement('section'));
+	x.lastChild.append(inner);
+	render([3]);
+	assert.eq(getHtml(div), `<div><div><s-6c><hr><section><div><p>3</p></div></section></s-6c></div></div>`);
+});
+
+Testimony.test('Solarite.slots.elementErrorState', `The render that throws because an element took apart the nodes an expression drew inside it leaves everything in a state the next render can work from: the expression is not touched, the expressions written after it in the template have their new values and the ones before it their old ones, and the element's own render() is not called.  The next render throws the same error, and the first render after the element has put the nodes back draws everything.`, () => {
+	let renders = 0;
+	class S6d extends HTMLElement {
+		render() {
+			renders++;
+		}
+	}
+	customElements.define('s-6d', S6d);
+
+	let div = document.createElement('div');
+	let render = (n, items) => h(div)`<div title=${'t' + n}><b>${n}</b><s-6d n=${n}><h2>${n}</h2>${items.map(item => h`<p key=${item}>${item}</p>`)}<hr><u>${n}</u></s-6d><i>${n}</i></div>`;
+	render(0, [1, 2, 3]);
+	assert.eq(getHtml(div), `<div><div title="t0"><b>0</b><s-6d n="0"><h2>0</h2><p>1</p><p>2</p><p>3</p><hr><u>0</u></s-6d><i>0</i></div></div>`);
+	assert.eq(renders, 1);
+
+	// 1. The element takes a row out.  The list is not drawn, nor is anything written before
+	// it in the template: the heading inside the element, the element's attribute, its
+	// render(), the text before it and the attribute on the outer element.
+	let x = div.querySelector('s-6d'), rows = [...x.querySelectorAll('p')];
+	rows[0].remove();
+	for (let n of [1, 2]) {
+		assert.eq(thrownBy(() => render(n, [3, 2, 1, 4])), elementChanged('s-6d'));
+		assert.eq(getHtml(div), `<div><div title="t0"><b>0</b><s-6d n="0"><h2>0</h2><p>2</p><p>3</p><hr><u>${n}</u></s-6d><i>${n}</i></div></div>`);
+		assert.eq(renders, 1);
+	}
+
+	// 2. The element puts the row back, and the next render draws everything, on the rows
+	// that were there.
+	rows[1].before(rows[0]);
+	render(3, [3, 2, 1, 4]);
+	assert.eq(getHtml(div), `<div><div title="t3"><b>3</b><s-6d n="3"><h2>3</h2><p>3</p><p>2</p><p>1</p><p>4</p><hr><u>3</u></s-6d><i>3</i></div></div>`);
+	assert.eq([...x.querySelectorAll('p')].slice(0, 3).every((p, i) => p === rows[2 - i]), true);
+	assert.eq(renders, 2);
+
+	// 3. The same holds for such an element inside a row of a list that is itself inside
+	// such an element.  The outer list is not emptied because one of its rows threw this
+	// error, which would have the next render build every row anew without a word.
+	class S7f extends HTMLElement {}
+	customElements.define('s-7f', S7f);
+	div = document.createElement('div');
+	render = (n, items) => h(div)`<div><s-6d><h2>T</h2>${items.map(item => h`<li key=${item}><s-7f><b>${item}</b>${[n, n + 1].map(i => h`<p>${i}</p>`)}</s-7f></li>`)}<hr></s-6d></div>`;
+	let html = (n, items) => `<div><div><s-6d><h2>T</h2>${items.map(item => `<li><s-7f><b>${item}</b><p>${n}</p><p>${n + 1}</p></s-7f></li>`).join('')}<hr></s-6d></div></div>`;
+	render(0, [1, 2, 3]);
+	assert.eq(getHtml(div), html(0, [1, 2, 3]));
+	let items = [...div.querySelectorAll('li')];
+	let p = items[1].querySelector('p'), next = p.nextSibling;
+	p.remove();
+	for (let n of [1, 2]) {
+		assert.eq(thrownBy(() => render(n, [1, 2, 3])), elementChanged('s-7f'));
+		assert.eq([...div.querySelectorAll('li')].every((li, i) => li === items[i]), true);
+		assert.eq(textsOf(items[1], 'p'), '1');
+	}
+	next.before(p);
+	render(3, [1, 2, 3]);
+	assert.eq(getHtml(div), html(3, [1, 2, 3]));
+	assert.eq([...div.querySelectorAll('li')].every((li, i) => li === items[i]), true);
+});
+
+Testimony.test('Solarite.slots.solariteMovesChildren', `What Solarite itself does with the children is never taken for the element's doing.  A Solarite component whose first render comes later than its creation is given its children like any other element, and its first render then moves them into its slots, which parts a list from a child with a slot attribute that stood next to it.  The list goes on being drawn, as it is for the same component rendering at once, and nothing is thrown.`, () => {
+	let lists = [[1, 2], [3, 1, 2], [2], [4, 2, 5]];
+	let n = 0;
+	for (let when of ['atOnce', 'whenConnected', 'later']) {
+		let tag = 's-6e-' + when.toLowerCase();
+		let own = [`<header><slot name="head"></slot></header><main><slot></slot></main>`];
+		class S6e extends HTMLElement {
+			constructor() {
+				super();
+				if (when === 'atOnce')
+					this.show();
+			}
+			connectedCallback() {
+				if (when === 'whenConnected')
+					this.show();
+			}
+			show() {
+				h(this)(own);
+			}
+		}
+		customElements.define(tag, S6e);
+
+		// 1. A child with a slot attribute stands directly before the list, so it is the
+		// node the list starts after.  The list used to be removed for good by the render
+		// that followed the component's own first render.
+		let div = document.createElement('div');
+		document.body.append(div);
+		let s = [`<div><${tag}><b slot="head">`, `</b>`, `</${tag}></div>`];
+		let render = items => h(div)(s, items.length, items.map(item => h`<p key=${item}>${item}</p>`));
+		render(lists[0]);
+		let x = div.querySelector(tag);
+		if (when === 'later')
+			x.show();
+		let html = items => `<div><div><${tag}><header><slot name="head"><b slot="head">${items.length}</b></slot></header><main><slot>${items.map(item => `<p>${item}</p>`).join('')}</slot></main></${tag}></div></div>`;
+		assert.eq(getHtml(div), html(lists[0]));
+		render(lists[1]);
+		assert.eq(getHtml(div), html(lists[1]));
+		let p2 = [...div.querySelectorAll('p')].find(p => p.textContent === '2');
+		for (let items of lists.slice(2)) {
+			render(items);
+			assert.eq(getHtml(div), html(items));
+		}
+		assert.eq([...div.querySelectorAll('p')].find(p => p.textContent === '2'), p2);
+		div.remove();
+
+		// 2. The rows themselves carry a slot attribute, so the component's first render
+		// takes them out of the list.  Rows in a named slot are more than a list can keep
+		// in order (it throws from the DOM in a component that renders at once), but a
+		// component that renders later must not be told that it took its children apart:
+		// the list is drawn again where it is written, every row once.
+		if (when !== 'atOnce') {
+			div = document.createElement('div');
+			document.body.append(div);
+			s = [`<div><${tag}><b>`, `</b>`, `</${tag}></div>`];
+			render = items => h(div)(s, items.length, items.map(item => h`<p slot="head" key=${item}>${item}</p>`));
+			render(lists[0]);
+			if (when === 'later')
+				div.querySelector(tag).show();
+			assert.eq(textsOf(div.querySelector('header'), 'p'), '1,2');
+			for (let items of lists.slice(1)) {
+				assert.eq(thrownBy(() => render(items)), null);
+				assert.eq(textsOf(div, 'p'), items.join());
+				assert.eq(div.querySelector('b').textContent, items.length + '');
+			}
+			div.remove();
+		}
+	}
+});
+
+Testimony.test('Solarite.slots.slotInsideElement', `A Solarite component that puts its <slot> inside an element that doesn't render through Solarite, such as a card from another library, has its children updated there.  They are that element's then, like children written inside its tag: when it takes them apart, the next render of the template that drew them throws the error that names it.`, () => {
+	class S6f extends HTMLElement {}
+	customElements.define('s-6f', S6f);
+
+	// The component renders in its constructor, or when it is connected.
+	for (let when of ['atOnce', 'whenConnected']) {
+		let tag = 's-6g-' + when.toLowerCase();
+		let own = [`<s-6f><slot></slot></s-6f>`];
+		class S6g extends HTMLElement {
+			constructor() {
+				super();
+				if (when === 'atOnce')
+					h(this)(own);
+			}
+			connectedCallback() {
+				if (when === 'whenConnected')
+					h(this)(own);
+			}
+		}
+		customElements.define(tag, S6g);
+
+		let div = document.createElement('div');
+		document.body.append(div);
+		let s = [`<div><${tag}>`, `</${tag}></div>`];
+		let render = items => h(div)(s, items.map(item => h`<p key=${item}>${item}</p>`));
+		let html = inside => `<div><div><${tag}><s-6f><slot>${inside}</slot></s-6f></${tag}></div></div>`;
+		render([1, 2]);
+		assert.eq(getHtml(div), html(`<p>1</p><p>2</p>`));
+		let p1 = div.querySelector('p');
+		render([2, 1, 3]);
+		assert.eq(getHtml(div), html(`<p>2</p><p>1</p><p>3</p>`));
+		assert.eq(div.querySelectorAll('p')[1], p1);
+
+		// 1. The element puts the rows in another order.  The list used to be drawn in the
+		// wrong order from then on, without a word.
+		let slot = div.querySelector('slot'), rows = [...slot.children];
+		slot.lastChild.before(...[...rows].reverse());
+		assert.eq(thrownBy(() => render([1, 2])), elementChanged('s-6f'));
+		assert.eq(getHtml(div), html(`<p>3</p><p>1</p><p>2</p>`));
+		slot.lastChild.before(...rows);
+		render([1, 2]);
+		assert.eq(getHtml(div), html(`<p>1</p><p>2</p>`));
+
+		// 2. The element empties the slot it was given.  The list used to stay empty, and
+		// a later render threw "Cannot read properties of null" from inside the DOM.
+		let saved = [...slot.childNodes];
+		slot.textContent = '';
+		for (let items of [[2, 1], [], [3]]) {
+			assert.eq(thrownBy(() => render(items)), elementChanged('s-6f'));
+			assert.eq(getHtml(div), html(``));
+		}
+		slot.append(...saved);
+		render([2, 1]);
+		assert.eq(getHtml(div), html(`<p>2</p><p>1</p>`));
+		div.remove();
+	}
+});
+
+Testimony.test('Solarite.slots.namedSlotsInsideElement', `A list that Solarite itself parted from the node before it, by putting that node in a named slot, goes on being drawn when an element that doesn't render through Solarite is around the slots: nothing is thrown, and the list does not stop at what the first render drew.`, () => {
+	class S7a extends HTMLElement {}
+	customElements.define('s-7a', S7a);
+	let lists = [[1, 2], [3, 1, 2], [], [2, 4]];
+
+	for (let when of ['atOnce', 'whenConnected']) {
+
+		// 1. The element is around a Solarite component that has a named and an unnamed slot.
+		// 2. The Solarite component puts both slots inside the element, as a card with a
+		// place for a heading does when it is built on another library's card.
+		let shapes = [
+			[`<header><slot name="head"></slot></header><main><slot></slot></main>`, tag => [`<div><s-7a><${tag}><b slot="head">`, `</b>`, `</${tag}></s-7a></div>`]],
+			[`<s-7a><header><slot name="head"></slot></header><main><slot></slot></main></s-7a>`, tag => [`<div><${tag}><b slot="head">`, `</b>`, `</${tag}></div>`]]
+		];
+		for (let i=0; i<shapes.length; i++) {
+			let tag = `s-7b-${when.toLowerCase()}-${i}`;
+			let own = [shapes[i][0]];
+			class S7b extends HTMLElement {
+				constructor() {
+					super();
+					if (when === 'atOnce')
+						h(this)(own);
+				}
+				connectedCallback() {
+					if (when === 'whenConnected')
+						h(this)(own);
+				}
+			}
+			customElements.define(tag, S7b);
+
+			let div = document.createElement('div');
+			document.body.append(div);
+			let s = shapes[i][1](tag);
+			let render = items => h(div)(s, items.length, items.map(item => h`<p key=${item}>${item}</p>`));
+			for (let items of lists) {
+				assert.eq(thrownBy(() => render(items)), null);
+				assert.eq(div.querySelector('header b').textContent, items.length + '');
+				assert.eq(textsOf(div.querySelector('main'), 'p'), items.join());
+				assert.eq(div.querySelectorAll('p').length, items.length);
+			}
+			div.remove();
+		}
+	}
+});
+
+Testimony.test('Solarite.slots.elementRowsDefinedLater', `Rows that are components defined after they were first drawn, as a component whose code is loaded on demand is, are built in place of their placeholders outside any render.  Inside an element that doesn't render through Solarite that is Solarite's own doing: the next render throws nothing and draws on the components that were built, and the element is still looked for afterwards.  The lists the placeholders stood in forget them, so none comes back when a row changes.`, async () => {
+	class S7c extends HTMLElement {}
+	customElements.define('s-7c', S7c);
+	const warn = console.warn;
+	console.warn = (...args) => {
+		if (!(args[0] + '').includes('<s-7'))
+			warn(...args);
+	};
+	try {
+		// 1. Each row is such a component.  2. Each row has one among its nodes.
+		let shapes = [
+			['s-7d', item => h`<s-7d key=${item}>${item}</s-7d>`, items => items.map(item => `<s-7d>${item}</s-7d>`).join('')],
+			['s-7e', item => h`<i>${item}</i><s-7e>${item}</s-7e>`, items => items.map(item => `<i>${item}</i><s-7e>${item}</s-7e>`).join('')]
+		];
+		for (let [tag, row, html] of shapes) {
+			let div = document.createElement('div');
+			let render = items => h(div)`<div><s-7c><h2>List</h2>${items.map(row)}<hr></s-7c></div>`;
+			render([1, 2, 3]);
+			customElements.define(tag, class extends HTMLElement {});
+			await customElements.whenDefined(tag);
+			await Promise.resolve();
+			assert.eq(getHtml(div), `<div><div><s-7c><h2>List</h2>${html([1, 2, 3])}<hr></s-7c></div></div>`);
+			let built = [...div.querySelectorAll(tag)];
+
+			assert.eq(thrownBy(() => render([1, 2, 3])), null);
+			assert.eq(thrownBy(() => render([1, 2, 3, 4])), null);
+			assert.eq(getHtml(div), `<div><div><s-7c><h2>List</h2>${html([1, 2, 3, 4])}<hr></s-7c></div></div>`);
+			assert.eq([...div.querySelectorAll(tag)].slice(0, 3).every((el, i) => el === built[i]), true);
+
+			// The element takes a row's component out.
+			built[1].remove();
+			assert.eq(thrownBy(() => render([1, 2])), elementChanged('s-7c'));
+		}
+
+		// 3. A DOM node stands beside the rows, which sends the list to the reconciler
+		// that works from the list's own record of its nodes.  That record named the
+		// placeholders too, and when one row changed they were put back in the page beside
+		// the components, in a plain element as well.
+		for (let outer of ['s-7c', 'section']) {
+			let tag = 's-7g-' + outer;
+			let div = document.createElement('div');
+			let node = document.createElement('u');
+			let s = [`<div><${outer}><h2>List</h2>`, `<hr></${outer}></div>`], rowHtml = [`<${tag}>`, `</${tag}>`];
+			let render = items => h(div)(s, [items.map(item => h(rowHtml, item)), node]);
+			let html = items => `<div><div><${outer}><h2>List</h2>${items.map(item => `<${tag}>${item}</${tag}>`).join('')}<u></u><hr></${outer}></div></div>`;
+			render(['a', 'b', 'c']);
+			customElements.define(tag, class extends HTMLElement {});
+			await customElements.whenDefined(tag);
+			await Promise.resolve();
+			for (let items of [['a', 'B', 'c'], ['a', 'B', 'c'], ['a', 'c'], ['d', 'a', 'c']]) {
+				assert.eq(thrownBy(() => render(items)), null);
+				assert.eq(getHtml(div), html(items));
+			}
+		}
+	}
+	finally {
+		console.warn = warn;
+	}
+});
+
+Testimony.test('Solarite.slots.elementRenderInsideDraw', `A render that starts while an expression inside such an element is half drawn, from the code of a row or of a node as it leaves the document, does not take the half-drawn expression for the element's doing.  When the element does take the place away during such a render, the render it started inside throws the error that names the element, not what the DOM threw over the missing nodes.`, () => {
+	let host = null, armed = false, errors = [];
+	let again = () => {
+		if (armed) {
+			armed = false;
+			try {
+				host();
+			}
+			catch (e) {
+				errors.push(e.message);
+			}
+		}
+	};
+	class S6i extends HTMLElement {}
+	customElements.define('s-6i', S6i);
+
+	// 1. A row renders the host as it leaves the document, while the list it belonged to is
+	// half drawn: some rows are out and some are not, and when the whole list is cleared
+	// even the comments it is drawn between are out for a moment.
+	customElements.define('s-6k', class extends HTMLElement {
+		disconnectedCallback() {
+			again();
+		}
+	});
+	for (let keyed of [true, false]) {
+		let lists = [[1, 2, 3, 4], [4, 2], [], [5, 6], [5]];
+		let div = document.createElement('div');
+		document.body.append(div);
+		let n = 0;
+		host = () => h(div)`<div><s-6i>${lists[n].map(item => keyed ? h`<s-6k key=${item}>${item}</s-6k>` : h`<s-6k>${item}</s-6k>`)}</s-6i></div>`;
+		for (n = 0; n < lists.length; n++) {
+			armed = n > 0;
+			assert.eq(thrownBy(host), null);
+			assert.eq(textsOf(div, 's-6k'), lists[n].join());
+		}
+		assert.eq(errors.length, 0);
+
+		// The element is still looked for after all that.
+		n = 0;
+		host();
+		div.querySelector('s-6k').remove();
+		assert.eq(thrownBy(host), elementChanged('s-6i'));
+		div.remove();
+	}
+
+	// 2. A row renders the host from its constructor during the FIRST render.  The render
+	// that starts inside the draw is then the one that builds the element and gives it the
+	// children, half drawn.  The first render throws what it throws in a Solarite component
+	// with a slot; what matters here is that the expression reads its nodes when its own
+	// draw is done, so the next renders work, and still look for what the element does.
+	customElements.define('s-6m', class extends HTMLElement {
+		constructor() {
+			super();
+			again();
+		}
+	});
+	let lists = [[1, 2, 3], [1, 2, 3, 4], [4, 2], [], [2, 5]];
+	let div = document.createElement('div');
+	let n = 0;
+	host = () => h(div)`<div><s-6i>${lists[n].map(item => h`<s-6m key=${item}>${item}</s-6m>`)}</s-6i></div>`;
+	armed = true;
+	thrownBy(host);
+	armed = false;
+	for (n = 1; n < lists.length; n++) {
+		assert.eq(thrownBy(host), null);
+		assert.eq(textsOf(div, 's-6m'), lists[n].join());
+	}
+	n = 1;
+	host();
+	div.querySelector('s-6m').remove();
+	assert.eq(thrownBy(host), elementChanged('s-6i'));
+	assert.eq(errors.length, 0);
+
+	// 3. The element replaces its content in its render(), which the render that starts
+	// inside the draw calls.  The place is then gone under the draw that is under way.
+	class S6l extends HTMLElement {
+		render() {
+			if (this.wipes)
+				this.innerHTML = '<s>mine</s>';
+		}
+	}
+	customElements.define('s-6l', S6l);
+	div = document.createElement('div');
+	n = 0;
+	host = () => h(div)`<div><s-6l>${lists[n].map(item => h`<s-6m key=${item}>${item}</s-6m>`)}</s-6l></div>`;
+	host();
+	n = 1;
+	armed = true;
+	div.querySelector('s-6l').wipes = true;
+	assert.eq(thrownBy(host), elementChanged('s-6l'));
+	assert.eq(thrownBy(host), elementChanged('s-6l'));
+	assert.eq(getHtml(div), `<div><div><s-6l><s>mine</s></s-6l></div></div>`);
+});
+
+Testimony.test('Solarite.slots.elementRawNodes', `A DOM node that the application made and gave to a template is the application's to move, inside an element that doesn't render through Solarite as anywhere else: nothing is thrown when it has left its place, and the same happens to it as in a plain element.  The rows Solarite drew beside it are still looked for.`, () => {
+	class S6j extends HTMLElement {}
+	customElements.define('s-6j', S6j);
+
+	let results = [];
+	for (let tag of ['section', 's-6j']) {
+		let div = document.createElement('div'), other = document.createElement('aside');
+		let node = document.createElement('u');
+		let s = [`<div><${tag}><h2>T</h2>`, `<hr></${tag}></div>`];
+		let render = (given, items) => h(div)(s, [items.map(item => h`<p key=${item}>${item}</p>`), given ? node : 'none']);
+		let log = [];
+		let step = fn => {
+			log.push(thrownBy(fn));
+			log.push(getHtml(div).replaceAll(tag, 'x') + ' ' + getHtml(other));
+		};
+		step(() => render(true, [1, 2]));
+
+		// The application moves its node away, and renders with the same node, with another
+		// list, without the node and with it again.
+		other.append(node);
+		step(() => render(true, [1, 2]));
+		step(() => render(true, [2, 1, 3]));
+		other.append(node);
+		step(() => render(false, [3]));
+		step(() => render(true, [3]));
+		results.push(log);
+	}
+	assert.eq(results[1].filter((item, i) => i % 2 === 0).join(), ',,,,'); // Nothing thrown.
+	assert.eq(results[1], results[0]);
+	assert.eq(results[1][3], `<div><div><x><h2>T</h2><p>1</p><p>2</p><hr></x></div></div> <aside><u></u></aside>`);
+
+	// A row Solarite drew is another matter, with the application's node gone or not.
+	let div = document.createElement('div'), other = document.createElement('aside');
+	let node = document.createElement('u');
+	let render = items => h(div)`<div><s-6j><h2>T</h2>${[items.map(item => h`<p key=${item}>${item}</p>`), node]}<hr></s-6j></div>`;
+	render([1, 2]);
+	other.append(node);
+	div.querySelector('p').remove();
+	assert.eq(thrownBy(() => render([2, 1])), elementChanged('s-6j'));
+});
+
+Testimony.test('Solarite.slots.textTemplate', `A component whose template is only text keeps the children it was given, after the text.`, () => {
+	class S35 extends Solarite {
+		render() {
+			h(this)`Hello`
+		}
+	}
+	S35.define();
+
+	// 1. Children from the page's html.  They used to be left in front of the text.
+	let div = toEl('<div><s-35><br>child</s-35></div>')
+	document.body.append(div);
+	assert.eq(div.outerHTML, `<div><s-35>Hello<br>child</s-35></div>`)
+	div.remove();
+
+	// 2. Children declared in a parent's template, which used to be dropped, and a list among
+	// them that the parent goes on drawing.
+	div = document.createElement('div');
+	let render = items => h(div)`<s-35><br>${items.map(item => h`<i>${item}</i>`)}</s-35>`;
+	render([1, 2]);
+	assert.eq(getHtml(div), `<div><s-35>Hello<br><i>1</i><i>2</i></s-35></div>`)
+	render([3]);
+	assert.eq(getHtml(div), `<div><s-35>Hello<br><i>3</i></s-35></div>`)
+
+	// 3. The same for a plain element that held something before a text template was rendered
+	// into it, as for every other kind of template.
+	div = toEl('<div><br></div>');
+	h(div)`Hello`;
+	assert.eq(div.outerHTML, `<div>Hello<br></div>`)
+});
+
+Testimony.test('Solarite.slots.childRendersParent', `A child that renders its parent from its connectedCallback or disconnectedCallback, as a tab does to register with its tab set, leaves the render that is moving it into its slot undisturbed.`, () => {
+	for (let which of ['connectedCallback', 'disconnectedCallback']) {
+		let host = document.createElement('div'), armed = false, calls = 0, count = 0, clicks = 0;
+		let onClick = () => clicks++;
+		let render = () => h(host)`<p onclick=${onClick}>${++count}</p><slot></slot>`;
+		let tag = 's-47-' + which.slice(0, 3);
+		class Child extends HTMLElement {}
+		Child.prototype[which] = function() {
+			if (armed) {
+				armed = false;
+				calls++;
+				render();
+			}
+		};
+		customElements.define(tag, Child);
+		host.innerHTML = `<${tag}>kid</${tag}>`;
+		let child = host.firstChild;
+		document.body.append(host);
+
+		// The first render takes the child out of the element and puts it in the slot, and the
+		// child's callback renders the element in the middle of that.  The template used to
+		// be drawn twice, one copy holding the other.
+		armed = true;
+		render();
+		assert.eq(calls, 1);
+		assert.eq(getHtml(host), `<div><p>1</p><slot><${tag}>kid</${tag}></slot></div>`);
+		assert.eq(host.querySelector('slot').firstChild, child);
+
+		// Both renders were given the same handler, and one of them has bound it.
+		host.querySelector('p').click();
+		assert.eq(clicks, 1);
+
+		// Later renders update the one template.
+		render();
+		assert.eq(getHtml(host), `<div><p>3</p><slot><${tag}>kid</${tag}></slot></div>`);
+		host.remove();
+	}
+});
+
 Testimony.test('Solarite.slots.nestedConstruction', `A component that builds another component keeps its own slot children.`, () => {
 
 	// Solarite hands slot children to a new component through the single
@@ -9635,6 +13646,47 @@ Testimony.test('Solarite.events.rebind', 'Ensure function is unbound/rebound on 
 	a.render();
 	a.firstChild.dispatchEvent(new Event('input', {bubbles: true}));
 	assert.eq(assignCalls, 2);
+});
+
+Testimony.test('Solarite.events.afterFirstRenderThrew', `A handler is bound by the render that follows a first render that threw.`, () => {
+	// Expressions are applied from the last to the first, so when the input's value throws,
+	// the handlers of the two buttons before it have not been reached.  The next render gives
+	// the same functions again, and must not take them to be bound already.
+	let count = 0, onClick = () => count++;
+	for (let options of [{}, {eventDelegation: false}]) {
+		let el = document.createElement('div');
+		document.body.append(el);
+		let render = onFocus => h(el, h`<button onclick=${onClick}>a</button><button native:onclick=${onClick}>b</button><input onfocus=${onFocus}>`, options);
+		assert.throws(() => render('not a function'));
+
+		count = 0;
+		render(() => {});
+		el.children[0].click();
+		el.children[1].click();
+		assert.eq(count, 2);
+
+		// Renders after a complete one skip a handler that is the same function, as before.
+		render(() => {});
+		el.children[0].click();
+		assert.eq(count, 3);
+		el.remove();
+	}
+
+	// The same in a component whose first render() throws.
+	class E25 extends HTMLElement {
+		ready = false;
+		render() {
+			h(this)`<e-25 onclick=${onClick}><input onfocus=${this.ready ? onClick : null}></e-25>`;
+		}
+	}
+	customElements.define('e-25', E25);
+	let a = new E25();
+	assert.throws(() => a.render());
+	a.ready = true;
+	a.render();
+	count = 0;
+	a.click();
+	assert.eq(count, 1);
 });
 
 Testimony.test('Solarite.events.args', 'Ensure event function args are received', () => {
@@ -10146,6 +14198,21 @@ Testimony.test('Solarite.binding.undefined', () => {
 	b.remove();
 });
 
+Testimony.test('Solarite.binding.arrayWithEmptyItem', `An array of an object and an empty value is not a two-way binding`, () => {
+	// It was taken for a path to the property named "null", so typing into the input wrote that
+	// property onto the object.
+	for (let empty of [null, undefined, false]) {
+		let item = {a: 1};
+		let el = document.createElement('div');
+		h(el)`<div><input value=${[item, empty]}></div>`;
+		let input = el.querySelector('input');
+		assert.eq(getEventBinding(input, 'value'), undefined);
+		input.value = 'typed';
+		input.dispatchEvent(new Event('input', {bubbles: true}));
+		assert.eqJson(item, {a: 1});
+	}
+});
+
 Testimony.test('Solarite.binding.loop', 'similar to the loop.continuity2 test above', () => {
 
 	class V70 extends Solarite {
@@ -10509,6 +14576,125 @@ Testimony.test('Solarite.jsxrt.tier1.htmlProperty', () => {
 	assert.eq(el.value, 'bb');
 });
 
+Testimony.test('Solarite.jsxrt.tier1.componentArgs', `Precompiled JSX attributes on a custom element tag reach the component as the same attributes of a tagged template do: under their own names, with their types.  Each used to arrive as two arguments called "name" and "value", so an array or object never arrived at all.`, () => {
+	let calls = [];
+	class JsxArgs1 extends HTMLElement {
+		constructor(attribs) {
+			super();
+			calls.push(attribs);
+		}
+		render(attribs, hasChanged=() => true) {
+			calls.push(attribs);
+			this.changed = hasChanged();
+		}
+	}
+	customElements.define('jsx-args-1', JsxArgs1);
+
+	// What a build plugin emits for
+	// <div><jsx-args-1 items={items} max-size={size} open={true} get-label={label} style={{...}}
+	//     value={[model, 'name']} onclick={onClick} native:onkeydown={onKey} title="t"/></div>
+	const T = ['<div><jsx-args-1 ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' title="t"></jsx-args-1></div>'];
+	let items = [1, 2], model = {name: 'a'}, clicks = 0, keys = 0;
+	let label = () => 'label', onClick = () => clicks++, onKey = () => keys++;
+	let el = document.createElement('div');
+	let render = size => h(el, jsxTemplate(T, jsxAttr('items', items), jsxAttr('max-size', size), jsxAttr('open', true),
+		jsxAttr('get-label', label), jsxAttr('style', {color: 'red', fontSize: '2px'}), jsxAttr('value', [model, 'name']),
+		jsxAttr('onclick', onClick), jsxAttr('native:onkeydown', onKey)));
+	render(3);
+
+	// 1. The constructor and the first render() get the same arguments.
+	assert.eq(calls.length, 2);
+	for (let attribs of calls) {
+		assert.eq(Object.keys(attribs).sort().join(), 'getLabel,items,maxSize,open,style,title,value');
+		assert.eq(attribs.items, items);
+		assert.eq(attribs.maxSize, 3);
+		assert.eq(attribs.open, true);
+		assert.eq(attribs.getLabel, label);
+		assert.eq(attribs.style, 'color:red;font-size:2px');
+		assert.eq(attribs.value, 'a');
+		assert.eq(attribs.title, 't');
+	}
+
+	// 2. The events are bound to the element and are not arguments.
+	let component = el.querySelector('jsx-args-1');
+	component.dispatchEvent(new Event('click', {bubbles: true}));
+	component.dispatchEvent(new Event('keydown'));
+	assert.eq(clicks, 1);
+	assert.eq(keys, 1);
+	assert.eq(component.onclick, null);
+
+	// 3. The element carries what a tagged template would have written.  It used to be given
+	// attributes called "name" and "value" as well.
+	assert.eq(component.getAttribute('max-size'), '3');
+	assert.eq(component.getAttribute('style'), 'color:red;font-size:2px');
+	assert.eq(component.hasAttribute('name'), false);
+	assert.eq(component.value, 'a');
+
+	// 4. A later render passes the new values.
+	model.name = 'b';
+	render(4);
+	assert.eq(calls.length, 3);
+	assert.eq('name' in calls[2], false);
+	assert.eq(calls[2].maxSize, 4);
+	assert.eq(calls[2].value, 'b');
+	assert.eq(calls[2].items, items);
+	assert.eq(calls[2].getLabel, label);
+	assert.eq(component.changed, true);
+	assert.eq(component.getAttribute('max-size'), '4');
+
+	// 5. The class form, which is compiled another way, passes the same.
+	calls = [];
+	el = document.createElement('div');
+	h(el, jsx('div', {children: jsx(JsxArgs1, {items, 'max-size': 3, open: true, 'get-label': label, style: {color: 'red', fontSize: '2px'},
+		value: [model, 'name'], onclick: onClick, 'native:onkeydown': onKey, title: 't'})}));
+	assert.eq(Object.keys(calls[0]).sort().join(), 'getLabel,items,maxSize,open,style,title,value');
+	assert.eq(calls[0].style, 'color:red;font-size:2px');
+	assert.eq(calls[0].maxSize, 3);
+});
+
+Testimony.test('Solarite.jsxrt.tier1.componentArgsInList', `Custom elements written in precompiled JSX as the rows of a list are each given their own arguments, and a row rewritten for another item is given that item's.`, () => {
+	let calls = [];
+	class JsxArgs2 extends HTMLElement {
+		constructor(attribs) {
+			super();
+			calls.push('new ' + JSON.stringify(attribs));
+		}
+		render(attribs) {
+			calls.push('render ' + JSON.stringify(attribs));
+		}
+	}
+	customElements.define('jsx-args-2', JsxArgs2);
+
+	// <ul>{rows.map((row, i) => <jsx-args-2 key={row.id} row={row} index={i}/>)}</ul>, with
+	// and without the key.
+	const UL = ['<ul>', '</ul>'];
+	const KEYED = ['<jsx-args-2 ', ' ', ' ', '></jsx-args-2>'], PLAIN = ['<jsx-args-2 ', ' ', '></jsx-args-2>'];
+	for (let keyed of [true, false]) {
+		calls = [];
+		let el = document.createElement('div');
+		let render = rows => h(el, jsxTemplate(UL, jsxEscape(rows.map((row, i) => keyed
+			? jsxTemplate(KEYED, jsxAttr('key', row.id), jsxAttr('row', row), jsxAttr('index', i))
+			: jsxTemplate(PLAIN, jsxAttr('row', row), jsxAttr('index', i))))));
+		let a = {id: 'a'}, b = {id: 'b'}, c = {id: 'c'};
+		render([a, b]);
+		assert.eq(calls.join(), `new {"index":0,"row":{"id":"a"}},render {"index":0,"row":{"id":"a"}},new {"index":1,"row":{"id":"b"}},render {"index":1,"row":{"id":"b"}}`);
+		let first = el.querySelector('jsx-args-2');
+
+		calls = [];
+		render([b, a, c]);
+		let rows = [...el.querySelectorAll('jsx-args-2')];
+		assert.eq(rows.map(row => row.getAttribute('index')).join(), '0,1,2');
+		assert.eq(rows.map(row => row.getAttributeNames().join()).join('|'), 'index|index|index');
+
+		// Keyed, the elements follow their items and each is told its new index.  Without a
+		// key they stay where they are and are given the other item.  Either way the first
+		// row holds b and the second a.
+		assert.eq(rows[keyed ? 1 : 0], first);
+		assert.eq(calls.slice(0, 2).sort().join(), `render {"index":0,"row":{"id":"b"}},render {"index":1,"row":{"id":"a"}}`);
+		assert.eq(calls.slice(2).join(), `new {"index":2,"row":{"id":"c"}},render {"index":2,"row":{"id":"c"}}`);
+	}
+});
+
 Testimony.test('Solarite.jsxrt.tier1.fragment', () => {
 	const T = ['', '', ''];   // <>{a}{b}</>
 	let frag = jsxTemplate(T, jsxEscape('x'), jsxEscape('y'));
@@ -10565,6 +14751,91 @@ Testimony.test('Solarite.jsxrt.classic.fragment', () => {
 	let el = toEl(h('div', null, h(Fragment, null, h('b', null, 'x'), h('i', null, 'y'))));
 	assert.eq(el.querySelector('b').textContent, 'x');
 	assert.eq(el.querySelector('i').textContent, 'y');
+});
+
+Testimony.test('Solarite.jsxrt.classic.fragmentKeepsNodes', `A fragment's children survive a re-render`, () => {
+	// Every render of a fragment has to hand Template the same html array.  Given a new array each
+	// time, the fragment was a different template on every render, so its children were rebuilt:
+	// an input lost its focus and what had been typed, and a child component was constructed again.
+	let constructed = 0;
+	class FragmentKeepsChild extends Solarite {
+		constructor() {
+			super();
+			constructed++;
+		}
+		render() {
+			h(this)`<fragment-keeps-child>c</fragment-keeps-child>`;
+		}
+	}
+	FragmentKeepsChild.define('fragment-keeps-child');
+
+	// 1. Classic factory.
+	let el = document.createElement('div');
+	let render = n => h(el, h('div', null, h(Fragment, null, h('input', null), h(FragmentKeepsChild, null), h('i', null, n))));
+	render(1);
+	let input = el.querySelector('input');
+	let child = el.querySelector('fragment-keeps-child');
+	input.value = 'typed';
+	render(2);
+	assert.eq(el.querySelector('i').textContent, '2');
+	assert(el.querySelector('input') === input);
+	assert.eq(input.value, 'typed');
+	assert(el.querySelector('fragment-keeps-child') === child);
+	assert.eq(constructed, 1);
+
+	// 2. Automatic runtime, a fragment of several children and of one.
+	el = document.createElement('div');
+	render = n => h(el, jsx('div', {children: jsxs(Fragment, {children: [
+		jsx('input', {}),
+		jsx(Fragment, {children: jsx('i', {children: n})})
+	]})}));
+	render(1);
+	input = el.querySelector('input');
+	let i = el.querySelector('i');
+	render(2);
+	assert.eq(i.textContent, '2');
+	assert(el.querySelector('input') === input);
+	assert(el.querySelector('i') === i);
+
+	// 3. Rows that are fragments, and a fragment returned by a function component.
+	const Pair = props => h(Fragment, null, h('dt', null, props.term), h('dd', null, props.text));
+	el = document.createElement('div');
+	render = texts => h(el, h('dl', null, texts.map((text, term) => h(Pair, {term, text}))));
+	render(['a', 'b', 'c']);
+	let dts = [...el.querySelectorAll('dt')];
+	render(['a', 'B', 'c']);
+	assert.eq(el.textContent, '0a1B2c');
+	assert.eqJson([...el.querySelectorAll('dt')].map((dt, i) => dt === dts[i]), [true, true, true]);
+
+	// 4. Same child count, same array; a different count gets its own.
+	assert(h(Fragment, null, 1, 2).html === h(Fragment, null, 3, 4).html);
+	assert(h(Fragment, null, 1, 2).html !== h(Fragment, null, 1).html);
+	assert.eqJson(h(Fragment, null, 1, 2).html, ['', '', '']);
+	assert.eqJson(h(Fragment, null).html, ['']);
+});
+
+Testimony.test('Solarite.jsxrt.classic.fragmentNotKeptPerRender', `Re-rendering a fragment keeps no copy of what it showed before`, () => {
+	// A row that a render replaces is kept for reuse under the identity of its html.  A fragment
+	// with a new html array on every render was replaced on every render, and each replaced copy
+	// was kept, with its elements, under an identity that never came again.
+	let el = document.createElement('div');
+	for (let n = 0; n < 5; n++)
+		h(el, h('div', null, h(Fragment, null, h('input', null), h('i', null, n))));
+	let path = Globals.rootNodeGroups.get(el).paths.find(path => path instanceof PathToNodes);
+	assert.eq(path.nodeGroups.length, 1);
+	assert.eqJson(Object.keys(path.nodeGroupsDetachedAvailable?.data || {}), []);
+});
+
+Testimony.test('Solarite.jsxrt.classic.fragmentRawNodeMoves', `A raw DOM node that moves from one fragment to another of the same number of children, under one parent, is shown in its new place.`, () => {
+	// Fragments of one child count are one template, so the fragment that receives the node is
+	// rewritten in place, and it is written before the one that gives the node up.
+	let el = document.createElement('div');
+	let node = document.createElement('hr');
+	const html = v => v === node ? '<hr>' : v;
+	for (let rows of [[['p', 'q'], [node, 'r']], [[node, 'r'], ['p', 'q']], [['p', 'q'], [node, 'r']], [['p', node], ['s', 'r']], [['p', 'q'], ['s', node]], [[node, 'q'], ['s', 't']], [['u', 'q']], [['u', 'q'], [node, 'x']]]) {
+		h(el, h('div', null, rows.map(([a, b]) => h(Fragment, null, a, b))));
+		assert.eq(el.firstElementChild.innerHTML.replace(/<!--.*?-->/g, ''), rows.map(([a, b]) => html(a) + html(b)).join(''));
+	}
 });
 
 //endregion
@@ -11305,3 +15576,100 @@ Testimony.test('Solarite.detach.focusOutsideSurvives', `Focus outside the list p
 });
 
 //endregion
+
+Testimony.test('Solarite.expr.translated', `After a page translator has replaced the text of a page with <font> elements, text that is all its element holds, as in <span>\${name}</span>, shows every new value: beside other words, when it becomes empty, when it changes to a template and back, in the rows of a list, and inside an element that doesn't render through Solarite.  Text whose value did not change keeps its translation, and showing the page untranslated again breaks nothing.`, () => {
+	// What the page would show untranslated.
+	let plain = node => node.textContent.replaceAll('T:', '');
+
+	// 1. Text beside other words.
+	let el = document.createElement('div'), name = 'one', other = 'same';
+	let render = () => h(el)`<p>Hello <span>${name}</span>, <b>${other}</b>!</p>`;
+	render();
+	translatePage(el);
+	let span = el.querySelector('span'), b = el.querySelector('b');
+	assert.eq(el.textContent, 'T:Hello T:oneT:, T:sameT:!');
+	name = 'two';
+	render();
+	assert.eq(span.innerHTML, 'two');
+	assert.eq(b.textContent, 'T:same');
+	translatePage(el);
+	assert.eq(span.textContent, 'T:two');
+	render();
+	assert.eq(span.textContent, 'T:two');
+	name = '';
+	render();
+	assert.eq(span.innerHTML, '');
+	name = 'three';
+	render();
+	assert.eq(span.innerHTML, 'three');
+
+	// 2. The reader asks for the original page again.
+	translatePage(el);
+	name = 'four';
+	render();
+	untranslatePage(el);
+	assert.eq(el.innerHTML, '<p>Hello <span>four</span>, <b>same</b>!</p>');
+	name = 'five';
+	other = 'other';
+	render();
+	assert.eq(el.innerHTML, '<p>Hello <span>five</span>, <b>other</b>!</p>');
+
+	// 3. Text that becomes a template, and a template that becomes text.
+	let on = true;
+	render = () => h(el)`<p>Saved: <span>${on ? 'Yes' : h`<i>No</i>`}</span></p>`;
+	render();
+	span = el.querySelector('span');
+	for (let i = 0; i < 4; i++) {
+		translatePage(el);
+		on = !on;
+		render();
+		assert.eq(plain(span), on ? 'Yes' : 'No');
+		assert.eq(span.children.length, on ? 0 : 1);
+		assert.eq(span.children[0]?.tagName, on ? undefined : 'I');
+	}
+
+	// 4. Rows of a list, keyed and not, as an array and with h.map().
+	let rows = {
+		keyed: items => items.map(item => h`<li key=${item.id}><span>${item.id}</span>: <span>${item.label}</span></li>`),
+		unkeyed: items => items.map(item => h`<li><span>${item.id}</span>: <span>${item.label}</span></li>`),
+		mapped: items => h.map(items, item => h`<li><span>${item.id}</span>: <span>${item.label}</span></li>`),
+		oneCell: items => h.map(items, item => h`<li>${item.label}</li>`)
+	};
+	for (let kind in rows) {
+		let items = [1, 2, 3, 4].map(id => ({id, label: 'label ' + id})), holder = document.createElement('div');
+		let check = step => {
+			h(holder)`<ul>${rows[kind](items)}</ul>`;
+			assert.eq([...holder.firstChild.children].map(plain).join('|'), items.map(item => kind === 'oneCell' ? item.label : item.id + ': ' + item.label).join('|'), kind + ', ' + step);
+			translatePage(holder);
+		};
+		check('create');
+		items[1] = {id: 2, label: 'changed'};
+		check('change one');
+		items.reverse();
+		check('reverse');
+		items = [{id: 9, label: 'new'}, ...items.slice(0, 2).map(item => ({id: item.id, label: item.label + '!'}))];
+		check('add, remove and change');
+		items = [];
+		check('clear');
+		assert.eq(holder.innerHTML, '<ul></ul>');
+	}
+
+	// 5. Inside an element that doesn't render through Solarite.
+	class TranslatedPlain extends HTMLElement {}
+	customElements.define('translated-plain', TranslatedPlain);
+	name = 'one';
+	on = true;
+	render = () => h(el)`<div><translated-plain><span>${name}</span> <u>${on ? 'Yes' : h`<i>No</i>`}</u></translated-plain></div>`;
+	render();
+	span = el.querySelector('span');
+	let u = el.querySelector('u');
+	for (let value of ['two', 'three', 'three', 'four']) {
+		translatePage(el);
+		name = value;
+		on = !on;
+		render();
+		assert.eq(plain(span), value);
+		assert.eq(plain(u), on ? 'Yes' : 'No');
+		assert.eq(u.children.length, on ? 0 : 1);
+	}
+});

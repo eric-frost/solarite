@@ -199,7 +199,6 @@ export const Globals: {
     objToEl: WeakMap<any, any>;
     rendered: WeakSet<HTMLElement>;
     shells: WeakMap<string[], any>;
-    reset: Function;
 };
 
 export const SolariteUtil: {

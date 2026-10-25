@@ -7,13 +7,16 @@ rem --------------------------------------
 
 cd %~dp0
 deno run --allow-read --allow-write build.js ../src/Solarite.js ../dist/Solarite.js
+deno run --no-lock --allow-read --allow-write --allow-env redeal.js ../dist/Solarite.min.js
 deno run --no-lock --node-modules-dir=none --allow-read --allow-write docs.js
 copy "..\dist\Solarite.min.js" "..\benchmarks\solarite\Solarite.min.js"
 GOTO :EOF
 ::CMDLITERAL
 
  # Linux/macOS version
+ set -e # A failed step must not let the next one work on the previous build's files.
  cd "$(dirname "$0")"
  deno run --allow-read --allow-write build.js ../src/Solarite.js ../dist/Solarite.js
+ deno run --no-lock --allow-read --allow-write --allow-env redeal.js ../dist/Solarite.min.js
  deno run --no-lock --node-modules-dir=none --allow-read --allow-write docs.js
  ln -sf "../../dist/Solarite.min.js" "../benchmarks/solarite/Solarite.min.js"

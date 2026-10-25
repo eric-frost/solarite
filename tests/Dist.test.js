@@ -40,6 +40,37 @@ Testimony.test('Dist.events.click', `Real clicks must work in the minified build
 	a.remove();
 });
 
+Testimony.test('Dist.events.standaloneFragment', `Handlers of a standalone template with several root nodes run in the minified build, and a root in another document still registers on that document`, () => {
+	// 1. Two buttons made by one h() call.  contextmenu is bound by no other test of this file,
+	// so nothing else has registered its dispatcher on the page's document for this build.
+	let log = [];
+	let fragment = hMin()`<button oncontextmenu=${() => log.push('a')}>a</button><button oncontextmenu=${() => log.push('b')}>b</button>`;
+	let host = document.createElement('div');
+	document.body.append(host);
+	host.append(fragment);
+	for (let button of host.children)
+		button.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true}));
+	assert.eq(log.join(), 'a,b');
+	host.remove();
+
+	// 2. The page's document stands in only for a document that has no window, which the
+	// dispatcher learns from document.defaultView, a name the minifier has to leave alone.  A
+	// root inside an iframe has a document with a window, and that document has to register:
+	// it is what reaches an element moved out of the root.  The root is made by this page,
+	// because h() recognizes an element by this page's HTMLElement.
+	let iframe = document.createElement('iframe');
+	document.body.append(iframe);
+	let doc = iframe.contentDocument;
+	let el = document.createElement('div');
+	doc.body.append(el);
+	hMin(el)`<button onmouseover=${() => log.push('framed')}>x</button>`;
+	let button = el.firstChild;
+	doc.body.append(button);
+	button.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
+	assert.eq(log.join(), 'a,b,framed');
+	iframe.remove();
+});
+
 Testimony.test('Dist.events.dispatchOrder', `Delegated and native: handlers keep native ordering in the minified build`, () => {
 	// The dispatcher attaches listeners along the event's path the moment an event starts and
 	// removes them when the event reaches the last of them, so it leans on bookkeeping the
@@ -303,6 +334,23 @@ Testimony.test('Dist.map.sameWorkAsUnminified', `The minified build settles a lo
 	assert.eq(counts[9] > 70, true);
 });
 
+Testimony.test('Dist.map.nestedOddResults', `An h.map() inside an array draws a number, nothing, or an array for an item in the minified build, which reads such a list through its iterator.`, () => {
+	let el = document.createElement('div');
+	for (let items of [[1, 2, 3], [3, 1], []]) {
+		hMin(el)`<div>${[hMin.map(items, n => n === 1 ? n : n === 2 ? null : [hMin`<b>${n}</b>`, hMin`<i>${n}</i>`])]}</div>`;
+		assert.eq(el.innerHTML.replace(/<!--.*?-->/g, ''), '<div>' + items.map(n => n === 1 ? '1' : n === 2 ? '' : '<b>3</b><i>3</i>').join('') + '</div>');
+	}
+});
+
+Testimony.test('Dist.rawNodeMoves', `A raw DOM node that moves between two expressions of one parent is shown in its new place in the minified build, which finds the place that had the node through a WeakRef on the node.`, () => {
+	let el = document.createElement('div');
+	let node = document.createElement('hr');
+	for (let [a, b] of [[node, 'x'], ['x', node], ['x', node], [node, 'x'], [node, node], ['x', node]]) {
+		hMin(el)`<div>${a}|${b}</div>`;
+		assert.eq(el.firstElementChild.innerHTML.replace(/<!--.*?-->/g, ''), a === node ? '<hr>|' + (b === node ? '' : b) : a + '|<hr>');
+	}
+});
+
 Testimony.test('Dist.selector', `h.selector survives property mangling in the minified build`, () => {
 	class DistSelectorTest extends SolariteMin {
 		rows = [];
@@ -452,9 +500,8 @@ Testimony.test('Dist.customElementsNotMangled', `Terser must not rename customEl
 	// the shipped build until 2026-07-28.  The call was guarded (`customElements.l ? ... : ...`),
 	// so it never threw; it silently took the fallback forever, meaning a class registered under
 	// a tag that isn't its kebab-cased name resolved to the WRONG tag in the minified build only.
-	// Util.js dodges this with `let getName = 'getName'` and computed access, which terser leaves
-	// alone.  This test is the guard, because the failure is invisible at runtime and the
-	// unminified build behaves correctly, so no behavioural test can see it.
+	// Util.js dodges this by writing the name in quotes, customElements['getName'], which terser
+	// leaves alone.  This test is the guard, because the unminified build behaves correctly.
 	const src = await (await fetch('../dist/Solarite.min.js')).text();
 	let used = [...src.matchAll(/customElements\.([A-Za-z_$][\w$]*)/g)].map(m => m[1]);
 	assert(used.length > 0, 'expected the build to reference customElements at all');
@@ -475,6 +522,18 @@ Testimony.test('Dist.helpersStayFunctions', `The minified build must not turn a 
 	const src = await (await fetch('../dist/Solarite.min.js')).text();
 	assert(src.length > 10000, 'dist/Solarite.min.js fetched');
 	assert.eq((src.match(/\}\)\(/g) || []).length, 0);
+});
+
+Testimony.test('Dist.rootRenderCreatesNothing', `The function that every render of every component runs creates no function in the minified build`, async () => {
+	// Template.render() tells a template that only arrives in a new array from one that is new
+	// by comparing the strings, in sameStrings().  Written as one expression with a callback,
+	// that helper is moved into render() by the minifier, callback and all, and a variable the
+	// callback reads then has to live in an object that is allocated on every call of render(),
+	// whether the comparison runs or not.  Written as a loop it stays a function of its own.
+	const src = await (await fetch('../dist/Solarite.min.js')).text();
+	let render = src.match(/render\(\w+=null,\w+=\{\}\)\{.*?\.exprs,!0,\w+\);/);
+	assert(render, 'Template.render() found in dist/Solarite.min.js');
+	assert(!/=>|function/.test(render[0]), render[0]);
 });
 
 Testimony.test('Dist.slotHandOff', `Slot children survive property mangling`, () => {
@@ -509,6 +568,185 @@ Testimony.test('Dist.slotHandOff', `Slot children survive property mangling`, ()
 	div.remove();
 });
 
+Testimony.test('Dist.foreignElementChildren', `A custom element that doesn't render through Solarite keeps its children in the minified build, and when it takes them apart the next render throws the error that names it`, () => {
+	class DistPlainElement extends HTMLElement {}
+	customElements.define('dist-plain-element', DistPlainElement);
+	let message = tag => `Solarite: <${tag}> changed the nodes \${...} drew inside it; wrap the \${...} in an element it leaves alone.`;
+	let thrownBy = fn => {
+		try {
+			fn();
+		}
+		catch (e) {
+			return e.message;
+		}
+		return null;
+	};
+
+	let div = document.createElement('div');
+	let render = items => hMin(div)`<div><dist-plain-element><b>${items.length}</b>${items.map(item => hMin`<p>${item}</p>`)}</dist-plain-element></div>`;
+	render([1, 2]);
+	let plain = div.querySelector('dist-plain-element');
+	assert.eq(plain.innerHTML.replace(/<!--.*?-->/g, ''), `<b>2</b><p>1</p><p>2</p>`);
+	render([2]);
+	assert.eq(plain.innerHTML.replace(/<!--.*?-->/g, ''), `<b>1</b><p>2</p>`);
+
+	// A row the element removed: the minified build has to recognise the list as no longer
+	// the one it left, name the element it kept beside the nodes, and draw nothing.
+	let p = plain.querySelector('p'), next = p.nextSibling;
+	p.remove();
+	assert.eq(thrownBy(() => render([2, 3])), message('dist-plain-element'));
+	assert.eq(plain.innerHTML.replace(/<!--.*?-->/g, ''), `<b>1</b>`);
+	next.before(p);
+	render([2, 3]);
+	assert.eq(plain.innerHTML.replace(/<!--.*?-->/g, ''), `<b>2</b><p>2</p><p>3</p>`);
+	assert.eq(plain.querySelector('p'), p);
+
+	// Moved all together, the children are updated where the element put them.
+	let section = document.createElement('section');
+	section.append(...plain.childNodes);
+	plain.append(section);
+	render([3]);
+	assert.eq(plain.innerHTML.replace(/<!--.*?-->/g, ''), `<section><b>1</b><p>3</p></section>`);
+
+	class DistWipingElement extends HTMLElement {
+		render() {
+			this.innerHTML = '<s>mine</s>';
+		}
+	}
+	customElements.define('dist-wiping-element', DistWipingElement);
+	div = document.createElement('div');
+	render = items => hMin(div)`<div><dist-wiping-element>${items.map(item => hMin`<p key=${item}>${item}</p>`)}</dist-wiping-element></div>`;
+	render([1, 2]);
+	render([1, 2, 3]);
+	for (let items of [[3, 1], [5, 3, 1, 6], [], [9]])
+		assert.eq(thrownBy(() => render(items)), message('dist-wiping-element'));
+	assert.eq(div.querySelector('dist-wiping-element').innerHTML, `<s>mine</s>`);
+
+	// A list that a Solarite component inside the element parted from the node before it,
+	// by putting that node in a named slot, has no run of nodes to be looked for.  The
+	// minified build has to leave it alone, and not take it for a list that is being drawn.
+	customElements.define('dist-slots-element', class extends HTMLElement {
+		constructor() {
+			super();
+			hMin(this)`<header><slot name="head"></slot></header><main><slot></slot></main>`;
+		}
+	});
+	div = document.createElement('div');
+	render = items => hMin(div)`<div><dist-plain-element><dist-slots-element><b slot="head">${items.length}</b>${items.map(item => hMin`<p key=${item}>${item}</p>`)}</dist-slots-element></dist-plain-element></div>`;
+	for (let items of [[1, 2], [2, 1, 3], [], [4]]) {
+		render(items);
+		assert.eq([...div.querySelectorAll('main p')].map(p => p.textContent).join(), items.join());
+	}
+});
+
+Testimony.test('Dist.jsxComponentArgs', `A precompiled JSX attribute on a custom element tag reaches the component under its own name in the minified build`, async () => {
+	// PathToComponent tells a JSX attribute from an object of attributes by its class, which
+	// the JSX runtime gets from this same bundle, and reads its name and value through
+	// properties the runtime, minified apart from the bundle, must spell the same way.
+	const {jsxTemplate, jsxAttr} = await import('../dist/jsx-runtime.min.js');
+	let received, clicks = 0;
+	customElements.define('dist-jsx-args', class extends HTMLElement {
+		constructor(attribs) {
+			super();
+			received = attribs;
+		}
+	});
+	let items = [1, 2];
+	let el = document.createElement('div');
+	hMin(el, jsxTemplate(['<div><dist-jsx-args ', ' ', ' ', ' ', '></dist-jsx-args></div>'], jsxAttr('items', items), jsxAttr('max-size', 3),
+		jsxAttr('style', {fontSize: '2px'}), jsxAttr('onclick', () => clicks++)));
+	assert.eq(Object.keys(received).sort().join(), 'items,maxSize,style');
+	assert.eq(received.items, items);
+	assert.eq(received.maxSize, 3);
+	assert.eq(received.style, 'font-size:2px');
+	el.querySelector('dist-jsx-args').click();
+	assert.eq(clicks, 1);
+});
+
+Testimony.test('Dist.switch', `An element given another template shows it in the minified build: its content, the attributes and handlers on the element itself, its id references and its slot children`, () => {
+	let log = [];
+	class DistSwitch extends SolariteMin {
+		mode = 'a';
+		render() {
+			if (this.mode === 'a')
+				hMin(this)`<dist-switch class="tpl-a" title=${'A'} ${{lang: 'en'}} onclick=${() => log.push('click a')} onscroll=${() => log.push('scroll a')}>
+					<p data-id="one">Loading</p><slot></slot></dist-switch>`;
+			else if (this.mode === 'b')
+				hMin(this)`<dist-switch class="tpl-b" onmouseup=${() => log.push('up b')}><ul data-id="two">${hMin.map(this.rows, row =>
+					hMin`<li key=${row.id} onclick=${[this.pick, row]}>${row.id}</li>`)}</ul><footer><slot></slot></footer></dist-switch>`;
+			else
+				hMin(this)``;
+		}
+		rows = [{id: 1}, {id: 2}];
+		pick(row) {
+			log.push('pick ' + row.id);
+			this.mode = 'a';
+			this.render();
+		}
+	}
+	customElements.define('dist-switch', DistSwitch);
+
+	let div = document.createElement('div');
+	div.innerHTML = '<dist-switch><b>kid</b></dist-switch>';
+	document.body.append(div);
+	let a = div.firstChild;
+	let html = () => a.outerHTML.replace(/<!--.*?-->|\s+(?=<)/g, '');
+	assert.eq(html(), '<dist-switch class="tpl-a" lang="en" title="A"><p data-id="one">Loading</p><slot><b>kid</b></slot></dist-switch>');
+	let kid = a.querySelector('b');
+
+	a.mode = 'b';
+	a.render();
+	assert.eq(html(), '<dist-switch class="tpl-b"><ul data-id="two"><li>1</li><li>2</li></ul><footer><slot><b>kid</b></slot></footer></dist-switch>');
+	assert.eq(a.querySelector('b'), kid);
+	assert.eq(a.one, null);
+	assert.eq(a.two.tagName, 'UL');
+	a.dispatchEvent(new Event('scroll'));
+	a.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+	assert.eq(log.join(), 'up b');
+
+	// A handler of the template that is shown puts the other one back, from inside its own event.
+	a.querySelectorAll('li')[1].click();
+	assert.eq(log[1], 'pick 2');
+	assert.eq(html(), '<dist-switch class="tpl-a" lang="en" title="A"><p data-id="one">Loading</p><slot><b>kid</b></slot></dist-switch>');
+	assert.eq(a.two, null);
+	log = [];
+	a.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+	a.click();
+	assert.eq(log.join(), 'click a');
+
+	// An empty template in between keeps the slot children for the next one.
+	a.mode = 'c';
+	a.render();
+	assert.eq(html(), '<dist-switch></dist-switch>');
+	a.mode = 'b';
+	a.render();
+	assert.eq(a.querySelector('slot').firstChild, kid);
+
+	div.remove();
+});
+
+Testimony.test('Dist.component.definedLater', `A component rendered before its class is defined is built when the class is defined, in the minified build, whether it is written as a tag of its own or as a customized built-in`, async () => {
+	let el = document.createElement('div');
+	hMin(el)`<div><dist-late-tag name=${'a'}></dist-late-tag><p is="dist-late-is" name=${'b'}></p></div>`;
+	let constructed = [];
+	customElements.define('dist-late-tag', class extends HTMLElement {
+		constructor(attribs) {
+			super();
+			constructed.push(attribs.name);
+		}
+	});
+	customElements.define('dist-late-is', class extends HTMLParagraphElement {
+		constructor(attribs) {
+			super();
+			constructed.push(attribs.name);
+		}
+	}, {extends: 'p'});
+	await customElements.whenDefined('dist-late-is');
+	await Promise.resolve();
+	assert.eq(constructed.join(), 'a,b');
+	assert.eq(el.innerHTML, `<div><dist-late-tag name="a"></dist-late-tag><p is="dist-late-is" name="b"></p></div>`);
+});
+
 Testimony.test('Dist.attribs.string', `A string of whole attributes is applied in the minified build`, () => {
 	// The minifier takes String.replace() to have no side effects.  Util.splitAttribs() once
 	// collected the attributes from inside a replace() callback and ignored what the call
@@ -520,6 +758,36 @@ Testimony.test('Dist.attribs.string', `A string of whole attributes is applied i
 	assert.eq(b.getAttribute('title'), 'I have a title');
 	assert.eq(b.getAttribute('data-x'), '2');
 	assert.eq(b.hasAttribute('hidden'), true);
+});
+
+Testimony.test('Dist.tokenizer.comments', `An html comment holding an apostrophe, a quote or > renders in the minified build, whose tokenizer is one pattern that has to come through the minifier unchanged`, () => {
+	let el = document.createElement('div');
+	let render = value => hMin(el)`<!-- don't "quote" > --><p title=${value}>${value}</p><!-- it's ${value} --!><i>${value}</i>`;
+	render(1);
+	assert.eq(el.querySelector('p').outerHTML + el.querySelector('i').outerHTML, '<p title="1">1</p><i>1</i>');
+	render(2);
+	assert.eq(el.querySelector('p').outerHTML + el.querySelector('i').outerHTML, '<p title="2">2</p><i>2</i>');
+});
+
+Testimony.test('Dist.tokenizer.quoteInUnquotedValue', `An apostrophe or a quote in an attribute value written without quotes opens nothing in the minified build`, () => {
+	let el = document.createElement('div');
+	let render = value => hMin(el)`<p title=don't data-x=a"b>${value}</p><!x isn't><a href=/s?q=it's&n=${value}>${value}</a>`;
+	render(1);
+	assert.eq(el.querySelector('p').outerHTML + el.querySelector('a').outerHTML, `<p title="don't" data-x="a&quot;b">1</p><a href="/s?q=it's&amp;n=1">1</a>`);
+	render(2);
+	assert.eq(el.querySelector('p').outerHTML + el.querySelector('a').outerHTML, `<p title="don't" data-x="a&quot;b">2</p><a href="/s?q=it's&amp;n=2">2</a>`);
+});
+
+Testimony.test('Dist.tokenizer.rawText', `A < in the text of a script or a style opens no tag in the minified build`, () => {
+	let el = document.createElement('div');
+	let render = value => hMin(el, {scripts: false, styles: false})`<script type="text/plain">if (a<b) c(${value}) // isn't html</script><style>/* <b */ p { margin: ${value}px }</style><p title="${value}">${value}</p>`;
+	render(1);
+	assert.eq(el.querySelector('script').textContent, `if (a<b) c(1) // isn't html`);
+	assert.eq(el.querySelector('style').textContent, '/* <b */ p { margin: 1px }');
+	render(2);
+	assert.eq(el.querySelector('script').textContent, `if (a<b) c(2) // isn't html`);
+	assert.eq(el.querySelector('style').textContent, '/* <b */ p { margin: 2px }');
+	assert.eq(el.querySelector('p').outerHTML, '<p title="2">2</p>');
 });
 
 Testimony.test('Dist.defineClass.registeredName', `A component class keeps the tag name it was registered under in the minified build`, () => {
@@ -569,6 +837,35 @@ Testimony.test('Dist.toEl.object', `toEl() finds an object's render() by name in
 	});
 	assert.eq(el.tagName, 'I');
 	assert.eq(el.textContent, 'x');
+});
+
+Testimony.test('Dist.toEl.topLevelExpression', `A standalone template with an expression at its top level gives a DocumentFragment of everything it draws in the minified build, and one element is still given alone`, () => {
+	let total = hMin()`Total: ${5}`;
+	let list = toElMin(hMin`<h1>Fruit</h1>${[1, 2].map(i => hMin`<p>${i}</p>`)}`);
+	assert(total instanceof DocumentFragment);
+	assert(list instanceof DocumentFragment);
+	let host = document.createElement('div');
+	host.append(total, list);
+	assert.eq(host.innerHTML.replace(/<!--.*?-->/g, ''), 'Total: 5<h1>Fruit</h1><p>1</p><p>2</p>');
+
+	let one = hMin()`
+		<b>${'x'}</b><!-- ${'commented out'} -->`;
+	assert.eq(one.outerHTML, '<b>x</b>');
+});
+
+Testimony.test('Dist.translated', `Text that is all its element holds shows a new value after a page translator replaced its Text node, in the minified build`, () => {
+	let el = document.createElement('div'), name = 'one';
+	let render = () => hMin(el)`<p>Hello <span>${name}</span>!</p>`;
+	render();
+
+	// What Chrome's translator does to a Text node.
+	let span = el.querySelector('span'), font = document.createElement('font');
+	font.textContent = 'uno';
+	span.firstChild.replaceWith(font);
+
+	name = 'two';
+	render();
+	assert.eq(span.innerHTML, 'two');
 });
 
 Testimony.test('Dist.attrib.contenteditableValueEmpties', 'Empty values clear and refill a contenteditable in the minified build.', () => {
