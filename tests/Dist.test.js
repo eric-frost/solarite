@@ -597,3 +597,37 @@ Testimony.test('Dist.attrib.contenteditableValueEmpties', 'Empty values clear an
 		el.remove();
 	}
 });
+
+Testimony.test('Dist.hasChanged', `hasChanged() works in the minified build.  The argument here has a toJSON() on its class that returns a function, which only the replacer can tell apart from another.  If the minifier renamed toJSON where Solarite looks for it, the fast comparison would take the argument for plain data and miss the change.`, () => {
+	let lastChanged, cb = () => 1;
+
+	class DistChangedChild extends HTMLElement {
+		render(attribs=null, hasChanged=() => true) {
+			lastChanged = hasChanged();
+			hMin(this)`<div>x</div>`;
+		}
+	}
+	customElements.define('dist-changed-child', DistChangedChild);
+
+	class Hider {
+		n = 1;
+		toJSON() { return {cb}; }
+	}
+	let arg = new Hider();
+
+	class DistChangedParent extends HTMLElement {
+		render() {
+			hMin(this)`<dist-changed-parent><dist-changed-child arg=${arg}></dist-changed-child></dist-changed-parent>`;
+		}
+	}
+	customElements.define('dist-changed-parent', DistChangedParent);
+
+	let a = new DistChangedParent();
+	a.render();
+	a.render();
+	assert.eq(lastChanged, false);
+
+	cb = () => 2;
+	a.render();
+	assert.eq(lastChanged, true);
+});

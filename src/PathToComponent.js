@@ -6,15 +6,49 @@ import PathToAttribValue from "./PathToAttribValue.js";
 import PathToKey from "./PathToKey.js";
 import PathToEvent from "./PathToEvent.js";
 import Globals from "./Globals.js";
-import {getObjectHash} from "./Template.js";
+import {getObjectHash, getPlainHash} from "./Template.js";
 
 export default class PathToComponent extends Path {
 
 	/** @type {PathToAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
 
-	/** @type {string} Hash of the exprs from the previous apply(), used to detect changes. */
+	/** @type {string|undefined} Hash of the exprs the last time the component asked whether they changed.  Undefined
+	 * when it has never asked, or rendered once without asking, so that the next answer is yes. */
 	appliedExprsHash;
+
+	/** @type {Expr[][]|null} The exprs of the render in progress, which hasChanged() compares.  Null between renders. */
+	renderingExprs = null;
+
+	/** @type {boolean|undefined} hasChanged()'s answer for the render in progress, once the component has asked. */
+	changedAnswer;
+
+	/** @type {boolean} Whether to try getPlainHash() first.  Turned off for good the first time these exprs need
+	 * getObjectHash()'s replacer, since a component's arguments keep the same kind of data from one render to the next,
+	 * and trying again would only walk the data for nothing.  Both give the same string, so the switch never makes the
+	 * exprs look changed. */
+	plainExprs = true;
+
+	/**
+	 * Passed to the component's render() as its second argument.  Whether the exprs differ from those of the last
+	 * render that asked, compared deeply so that a field changed inside the same object counts.  Only a component that
+	 * calls it pays for the comparison.  Called outside a render that this path started, it answers yes.
+	 * @return {boolean} */
+	hasChanged = () => {
+		if (!this.renderingExprs)
+			return true;
+		if (this.changedAnswer === undefined) {
+			let exprs = this.renderingExprs;
+			let hash = this.plainExprs ? getPlainHash(exprs) : undefined;
+			if (hash === undefined) {
+				this.plainExprs = false;
+				hash = getObjectHash(exprs);
+			}
+			this.changedAnswer = hash !== this.appliedExprsHash;
+			this.appliedExprsHash = hash;
+		}
+		return this.changedAnswer;
+	};
 
 	constructor(nodeBefore, nodeMarker) {
 		super(null, nodeMarker);
@@ -35,11 +69,6 @@ export default class PathToComponent extends Path {
 		//#IFDEBUG
 		assert(exprs.length === this.attribPaths.length);
 		//#ENDIF
-
-		// Deep comparison via hashing, so mutating a field on the same object counts as changed.
-		let newHash = getObjectHash(exprs);
-		let changed = newHash !== this.appliedExprsHash;
-		this.appliedExprsHash = newHash;
 
 		let el = this.nodeMarker;
 
@@ -167,7 +196,7 @@ export default class PathToComponent extends Path {
 				// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
 				// Because that path renders it without the attribute expressions.
 				if (typeof newEl.render === 'function' && !Globals.rendered.has(newEl))
-					newEl.render(attribs, true);
+					this.callRender(newEl, attribs, exprs);
 
 				// 2g. Update attribute paths to use the new element and re-apply them.
 				for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
@@ -182,11 +211,34 @@ export default class PathToComponent extends Path {
 
 			// 2f. Render
 			else if (typeof el.render === 'function')
-				el.render(attribs, changed);
+				this.callRender(el, attribs, exprs);
 
 		}
 		finally {
 			Globals.currentSlotChildren = prevSlotChildren;
+		}
+	}
+
+	/**
+	 * Call the component's render() with its arguments and hasChanged().
+	 * @param el {HTMLElement}
+	 * @param attribs {Object}
+	 * @param exprs {Expr[][]} */
+	callRender(el, attribs, exprs) {
+		// A component that renders this path's parent again from inside its own render() comes back through here, so
+		// the outer render's state is saved and put back around the call.
+		let prevExprs = this.renderingExprs, prevAnswer = this.changedAnswer;
+		this.renderingExprs = exprs;
+		this.changedAnswer = undefined;
+		try {
+			el.render(attribs, this.hasChanged);
+		}
+		finally {
+			// The component rendered without asking, so there is nothing for the next answer to be compared against.
+			if (this.changedAnswer === undefined)
+				this.appliedExprsHash = undefined;
+			this.renderingExprs = prevExprs;
+			this.changedAnswer = prevAnswer;
 		}
 	}
 

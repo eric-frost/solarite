@@ -801,12 +801,14 @@ class NotesItem extends Solarite {
     super();
     this.item = fields.item;
     this.fontSize = fields.fontSize;
-    this.render();
   }
 
-  render(fields=null, changed=true) { // Same arguments as constructor
-    if (!changed)
-      return; // fields haven't changed since previous render() call.
+  // Same fields as the constructor, and a function that tells
+  // whether they changed.  The default covers a call to
+  // render() that passes no arguments.
+  render(fields=null, hasChanged=() =&gt; true) {
+    if (!hasChanged())
+      return; // fields haven't changed since the last render.
 
     if (fields) {
       this.item = fields.item;
@@ -843,8 +845,8 @@ class NotesList extends Solarite {
   add() {
     this.items.push({name: '', description: ''});
 
-    // This calls render(item, changed=false) on the first 
-    // two NotesItems, and changed=true on the third one.
+    // This calls render() on all three NotesItems.  hasChanged()
+    // is false for the first two and true for the new third one.
     // We always call render() even when nothing has changed
     // so that the component can decide for itself what to do.
     this.render();
@@ -913,9 +915,10 @@ document.body.innerHTML = `&lt;my-timer duration=&quot;7&quot; auto-start&gt;&lt
 <ol>
 <li>Its <code>render()</code> function executes, typically calling <code>h()</code> to update itself and its children.</li>
 <li>For each child web component (whether a Solarite component or otherwise), <code>h()</code> then calls that child&#39;s <code>render()</code> method, if it exists.</li>
-<li>The child receives its attributes as an object (first argument) and a <code>changed</code> boolean (second argument).</li>
+<li>The child receives its attributes as an object (first argument) and a <code>hasChanged()</code> function (second argument).</li>
 <li>The child then decides whether to call its own <code>h()</code> function to update.</li>
 </ol>
+<p><code>hasChanged()</code> answers whether the attributes differ from those of the last render that called it.  The comparison is deep, so a field changed inside the same object counts.  It works by running the attributes through <code>JSON.stringify()</code>, which costs time in proportion to the data:  about half a millisecond for 1,000 rows.  So it only runs when the child calls <code>hasChanged()</code>, and a child that doesn&#39;t need it pays nothing.  It answers <code>true</code> on a child&#39;s first render, after a render that didn&#39;t call it, and when called after <code>render()</code> has returned.</p>
 <p>In the example above, creating <code>&lt;notes-item&gt;</code> via <code>new</code> instead of its tag name is discouraged, as it would cause the component to be recreated on every render:</p>
 <pre data-lang="JavaScript"><code>class NotesList extends HTMLElement {
   render() { 

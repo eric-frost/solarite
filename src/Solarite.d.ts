@@ -86,7 +86,11 @@ export class Solarite extends HTMLElement {
 	 * can't copy attribs onto fields itself, because subclass field initializers run after it
 	 * finishes and would overwrite them; that's why the subclass does the final assign. */
     constructor(attribs?: Record<string, any> | null, types?: Record<string, Function> | null);
-    render(attribs?: Record<string, any>, changed?:boolean): void;
+    /**
+     * @param attribs The attributes a parent template gives this element.
+     * @param hasChanged Whether those attributes differ from the last render that called it, compared deeply.  The
+     *     comparison only runs when called.  Absent when render() is called directly. */
+    render(attribs?: Record<string, any>, hasChanged?: () => boolean): void;
     renderFirstTime(): void;
     connectedCallback(): void;
     static define(tagName?: string | null): void;

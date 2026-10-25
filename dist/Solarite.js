@@ -4035,8 +4035,42 @@ class PathToComponent extends Path {
 	/** @type {PathToAttribValue[]} Paths to dynamics attributes that will be set on the component.*/
 	attribPaths;
 
-	/** @type {string} Hash of the exprs from the previous apply(), used to detect changes. */
+	/** @type {string|undefined} Hash of the exprs the last time the component asked whether they changed.  Undefined
+	 * when it has never asked, or rendered once without asking, so that the next answer is yes. */
 	appliedExprsHash;
+
+	/** @type {Expr[][]|null} The exprs of the render in progress, which hasChanged() compares.  Null between renders. */
+	renderingExprs = null;
+
+	/** @type {boolean|undefined} hasChanged()'s answer for the render in progress, once the component has asked. */
+	changedAnswer;
+
+	/** @type {boolean} Whether to try getPlainHash() first.  Turned off for good the first time these exprs need
+	 * getObjectHash()'s replacer, since a component's arguments keep the same kind of data from one render to the next,
+	 * and trying again would only walk the data for nothing.  Both give the same string, so the switch never makes the
+	 * exprs look changed. */
+	plainExprs = true;
+
+	/**
+	 * Passed to the component's render() as its second argument.  Whether the exprs differ from those of the last
+	 * render that asked, compared deeply so that a field changed inside the same object counts.  Only a component that
+	 * calls it pays for the comparison.  Called outside a render that this path started, it answers yes.
+	 * @return {boolean} */
+	hasChanged = () => {
+		if (!this.renderingExprs)
+			return true;
+		if (this.changedAnswer === undefined) {
+			let exprs = this.renderingExprs;
+			let hash = this.plainExprs ? getPlainHash(exprs) : undefined;
+			if (hash === undefined) {
+				this.plainExprs = false;
+				hash = getObjectHash(exprs);
+			}
+			this.changedAnswer = hash !== this.appliedExprsHash;
+			this.appliedExprsHash = hash;
+		}
+		return this.changedAnswer;
+	};
 
 	constructor(nodeBefore, nodeMarker) {
 		super(null, nodeMarker);
@@ -4052,11 +4086,6 @@ class PathToComponent extends Path {
 		
 
 		
-
-		// Deep comparison via hashing, so mutating a field on the same object counts as changed.
-		let newHash = getObjectHash(exprs);
-		let changed = newHash !== this.appliedExprsHash;
-		this.appliedExprsHash = newHash;
 
 		let el = this.nodeMarker;
 
@@ -4184,7 +4213,7 @@ class PathToComponent extends Path {
 				// This must happen before we add it to the DOM which can trigger connectedCallback() -> renderFirstTime()
 				// Because that path renders it without the attribute expressions.
 				if (typeof newEl.render === 'function' && !Globals$1.rendered.has(newEl))
-					newEl.render(attribs, true);
+					this.callRender(newEl, attribs, exprs);
 
 				// 2g. Update attribute paths to use the new element and re-apply them.
 				for (let i=0, attribPath; attribPath = this.attribPaths[i]; i++) {
@@ -4199,11 +4228,34 @@ class PathToComponent extends Path {
 
 			// 2f. Render
 			else if (typeof el.render === 'function')
-				el.render(attribs, changed);
+				this.callRender(el, attribs, exprs);
 
 		}
 		finally {
 			Globals$1.currentSlotChildren = prevSlotChildren;
+		}
+	}
+
+	/**
+	 * Call the component's render() with its arguments and hasChanged().
+	 * @param el {HTMLElement}
+	 * @param attribs {Object}
+	 * @param exprs {Expr[][]} */
+	callRender(el, attribs, exprs) {
+		// A component that renders this path's parent again from inside its own render() comes back through here, so
+		// the outer render's state is saved and put back around the call.
+		let prevExprs = this.renderingExprs, prevAnswer = this.changedAnswer;
+		this.renderingExprs = exprs;
+		this.changedAnswer = undefined;
+		try {
+			el.render(attribs, this.hasChanged);
+		}
+		finally {
+			// The component rendered without asking, so there is nothing for the next answer to be compared against.
+			if (this.changedAnswer === undefined)
+				this.appliedExprsHash = undefined;
+			this.renderingExprs = prevExprs;
+			this.changedAnswer = prevAnswer;
 		}
 	}
 
@@ -6083,8 +6135,10 @@ function templatesSame(a, b) {
 
 /**
  * Get a string that changes when any value inside obj changes, including deep mutations.
- * Used by PathToComponent to compute the `changed` argument to component render() calls.
- * Functions, Nodes, and repeated/circular objects are represented by identity ids.
+ * Used by PathToComponent for the hasChanged() function it passes to a component's render().
+ * Plain JSON drops functions, writes every Node as {}, and throws on a cycle.  So the replacer, which JSON.stringify()
+ * calls for every value, writes an id in place of each function, Node, and repeated or circular object, and a Template
+ * as the id of its html with its exprs.
  * @param obj {*}
  * @returns {string} */
 function getObjectHash(obj) {
@@ -6103,6 +6157,57 @@ function getObjectHash(obj) {
 		}
 		return value;
 	});
+}
+
+/**
+ * The string getObjectHash() gives for a component's exprs, made faster when the data allows it.
+ *
+ * Most of getObjectHash()'s time is the browser calling its replacer for every value, not the work the replacer does.
+ * And since V8 13.8 (Chrome 138), JSON.stringify() without a replacer takes a much faster path for plain data.  So the
+ * data is first walked here, and if it holds nothing the replacer would change, the browser serializes it alone.  For
+ * 10,000 rows of plain objects that is 2.8ms instead of 5.2ms.
+ *
+ * A function or Node given straight to an attribute, as in onSave=${fn}, is common, so those are replaced here with the
+ * same id the replacer would write.  Anything else the replacer would change sends the caller to getObjectHash().
+ * @param exprs {Expr[][]} One array of values for each attribute.
+ * @return {string|undefined} Undefined when the data needs getObjectHash(). */
+function getPlainHash(exprs) {
+	let top = exprs.map(values => values.map(value =>
+		typeof value === 'function' || value instanceof Node ? getObjectId(value) : value));
+	try {
+		if (isPlainData(top, new Set()))
+			return JSON.stringify(top);
+	}
+	catch {} // Data nested too deep for the walk's recursion.  getObjectHash() decides what happens to it.
+}
+
+/**
+ * Whether JSON.stringify() writes value the same way with and without getObjectHash()'s replacer:  nothing in it is a
+ * function, Node, Template, repeated or circular object, or an object with a toJSON() of its own.  A Date's toJSON()
+ * gives a string, which the replacer leaves alone.
+ * @param value {*}
+ * @param seen {Set<Object>} Every object found so far, which finds the repeated and circular ones.
+ * @return {boolean} */
+function isPlainData(value, seen) {
+	if (typeof value !== 'object')
+		return typeof value !== 'function';
+	if (value === null)
+		return true;
+	if (seen.has(value) || value instanceof Node || value instanceof Template)
+		return false;
+	seen.add(value);
+	if (typeof value.toJSON === 'function')
+		return value.toJSON === Date.prototype.toJSON;
+	if (Array.isArray(value)) {
+		for (let i = 0; i < value.length; i++)
+			if (!isPlainData(value[i], seen))
+				return false;
+		return true;
+	}
+	for (let key in value)
+		if (!isPlainData(value[key], seen))
+			return false;
+	return true;
 }
 
 /**

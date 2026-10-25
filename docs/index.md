@@ -881,12 +881,14 @@ class NotesItem extends Solarite {
     super();
     this.item = fields.item;
     this.fontSize = fields.fontSize;
-    this.render();
   }
 
-  render(fields=null, changed=true) { // Same arguments as constructor
-    if (!changed)
-      return; // fields haven't changed since previous render() call.
+  // Same fields as the constructor, and a function that tells
+  // whether they changed.  The default covers a call to
+  // render() that passes no arguments.
+  render(fields=null, hasChanged=() => true) {
+    if (!hasChanged())
+      return; // fields haven't changed since the last render.
 
     if (fields) {
       this.item = fields.item;
@@ -923,8 +925,8 @@ class NotesList extends Solarite {
   add() {
     this.items.push({name: '', description: ''});
 
-    // This calls render(item, changed=false) on the first 
-    // two NotesItems, and changed=true on the third one.
+    // This calls render() on all three NotesItems.  hasChanged()
+    // is false for the first two and true for the new third one.
     // We always call render() even when nothing has changed
     // so that the component can decide for itself what to do.
     this.render();
@@ -1011,8 +1013,10 @@ When a parent component renders:
 
 1. Its `render()` function executes, typically calling `h()` to update itself and its children.
 2. For each child web component (whether a Solarite component or otherwise), `h()` then calls that child's `render()` method, if it exists.
-3. The child receives its attributes as an object (first argument) and a `changed` boolean (second argument).
+3. The child receives its attributes as an object (first argument) and a `hasChanged()` function (second argument).
 4. The child then decides whether to call its own `h()` function to update.
+
+`hasChanged()` answers whether the attributes differ from those of the last render that called it.  The comparison is deep, so a field changed inside the same object counts.  It works by running the attributes through `JSON.stringify()`, which costs time in proportion to the data:  about half a millisecond for 1,000 rows.  So it only runs when the child calls `hasChanged()`, and a child that doesn't need it pays nothing.  It answers `true` on a child's first render, after a render that didn't call it, and when called after `render()` has returned.
 
 In the example above, creating `<notes-item>` via `new` instead of its tag name is discouraged, as it would cause the component to be recreated on every render:
 

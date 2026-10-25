@@ -8049,13 +8049,13 @@ Testimony.test('Solarite.component.attribsFromDOM', () => {
 			this.render();
 		}
 
-		render(attribs=null, changed=true) {
+		render(attribs=null, hasChanged=() => true) {
 			if (attribs)
 				this.attribs = attribs;
 
 			h(this)`<c-500>${this.attribs.name}:${this.attribs.rows.join('|')}</c-500>`;
 			render++;
-			isChanged = changed;
+			isChanged = hasChanged();
 		}
 	}
 	C500.define();
@@ -8097,11 +8097,11 @@ Testimony.test('Solarite.component.attribsFromParentComponent', () => {
 			construct++;
 		}
 
-		render(attribs={}, changed=true) {
+		render(attribs={}, hasChanged=() => true) {
 			//console.log('render', attribs);
 			h(this)`<b-504>${attribs.name}:${attribs.rows.join('|')}</b-504>`;
 			render++;
-			isChanged = changed;
+			isChanged = hasChanged();
 		}
 	}
 	B504.define();
@@ -8135,9 +8135,9 @@ Testimony.test('Solarite.component.renderChanged', () => {
 	let isChanged = false;
 
 	class B506 extends Solarite {
-		render(attribs={}, changed=true) {
+		render(attribs={}, hasChanged=() => true) {
 			h(this)`<b-506>${attribs.name}</b-506>`;
-			isChanged = changed;
+			isChanged = hasChanged();
 		}
 	}
 	B506.define();
@@ -8850,12 +8850,12 @@ Testimony.test('Solarite.component.nestedNonSolarite', () => {
 	a.remove();
 });
 
-Testimony.test('Solarite.component.changedFlag', `The changed argument to render() detects deep mutations.`, () => {
+Testimony.test('Solarite.component.hasChanged', `hasChanged(), the second argument to render(), detects deep mutations.`, () => {
 	let lastChanged;
 
 	class B545 extends HTMLElement {
-		render(attribs=null, changed=true) {
-			lastChanged = changed;
+		render(attribs=null, hasChanged=() => true) {
+			lastChanged = hasChanged();
 			h(this)`<div>${attribs?.user?.name}</div>`
 		}
 	}
@@ -8893,6 +8893,244 @@ Testimony.test('Solarite.component.changedFlag', `The changed argument to render
 	assert.eq(lastChanged, true);
 
 	a.remove();
+});
+
+/**
+ * An argument that counts how often the comparison behind hasChanged() reads it.  Its toJSON() sends it to
+ * getObjectHash(), whose JSON.stringify() calls toJSON() once per comparison. */
+function countedArg(name) {
+	let arg = {name, reads: 0, toJSON() { arg.reads++; return {name: arg.name}; }};
+	return arg;
+}
+
+Testimony.test('Solarite.component.hasChangedOnlyWhenCalled', `A component that never calls hasChanged() never pays for the comparison, and one that calls it twice in a render pays once.`, () => {
+	let calls = 0, answers = [];
+
+	class B546 extends HTMLElement {
+		render(attribs=null, hasChanged=() => true) {
+			for (let i = 0; i < calls; i++)
+				answers.push(hasChanged());
+			h(this)`<div>${attribs?.user?.name}</div>`
+		}
+	}
+	customElements.define('b-546', B546);
+
+	class A546 extends HTMLElement {
+		user = countedArg('John');
+		render() {
+			h(this)`<a-546><b-546 user=${this.user}></b-546></a-546>`
+		}
+	}
+	customElements.define('a-546', A546);
+
+	let a = new A546();
+	a.render();
+	a.render();
+	a.render();
+	assert.eq(a.user.reads, 0); // Never asked, never compared.
+	assert.eq(a.textContent, 'John');
+
+	calls = 2;
+	a.render();
+	assert.eq(a.user.reads, 1); // Asked twice, compared once.
+	assert.eqJson(answers, [true, true]); // The renders before didn't ask, so there was nothing to compare against.
+
+	a.render();
+	assert.eq(a.user.reads, 2);
+	assert.eqJson(answers.slice(2), [false, false]);
+});
+
+Testimony.test('Solarite.component.hasChangedAfterSkipping', `A render that doesn't call hasChanged() leaves the next call answering true, even when the arguments are back to what the last call compared.  The component drew the arguments in between, so "unchanged" would be wrong.`, () => {
+	let ask = true, lastChanged;
+
+	class B547 extends HTMLElement {
+		render(attribs=null, hasChanged=() => true) {
+			if (ask)
+				lastChanged = hasChanged();
+			h(this)`<div>${attribs?.user?.name}</div>`
+		}
+	}
+	customElements.define('b-547', B547);
+
+	class A547 extends HTMLElement {
+		user = {name: 'John'};
+		render() {
+			h(this)`<a-547><b-547 user=${this.user}></b-547></a-547>`
+		}
+	}
+	customElements.define('a-547', A547);
+
+	let a = new A547();
+	a.render();
+	a.render();
+	assert.eq(lastChanged, false);
+
+	ask = false;
+	a.user.name = 'Fred';
+	a.render();
+	a.user.name = 'John'; // Back to what the last call compared.
+	ask = true;
+	a.render();
+	assert.eq(lastChanged, true);
+
+	a.render();
+	assert.eq(lastChanged, false);
+});
+
+Testimony.test('Solarite.component.hasChangedOutsideRender', `hasChanged() answers true when called after render() has returned, and a manual render() uses the default.`, () => {
+	let kept, lastChanged;
+
+	class B548 extends HTMLElement {
+		render(attribs=null, hasChanged=() => true) {
+			kept = hasChanged;
+			lastChanged = hasChanged();
+			h(this)`<div>${attribs?.user?.name ?? 'manual'}</div>`
+		}
+	}
+	customElements.define('b-548', B548);
+
+	class A548 extends HTMLElement {
+		user = {name: 'John'};
+		render() {
+			h(this)`<a-548><b-548 user=${this.user}></b-548></a-548>`
+		}
+	}
+	customElements.define('a-548', A548);
+
+	let a = new A548();
+	a.render();
+	a.render();
+	assert.eq(lastChanged, false);
+	assert.eq(kept(), true); // After render() returned.
+
+	let b = a.querySelector('b-548');
+	b.render(); // No arguments:  the default answers.
+	assert.eq(lastChanged, true);
+	assert.eq(b.textContent, 'manual');
+});
+
+Testimony.test('Solarite.component.hasChangedConstructorRender', `A component whose constructor renders itself gets true on the parent's next render, then false.`, () => {
+	let lastChanged;
+
+	class B549 extends Solarite {
+		constructor(attribs={}) {
+			super();
+			this.user = attribs.user;
+			this.render();
+		}
+		render(attribs=null, hasChanged=() => true) {
+			if (attribs)
+				this.user = attribs.user;
+			lastChanged = hasChanged();
+			h(this)`<b-549>${this.user.name}</b-549>`
+		}
+	}
+	B549.define('b-549');
+
+	class A549 extends HTMLElement {
+		user = {name: 'John'};
+		render() {
+			h(this)`<a-549><b-549 user=${this.user}></b-549></a-549>`
+		}
+	}
+	customElements.define('a-549', A549);
+
+	let a = new A549();
+	a.render();
+	assert.eq(a.textContent, 'John');
+	a.render();
+	assert.eq(lastChanged, true);
+	a.render();
+	assert.eq(lastChanged, false);
+});
+
+Testimony.test('Solarite.component.hasChangedReplacerData', `hasChanged() sees functions, elements and cycles in the arguments:  swapping one function or element for another counts as a change, and circular data doesn't throw.`, () => {
+	let lastChanged;
+
+	class B550 extends HTMLElement {
+		render(attribs=null, hasChanged=() => true) {
+			lastChanged = hasChanged();
+			h(this)`<div>x</div>`
+		}
+	}
+	customElements.define('b-550', B550);
+
+	let f1 = () => 1, f2 = () => 2;
+	let el1 = document.createElement('div'), el2 = document.createElement('div');
+	let cycle = {name: 'a'};
+	cycle.self = cycle;
+
+	class A550 extends HTMLElement {
+		args = {format: f1, target: el1, config: {format: f1}, cycle};
+		render() {
+			let {format, target, config, cycle} = this.args;
+			h(this)`<a-550><b-550 format=${format} target=${target} config=${config} cycle=${cycle}></b-550></a-550>`
+		}
+	}
+	customElements.define('a-550', A550);
+
+	let a = new A550();
+	a.render();
+	a.render();
+	assert.eq(lastChanged, false);
+
+	a.args.format = f2; // A function given straight to an attribute.
+	a.render();
+	assert.eq(lastChanged, true);
+
+	a.args.config.format = f2; // A function inside an object.
+	a.render();
+	assert.eq(lastChanged, true);
+
+	a.args.target = el2;
+	a.render();
+	assert.eq(lastChanged, true);
+
+	cycle.name = 'b';
+	a.render();
+	assert.eq(lastChanged, true);
+	a.render();
+	assert.eq(lastChanged, false);
+});
+
+Testimony.test('Solarite.hash.plainMatchesReplacer', `getPlainHash() gives exactly the string getObjectHash() gives, and takes its fast way for plain data.`, async () => {
+	let {getObjectHash, getPlainHash} = await import('../src/Template.js');
+	let f = () => 1, el = document.createElement('div'), tpl = h`<b>${1}</b>`;
+	let cycle = {a: 1}; cycle.self = cycle;
+	let shared = {s: 1};
+	class Row { constructor(i) { this.id = i; this.label = 'Row ' + i; } }
+	let rows = Array.from({length: 50}, (_, i) => ({id: i, label: 'Item ' + i, price: i * 1.25, done: !!(i % 2), tags: ['a', 'b']}));
+	let cases = {
+		plain: [[{text: 'Milk', done: false}]],
+		rows: [[rows]],
+		classInstances: [[[new Row(1), new Row(2)]]],
+		date: [[new Date(0)]],
+		nulls: [[null, undefined, NaN, 0, '', -0, Infinity]],
+		deep: [[{a: [{b: [1, {c: 'x'}]}]}]],
+		manyAttributes: [['a ', 'b'], [rows], [true]],
+		topFunction: [[f], [rows]],
+		topNode: [[el]],
+		map: [[new Map([[1, 2]])]],
+		nestedFunction: [[{cb: f}]],
+		nestedNode: [[{el}]],
+		template: [[tpl]],
+		cycle: [[cycle]],
+		shared: [[shared, shared]],
+		sharedAcrossAttributes: [[shared], [shared]],
+		customToJSON: [[{toJSON: () => ({cb: f})}]],
+		protoToJSON: [[new (class { n = 1; toJSON() { return {cb: f}; } })()]],
+		sparse: [[[1, , 3]]],
+	};
+	let fast = ['plain', 'rows', 'classInstances', 'date', 'nulls', 'deep', 'manyAttributes', 'topFunction', 'topNode', 'map', 'sparse'];
+	for (let [name, exprs] of Object.entries(cases)) {
+		let plain = getPlainHash(exprs);
+		if (fast.includes(name))
+			assert(plain !== undefined, name + ' should take the fast way');
+		else
+			assert.eq(plain, undefined, name + ' needs the replacer');
+		if (plain !== undefined)
+			assert.eq(plain, getObjectHash(exprs), name);
+	}
 });
 
 // TODO: This redraws every tr on every update.
