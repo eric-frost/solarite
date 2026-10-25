@@ -145,7 +145,12 @@ export default class PathToComponent extends Path {
 							// what points nodeMarker at the new element.  The placeholder's tag name
 							// can't answer that, because it never changes, and the placeholder of a
 							// customized built-in (<p is="my-p">) doesn't carry the suffix at all.
-							if (this.nodeMarker === el) {
+							// Skip too if the element was given another template in the meantime
+							// (RootNodeGroup.unrender()), which leaves this one's root without its
+							// entry: nobody sees the component, and its data-id would take the name
+							// from an element of the template shown.
+							let root = this.parentNg.rootNg;
+							if (this.nodeMarker === el && Globals.rootNodeGroups.get(root.rootEl) === root) {
 								this.applyAll(deferred);
 
 								// The component is built here outside any render, so no list is
@@ -176,9 +181,10 @@ export default class PathToComponent extends Path {
 				// its render() is about to create.  There is no other channel: the children have
 				// to be parked before new Constructor(), because a Solarite constructor may call
 				// this.render() itself, and the element that would otherwise carry them does not
-				// exist yet.
+				// exist yet.  The placeholder goes with them, so that such a render can tell which
+				// attributes step 2b is about to write.
 				let ng = this.parentNg;
-				Globals.currentSlotChildren = {Constructor, nodes: [...el.childNodes], paths: ng.paths};
+				Globals.currentSlotChildren = {Constructor, nodes: [...el.childNodes], paths: ng.paths, el};
 				let newEl = new Constructor(attribs);
 
 				// 2b. Copy attributes over.  The placeholder holds everything the element should
@@ -270,6 +276,14 @@ export default class PathToComponent extends Path {
 
 				// 2h. Swap it to the DOM.
 				el.replaceWith(newEl);
+
+				// The placeholder may be the node a root's template ends with in its element or
+				// in a slot, after which the nodes that are not the template's begin (see
+				// RootNodeGroup.slotMarks).  The component now ends it.  A node has one parent,
+				// so it is named there once at most.
+				let marks = ng.slotMarks, i = marks?.indexOf(el);
+				if (i > 0)
+					marks[i] = newEl;
 			}
 
 			// 3. Render a component that exists already.

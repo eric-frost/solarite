@@ -18,8 +18,9 @@ let Globals = {
 	 *
 	 * It also carries the paths of the template the component is declared in, for an element
 	 * inside the component that is given the component's <slot>; see PathToComponent step 2f.
+	 * And the placeholder, whose attributes are the parent's; see RootNodeGroup.instantiate().
 	 *
-	 * @type {?{Constructor:Function, nodes:Node[], paths:Path[]}} */
+	 * @type {?{Constructor:Function, nodes:Node[], paths:Path[], el:HTMLElement}} */
 	currentSlotChildren: null,
 
 	div: document.createElement("div"),

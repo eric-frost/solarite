@@ -1006,13 +1006,53 @@ Testimony.test('Solarite.switch.element', `h(el) with another template than the 
 
 Testimony.test('Solarite.switch.manyNodes', `An element that holds more nodes than a function call takes arguments can be given another template.`, () => {
 	// The old template's nodes used to be handed to one append() call as arguments, and a list
-	// of 150,000 rows at the top of a template made that call throw a RangeError.
+	// of 150,000 rows at the top of a template made that call throw a RangeError.  The nodes go
+	// in before the template's last node, among its own: nodes after it are not the template's,
+	// and stay for the next one (see switch.appended).
 	let el = document.createElement('div');
 	h(el)`<p>a</p>`;
-	el.insertAdjacentHTML('beforeend', '<!---->'.repeat(150_000));
+	el.insertAdjacentHTML('afterbegin', '<!---->'.repeat(150_000));
 	h(el)`<p>b</p>`;
 	assert.eq(el.childNodes.length, 1);
 	assert.eq(getHtml(el), '<div><p>b</p></div>');
+});
+
+Testimony.test('Solarite.switch.appended', `Nodes other code put after the template in the element stay through a switch, whether or not the element was given children for its slots.`, () => {
+	// 1. They used to stay only with slot children, and only when the template had no unnamed
+	// slot, because the children were then found as everything after the template's last node.
+	let withKids = toEl('<div><b>kid</b></div>'), without = document.createElement('div');
+	for (let el of [withKids, without]) {
+		h(el)`<p>a</p>`;
+		el.append(document.createElement('u'));
+		h(el)`<p>b</p>`;
+	}
+	assert.eq(getHtml(withKids), '<div><p>b</p><b>kid</b><u></u></div>');
+	assert.eq(getHtml(without), '<div><p>b</p><u></u></div>');
+
+	// 2. A template with an unnamed slot.  What came after it follows the slot children.
+	let el = toEl('<div><b>kid</b></div>');
+	h(el)`<main><slot></slot></main>`;
+	el.append(document.createElement('u'));
+	h(el)`<p>c</p>`;
+	assert.eq(getHtml(el), '<div><p>c</p><b>kid</b><u></u></div>');
+
+	// 3. The empty template, which leaves everything in the element to other code.
+	el = document.createElement('div');
+	h(el)``;
+	el.append(document.createElement('u'));
+	h(el)`<p>d</p>`;
+	assert.eq(getHtml(el), '<div><p>d</p><u></u></div>');
+
+	// 4. A template whose last node is a child component, which was still a placeholder when
+	// the end of the template was noted.
+	customElements.define('w-45', class extends HTMLElement {
+		render() { h(this)`foot`; }
+	});
+	el = document.createElement('div');
+	h(el)`<p>e</p><w-45></w-45>`;
+	el.append(document.createElement('u'));
+	h(el)`<p>f</p>`;
+	assert.eq(getHtml(el), '<div><p>f</p><u></u></div>');
 });
 
 Testimony.test('Solarite.switch.host', `When the template's own root stands for the element, the attributes and handlers it put on the element follow the template.`, () => {
@@ -1074,6 +1114,79 @@ Testimony.test('Solarite.switch.host', `When the template's own root stands for 
 	div.remove();
 });
 
+Testimony.test('Solarite.switch.parentAttribs', `A child component's switch leaves the attributes its parent gave it, and takes back those its own template wrote.`, () => {
+	// A component that renders from its constructor builds its first template before the
+	// parent's template has copied its attributes onto it.  That template used to count the
+	// names the parent then wrote among its own, and the switch removed them.
+	class W25 extends Solarite {
+		mode = 'a';
+		constructor(attribs) {
+			super(attribs);
+			this.render();
+		}
+		render() {
+			if (this.mode === 'a')
+				h(this)`<w-25 class="card" role="tab" title="t">a</w-25>`;
+			else
+				h(this)`<w-25 class="saved">b</w-25>`;
+		}
+	}
+	W25.define();
+
+	// 1. A static class and a dynamic role from the parent, the role with the same value the
+	// child's template writes.  The parent's values win from the start, and stay.
+	let host = document.createElement('div');
+	let draw = role => h(host)`<w-25 class="wide" role=${role}></w-25>`;
+	draw('tab');
+	let a = host.firstChild;
+	assert.eq(a.outerHTML, '<w-25 class="wide" role="tab" title="t">a</w-25>');
+	a.mode = 'b';
+	a.render();
+	assert.eq(a.outerHTML, '<w-25 class="wide" role="tab">b</w-25>');
+	draw('tab');
+	assert.eq(a.outerHTML, '<w-25 class="wide" role="tab">b</w-25>');
+
+	// 2. A dynamic class from a keyed row.  The parent's next render skips the unchanged row, so
+	// a class removed by the switch never came back.
+	host = document.createElement('div');
+	let rows = [{id: 1}, {id: 2}];
+	let list = () => h(host)`<div>${h.map(rows, row => h`<w-25 key=${row.id} class=${row.id === 2 ? 'danger' : 'plain'}></w-25>`)}</div>`;
+	list();
+	let b = host.querySelectorAll('w-25')[1];
+	b.mode = 'b';
+	b.render();
+	list();
+	assert.eq(b.className, 'danger');
+
+	// 3. A class the component set on itself is the template's to replace, as is one the
+	// template wrote that the component's code added to.
+	let c = new W25();
+	c.className = 'open';
+	c.mode = 'b';
+	c.render();
+	assert.eq(c.className, 'saved');
+	c = new W25();
+	c.classList.add('open');
+	c.mode = 'b';
+	c.render();
+	assert.eq(c.className, 'saved');
+});
+
+Testimony.test('Solarite.switch.intoStandalone', `Rendering into an element made by h() keeps the attributes and handlers the template that made it gave it.`, () => {
+	// The element is the root of the template that made it, so a template rendered into it
+	// takes that one's place.  The switch took back what that template wrote on the element,
+	// as it does for a component's template wrapped in the component's tag, though here it was
+	// the element's own definition.
+	let clicks = 0;
+	let div = h()`<div class=${'card'} title="t" onclick=${() => clicks++}>${'x'}</div>`;
+	document.body.append(div);
+	h(div)`<p>${'inside'}</p>`;
+	assert.eq(div.outerHTML, '<div title="t" class="card"><p>inside</p></div>');
+	div.click();
+	assert.eq(clicks, 1);
+	div.remove();
+});
+
 Testimony.test('Solarite.switch.idsAndStyles', `Element references and scoped styles are those of the template the element holds.`, () => {
 	class W30Child extends Solarite {
 		render() { h(this)`<w-30-child><input data-id="value"></w-30-child>`; }
@@ -1117,6 +1230,40 @@ Testimony.test('Solarite.switch.idsAndStyles', `Element references and scoped st
 	assert.eq(a.querySelectorAll('style').length, 1);
 	assert.eq(a.querySelector('style').textContent, 'w-30[data-style="1"] { color: blue }');
 	assert.eq(a.getAttribute('data-style'), '1');
+});
+
+Testimony.test('Solarite.switch.formIds', `A switch away from a form with a control named id, and from an element whose data-id is empty.`, () => {
+	// 1. A form's named controls hide its own properties, so the id of <form id="editForm"> with
+	// an <input name="id"> in it reads as that input.  Forgetting the old template's ids used to
+	// throw on it, which left the component empty and stopped the parent's render that started
+	// the switch part-way.
+	class W35 extends Solarite {
+		constructor(attribs) {
+			super(attribs);
+			this.render(attribs);
+		}
+		render({n, saved}={}) {
+			if (!saved)
+				h(this)`<form id="editForm"><input type="hidden" name="id" value=${n}></form><button form="editForm">Save</button>`;
+			else
+				h(this)`<p>saved ${n}</p>`;
+		}
+	}
+	W35.define();
+	let host = document.createElement('div');
+	let draw = saved => h(host)`<div>${[1, 2].map(n => h`<w-35 n=${n} saved=${saved}></w-35>`)}</div><b>${saved ? 'saved' : 'editing'}</b>`;
+	draw(false);
+	let first = host.querySelector('w-35');
+	assert.eq(first.editForm.tagName, 'FORM');
+	draw(true);
+	assert.eq(getHtml(host), '<div><div><w-35 n="1" saved=""><p>saved 1</p></w-35><w-35 n="2" saved=""><p>saved 2</p></w-35></div><b>saved</b></div>');
+	assert.eq(first.editForm, null);
+
+	// 2. An element with an empty data-id, written or given by an expression, and no id.
+	let el = document.createElement('div');
+	h(el)`<b data-id="">x</b><i data-id=${''}>y</i>`;
+	h(el)`<p>z</p>`;
+	assert.eq(getHtml(el), '<div><p>z</p></div>');
 });
 
 Testimony.test('Solarite.switch.slots', `The children an element was given go to the slots of whichever template it holds.`, () => {
@@ -1278,6 +1425,36 @@ Testimony.test('Solarite.switch.nested', `A child component that changes its tem
 	assert.eq(el.querySelectorAll('w-50')[2], first);
 });
 
+Testimony.test('Solarite.switch.definedLater', `A component that isn't defined yet is built when it is defined only if the element still holds its template.`, async () => {
+	let built = [];
+
+	// 1. A template switched away before the definition arrives, as a tab the user leaves
+	// while its module loads.  Its component used to be built all the same, and its data-id
+	// took the name from the element of the template shown.
+	let el = document.createElement('div');
+	h(el)`<section><w-55 data-id="view" n=${1}></w-55></section>`;
+	h(el)`<table data-id="view"></table>`;
+
+	// 2. Away and back.  Only the component of the template shown is built.
+	let el2 = document.createElement('div');
+	let show = () => h(el2)`<div><w-55 data-id="view" n=${2}></w-55></div>`;
+	show();
+	h(el2)`<p>b</p>`;
+	show();
+
+	customElements.define('w-55', class extends HTMLElement {
+		constructor(attribs) {
+			super();
+			built.push(attribs?.n);
+		}
+	});
+	await customElements.whenDefined('w-55');
+	await Promise.resolve();
+	assert.eq(built.join(), '2');
+	assert.eq(el.view.tagName, 'TABLE');
+	assert.eq(el2.view, el2.querySelector('w-55'));
+});
+
 Testimony.test('Solarite.switch.reentrant', `A template that is changed from inside a render of the element, or from one of its own handlers.`, () => {
 	// 1. A child component that renders its parent with another template while the parent is
 	// still building it.  The parent's first render carries on when the child returns, with
@@ -1418,6 +1595,69 @@ Testimony.test('Solarite.switch.reentrant', `A template that is changed from ins
 	assert.eq(getHtml(tabs), '<div><nav><slot><w-60-tab>tab</w-60-tab></slot></nav><b>second</b></div>');
 	assert(draws < 8); // A few renders from the callback, and an end to them.
 	tabs.remove();
+});
+
+Testimony.test('Solarite.switch.embedError', `A template whose data-id or script throws while it is set up leaves the element as it found it, children included.`, () => {
+	// 1. A data-id that would overwrite a property of the element, in a first render and in a
+	// switch.  The children the element was given were left in a fragment nobody held, and the
+	// next render took the half-built template for them.
+	let el = toEl('<div><b>kid</b></div>');
+	assert.throws(() => h(el)`<i data-id="title">bad</i><slot></slot>`);
+	assert.eq(getHtml(el), '<div><b>kid</b></div>');
+	h(el)`<p>${1}</p><slot></slot>`;
+	assert.eq(getHtml(el), '<div><p>1</p><slot><b>kid</b></slot></div>');
+	assert.throws(() => h(el)`<i data-id="title">bad</i><slot></slot>`);
+	h(el)`<p>${2}</p><slot></slot>`;
+	assert.eq(getHtml(el), '<div><p>2</p><slot><b>kid</b></slot></div>');
+
+	// 2. A script that throws, in an element with no children.
+	el = document.createElement('div');
+	assert.throws(() => h(el)`<i>bad</i><script>throw new Error('bad')</script>`);
+	h(el)`<p>${3}</p>`;
+	assert.eq(getHtml(el), '<div><p>3</p></div>');
+
+	// 3. A template wrapped in the component's tag takes back the attributes it copied.
+	class W65 extends Solarite {
+		bad = false;
+		render() {
+			if (this.bad)
+				h(this)`<w-65 class="bad" title="x"><i data-id="hidden"></i></w-65>`;
+			else
+				h(this)`<w-65>ok</w-65>`;
+		}
+	}
+	W65.define();
+	let a = new W65();
+	a.render();
+	a.bad = true;
+	assert.throws(() => a.render());
+	a.bad = false;
+	a.render();
+	assert.eq(a.outerHTML, '<w-65>ok</w-65>');
+
+	// 4. A child component whose first render, made by its constructor, throws.  The children
+	// its parent gave it go back to the parent's template, which hands them over again when it
+	// builds the component next time.
+	let fail = true;
+	class W66 extends Solarite {
+		constructor(attribs) {
+			super(attribs);
+			this.render();
+		}
+		render() {
+			if (fail)
+				h(this)`<div data-id="hidden"></div><slot></slot>`;
+			else
+				h(this)`<i>ok</i><slot></slot>`;
+		}
+	}
+	W66.define();
+	let host = document.createElement('div');
+	let draw = () => h(host)`<w-66><b>given</b></w-66>`;
+	assert.throws(draw);
+	fail = false;
+	draw();
+	assert.eq(getHtml(host), '<div><w-66><i>ok</i><slot><b>given</b></slot></w-66></div>');
 });
 
 Testimony.test('Solarite.switch.afterError', `A new template that throws leaves an element the next render can fill.`, () => {
@@ -12163,6 +12403,27 @@ Testimony.test('Solarite.slots.named', () => {
 	assert.eq(div.outerHTML, `<div><s-20><div>slot content:<slot name="one"><div slot="one">One</div><div slot="one">One Again</div></slot><slot>zeroThree</slot><slot name="two"><div slot="two">Two</div></slot></div></s-20></div>`)
 
 	div.remove();
+});
+
+Testimony.test('Solarite.slots.namedTopLevelOnly', `A named slot takes only the children the element was given, not an element with that slot attribute inside one of them, which belongs to whatever holds it.`, () => {
+	// 1. Inside a plain child.  It used to be taken out of its <section> and put in the slot.
+	let el = toEl(`<div><section><b slot="head">inner</b></section><i slot="head">outer</i></div>`);
+	h(el)`<header><slot name="head"></slot></header><main><slot></slot></main>`;
+	assert.eq(getHtml(el), '<div><header><slot name="head"><i slot="head">outer</i></slot></header><main><slot><section><b slot="head">inner</b></section></slot></main></div>');
+
+	// 2. Two components with a slot of the same name, one given to the other.  The outer one
+	// took the inner one's child.
+	class S25 extends Solarite {
+		render() { h(this)`<header><slot name="head"></slot></header><slot></slot>`; }
+	}
+	S25.define();
+	class S26 extends Solarite {
+		render() { h(this)`<h2><slot name="head"></slot></h2>`; }
+	}
+	S26.define();
+	let host = document.createElement('div');
+	h(host)`<s-25><s-26><b slot="head">inner</b></s-26></s-25>`;
+	assert.eq(getHtml(host), '<div><s-25><header><slot name="head"></slot></header><slot><s-26><h2><slot name="head"><b slot="head">inner</b></slot></h2></s-26></slot></s-25></div>');
 });
 
 Testimony.test('Solarite.slots.slotless', `Add children even when no slots present.`, () => {

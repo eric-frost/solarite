@@ -127,12 +127,14 @@ function hOther(htmlStrings, exprs) {
 			let parent = htmlStrings, options = exprs[0];
 
 			// The closure is cached on the element so repeated renders don't recreate it.
-			// Options are cached with it: they only take effect when a RootNodeGroup is
-			// created for the element (on its first render, and when it is given another
-			// template than the one it holds), so a later render passing different ones is
-			// ignored either way, and caching regardless of them saves an allocation on every
-			// render of a component that passes an options object — which is how render() is
-			// usually written.
+			// Options are cached with it, so the options of the element's first h(el, options)
+			// call are the ones it keeps: they take effect when a RootNodeGroup is created for
+			// the element, on its first render and whenever it is given another template than
+			// the one it holds, and options passed to h(el, options) by any later render are
+			// ignored, at a switch too.  A component passes the same options every time, so
+			// that costs it nothing, and caching regardless of them saves an allocation on
+			// every render of a component that passes an options object, which is how render()
+			// is usually written.  h(el, template, options) uses the options it is given.
 			let cached = parent[renderTemplateKey];
 			if (cached)
 				return cached;

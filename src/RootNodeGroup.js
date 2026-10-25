@@ -16,11 +16,12 @@ import PathToNodes from './PathToNodes.js';
  *     DocumentFragment or ShadowRoot that was rendered into, or what a standalone template made.
  * @property {?object} renderOptions - RenderOptions
  * @property {?Node[]} slotMarks - Where this template put the children the element was given
- *     for its slots: for each place, the node they were appended to, the node that was its last
- *     child before, and the first node appended.  Null when the element had none.  See
- *     unrender().
+ *     for its slots, and where its own nodes end in the element: for each place, the node they
+ *     were appended to, the node that was its last child before, and the first node appended.
+ *     Null for a standalone template.  See unrender().
  * @property {?string[]} copiedAttribs - Names of the attributes that were copied from the template's
- *     own root element onto the element.  Null unless the two were merged. */
+ *     own root element onto the element, leaving out those a parent's template wrote over them.
+ *     Null unless the two were merged. */
 export default class RootNodeGroup extends NodeGroup {
 
 	/**
@@ -47,7 +48,7 @@ export default class RootNodeGroup extends NodeGroup {
 		// A template of plain text, or an empty one, is a single Text node with no paths.
 		let isText = shellFragment.nodeType === 3;
 		let isEmpty = isText && !shellFragment.nodeValue;
-		let slotChildren;
+		let slotChildren, handOff;
 		if (el) {
 			this.rootEl = el;
 
@@ -71,8 +72,10 @@ export default class RootNodeGroup extends NodeGroup {
 			// from itself by any address, so both match; the inner one takes the nodes and
 			// this outer one takes them straight back, which is the only thing that makes
 			// that case work.
-			let handOff = Globals.rootNodeGroups.has(el) ? null : Globals.currentSlotChildren;
-			let mySlotNodes = handOff?.Constructor === el.constructor
+			handOff = Globals.rootNodeGroups.has(el) ? null : Globals.currentSlotChildren;
+			if (handOff?.Constructor !== el.constructor)
+				handOff = null;
+			let mySlotNodes = handOff
 				? handOff.nodes
 				: (el.childNodes.length ? [...el.childNodes] : null);
 
@@ -101,11 +104,15 @@ export default class RootNodeGroup extends NodeGroup {
 
 				// Copy attributes.  The names are kept so that unrender() takes off the
 				// ones this template put there, and none that the element had already.
+				// Nor any that the parent's template is about to write: a component that
+				// renders from its constructor gets here before PathToComponent has copied
+				// the placeholder's attributes onto it, and those belong to the parent.
 				this.copiedAttribs = [];
 				for (let attrib of shellFragment.children[0].attributes)
 					if (!el.hasAttribute(attrib.name)) {
 						el.setAttribute(attrib.name, attrib.value);
-						this.copiedAttribs.push(attrib.name);
+						if (!handOff?.el.hasAttribute(attrib.name))
+							this.copiedAttribs.push(attrib.name);
 					}
 
 				// Go one level deeper into all of shell's paths.
@@ -152,8 +159,29 @@ export default class RootNodeGroup extends NodeGroup {
 		// element included, so its paths are found from the fragment whatever the root is.
 		if (!isText) {
 			let nodes = el || shellFragment;
-			this.setPathsFromFragment(nodes, shell, startingPathDepth);
-			this.activateEmbeds(nodes, shell, startingPathDepth);
+			try {
+				this.setPathsFromFragment(nodes, shell, startingPathDepth);
+				this.activateEmbeds(nodes, shell, startingPathDepth);
+			}
+
+			// A data-id that would overwrite a property of the element throws, and so can a
+			// <script>.  The element is then given back as unrender() leaves it, so that the
+			// next render finds no half-built template to take for slot children: without the
+			// attributes copied from this template, and holding nothing but the children it
+			// was given.  Children that came by hand-off go back to the placeholder they came
+			// from.  When the render that threw is the one a component's constructor made, that
+			// component is never used, and the parent's template hands them over again to the
+			// one it builds next time.
+			catch (e) {
+				if (el) {
+					for (let name of this.copiedAttribs || [])
+						el.removeAttribute(name);
+					el.textContent = '';
+					(handOff?.el || el).append(...(slotChildren?.childNodes || []));
+					Globals.rootNodeGroups.set(el, null);
+				}
+				throw e;
+			}
 		}
 
 		// A root group's first and last node are its root, which is also what Template.render()
@@ -169,36 +197,49 @@ export default class RootNodeGroup extends NodeGroup {
 		// custom element enters the document here, and its connectedCallback may render el; that
 		// render then finds this root and applies its expressions to it, instead of building a
 		// second root in an element that is half set up.
-		if (slotChildren) {
-
-			// Remember where they go, so that another template can take them over later.
-			// The nodes themselves are not kept: rows that a parent template draws among
-			// them come and go, and the page may add and remove its own.  What is kept is
-			// where they start, as the last node the template itself has in that place (null
-			// when it has none).  The first slot child is kept beside it, for when that last
-			// node is the placeholder of a child component, which is replaced when the
-			// component is built.
+		//
+		// Remember where they go, so that another template can take them over later, and where
+		// the template's own nodes end in el: nodes other code appends to el after them are
+		// taken over the same way, whether or not el was given children.
+		// The nodes themselves are not kept: rows that a parent template draws among
+		// them come and go, and the page may add and remove its own.  What is kept is
+		// where they start, as the last node the template itself has in that place (null
+		// when it has none).  The first slot child is kept beside it, for when that last
+		// node has left that place, as a text node does when the browser's page translator
+		// replaces it.  A last node that is the placeholder of a child component is replaced
+		// by the component when it is built, and PathToComponent puts the component in the
+		// placeholder's place here too.
+		if (el) {
 			let marks = this.slotMarks = [];
+			if (slotChildren) {
 
-			// An empty template shows nothing, so they stay in their fragment.
-			if (isEmpty)
-				marks.push(slotChildren, null, null);
-			else {
-				// Named slots
-				for (let slot of el.querySelectorAll('slot[name]')) {
-					let name = slot.getAttribute('name')
-					if (name) {
-						let slotChildren2 = slotChildren.querySelectorAll(`[slot='${name}']`);
-						marks.push(slot, slot.lastChild, slotChildren2[0]);
-						slot.append(...slotChildren2);
+				// An empty template shows nothing, so they stay in their fragment.
+				if (isEmpty)
+					marks.push(slotChildren, null, null);
+				else {
+					// Named slots.  Each takes the children with its name in their slot attribute,
+					// and only those: an element deeper down with that attribute belongs to the
+					// child that holds it, which may be a component with a slot of the same name.
+					for (let slot of el.querySelectorAll('slot[name]')) {
+						let name = slot.getAttribute('name')
+						if (name) {
+							let slotChildren2 = [...slotChildren.children].filter(child => child.getAttribute('slot') === name);
+							marks.push(slot, slot.lastChild, slotChildren2[0]);
+							slot.append(...slotChildren2);
+						}
 					}
-				}
 
-				// The unnamed slot, or the end of el when there is none.
-				let home = el.querySelector('slot:not([name])') || el;
-				marks.push(home, home.lastChild, slotChildren.firstChild);
-				home.append(slotChildren);
+					// The unnamed slot, or the end of el when there is none.
+					let home = el.querySelector('slot:not([name])') || el;
+					marks.push(home, home.lastChild, slotChildren.firstChild);
+					home.append(slotChildren);
+				}
 			}
+
+			// The end of el, when the slot children didn't go there.  The element itself is
+			// never one of the nodes in a place, so it is in the list only as such a place.
+			if (!marks.includes(el))
+				marks.push(el, el.lastChild, null);
 		}
 	}
 
@@ -218,8 +259,9 @@ export default class RootNodeGroup extends NodeGroup {
 		let el = this.rootEl;
 
 		// 1. Find the slot children while they are still where this template put them (see
-		// slotMarks): what each place holds after the template's own nodes, which is all of
-		// it for a slot with nothing of its own and for the fragment of an empty template.
+		// slotMarks), and the nodes other code put after the template: what each place holds
+		// after the template's own nodes, which is all of it for a slot with nothing of its own,
+		// and for the fragment and the element of an empty template.
 		let slotNodes = [];
 		let marks = this.slotMarks || [];
 		for (let i=0; i<marks.length; i+=3) {
@@ -243,14 +285,18 @@ export default class RootNodeGroup extends NodeGroup {
 		// it, which is what makes applyExprs() pass it over, and rootEl stays as it is: an
 		// event that started in the old nodes may still be on its way through them, and their
 		// handlers are called with the element as `this`.
+		// The template that made an element with h() or toEl() has paths on the element too, and
+		// copied nothing onto it.  Those are the element's own definition, so they stay when a
+		// template is rendered into it.
 		let standIn = Globals.doc.createElement('div');
 		for (let name of this.copiedAttribs || [])
 			el.removeAttribute(name);
-		for (let path of this.paths || [])
-			if (path.nodeMarker === el && !(path instanceof PathToComponent)) {
-				clearPath(path, el);
-				path.nodeMarker = standIn;
-			}
+		if (this.copiedAttribs)
+			for (let path of this.paths || [])
+				if (path.nodeMarker === el && !(path instanceof PathToComponent)) {
+					clearPath(path, el);
+					path.nodeMarker = standIn;
+				}
 
 		// 3. Take the root off the element's entry (the entry stays, see instantiate()), then
 		// give the element the slot children in place of everything it holds, in one call.
@@ -268,9 +314,11 @@ export default class RootNodeGroup extends NodeGroup {
 
 		// 4. Forget the id references into the nodes that left.  The new template binds its
 		// own, and a name only this one had would otherwise still give a removed element.
+		// The names are read as attributes: the id property of a <form> with a control named
+		// "id" is that control.  An empty data-id with no id gives no name.
 		for (let node of standIn.querySelectorAll('[id],[data-id]')) {
-			let id = (node.getAttribute('data-id') || node.id).split('.');
-			if (delve(el, id) === node)
+			let id = (node.getAttribute('data-id') || node.getAttribute('id'))?.split('.');
+			if (id && delve(el, id) === node)
 				delve(el, id, null);
 		}
 	}
