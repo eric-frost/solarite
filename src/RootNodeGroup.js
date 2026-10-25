@@ -123,11 +123,12 @@ export default class RootNodeGroup extends NodeGroup {
 				el.append(...shellFragment.childNodes);
 		}
 
-		// Instantiate as a standalone element.
-		else {
-			if (isText)
-				throw new Error('Text node needs an element.');
+		// Instantiate as a standalone element.  A template of plain text is its one Text node, which is what toEl('Hi')
+		// gives, and what a template of text with a < or an & in it gives through the html parser below.
+		else if (isText)
+			this.rootEl = shellFragment;
 
+		else {
 			// The template is given back as one node only when one node is all it can draw:
 			// trimming the whitespace and comment nodes off both ends of the fragment leaves
 			// exactly one node, and no expression stands at the top level beside it.  The

@@ -5,7 +5,7 @@
 JavasCript UI library
 @license MIT
 @copyright Vorticode LLC
-https://vorticode.github.io/solarite/ */
+https://eric-frost.github.io/solarite/ */
 import h from './h.js';
 import {convertType} from './assignAttributes.js';
 export default h;

@@ -217,17 +217,31 @@ export function getObjectHash(obj) {
  * 10,000 rows of plain objects that is 2.8ms instead of 5.2ms.
  *
  * A function or Node given straight to an attribute, as in onSave=${fn}, is common, so those are replaced here with the
- * same id the replacer would write.  Anything else the replacer would change sends the caller to getObjectHash().
+ * same id the replacer would write.  Not one with a toJSON() of its own though:  JSON.stringify() calls that first and
+ * hands the replacer its result, so it's left for isPlainData() to send to getObjectHash().  Anything else the replacer
+ * would change sends the caller to getObjectHash() too.
+ *
+ * Two cases can still give a different string than getObjectHash(), both contrived enough to leave alone:
+ * 1. A Date whose toISOString() was replaced to return an object, or a plain object that borrows Date.prototype.toJSON,
+ *    since isPlainData() trusts that toJSON() to give a string.
+ * 2. A getter, or a Proxy trap, whose value changes between the walk's read and JSON.stringify()'s read.
  * @param exprs {Expr[][]} One array of values for each attribute.
  * @return {string|undefined} Undefined when the data needs getObjectHash(). */
 export function getPlainHash(exprs) {
 	let top = exprs.map(values => values.map(value =>
-		typeof value === 'function' || value instanceof Node ? getObjectId(value) : value));
+		(typeof value === 'function' || value instanceof Node) && !value.toJSON ? getObjectId(value) : value));
 	try {
 		if (isPlainData(top, new Set()))
 			return JSON.stringify(top);
 	}
-	catch {} // Data nested too deep for the walk's recursion.  getObjectHash() decides what happens to it.
+	catch {
+		// Data nested so deep that a recursion overflowed, and that can happen on either side.  In JavaScriptCore
+		// (Safari) the walk overflows first, since its JSON.stringify() goes much deeper.  In SpiderMonkey (Firefox)
+		// the JSON.stringify() above overflows first.  In V8 the walk usually goes deeper than getObjectHash()'s
+		// replacer, but not always once the page has deoptimized it.  Either way getObjectHash() then decides what
+		// happens to such data, so this answers whenever getObjectHash() would.  The same goes for a Proxy whose trap
+		// throws when the walk looks at it, which getObjectHash() never does.
+	}
 }
 
 /**
@@ -253,8 +267,8 @@ function isPlainData(value, seen) {
 				return false;
 		return true;
 	}
-	for (let key in value)
-		if (!isPlainData(value[key], seen))
+	for (let v of Object.values(value)) // The values JSON.stringify() writes:  own, enumerable, string keys.
+		if (!isPlainData(v, seen))
 			return false;
 	return true;
 }

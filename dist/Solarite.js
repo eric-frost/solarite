@@ -4401,17 +4401,17 @@ class PathToComponent extends Path {
 	 * when it has never asked, or rendered once without asking, so that the next answer is yes. */
 	appliedExprsHash;
 
-	/** @type {Expr[][]|null} The exprs of the render in progress, which hasChanged() compares.  Null between renders. */
-	renderingExprs = null;
+	/** @type {Expr[][]|undefined} The exprs of the render in progress, which hasChanged() compares.  Undefined between
+	 * renders. */
+	renderingExprs;
 
 	/** @type {boolean|undefined} hasChanged()'s answer for the render in progress, once the component has asked. */
 	changedAnswer;
 
-	/** @type {boolean} Whether to try getPlainHash() first.  Turned off for good the first time these exprs need
-	 * getObjectHash()'s replacer, since a component's arguments keep the same kind of data from one render to the next,
-	 * and trying again would only walk the data for nothing.  Both give the same string, so the switch never makes the
-	 * exprs look changed. */
-	plainExprs = true;
+	/** @type {boolean|undefined} Set for good the first time these exprs need getObjectHash()'s replacer, since a
+	 * component's arguments keep the same kind of data from one render to the next, and trying getPlainHash() again would
+	 * only walk the data for nothing.  Both give the same string, so the switch never makes the exprs look changed. */
+	slowExprs;
 
 	/**
 	 * Passed to the component's render() as its second argument.  Whether the exprs differ from those of the last
@@ -4419,13 +4419,13 @@ class PathToComponent extends Path {
 	 * calls it pays for the comparison.  Called outside a render that this path started, it answers yes.
 	 * @return {boolean} */
 	hasChanged = () => {
-		if (!this.renderingExprs)
+		let exprs = this.renderingExprs;
+		if (!exprs)
 			return true;
 		if (this.changedAnswer === undefined) {
-			let exprs = this.renderingExprs;
-			let hash = this.plainExprs ? getPlainHash(exprs) : undefined;
+			let hash = this.slowExprs ? undefined : getPlainHash(exprs);
 			if (hash === undefined) {
-				this.plainExprs = false;
+				this.slowExprs = true;
 				hash = getObjectHash(exprs);
 			}
 			this.changedAnswer = hash !== this.appliedExprsHash;
@@ -4684,15 +4684,17 @@ class PathToComponent extends Path {
 	callRender(el, attribs, exprs) {
 		// A component that renders this path's parent again from inside its own render() comes back through here, so
 		// the outer render's state is saved and put back around the call.
-		let prevExprs = this.renderingExprs, prevAnswer = this.changedAnswer;
+		let prevExprs = this.renderingExprs, prevAnswer = this.changedAnswer, done;
 		this.renderingExprs = exprs;
 		this.changedAnswer = undefined;
 		try {
 			el.render(attribs, this.hasChanged);
+			done = true;
 		}
 		finally {
 			// The component rendered without asking, so there is nothing for the next answer to be compared against.
-			if (this.changedAnswer === undefined)
+			// Or it threw, maybe after asking, and what it drew of these exprs can't be trusted.
+			if (!done || this.changedAnswer === undefined)
 				this.appliedExprsHash = undefined;
 			this.renderingExprs = prevExprs;
 			this.changedAnswer = prevAnswer;
@@ -6412,11 +6414,12 @@ class RootNodeGroup extends NodeGroup {
 				el.append(...shellFragment.childNodes);
 		}
 
-		// Instantiate as a standalone element.
-		else {
-			if (isText)
-				throw new Error('Text node needs an element.');
+		// Instantiate as a standalone element.  A template of plain text is its one Text node, which is what toEl('Hi')
+		// gives, and what a template of text with a < or an & in it gives through the html parser below.
+		else if (isText)
+			this.rootEl = shellFragment;
 
+		else {
 			// The template is given back as one node only when one node is all it can draw:
 			// trimming the whitespace and comment nodes off both ends of the fragment leaves
 			// exactly one node, and no expression stands at the top level beside it.  The
@@ -6879,17 +6882,31 @@ function getObjectHash(obj) {
  * 10,000 rows of plain objects that is 2.8ms instead of 5.2ms.
  *
  * A function or Node given straight to an attribute, as in onSave=${fn}, is common, so those are replaced here with the
- * same id the replacer would write.  Anything else the replacer would change sends the caller to getObjectHash().
+ * same id the replacer would write.  Not one with a toJSON() of its own though:  JSON.stringify() calls that first and
+ * hands the replacer its result, so it's left for isPlainData() to send to getObjectHash().  Anything else the replacer
+ * would change sends the caller to getObjectHash() too.
+ *
+ * Two cases can still give a different string than getObjectHash(), both contrived enough to leave alone:
+ * 1. A Date whose toISOString() was replaced to return an object, or a plain object that borrows Date.prototype.toJSON,
+ *    since isPlainData() trusts that toJSON() to give a string.
+ * 2. A getter, or a Proxy trap, whose value changes between the walk's read and JSON.stringify()'s read.
  * @param exprs {Expr[][]} One array of values for each attribute.
  * @return {string|undefined} Undefined when the data needs getObjectHash(). */
 function getPlainHash(exprs) {
 	let top = exprs.map(values => values.map(value =>
-		typeof value === 'function' || value instanceof Node ? getObjectId(value) : value));
+		(typeof value === 'function' || value instanceof Node) && !value.toJSON ? getObjectId(value) : value));
 	try {
 		if (isPlainData(top, new Set()))
 			return JSON.stringify(top);
 	}
-	catch {} // Data nested too deep for the walk's recursion.  getObjectHash() decides what happens to it.
+	catch {
+		// Data nested so deep that a recursion overflowed, and that can happen on either side.  In JavaScriptCore
+		// (Safari) the walk overflows first, since its JSON.stringify() goes much deeper.  In SpiderMonkey (Firefox)
+		// the JSON.stringify() above overflows first.  In V8 the walk usually goes deeper than getObjectHash()'s
+		// replacer, but not always once the page has deoptimized it.  Either way getObjectHash() then decides what
+		// happens to such data, so this answers whenever getObjectHash() would.  The same goes for a Proxy whose trap
+		// throws when the walk looks at it, which getObjectHash() never does.
+	}
 }
 
 /**
@@ -6915,8 +6932,8 @@ function isPlainData(value, seen) {
 				return false;
 		return true;
 	}
-	for (let key in value)
-		if (!isPlainData(value[key], seen))
+	for (let v of Object.values(value)) // The values JSON.stringify() writes:  own, enumerable, string keys.
+		if (!isPlainData(v, seen))
 			return false;
 	return true;
 }
@@ -7352,7 +7369,7 @@ function assignAttributes(dest, types={}, ignore=[]) {
 JavasCript UI library
 @license MIT
 @copyright Vorticode LLC
-https://vorticode.github.io/solarite/ */
+https://eric-frost.github.io/solarite/ */
 
 /**
  * Intercept the construct call to auto-define the class before the constructor is called. */

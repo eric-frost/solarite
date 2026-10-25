@@ -166,7 +166,7 @@ render() {
 }
 ```
 
-The new template replaces everything the previous one put in the element.  The elements of the previous template are discarded rather than kept for the next time it is shown, so anything they held, such as text typed into an input or the state of a child component, is lost.  To keep elements across such a change, render one template and put the part that changes in an expression, as in ``${this.rows ? h`<ul>...</ul>` : h`<p>Loading...</p>`}``.
+The new template replaces everything the previous one put in the element.  The elements of the previous template are discarded rather than kept for the next time it is shown, so anything they held, such as text typed into an input or the state of a child component, is lost.  To keep elements across such a change, render one template and put the part that changes in an expression, as in ``${this.rows ? h`<ul>...</ul>` : h`<p>Loading...</p>`}``.  Nodes that other code added to the element after the previous template's own nodes stay, and go to the new template's slots or to its end, as the children the element was given do.  The render options of `h(this, options)` are those of its first call: the element keeps them for every later template, including one that replaces another, so pass the same options every time, or give a template options of its own with `h(this, template, options)`.
 
 #### Manual Rendering
 
@@ -256,6 +256,10 @@ A DOM node can only be in one place.  Give it to a different expression on a lat
 
 A `DocumentFragment`, which is also what `toEl()` returns for html of several nodes, can be given on every render.  Placing its children empties the fragment, and it keeps standing for those nodes until it is given with new children.  To show nothing, give `null` instead.
 
+#### Scripts
+
+A `<script>` in a template runs once, in the page's global scope, when the template is first drawn and its expressions have been written, so an expression in the script's own text is in place when it runs.  Only a script the browser would run is run: one with no `type`, or a JavaScript type such as `text/javascript`.  Any other type is left as data and written with its expressions, so `<script type="application/ld+json">` can hold JSON-LD; a `type="module"` script is not run either.  Pass the render option `scripts: false` to run none.  Running one uses `eval`, which a Content Security Policy without `'unsafe-eval'` forbids.
+
 ### Attributes
 
 Dynamic attributes can be specified by inserting expressions inside a tag.  An expression can be part or all of an attribute value, or a string specifying multiple whole attributes.  For example:
@@ -287,7 +291,9 @@ setTimeout(attributeDemo.render, 2000);
 
 Expressions can also toggle the presence of an attribute.  In the last div above, if `isEditable` is `false`, `null`, `undefined`, or an empty string, the contenteditable attribute is removed rather than left behind as `contenteditable=""`.  Zero and the string `"0"` are ordinary values and are written normally.
 
-Form elements are the exception, since there an empty string is a real value.  `value=${''}` on an `<input>` clears the field rather than removing anything, and the same goes for any attribute the element exposes as a property, such as `checked`.
+Form elements are the exception, since there an empty string is a real value.  `value=${''}` or `value=${null}` on an `<input>` clears the field rather than removing anything, and the same goes for any other property that holds text.  A property that is on or off, such as `checked`, `disabled` or `required`, is turned off by `false`, `null`, `undefined` and an empty string alike.  `muted` and `volume` on a `<video>` or an `<audio>` are set as the properties they name.
+
+An expression written without quotes ends at a `/>` that follows it straight away, so `<input oninput=${f}/>` and `<circle r=${5}/>` close their tags as in JSX, although html itself would make the slash part of the value.  To end a value with a slash, write the value in quotes: `href="${base}/"`.  A handler must be the whole value of an event attribute: `onclick="${f} "`, with text beside it, throws.
 
 You can also specify multiple attributes at once using an object, where the keys are attribute names and the values are attribute values:
 
@@ -423,7 +429,9 @@ Only events that bubble are delegated (click, input, keydown, and the like); foc
 
 The rows of a list go one step further.  A row like the `<div key=${row.id}>` above is cloned from a template, and Solarite stores nothing at all on the elements inside it, not even the property described above, because reaching into every fresh clone to store one is most of what it costs to build a long list.  The row's root element keeps a single reference back to the row, and when an event starts, the dispatcher finds that reference on the event's path, works out which of the row's elements have a handler for that event, and runs each one from the row's current template when its turn comes, so a row re-rendered earlier in the same event runs its new handler.  The one consequence: moving a whole row elsewhere in the page keeps its handlers, but moving an element out of its row, away from that root element, loses them.  Give such an element a `native:` handler, described next, and it keeps a regular listener wherever it goes.
 
-There is one visible difference from a regular listener, and it only matters when your own code also adds a listener to the same element as a template handler.  A delegated handler is attached when the event starts, so it runs after any listener already on that element.  A listener registered while the template rendered would usually have run first.
+A row finds each of its elements that has a handler by its place in the row's template, when an event reaches the row, and it finds an element whose value changed the same way when it writes the new value.  So a node that other code puts into a row, in front of such an element, can make the row take the wrong node for it.  A password manager that puts an icon beside a password field, and a tooltip inserted after the element it belongs to, are such code.  The handler then runs when the inserted node is clicked, with that node as its element, and not when its own element is, and a changed value is written into the wrong element.  Where other code adds nodes to a row, wrap the element it adds them beside in an element of its own, as in `<span><input type="password"></span>`: what it adds then goes inside the wrapper, where nothing after it has a handler or a value.
+
+Another difference from a regular listener only matters when your own code also adds a listener to the same element as a template handler.  A delegated handler is attached when the event starts, so it runs after any listener already on that element.  A listener registered while the template rendered would usually have run first.
 
 When that order matters, prefix the attribute with `native:`, as in `<button native:onclick=${...}>`.  Solarite then registers just that handler with `addEventListener` while the template renders, so it takes its normal place among the element's listeners, and the rest of the component stays delegated.  Everything else is the same: the `(event, element)` arguments, `this`, and the `[fn, ...args]` array form.  In JSX write it the same way, `<button native:onclick={...}>`.
 
@@ -436,7 +444,7 @@ h(this)`
 </text-editor>`
 ```
 
-A template made by `h()` or `toEl()` with several top-level nodes, or with an expression at its top level, has no root element to listen on.  Its nodes come back in a `DocumentFragment`, which is left empty as soon as they are appended somewhere, so only the document's listener serves them.  Their handlers run wherever the page's document sees the event, which is anywhere in the page outside a closed shadow root.  In an element that isn't in the page yet, inside a closed shadow root, or in another document such as an iframe's, wrap the nodes in one element or give the handlers the `native:` prefix.  A handler written on the tag of a component that is the only node of such a call, as in ``toEl(h`<my-dialog onclick=${close}></my-dialog>`)``, is served the same way; the handlers inside the component are its own and run everywhere.
+A template made by `h()` or `toEl()` with several top-level nodes, or with an expression at its top level, has no root element to listen on.  Its nodes come back in a `DocumentFragment`, which is left empty as soon as they are appended somewhere, so only the document's listener serves them.  Their handlers run wherever the page's document sees the event, which is anywhere in the page outside a closed shadow root.  In an element that isn't in the page yet, inside a closed shadow root, or in another document such as an iframe's, wrap the nodes in one element or give the handlers the `native:` prefix.  A handler's `this` is then the fragment, which is empty by that time, rather than an element, so use the `(event, element)` arguments instead.  A template whose only node is a component, as in ``toEl(h`<my-dialog onclick=${close}></my-dialog>`)``, gives back the component, but a handler written on the component's tag belongs to the fragment the template was built in.  It is served the same way, and its `this` is that fragment, empty by then, rather than the component; use the handler's second argument, which is the component.  The handlers inside the component are its own, run everywhere, and have the component as `this`.
 
 ### Two-Way Binding
 
@@ -709,6 +717,7 @@ Rules for `key`:
 - It must be on a top-level element of its template, and a template can have only one.
 - Keys are compared with `===`; numbers, strings, and object references all work.  Keys must be unique within the list.
 - The key never appears in the DOM, and components never receive `key` as a constructor or render argument.  Don't name component arguments `key`.
+- A row without a key in front of the keyed rows, such as a heading, a plain string or a row an `h.map()` callback hides by returning `null`, and a DOM node among the rows, don't stop the keys from being followed.  The exception is an `h.map()` list whose first row is a string or a template without a key: a change that keeps its length matches rows by position.  Put such a heading outside the list, or give it a key.
 
 `h.map()` and keys compose: `h.map()` skips rebuilding unchanged rows' templates, while keys control node identity and movement.
 
@@ -793,6 +802,8 @@ document.body.append(new FancyText());
 ```
 
 A style tag with the  `global` attribute defines the style only once in the document head, instead of for every instance of a component.  This improves rendering performance with many instances.  Unlike regular styles, global styles cannot have expressions within them.
+
+Once means once per component: the first `<style global>` a component renders stays in the head for the life of the page, and one in a template the component switches to later is dropped.  Put the global rules of all of a component's templates in one style that each of them includes, or use regular styles, which change with the template.
 
 ```javascript
 import h from './dist/Solarite.min.js';
@@ -882,6 +893,8 @@ Elements without a `slot` attribute go into the unnamed (default) slot. Multiple
 
 If a component has no `<slot>` elements, any provided children are appended to the end of the component by default.
 
+The same holds for any element you render into, component or not: what it held before its first render is kept, after what the template draws.  So ``h(label)`Name` `` on a `<label>` that holds an `<input>` shows the text first and the input after it.
+
 A custom element that isn't rendered by Solarite at all, such as one from another library, keeps the children written inside its tag in the same way.  If it has a shadow root, the `<slot>` elements there show them, as they would for children written in plain html.
 
 Solarite goes on updating what each `${...}` inside the tag drew, so such an element has to leave those nodes together, in the order it was given them.  It may:
@@ -890,13 +903,13 @@ Solarite goes on updating what each `${...}` inside the tag drew, so such an ele
 - put nodes of its own before the first child it was given or after the last one, as an element that renders its own content beside its children does;
 - move all of the children together, in the order given: into its shadow root, into a wrapper of its own, to another part of the page, or into a fragment it keeps aside while they are hidden.
 
-When it takes them apart instead, the next `render()` of the template throws an error that names it: ``Solarite: <fancy-list> changed the nodes ${...} drew inside it; wrap the ${...} in an element it leaves alone.``  That is what happens when the element replaces its content (sets its own `innerHTML`), takes some of the children out, sorts or filters them, wraps each of them, puts a node of its own between them, or strips the comments and the white space among them: white space is a node like any other, and Solarite draws an expression between the two nodes that stand beside it in the template.  The render that throws draws nothing in that place, and every later render throws the same error until the element has put the nodes back as they were.  An element that is itself a row of a list, and changed its children while the list had taken it out and kept it for reuse (one that empties itself when it leaves the document, say), throws the error when the list shows it again; the list is then emptied, and that element is not used again.  Whatever else changes those nodes gets the element named too: the browser's page translation, which replaces text nodes, or an extension that adds nodes of its own to the page.
+When it takes them apart instead, the next `render()` of the template throws an error that names it: ``Solarite: <fancy-list> changed the nodes ${...} drew inside it; wrap the ${...} in an element it leaves alone.``  That is what happens when the element replaces its content (sets its own `innerHTML`), takes some of the children out, sorts or filters them, wraps each of them, puts a node of its own between them, or strips the comments and the white space among them: white space is a node like any other, and Solarite draws an expression between the two nodes that stand beside it in the template.  The render that throws draws nothing in that place, and every later render throws the same error until the element has put the nodes back as they were.  An element that is itself a row of a list, and changed its children while the list had taken it out and kept it for reuse (one that empties itself when it leaves the document, say), throws the error when the list shows it again; the list is then emptied, and that element is not used again.  Whatever else changes those nodes gets the element named too, such as an extension that adds nodes of its own to the page, or the browser's page translation where it replaces words written beside an expression (see Page Translation).  The translation of the one piece of text an expression drew is not counted.
 
 As the message says, an expression in an element of its own, `<fancy-list><div>${rows}</div></fancy-list>`, leaves the other element free to do what it likes with that `<div>`: move it, hide it, or throw it away, in which case the expression is updated where nobody sees it.  What it still may not do is reach into the `<div>` and rearrange what the expression drew there.
 
 Two things are not looked at.  A DOM node that your own code made and gave to the template is yours to move, here as anywhere else.  And what a list row drew inside itself is known to the row alone: an element that reaches into a row, to remove an item of a list written inside it for example, is not named, and the render that trips over the missing node throws the browser's own error.  The list is then drawn again from nothing by the next render.
 
-The children a component was given stay with it when its `render()` shows a different template: they move to the slots of the new template, or to its end.  A template with nothing in it (``h(this)`` ``) shows none of them, and they are back in place with the next template that is rendered.
+The children a component was given stay with it when its `render()` shows a different template: they move to the slots of the new template, or to its end.  A template with nothing in it (``h(this)`` ``) shows none of them, and they are back in place with the next template that is rendered.  Each template shows them in the order they were given, except after a template with named slots: from then on the children it put in named slots come first, slot by slot in that template's order, then those of its unnamed slot, and a later template with only an unnamed slot shows them in that order.  Nodes your own code appended to the component after its template's nodes are kept the same way, after the children.
 
 
 
@@ -1001,7 +1014,7 @@ When you create it with `new MyTimer({duration: 7})`, or embed it inside a tagge
 But when you write plain html like `<my-timer duration="7">`, there is no `fields` argument.  The values live in the element's html attribute, and html attributes are always strings, so `duration` is the string `"7"`.  `assignAttributes()` reads those attributes onto your component, casting each string to the type you name.  It only writes to fields that already exist on the component.
 
 ```javascript
-import h, {Solarite, assignAttributes} from './dist/Solarite.min.js';
+import h, {Solarite, toEl, assignAttributes} from './dist/Solarite.min.js';
 
 class MyTimer extends Solarite {
 
@@ -1033,8 +1046,9 @@ Now all three produce the same result, a `duration` of `7` (a number) and an `au
 // With new.  Values keep their types and are assigned from fields.
 let timer = new MyTimer({duration: 7, autoStart: true});
 
-// From a tagged template.  Same path: values arrive typed in fields.
-let timer2 = h`<my-timer duration=${7} auto-start=${true}></my-timer>`;
+// From a tagged template, made into an element by toEl().
+// Same path: values arrive typed in fields.
+let timer2 = toEl(h`<my-timer duration=${7} auto-start=${true}></my-timer>`);
 
 // From plain html.  Attributes are strings, which assignAttributes() casts.
 document.body.innerHTML = `<my-timer duration="7" auto-start></my-timer>`;
@@ -1053,7 +1067,9 @@ When a parent component renders:
 3. The child receives its attributes as an object (first argument) and a `hasChanged()` function (second argument).
 4. The child then decides whether to call its own `h()` function to update.
 
-`hasChanged()` answers whether the attributes differ from those of the last render that called it.  The comparison is deep, so a field changed inside the same object counts.  It works by running the attributes through `JSON.stringify()`, which costs time in proportion to the data:  about half a millisecond for 1,000 rows.  So it only runs when the child calls `hasChanged()`, and a child that doesn't need it pays nothing.  It answers `true` on a child's first render, after a render that didn't call it, and when called after `render()` has returned.
+`hasChanged()` answers whether the attributes differ from those of the last render that called it.  The comparison is deep, so a field changed inside the same object counts.  It works by running the attributes through `JSON.stringify()`, which costs time in proportion to the data:  about half a millisecond for 1,000 rows.  So it only runs when the child calls `hasChanged()`, and a child that doesn't need it pays nothing.  It answers `true` on a child's first render, after a render that didn't call it, after a render that threw, and when called after `render()` has returned.
+
+`hasChanged()` compares the expressions the parent wrote in the child's tag, not the values the child ends up with.  Functions and elements are compared by identity, so an element's own fields are never looked inside, whether the element is passed itself, as in `owner=${this}`, or through a binding, as in `value=${[this, 'name']}`.  An arrow function written inline in the tag is a new function on every render, so it makes `hasChanged()` answer `true` every time.  That includes event handlers such as `onclick=${() => this.save()}`, which the child never receives as data.  To keep the check useful, pass functions the parent made once, such as a method bound in its constructor.
 
 In the example above, creating `<notes-item>` via `new` instead of its tag name is discouraged, as it would cause the component to be recreated on every render:
 
@@ -1124,7 +1140,7 @@ document.body.append(a, b, c, d, e);
 
 #### getEventBinding()
 
-`getEventBinding(node, key)` returns the binding Solarite registered on an element, or `undefined` if there isn't one.  The `key` is the attribute name that created it, without any `on` prefix: `'value'` for a two-way binding written as `value=${[obj, 'field']}`, `'click'` for an `onclick=${...}` handler.
+`getEventBinding(node, key)` returns the binding Solarite registered on an element with `addEventListener`, or `undefined` if there isn't one.  The `key` is the attribute name that created it, without any `on` prefix: `'value'` for a two-way binding written as `value=${[obj, 'field']}`, `'click'` for an `onclick=${...}` handler.  A handler has one only when it was registered while the template rendered: one written `native:onclick=${...}`, one for an event that isn't delegated, such as `onfocus`, or any handler of a template rendered with `eventDelegation: false`.  A delegated handler, the default for `onclick` and the other bubbling events, has none.
 
 The returned object has a `handleEvent(event)` method, the same one the browser calls, so invoking it runs the binding immediately.  This exists for one specific problem: a two-way binding writes back to your data when the element fires its event, so if you need that value written *before* something else happens in the same tick, you have to trigger the binding yourself rather than wait for the event.
 
@@ -1248,15 +1264,19 @@ list.querySelector('button').setAttribute('title', 'Click me');
 list.querySelector('hr').remove();
 list.render();
 
-// Remove the first <p> element and add it back again.
-// This is fine, because we put it back the way it was before render()
+// Take the first <p> element out and put it back where it was.
+// This is fine, because it's back the way it was before render().
 list.add();
 let p = list.querySelector('p');
-list.append(p); // put it back.
+let next = p.nextSibling;
+p.remove();
+next.before(p); // Put it back.
 list.render();
 
 // Remove the first <p> element.
-// This will cause an error because we're modifying nodes created by an expression.
+// Don't do this, because the <p> was created by an expression.
+// Nothing throws, but Solarite still counts the <p> as shown, so
+// render() doesn't bring it back and that item stays missing.
 // list.querySelector('p').remove();
 // list.render();
 ```
@@ -1276,6 +1296,8 @@ h(this)`<p>Hello <span>${this.name}</span>!</p>`
 ```
 
 Text that is already alone in its element, such as `<td>${row.label}</td>` or `<button>${label}</button>`, needs nothing more.  A new value appears in the page's original language until the translator, which watches the page, translates it a moment later.
+
+Text written straight inside the tag of an element from another library, such as `<sl-button>${label}</sl-button>`, needs nothing more either.  Words beside the expression inside such a tag, as in `<sl-button>Delete ${n}</sl-button>`, are what Solarite finds the expression's place by, and once the translator has replaced them the next render throws the error described under Slotless Components; give the expression an element of its own: `<sl-button>Delete <span>${n}</span></sl-button>`.  Text written straight inside a Solarite component's tag, as in `<my-button>${label}</my-button>`, keeps showing its old translation after it changes; give it a `<span>` too.
 
 The same rule covers everything else an expression can draw.  Words that stand directly beside an expression are replaced by the translator too, and they are what Solarite finds the expression's place by.  So an expression that switches between text and a template (``${saved ? 'Saved' : h`<b>Not saved</b>`}``), or one that draws a list, can show the old translation next to the new value, or throw an error, when it is written directly beside other text on a translated page.  In an element of its own it can't, provided that what it draws is text or begins and ends with an element: write a row as ``h`<li>${tag}</li>` `` rather than as a plain string or as ``h`${tag}, ` ``.
 
@@ -1300,11 +1322,13 @@ let button = toEl({
   },
 
   render() {
-    h(this)`<button onclick=${() => this.inc()}>I've been clicked ${this.count} times.</button>`
+    h(this)`<button onclick=${this.inc}>I've been clicked ${this.count} times.</button>`
   }
 });
 document.body.append(button);
 ```
+
+The first `render()` runs before the element exists, with `this` set to the object you gave.  After that `this` is the element, which gets a copy of the object's fields and methods.  So give a handler the method itself, as in `onclick=${this.inc}`, and Solarite calls it with `this` set to the element.  An arrow function such as `onclick=${() => this.inc()}` would be made by that first render and keep calling the object, so the first click would throw.
 
 If you want multiple instances of such an element, the code above can be wrapped in a function:
 

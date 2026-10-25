@@ -1433,6 +1433,20 @@ Testimony.test('Solarite.switch.slots', `The children an element was given go to
 	assert.eq(getHtml(second), '<div><w-40-poke poke=""><p>a</p><slot><i>other</i></slot></w-40-poke></div>');
 });
 
+Testimony.test('Solarite.switch.emptyTwice', `An empty template rendered again into an element that already shows it leaves alone what other code has put into the element in between, and an empty template rendered into an element that has children sets them aside for the next template's slots.`, () => {
+	let div = document.createElement('div');
+	div.innerHTML = '<b slot="x">1</b><i>2</i>';
+	h(div)``;
+	assert.eq(div.innerHTML, '');
+	let hr = document.createElement('hr');
+	div.append(hr);
+	h(div)``;
+	assert.eq(div.innerHTML, '<hr>');
+	hr.remove();
+	h(div)`<p><slot name="x"></slot></p><slot></slot>`;
+	assert.eq(div.innerHTML, '<p><slot name="x"><b slot="x">1</b></slot></p><slot><i>2</i></slot>');
+});
+
 Testimony.test('Solarite.switch.nested', `A child component that changes its template inside the rows of its parent, while the parent moves the rows.`, () => {
 	class W50 extends HTMLElement {
 		constructor({item}={}) {
@@ -10588,6 +10602,29 @@ Testimony.test('Solarite.toEl.staticElement5', () => {
 	assert.eq(getHtml(button), ` Hello`)
 })
 
+Testimony.test('Solarite.toEl.textTemplate', `A template of plain text with no element to render into gives its Text node, as toEl() of the same string does, and as a template of text with a < or an & in it already did.  It used to throw "Text node needs an element." unless the text held one of those two characters.`, () => {
+	for (let [what, make, text] of [
+		['h()`hello`', () => h()`hello`, 'hello'],
+		['toEl(h`hello`)', () => toEl(h`hello`), 'hello'],
+		["toEl(h('hello'))", () => toEl(h('hello')), 'hello'],
+		['h`hello`.render()', () => h`hello`.render(), 'hello'],
+		['h()`a <`', () => h()`a <`, 'a <'],
+		['h()`a &amp; b`', () => h()`a &amp; b`, 'a & b'],
+		["toEl('hello')", () => toEl('hello'), 'hello'],
+	]) {
+		let node = make();
+		assert(node instanceof Text, what);
+		assert.eq(node.nodeValue, text, what);
+	}
+
+	// Each call gives a Text node of its own, which can be put in the page.
+	let template = h`hello`, a = toEl(template), b = toEl(template);
+	assert(a !== b);
+	let div = document.createElement('div');
+	div.append(a, b);
+	assert.eq(div.innerHTML, 'hellohello');
+});
+
 Testimony.test('Solarite.toEl.fragment', () => {
 	let fragment = toEl(`Hello <button>hi</button>`);
 	assert(fragment instanceof DocumentFragment);
@@ -10751,6 +10788,31 @@ Testimony.test('Solarite.toEl.standalone1', () => {
 	assert.eq(getHtml(button), `<button>I've been clicked 2 times.</button>`);
 
 	//button.remove();
+});
+
+Testimony.test('Solarite.toEl.firstClick', `The first toEl({render}) example of the docs counts its first click.  The first render runs with this set to the object given to toEl(), so a handler must be the method itself, which is called with this set to the element; an arrow function made by that render would call the object.`, () => {
+	let button = toEl({
+		count: 0,
+
+		inc() {
+			this.count++;
+			this.render();
+		},
+
+		render() {
+			h(this)`<button onclick=${this.inc}>I've been clicked ${this.count} times.</button>`
+		}
+	});
+	document.body.append(button);
+	try {
+		button.click();
+		assert.eq(button.textContent, `I've been clicked 1 times.`);
+		button.click();
+		assert.eq(button.textContent, `I've been clicked 2 times.`);
+	}
+	finally {
+		button.remove();
+	}
 });
 
 Testimony.test('Solarite.toEl.standalone2', () => {
@@ -11135,6 +11197,37 @@ Testimony.test('Solarite.h.element', () => {
 
 	assert.eq(getHtml(button), `<button>I'm a <b>better</b> button</button>`)
 })
+
+Testimony.test('Solarite.h.topLevelExpressionThisAndStyle', `A standalone template with an expression at its top level is a DocumentFragment, so two things that hung on its one element change with it: a delegated handler in it runs with the fragment as this, and a style element inside its one element is left as written instead of having its host selector rewritten to match the element.  A template of one element alone keeps both.`, () => {
+	let seen = [];
+	let handler = function() { seen.push(this); };
+
+	// 1. this.
+	let fragment = h()`<button onclick=${handler}>a</button>${1}`;
+	let alone = h()`<button onclick=${handler}>b</button>`;
+	assert(fragment instanceof DocumentFragment);
+	let [a] = fragment.children;
+	document.body.append(fragment, alone);
+	try {
+		a.click();
+		alone.click();
+		assert.eq(seen.length, 2);
+		assert(seen[0] instanceof DocumentFragment);
+		assert.eq(seen[0].childNodes.length, 0); // Emptied by append().
+		assert.eq(seen[1], alone);
+	}
+	finally {
+		a.nextSibling.remove();
+		a.remove();
+		alone.remove();
+	}
+
+	// 2. <style>.
+	let besideExpr = h()`<div><style>:host { color: red }</style></div>${1}`;
+	let oneElement = h()`<div><style>:host { color: red }</style></div>`;
+	assert.eq(besideExpr.querySelector('style').textContent, ':host { color: red }');
+	assert(/^div\[data-style="\d+"\] \{ color: red \}$/.test(oneElement.querySelector('style').textContent));
+});
 
 Testimony.test('Solarite.h.fragmentRoot', `A template renders into a DocumentFragment or a shadow root as it does into an element, whether it has one root element or several: its nodes become children of the fragment, and a second render updates them in place.`, () => {
 	for (let makeRoot of [
@@ -12634,12 +12727,136 @@ Testimony.test('Solarite.component.hasChangedReplacerData', `hasChanged() sees f
 	assert.eq(lastChanged, false);
 });
 
+/**
+ * A model element whose toJSON() describes its state.  Given straight to an attribute, JSON.stringify() calls its
+ * toJSON() before getObjectHash()'s replacer sees it, so its state is part of the hash. */
+class HcModel551 extends HTMLElement {
+	n = 1;
+	toJSON() { return {n: this.n}; }
+}
+customElements.define('hc-model-551', HcModel551);
+
+Testimony.test('Solarite.component.hasChangedToJSONElement', `An element with a toJSON() of its own, given straight to an attribute, counts as changed when what its toJSON() gives changes.`, () => {
+	let answers = [];
+
+	class B551 extends HTMLElement {
+		render(attribs=null, hasChanged=() => true) {
+			answers.push(hasChanged());
+			h(this)`<div>${attribs?.model?.n}</div>`
+		}
+	}
+	customElements.define('hc-b-551', B551);
+
+	let model = new HcModel551(), host = document.createElement('div');
+	let render = () => h(host)`<div><hc-b-551 model=${model}></hc-b-551></div>`;
+	render();
+	render();
+	model.n = 2;
+	render();
+	render();
+	assert.eqJson(answers, [true, false, true, false]);
+	assert.eq(host.textContent, '2');
+});
+
+Testimony.test('Solarite.component.hasChangedSwitchToReplacer', `Arguments that start to need getObjectHash()'s replacer while nothing in them changed still answer false, with an element that has a toJSON() among them.`, () => {
+	let answers = [];
+
+	class B552 extends HTMLElement {
+		render(attribs=null, hasChanged=() => true) {
+			answers.push(hasChanged());
+		}
+	}
+	customElements.define('hc-b-552', B552);
+
+	// An old-style class, whose methods are enumerable properties of its prototype.  Adding one doesn't change what
+	// JSON.stringify() writes for an instance, since it writes only own properties.
+	function Data() { this.a = 1; }
+	let model = new HcModel551(), data = new Data(), host = document.createElement('div');
+	let render = () => h(host)`<div><hc-b-552 model=${model} data=${data}></hc-b-552></div>`;
+	render();
+	render();
+	Data.prototype.save = function() {};
+	render();
+	render();
+	assert.eqJson(answers, [true, false, false, false]);
+});
+
+Testimony.test('Solarite.component.hasChangedThenThrow', `A child that asks, then throws part-way through drawing, answers true on the parent's next render with the same arguments, so it draws them again.`, () => {
+	let answers = [], fail = false;
+
+	class B553 extends HTMLElement {
+		render(attribs=null, hasChanged=() => true) {
+			let changed = hasChanged();
+			answers.push(changed);
+			if (!changed)
+				return;
+			h(this)`<div>start</div>`
+			if (fail)
+				throw new Error('boom');
+			h(this)`<div>${attribs.data.n}</div>`
+		}
+	}
+	customElements.define('hc-b-553', B553);
+
+	let data = {n: 1}, host = document.createElement('div');
+	let render = () => h(host)`<div><hc-b-553 data=${data}></hc-b-553></div>`;
+	render();
+	data.n = 2;
+	fail = true;
+	assert.throws(render);
+	assert.eq(host.textContent, 'start');
+	fail = false;
+	render(); // The same arguments as the render that threw.
+	render();
+	assert.eqJson(answers, [true, true, true, false]);
+	assert.eq(host.textContent, '2');
+});
+
+Testimony.test('Solarite.component.hasChangedReentrantThenThrow', `A child that asks, renders its parent again (whose render asks too and skips), then throws, answers true on the next render.`, () => {
+	let log = [], reenter = false, fail = false;
+
+	class B554 extends HTMLElement {
+		render(attribs=null, hasChanged=() => true) {
+			let changed = hasChanged();
+			log.push(changed);
+			if (reenter) {
+				reenter = false;
+				render();
+				if (fail) {
+					fail = false;
+					throw new Error('outer');
+				}
+			}
+			if (changed)
+				h(this)`<div>${attribs.data.n}</div>`
+		}
+	}
+	customElements.define('hc-b-554', B554);
+
+	let data = {n: 1}, host = document.createElement('div');
+	let render = () => h(host)`<div><hc-b-554 data=${data}></hc-b-554></div>`;
+	render();
+	data.n = 2;
+	reenter = fail = true;
+	assert.throws(render);
+	render();
+	render();
+	// 1: first render.  2 and 3: the outer render that threw, and the inner one, which skipped.  4 and 5: the same
+	// arguments, drawn again once.
+	assert.eqJson(log, [true, true, false, true, false]);
+	assert.eq(host.textContent, '2');
+});
+
 Testimony.test('Solarite.hash.plainMatchesReplacer', `getPlainHash() gives exactly the string getObjectHash() gives, and takes its fast way for plain data.`, async () => {
 	let {getObjectHash, getPlainHash} = await import('../src/Template.js');
 	let f = () => 1, el = document.createElement('div'), tpl = h`<b>${1}</b>`;
 	let cycle = {a: 1}; cycle.self = cycle;
 	let shared = {s: 1};
 	class Row { constructor(i) { this.id = i; this.label = 'Row ' + i; } }
+	let fToJSON = () => 1;
+	fToJSON.toJSON = () => 'F';
+	function OldStyle() { this.id = 1; }
+	OldStyle.prototype.save = function() {};
 	let rows = Array.from({length: 50}, (_, i) => ({id: i, label: 'Item ' + i, price: i * 1.25, done: !!(i % 2), tags: ['a', 'b']}));
 	let cases = {
 		plain: [[{text: 'Milk', done: false}]],
@@ -12661,8 +12878,11 @@ Testimony.test('Solarite.hash.plainMatchesReplacer', `getPlainHash() gives exact
 		customToJSON: [[{toJSON: () => ({cb: f})}]],
 		protoToJSON: [[new (class { n = 1; toJSON() { return {cb: f}; } })()]],
 		sparse: [[[1, , 3]]],
+		topFunctionToJSON: [[fToJSON]], // JSON.stringify() calls its toJSON() before the replacer sees it.
+		topNodeToJSON: [[new HcModel551()]],
+		oldStyleClass: [[new OldStyle()]], // Its prototype's enumerable method isn't written, so it isn't walked either.
 	};
-	let fast = ['plain', 'rows', 'classInstances', 'date', 'nulls', 'deep', 'manyAttributes', 'topFunction', 'topNode', 'map', 'sparse'];
+	let fast = ['plain', 'rows', 'classInstances', 'date', 'nulls', 'deep', 'manyAttributes', 'topFunction', 'topNode', 'map', 'sparse', 'oldStyleClass'];
 	for (let [name, exprs] of Object.entries(cases)) {
 		let plain = getPlainHash(exprs);
 		if (fast.includes(name))

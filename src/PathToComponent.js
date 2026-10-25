@@ -16,17 +16,17 @@ export default class PathToComponent extends Path {
 	 * when it has never asked, or rendered once without asking, so that the next answer is yes. */
 	appliedExprsHash;
 
-	/** @type {Expr[][]|null} The exprs of the render in progress, which hasChanged() compares.  Null between renders. */
-	renderingExprs = null;
+	/** @type {Expr[][]|undefined} The exprs of the render in progress, which hasChanged() compares.  Undefined between
+	 * renders. */
+	renderingExprs;
 
 	/** @type {boolean|undefined} hasChanged()'s answer for the render in progress, once the component has asked. */
 	changedAnswer;
 
-	/** @type {boolean} Whether to try getPlainHash() first.  Turned off for good the first time these exprs need
-	 * getObjectHash()'s replacer, since a component's arguments keep the same kind of data from one render to the next,
-	 * and trying again would only walk the data for nothing.  Both give the same string, so the switch never makes the
-	 * exprs look changed. */
-	plainExprs = true;
+	/** @type {boolean|undefined} Set for good the first time these exprs need getObjectHash()'s replacer, since a
+	 * component's arguments keep the same kind of data from one render to the next, and trying getPlainHash() again would
+	 * only walk the data for nothing.  Both give the same string, so the switch never makes the exprs look changed. */
+	slowExprs;
 
 	/**
 	 * Passed to the component's render() as its second argument.  Whether the exprs differ from those of the last
@@ -34,13 +34,13 @@ export default class PathToComponent extends Path {
 	 * calls it pays for the comparison.  Called outside a render that this path started, it answers yes.
 	 * @return {boolean} */
 	hasChanged = () => {
-		if (!this.renderingExprs)
+		let exprs = this.renderingExprs;
+		if (!exprs)
 			return true;
 		if (this.changedAnswer === undefined) {
-			let exprs = this.renderingExprs;
-			let hash = this.plainExprs ? getPlainHash(exprs) : undefined;
+			let hash = this.slowExprs ? undefined : getPlainHash(exprs);
 			if (hash === undefined) {
-				this.plainExprs = false;
+				this.slowExprs = true;
 				hash = getObjectHash(exprs);
 			}
 			this.changedAnswer = hash !== this.appliedExprsHash;
@@ -304,15 +304,17 @@ export default class PathToComponent extends Path {
 	callRender(el, attribs, exprs) {
 		// A component that renders this path's parent again from inside its own render() comes back through here, so
 		// the outer render's state is saved and put back around the call.
-		let prevExprs = this.renderingExprs, prevAnswer = this.changedAnswer;
+		let prevExprs = this.renderingExprs, prevAnswer = this.changedAnswer, done;
 		this.renderingExprs = exprs;
 		this.changedAnswer = undefined;
 		try {
 			el.render(attribs, this.hasChanged);
+			done = true;
 		}
 		finally {
 			// The component rendered without asking, so there is nothing for the next answer to be compared against.
-			if (this.changedAnswer === undefined)
+			// Or it threw, maybe after asking, and what it drew of these exprs can't be trusted.
+			if (!done || this.changedAnswer === undefined)
 				this.appliedExprsHash = undefined;
 			this.renderingExprs = prevExprs;
 			this.changedAnswer = prevAnswer;

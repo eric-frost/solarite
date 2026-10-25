@@ -1,7 +1,7 @@
 /**
  * Solarite JavaScript UI library.
  * MIT License
- * https://vorticode.github.io/solarite/
+ * https://eric-frost.github.io/solarite/
  */
 
 export interface RenderOptions {
@@ -18,9 +18,11 @@ export interface RenderOptions {
      * then dispatches normally.  Much faster creation and teardown of large lists, with native
      * ordering, stopPropagation(), currentTarget, non-bubbling events and moved elements all
      * behaving as with addEventListener, except that an element moved out of its list row loses
-     * its delegated handlers.  One more difference: a delegated handler is attached when the
-     * event starts, so it runs after listeners other code added to the same element.  Prefix an
-     * attribute with native: (native:onclick) to bind just that handler at render time.
+     * its delegated handlers.  A template made by h() or toEl() with no one root element is
+     * served by the page's document alone, and its handlers' this is the fragment.  One more
+     * difference: a delegated handler is attached when the event starts, so it runs after
+     * listeners other code added to the same element.  Prefix an attribute with native:
+     * (native:onclick) to bind just that handler at render time.
      * Pass false to bind every event directly, or an array to delegate only the listed event
      * names.  Non-bubbling events always bind directly. */
     eventDelegation?: boolean | string[];
@@ -41,15 +43,26 @@ declare function h(tag: string | Function | symbol, props: object | null, ...chi
 declare function h(obj: {render: Function}): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => void; // Rebound render
 declare function h(): (htmlStrings: TemplateStringsArray, ...exprs: any[]) => Node|DocumentFragment;
 
+/**
+ * Anything an expression can draw as content, as in `<div>${value}</div>`, and so anything an h.map() callback may
+ * return for an item:  a Template; a string, number or other value, drawn as its text; null, undefined or false,
+ * which draw nothing; a DOM node, DocumentFragment or NodeList; another h.map() list; an array of any of these; or a
+ * function that returns one of them. */
+export type Renderable =
+	Template | string | number | bigint | boolean | Date | null | undefined | void
+	| Node | NodeList | MappedList<any> | readonly Renderable[] | (() => Renderable);
+
 declare namespace h {
 	/** Render a list, reusing each item's DOM while the item is the SAME object; replace an item
 	 *  (don't mutate it) to re-render it.  fn runs only for rows the reconciler can't match.
-	 *  No deps: identity is the dep.  Returns a MappedList, not an array — put it straight into
-	 *  a template expression; it's iterable if you really need the templates. */
-	function map<T>(items:T[], fn:(item:T) => Template): MappedList<T>;
+	 *  No deps: identity is the dep.  Returns a MappedList, not an array.  Put it straight into
+	 *  a template expression; it's iterable if you really need each item's result.
+	 *  fn usually returns a Template, but may return anything an expression can draw, such as
+	 *  null to leave an item out. */
+	function map<T>(items:T[], fn:(item:T) => Renderable): MappedList<T>;
 
 	/** Alias of h.map with a name that flags the immutability contract at the call site. */
-	function immutableMap<T>(items:T[], fn:(item:T) => Template): MappedList<T>;
+	function immutableMap<T>(items:T[], fn:(item:T) => Renderable): MappedList<T>;
 
 	/** A selection that writes only the two rows it affects, with no render() call.  Bind with
 	 *  when() as a whole attribute value; move it with set(). */
@@ -132,12 +145,13 @@ export function convertType(value: string, type?: Function): any;
 
 /** What h.map() returns: the source items plus the callback that builds one item's Template,
  * so the reconciler can recognize an unchanged row by the item it was built from.  Iterating it
- * yields the Templates, building each one, for code that needs an array. */
+ * yields what the callback returns for each item, calling it for every one, for code that needs an
+ * array. */
 export class MappedList<T = any> {
 	items: T[];
-	fn: (item: T) => Template;
-	constructor(items: T[], fn: (item: T) => Template);
-	[Symbol.iterator](): IterableIterator<Template>;
+	fn: (item: T) => Renderable;
+	constructor(items: T[], fn: (item: T) => Renderable);
+	[Symbol.iterator](): IterableIterator<Renderable>;
 }
 
 /** What h.selector() returns.  Holds one selected key; when() binds an attribute to whether a
@@ -177,7 +191,12 @@ export class Template {
     /** List key for keyed diffing, set by the JSX runtime from a `key` prop. */
     key?: any;
     constructor(htmlStrings: string[], exprs: any[]);
-    render(el?: HTMLElement | null, options?: RenderOptions): HTMLElement | DocumentFragment;
+    /**
+     * Render into el, which may also be a DocumentFragment or a ShadowRoot, and return el.  With no el, return what
+     * the template makes:  its element (an HTMLElement, an SVG element or a component), a Text node for a template of
+     * text alone, or a DocumentFragment for a template with several top-level nodes or an expression at its top level. */
+    render<E extends HTMLElement | DocumentFragment>(el: E, options?: RenderOptions): E;
+    render(el?: null, options?: RenderOptions): Node;
     getCloseKey(): string;
 }
 
