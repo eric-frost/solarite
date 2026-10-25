@@ -140,6 +140,8 @@ export default class PathToNodes extends Path {
 	 * are not.  So the DOM is asked once, here, before anything is drawn:
 	 * - The markers still enclose a run of siblings, in the element or wherever it moved them
 	 *   as a whole, and the run is the one this path left: draw as usual.
+	 * - The run was one Text node, and a page translator's <font> stands in its place: that is
+	 *   the translator's doing, not the element's, and it is handled as textReplaced() is.
 	 * - Anything else is an error, thrown to the caller of render() before anything is drawn:
 	 *   the markers no longer enclose a run, or a node was taken out of it, put in another
 	 *   place in it, or added to it.  Nothing is removed, drawn again or put back, so the
@@ -180,15 +182,29 @@ export default class PathToNodes extends Path {
 			// Text in an element of its own, inside the foreign element, that a page translator
 			// replaced is not the foreign element's doing; see textReplaced().
 			if ((!nodes || !Util.arraySame(nodes, was)) && !(this.nodeMarker !== kept.el && this.textReplaced())) {
-				this.blame(kept.el);
 
-				// Not thrown, so it is Solarite's own doing; see blame().  The path starts over
-				// where its end marker now stands: what it drew is taken out, wherever it is,
-				// and drawn from nothing.  From then on it is a path like any other in a
-				// component's slot, and it is that before its nodes are taken out, which can
-				// run code that renders the host.
-				kept = this.kept = drawing;
-				this.dropRows(was);
+				// Nor is the one Text node this path drew straight inside the element's tag, as
+				// in <sl-button>${label}</sl-button>, when the <font> of a page translator stands
+				// in its place.  The translation stays while the text is unchanged, as it does
+				// anywhere else; a new value takes it out and is drawn from nothing.  Testing for
+				// <font> keeps the rule narrow: an element that puts the text in a wrapper of its
+				// own is still named.
+				if (nodes && nodes.length === 1 && was[0] === this.textNode && nodes[0].localName === 'font') {
+					if (exprs[0] === this.textValue)
+						return;
+					this.dropRows(nodes);
+				}
+				else {
+					this.blame(kept.el);
+
+					// Not thrown, so it is Solarite's own doing; see blame().  The path starts over
+					// where its end marker now stands: what it drew is taken out, wherever it is,
+					// and drawn from nothing.  From then on it is a path like any other in a
+					// component's slot, and it is that before its nodes are taken out, which can
+					// run code that renders the host.
+					kept = this.kept = drawing;
+					this.dropRows(was);
+				}
 			}
 		}
 
@@ -393,10 +409,11 @@ export default class PathToNodes extends Path {
 		}
 
 		// A previous primitive render stored a bare text node; wrap it in a NodeGroup so it can be diffed.
-		// Text that a page translator replaced is taken out with what the translator left, so
-		// that the new value doesn't stand beside it; see textReplaced().
-		if (this.textReplaced())
-			this.dropRows();
+		// Text that a page translator replaced is drawn by applyTranslated(), which keeps the
+		// translation while the text is unchanged; see textReplaced().  A selector is an error
+		// here, which the check below reports.
+		if (this.textReplaced() && !(expr instanceof SelectorRef))
+			return this.applyTranslated(expr);
 		else if (this.textNode !== null) {
 			(this.nodeGroups ??= []).push(new NodeGroup(textTemplate(this.textValue), this, this.textNode));
 			this.textNode = null;
@@ -452,10 +469,39 @@ export default class PathToNodes extends Path {
 	}
 
 	/**
+	 * applySingle() for a path whose one piece of text a page translator replaced (see
+	 * textReplaced()), given anything that takes the slow path: a function, an array, a
+	 * boolean, a Date, a template, an h.map() list.
+	 *
+	 * Such a value takes the slow path on every render, changed or not, so the text it gives is
+	 * compared here with the text the path drew.  While the two are the same the translation
+	 * stays, as it does for a string given directly (see the fast path), and only a new value
+	 * takes out what the translator left and is drawn from nothing.  Flattening the value calls
+	 * the functions in it, so it is done once, and the items it gives are the ones drawn.
+	 *
+	 * Raw DOM nodes beside the text, on the last render, are left where they stand: taking out
+	 * the translation would take them out with it and put them back, and an input among them
+	 * would lose the focus on every render.  The text then keeps its stale translation, as text
+	 * beside other nodes does anywhere.
+	 * @param expr {Expr} */
+	applyTranslated(expr) {
+		this.lastItems = null;
+		let items = [], hasNodes = this.collectItems(expr, items, false);
+		if (this.itemsHaveNodes)
+			this.applyGeneric(items);
+		else if (hasNodes || items.length !== 1 || items[0] !== (this.textNode !== null ? this.textValue : this.nodeGroups[0].template.html[0])) {
+			this.dropRows();
+			this.applySingle(items); // Flat already, so nothing in them is called again.
+		}
+	}
+
+	/**
 	 * Reconcile a flat list of Templates and strings against this path's NodeGroups.
 	 * Templates with a key=${} attribute diff by key so node identity follows the data.
 	 * An empty list also routes to applyKeyed when the previous render was keyed, so removed
-	 * keyed NodeGroups are discarded instead of pooled.
+	 * keyed NodeGroups are discarded instead of pooled.  The first item decides; a list whose
+	 * first row has no key goes to applyDiff, which hands it to applyKeyed at the first row
+	 * with a key that it would otherwise rewrite.
 	 * @param newItems {(Template|string)[]} */
 	diffItems(newItems) {
 		let first = newItems.length !== 0 ? newItems[0] : null;
@@ -1137,6 +1183,17 @@ export default class PathToNodes extends Path {
 				if (ng.shell.needsRefresh)
 					this.refreshSameItem(ng, t);
 			}
+
+			// A row that has a key, in a list that came here because its first row has none: a
+			// string, a row an h.map() callback hid by returning null, a heading written without
+			// a key.  Rewriting the row in place would give its element to another key, so the
+			// keyed diff takes the list over, from the rows as they stand.  Nothing has moved
+			// yet, and the rows rewritten so far have no key and their new templates, which the
+			// keyed diff finds already in place.  Rows above that hold a component are asked to
+			// render once more there.  The check is made here, at the first row that changed,
+			// so that a list without keys pays nothing for it until a row of it changes in place.
+			else if (ng.key !== undefined)
+				return this.applyKeyed(newItems);
 			else if (itemClose(ng, t))
 				this.rewriteNodeGroup(ng, t);
 			else
@@ -1226,8 +1283,12 @@ export default class PathToNodes extends Path {
 			let seen = new Set();
 			for (let t of newItems) {
 				let k = keyOf(t);
-				if (k === undefined)
-					console.warn('Unkeyed item in a keyed list; it is rebuilt whenever it is among the rows that changed:', t);
+				if (k === undefined) {
+					// A string has no key to give, and neither does a row an h.map() callback hid
+					// by returning null, which is drawn as an empty string.
+					if (typeof t !== 'string')
+						console.warn('Unkeyed item in a keyed list; it is rebuilt whenever it is among the rows that changed:', t);
+				}
 				else if (seen.has(k))
 					console.warn('Duplicate key in keyed list:', k);
 				else
@@ -1721,7 +1782,9 @@ export default class PathToNodes extends Path {
 
 		// The rows now standing in the DOM, offered to this render for reuse.  They are kept
 		// here, not on the path, until the render is done; see where they are stored, at the end.
-		let available = this.freeNodeGroups();
+		// A row with a key is offered only to the template with that key, so it is looked up in
+		// a map of its own; one that no template asks for is discarded, as in the keyed diff.
+		let byKey = new Map(), available = this.freeNodeGroups(byKey);
 
 		// While this render is under way, a render of this list that starts inside it (from a
 		// function in a row, or from the disconnectedCallback of an element that is taken out)
@@ -1744,7 +1807,7 @@ export default class PathToNodes extends Path {
 			if (typeof item === 'string')
 				item = textTemplate(item);
 			if (item instanceof Template) {
-				let ng = this.getNodeGroup(item, available);
+				let ng = this.getNodeGroup(item, available, byKey);
 
 				// A function in the row may have rendered the host, which drew this whole list
 				// from inside the loop.  Nothing has been moved here by then, so that render is
@@ -1935,8 +1998,10 @@ export default class PathToNodes extends Path {
 			// 	parent.replaceWith(replacement)
 			// }
 			// else {
-			parent.innerHTML = ''; // Faster than calling .removeChild() a thousand times.
-			parent.append(this.nodeBefore, this.nodeMarker)
+			// One call, faster than calling .removeChild() a thousand times.  The parent can be a
+			// DocumentFragment, which has no innerHTML to clear it with: the one a template was
+			// rendered into, or the one where an element keeps the children it was given.
+			parent.replaceChildren(this.nodeBefore, this.nodeMarker);
 			//}
 			return true;
 		}
@@ -1947,17 +2012,24 @@ export default class PathToNodes extends Path {
 	 * Get a NodeGroup with the same html as the template, reusing a pooled one if available.
 	 * The first pooled NodeGroup with the same close key (html shape) is taken and its
 	 * expressions are updated, skipping the update when its values are already identical.
+	 * A template with a key takes only the row that has its key, as in the keyed diff, and
+	 * never one from the pool.
 	 *
 	 * @param template {Template}
-	 * @param available {MultiValueMap} The rows standing in the DOM that the render under way
-	 * has not used yet; see freeNodeGroups().
+	 * @param available {MultiValueMap} The rows without a key standing in the DOM that the
+	 * render under way has not used yet; see freeNodeGroups().
+	 * @param byKey {Map<*, NodeGroup>} The rows with a key standing in the DOM, by key, that the
+	 * render under way has not used yet.
 	 * @return {NodeGroup} */
-	getNodeGroup(template, available) {
-		let closeKey = template.getCloseKey();
-		let result = available.deleteAny(closeKey)
-			|| this.nodeGroupsDetachedAvailable?.deleteAny(closeKey);
+	getNodeGroup(template, available, byKey) {
+		let closeKey = template.getCloseKey(), key = keyOf(template);
+		let result = key === undefined
+			? available.deleteAny(closeKey) || this.nodeGroupsDetachedAvailable?.deleteAny(closeKey)
+			: byKey.get(key);
 
-		if (result) {
+		// The row of a key is used only when it was made from the same html.
+		if (result?.closeKey === closeKey) {
+			byKey.delete(key);
 			let old = result.template;
 			if (templatesSame(old, template))
 				this.refreshSameItem(result, template);
@@ -1984,9 +2056,12 @@ export default class PathToNodes extends Path {
 	 * the rows now in this.nodeGroups for reuse.
 	 * Called at the beginning of applyGeneric() so it can have NodeGroups to use.
 	 * TODO: this could run as needed in getNodeGroup?
+	 * @param byKey {Map<*, NodeGroup>} Receives the rows now standing in the DOM that have a key,
+	 * by key.  They are left out of the result, so that one no template asks for by its key is
+	 * not reused for another, and never reaches the pool.
 	 * @return {MultiValueMap} The rows now standing in the DOM, by close key.  They belong to
 	 * the render that asked for them: nothing is stored on the path while it runs. */
-	freeNodeGroups() {
+	freeNodeGroups(byKey) {
 		// Add nodes that weren't used during render() to nodeGroupsDetached
 		let previouslyAttached = this.nodeGroupsAttachedAvailable?.data;
 		if (previouslyAttached) {
@@ -2020,7 +2095,10 @@ export default class PathToNodes extends Path {
 		let nga = new MultiValueMap();
 		if (this.nodeGroups)
 			for (let ng of this.nodeGroups)
-				nga.addCapped(ng.closeKey, ng); // No cap: these are the rows now in the DOM.
+				if (ng.key !== undefined)
+					byKey.set(ng.key, ng);
+				else
+					nga.addCapped(ng.closeKey, ng); // No cap: these are the rows now in the DOM.
 		return nga;
 	}
 

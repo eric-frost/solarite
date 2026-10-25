@@ -2180,6 +2180,64 @@ Testimony.test('Solarite.expr.varText', () => {
 	assert.eq(a.childNodes.length, 3);
 });
 
+Testimony.test('Solarite.expr.translatedTextKept', `Text alone in its element that a page translator replaced keeps its translation while its value is unchanged, whether it is given as a string, a function, a one-item array, a boolean, a Date or an h.map() list of one string, and shows the new value once it changes.  A function is called once per render.  Raw DOM nodes beside a piece of text stay where they are, so they are not taken out and put back on every render.`, () => {
+	let el = document.createElement('div');
+	let name = 'Alice', on = true, day = new Date(2020, 0, 1), calls = 0;
+	let render = () => h(el)`<p><b>${name}</b><i>${() => { calls++; return name; }}</i><u>${[name]}</u><s>${on}</s><q>${day}</q><em>${h.map([1], () => name)}</em></p>`;
+	render();
+	translatePage(el);
+	let cells = [...el.firstElementChild.children];
+	let shown = () => cells.map(cell => cell.textContent).join('|');
+	let changes = new MutationObserver(() => {});
+	for (let cell of cells)
+		changes.observe(cell, {childList: true});
+
+	// 1. Nothing changes.
+	calls = 0;
+	render();
+	assert.eq(changes.takeRecords().length, 0);
+	assert.eq(shown(), 'T:Alice|T:Alice|T:Alice|T:true|T:' + day + '|T:Alice');
+	assert.eq(calls, 1);
+
+	// 2. Everything but the date changes.
+	name = 'Bob';
+	on = false;
+	calls = 0;
+	render();
+	assert.eq(shown(), 'Bob|Bob|Bob||T:' + day + '|Bob');
+	assert.eq(calls, 1);
+	translatePage(el);
+	day = new Date(2021, 0, 1);
+	render();
+	assert.eq(shown(), 'T:Bob|T:Bob|T:Bob||' + day + '|T:Bob');
+	changes.disconnect();
+
+	// 3. Raw nodes beside a piece of text: an input, and an element that counts how often it is
+	// taken out of the document.
+	let tag = uniqueTag(), removed = 0;
+	customElements.define(tag, class extends HTMLElement {
+		disconnectedCallback() {
+			removed++;
+		}
+	});
+	let input = document.createElement('input'), widget = document.createElement(tag), n = 0;
+	let holder = document.createElement('div');
+	document.body.append(holder);
+	let renderNodes = () => h(holder)`<label>${[input, ' Remember me']}</label><span>${[widget, 'Hint']}</span><s>${n}</s>`;
+	renderNodes();
+	translatePage(holder);
+	let label = holder.querySelector('label');
+	changes.observe(label, {childList: true});
+	for (n = 1; n < 4; n++)
+		renderNodes();
+	assert.eq(changes.takeRecords().length, 0);
+	assert.eq(removed, 0);
+	assert.eq(label.firstChild, input);
+	assert.eq(holder.querySelector('s').textContent, '3');
+	changes.disconnect();
+	holder.remove();
+});
+
 Testimony.test('Solarite.expr.cyclicRef', () => {
 
 
@@ -4645,6 +4703,52 @@ Testimony.test('Solarite.map.throwingRowAmongReplacedRows', `A new row that thro
 	}
 });
 
+Testimony.test('Solarite.map.throwingRowThenFixed', `A row whose update throws part-way is drawn right by the next render, whatever item it is given then: the item fixed, or the item it showed before.  In an h.map() list with or without keys, and in an array, no item is shown twice and none is lost.`, () => {
+	let ok = () => {};
+
+	// A row throws while it is updated: an attribute is given a function that throws, or an
+	// event is given a string.
+	let rows = {
+		attribute: keyed => keyed
+			? item => h`<li key=${item.id} title=${() => item.user.name}>${item.id}-${item.v}</li>`
+			: item => h`<li title=${() => item.user.name}>${item.id}-${item.v}</li>`,
+		event: keyed => keyed
+			? item => h`<li key=${item.id} onclick=${item.user ? ok : 'oops'}>${item.id}-${item.v}</li>`
+			: item => h`<li onclick=${item.user ? ok : 'oops'}>${item.id}-${item.v}</li>`
+	};
+	for (let kind of ['mapped', 'mappedKeyed', 'array'])
+		for (let how in rows) {
+			let row = rows[how](kind === 'mappedKeyed'), what = kind + ', ' + how;
+			let el = document.createElement('div');
+			let items;
+			let render = () => h(el)`<ul>${kind === 'array' ? items.map(row) : h.map(items, row)}</ul>`;
+			let user = {name: 'u'};
+
+			// 1. A new copy of y that throws moves to the front, and the app then fixes it.
+			let x = {id: 'x', v: 'p', user}, y = {id: 'y', v: 'q', user}, z = {id: 'z', v: 'q', user};
+			items = [x, y];
+			render();
+			items = [{...y, user: null}, x, z];
+			assert(thrownBy(render) !== null, what);
+			items = [{...y}, x, z];
+			render();
+			assert.eq(textsOf(el, 'li'), 'y-q,x-p,z-q', what + ', fixed');
+			render();
+			assert.eq(textsOf(el, 'li'), 'y-q,x-p,z-q', what + ', next render');
+
+			// 2. The list keeps its length, one row's new item throws, and the app goes back to the
+			// item the row showed before.
+			let a = {id: 'a', v: 1, user}, b = {id: 'b', v: 2, user};
+			items = [a, b];
+			render();
+			items = [a, {id: 'b', v: 3, user: null}];
+			assert(thrownBy(render) !== null, what);
+			items = [a, b];
+			render();
+			assert.eq(textsOf(el, 'li'), 'a-1,b-2', what + ', back');
+		}
+});
+
 Testimony.test('Solarite.map.throwingRowKeepsPooledRows', `Rows of several nodes that were removed in the same render in which a new row throws can still be reused: each comes back whole when a later render needs a row of its kind, and what follows the list stays in place.`, () => {
 	for (let mapped of [true, false]) {
 		let el = document.createElement('div');
@@ -6753,6 +6857,67 @@ Testimony.test('Solarite.keyed.unkeyedRowAmongManyReplaced', `A row without a ke
 	}
 });
 
+Testimony.test('Solarite.keyed.keysAfterUnkeyedFirstRow', `A row keeps its element by its key when the list's first row has none: a row an h.map() callback hides by returning null, a plain string, or a heading written as a template without a key.  The same when a raw DOM node stands among the rows.`, () => {
+	let spinner = document.createElement('progress');
+	let row = todo => h`<li key=${todo.id}>${todo.id}<input></li>`;
+	let visible = todos => todos.filter(todo => !todo.hidden);
+	let shapes = {
+		hiddenFirst: todos => h.map(todos, todo => todo.hidden ? null : row(todo)),
+		leadingString: todos => ['Todo:', ...visible(todos).map(row)],
+		headerTemplate: todos => [h`<li class="hdr">Todo</li>`, ...visible(todos).map(row)],
+		rawNodeFirst: todos => [spinner, ...visible(todos).map(row)],
+		rawNodeLast: todos => [...visible(todos).map(row), spinner]
+	};
+	for (let name in shapes) {
+		let el = document.createElement('div');
+		let todos = {};
+		for (let id of [1, 2, 3, 4, 5])
+			todos[id] = {id, hidden: name === 'hiddenFirst' && id === 1};
+		let ids;
+		let render = () => h(el)`<ul>${shapes[name](ids.map(id => todos[id]))}</ul>`;
+
+		// The input of each todo, by its id, as it was when the todo was first shown.
+		let inputs = {};
+		let check = step => {
+			let lis = [...el.querySelectorAll('li:not(.hdr)')];
+			assert.eq(lis.map(li => li.textContent).join(), visible(ids.map(id => todos[id])).map(todo => todo.id).join(), name + ', ' + step);
+			for (let li of lis)
+				assert.eq(inputs[li.textContent] ??= li.querySelector('input'), li.querySelector('input'), name + ', ' + step + ': the element of todo ' + li.textContent);
+		};
+
+		// The first todo stays first, so the hidden one stays hidden in front.
+		for (let [step, order] of [['create', [1, 2, 3, 4]], ['2 to the end', [1, 3, 4, 2]], ['shuffle', [1, 4, 2, 3]], ['replace one', [1, 2, 5, 3]], ['remove two', [1, 5]]]) {
+			ids = order;
+			render();
+			check(step);
+		}
+	}
+});
+
+Testimony.test('Solarite.keyed.unkeyedRowsNotWarned', `In the debug build, a keyed list warns about a row that is a template without a key, but not about a plain string or a row hidden by returning null.`, () => {
+	let warn = console.warn, warnings = [];
+	console.warn = (...args) => warnings.push(args.join(' '));
+	try {
+		let el = document.createElement('div');
+		let todos = [{id: 1}, {id: 2, hidden: true}, {id: 3}, {id: 4, sep: true}, {id: 5}];
+		let render = () => h(el)`<ul>${h.map(todos, todo => todo.hidden ? null : todo.sep ? ' | ' : h`<li key=${todo.id}>${todo.id}</li>`)}</ul>`;
+		render();
+		todos = [todos[2], todos[1], todos[0], todos[3], todos[4]];
+		render();
+		todos = [todos[1], todos[0], todos[2], todos[3], todos[4]]; // The hidden row first.
+		render();
+		todos = [todos[0], todos[2], todos[1], todos[3], todos[4]];
+		render();
+		assert.eq(warnings.filter(text => text.includes('Unkeyed')).length, 0);
+
+		h(el)`<ul>${[h`<li key=${1}>1</li>`, h`<li>2</li>`]}</ul>`;
+		assert.eq(warnings.filter(text => text.includes('Unkeyed')).length, 1);
+	}
+	finally {
+		console.warn = warn;
+	}
+});
+
 Testimony.test('Solarite.keyed.noneKeptBetweenKeptEnds', `A keyed list whose middle is all new keys, between rows that stay, keeps the ends and replaces the middle`, () => {
 	let el = document.createElement('div');
 	let mk = (id, label='r' + id) => ({id, label});
@@ -7060,6 +7225,53 @@ Testimony.test('Solarite.stamp.rewriteAfterWrappedText', `A page translator wrap
 	render();
 	assert.eq(i.innerHTML, 'three');
 	el.remove();
+});
+
+Testimony.test('Solarite.stamp.translatedCellToTemplate', `A list row's cell whose text a page translator replaced shows only the new template when its text changes to a template, and only the new text when it changes back, in an h.map() list with and without keys, in an array, and in a row taken from the pool.  A cell beside it whose text is unchanged keeps its translation.`, () => {
+	for (let kind of ['mapped', 'mappedKeyed', 'array', 'pooled']) {
+		let el = document.createElement('div');
+		let rows = [{id: 1, a: 'Alice', b: 'admin'}, {id: 2, a: 'Bob', b: 'user'}];
+		let row = kind === 'mappedKeyed'
+			? r => h`<li key=${r.id}><span>${r.a}</span><b>${r.b}</b></li>`
+			: r => h`<li><span>${r.a}</span><b>${r.b}</b></li>`;
+		let render = () => kind === 'array' ? h(el)`<ul>${rows.map(row)}</ul>` : h(el)`<ul>${h.map(rows, row)}</ul>`;
+		render();
+		translatePage(el);
+		let li = el.querySelectorAll('li')[1];
+
+		// Only b changes, from text to a template.  A row of the pool is given an item whose a is
+		// the text it showed.
+		if (kind === 'pooled') {
+			rows = [rows[0]];
+			render();
+			rows = [rows[0], {id: 3, a: 'Bob', b: h`<i>editor</i>`}];
+		}
+		else
+			rows = [rows[0], {...rows[1], b: h`<i>editor</i>`}];
+		render();
+		assert.eq(el.querySelectorAll('li')[1], li, kind);
+		assert.eq(li.querySelector('b').innerHTML, '<i>editor</i>', kind);
+		assert.eq(li.querySelector('span').textContent, 'T:Bob', kind);
+
+		// Back to text, and the other cell changes as well.
+		rows = [rows[0], {...rows[1], a: 'Robert', b: 'owner'}];
+		render();
+		assert.eq(li.querySelector('b').innerHTML, 'owner', kind);
+		assert.eq(li.querySelector('span').innerHTML, 'Robert', kind);
+	}
+
+	// A row that is one cell.
+	let el = document.createElement('div');
+	let items = [{v: 'one'}, {v: 'two'}];
+	let render = () => h(el)`<ul>${h.map(items, item => h`<li>${item.v}</li>`)}</ul>`;
+	render();
+	translatePage(el);
+	items = [{v: h`<b>bold</b>`}, items[1]];
+	render();
+	assert.eq(el.querySelector('ul').innerHTML.replace(/<font[^>]*>/g, '<font>'), '<li><b>bold</b></li><li><font><font>T:two</font></font></li>');
+	items = [{v: 'three'}, items[1]];
+	render();
+	assert.eq(el.querySelector('li').innerHTML, 'three');
 });
 
 Testimony.test('Solarite.stamp.materializeReleasesKeptText', `White box: after a cell that was rewritten as text becomes a template, the row holds no node that is no longer in its own subtree.`, () => {
@@ -10984,6 +11196,56 @@ Testimony.test('Solarite.h.fragmentRoot', `A template renders into a DocumentFra
 	assert.eq(getHtml(root), '<fragment-root-child title="t"><em>mine</em></fragment-root-child>');
 });
 
+Testimony.test('Solarite.h.fragmentListCleared', `A list whose rows are all a DocumentFragment holds is taken out when it is cleared, so later renders show only their own rows: a fragment rendered again before it is placed, and the fragment where an element keeps the children it was given.`, () => {
+	// 1. A fragment rendered again while it is still detached.
+	for (let keyed of [false, true]) {
+		let frag = document.createDocumentFragment(), ids = [1, 2, 3];
+		let row = keyed ? id => h`<p key=${id}>${id}</p>` : id => h`<p>${id}</p>`;
+		let render = () => h(frag)`${h.map(ids, row)}`;
+		render();
+		ids = [];
+		render();
+		assert.eq(frag.querySelectorAll('p').length, 0);
+		ids = [5, 6];
+		render();
+		assert.eq(textsOf(frag, 'p'), '5,6');
+	}
+
+	// 2. An element that keeps the children it was given in a fragment until it is opened, as a
+	// panel that draws its content lazily does.  With and without white space around the list.
+	class FragmentKeeper extends HTMLElement {
+		kept = document.createDocumentFragment();
+		connectedCallback() {
+			if (!this.opened)
+				this.kept.append(...this.childNodes);
+		}
+		open() {
+			this.opened = true;
+			this.append(this.kept);
+		}
+	}
+	customElements.define('fragment-keeper', FragmentKeeper);
+	for (let keyed of [false, true])
+		for (let space of [false, true]) {
+			let el = document.createElement('div');
+			document.body.append(el);
+			let ids = [1, 2, 3];
+			let row = keyed ? id => h`<p key=${id}>${id}</p>` : id => h`<p>${id}</p>`;
+			let render = () => space
+				? h(el)`<div><fragment-keeper> ${h.map(ids, row)} </fragment-keeper></div>`
+				: h(el)`<div><fragment-keeper>${h.map(ids, row)}</fragment-keeper></div>`;
+			render();
+			ids = [];
+			assert.eq(thrownBy(render), null);
+			ids = [7];
+			assert.eq(thrownBy(render), null);
+			let keeper = el.querySelector('fragment-keeper');
+			keeper.open();
+			assert.eq(textsOf(keeper, 'p'), '7', 'keyed: ' + keyed + ', space: ' + space);
+			el.remove();
+		}
+});
+
 Testimony.test('Solarite.h.shadowHost', `An element that has a shadow root of its own is rendered into like any other element, whether the shadow root is open or closed.  With an open one every render used to empty the element first: the second render left it blank for good, and what it held before its first render was thrown away instead of being kept as slot content.`, () => {
 	for (let mode of ['open', 'closed']) {
 		// 1. Rendered three times.  What the element held before stays, after the template's nodes.
@@ -13661,6 +13923,94 @@ Testimony.test('Solarite.slots.elementRenderInsideDraw', `A render that starts w
 	assert.eq(thrownBy(host), elementChanged('s-6l'));
 	assert.eq(thrownBy(host), elementChanged('s-6l'));
 	assert.eq(getHtml(div), `<div><div><s-6l><s>mine</s></s-6l></div></div>`);
+});
+
+Testimony.test('Solarite.slots.translatedTextInElement', `Text written straight inside the tag of an element that doesn't render through Solarite, as in <sl-button>\${label}</sl-button>, shows each new value after a page translator replaced it with a <font> element, and keeps its translation while its value is unchanged.  No render throws, and the expressions before the element keep updating, in a template and in the rows of a list.  An element that puts the text in a wrapper of its own is still named.`, () => {
+	// A button in the style of Shoelace's, whose shadow root shows the label through a slot.
+	class S8a extends HTMLElement {
+		constructor() {
+			super();
+			this.attachShadow({mode: 'open'}).innerHTML = '<button><slot></slot></button>';
+		}
+	}
+	customElements.define('s-8a', S8a);
+
+	// 1. In a template, with and without white space around the expression.
+	for (let space of [false, true]) {
+		let el = document.createElement('div');
+		document.body.append(el);
+		let heading = 'Inbox', label = 'Save';
+		let render = () => space
+			? h(el)`<h1>${heading}</h1><s-8a> ${label} </s-8a>`
+			: h(el)`<h1>${heading}</h1><s-8a>${label}</s-8a>`;
+		render();
+		let button = el.querySelector('s-8a');
+		translatePage(el);
+
+		// Only what stands before the element changes, and the label keeps its translation.
+		heading = 'Sent';
+		assert.eq(thrownBy(render), null);
+		assert.eq(el.querySelector('h1').textContent, 'Sent');
+		assert.eq(button.textContent.trim(), 'T:Save');
+
+		// The label changes, before and after the new one is translated too.
+		label = 'Send';
+		assert.eq(thrownBy(render), null);
+		assert.eq(button.textContent.trim(), 'Send');
+		translatePage(el);
+		heading = 'Drafts';
+		label = 'Done';
+		assert.eq(thrownBy(render), null);
+		assert.eq(el.querySelector('h1').textContent, 'Drafts');
+		assert.eq(button.textContent.trim(), 'Done');
+
+		// The reader asks for the page in its own language again.
+		translatePage(el);
+		untranslatePage(el);
+		label = 'Undo';
+		assert.eq(thrownBy(render), null);
+		assert.eq(button.textContent.trim(), 'Undo');
+		el.remove();
+	}
+
+	// 2. In the rows of a list, keyed and not: one row's label changes and a row is added.
+	for (let keyed of [false, true]) {
+		let el = document.createElement('div');
+		document.body.append(el);
+		let items = [{id: 1, name: 'Apple'}, {id: 2, name: 'Pear'}, {id: 3, name: 'Plum'}], heading = 'Fruit';
+		let render = () => h(el)`<h2>${heading}</h2><ul>${h.map(items, item => keyed
+			? h`<li key=${item.id}><s-8a>${item.name}</s-8a></li>`
+			: h`<li><s-8a>${item.name}</s-8a></li>`)}</ul>`;
+		render();
+		translatePage(el);
+		items = [items[0], {id: 2, name: 'Peach'}, items[2], {id: 4, name: 'Fig'}];
+		heading = 'Fruits';
+		assert.eq(thrownBy(render), null);
+		assert.eq(el.querySelector('h2').textContent, 'Fruits');
+		assert.eq(textsOf(el, 's-8a'), 'T:Apple,Peach,T:Plum,Fig');
+		el.remove();
+	}
+
+	// 3. An element that puts the text it was given in a <span> of its own changes the nodes the
+	// expression drew, and is named for it as before.
+	customElements.define('s-8b', class extends HTMLElement {
+		connectedCallback() {
+			let text = [...this.childNodes].find(node => node.nodeType === 3);
+			if (text) {
+				let span = document.createElement('span');
+				text.replaceWith(span);
+				span.append(text);
+			}
+		}
+	});
+	let el = document.createElement('div');
+	document.body.append(el);
+	let label = 'Save';
+	let render = () => h(el)`<p><s-8b>${label}</s-8b></p>`;
+	render();
+	label = 'Send';
+	assert.eq(thrownBy(render), elementChanged('s-8b'));
+	el.remove();
 });
 
 Testimony.test('Solarite.slots.elementRawNodes', `A DOM node that the application made and gave to a template is the application's to move, inside an element that doesn't render through Solarite as anywhere else: nothing is thrown when it has left its place, and the same happens to it as in a plain element.  The rows Solarite drew beside it are still looked for.`, () => {

@@ -561,6 +561,14 @@ export default class NodeGroup {
 	 *
 	 * The row gets a template of its own because neither of the other two may be changed:
 	 * h.map() hands a row's Template out again for as long as its item stays the same.
+	 *
+	 * The list the row is in forgets which item drew each of its rows.  An h.map() list records
+	 * its items only once every row is drawn, so it still names this row's old item, and the
+	 * rows the render updated before this one by their old items too.  Trusting that, the next
+	 * render would keep a row as the old item's while it shows (some of) the new one, and could
+	 * show an item twice.  Without the items it compares each row's template instead, and those
+	 * say what the rows show.  This runs only when a row throws, so it costs a working render
+	 * nothing.
 	 * @param template {Template} The template that was being applied.
 	 * @param at {int} Index of the expression that threw. */
 	keepReached(template, at) {
@@ -568,6 +576,7 @@ export default class NodeGroup {
 		this.template = Object.assign(new Template(), old, {
 			exprs: template.exprs.map((expr, i) => i > at ? expr : old.exprs[i])
 		});
+		this.parentPath.lastItems = null;
 	}
 
 	/**
@@ -631,6 +640,14 @@ export default class NodeGroup {
 				path.textNode = tn;
 				path.textValue = tn.nodeValue;
 			}
+
+			// Something else stands in the cell, such as the <font> of a page translator.  The
+			// path is given a Text node of its own, out of the document, holding the text the row
+			// drew there.  The path then finds that text replaced (see
+			// PathToNodes.textReplaced()), and empties the cell when, and only when, it draws a
+			// new value: a cell that keeps its value keeps its translation.
+			else if (tn !== null)
+				path.textNode = Globals.doc.createTextNode(path.textValue = '' + this.template.exprs[idx]);
 		}
 		return result;
 	}
