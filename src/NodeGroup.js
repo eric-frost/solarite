@@ -211,8 +211,17 @@ export default class NodeGroup {
 					}
 					primitive = i === idx.length;
 				}
-				if (primitive)
+				if (primitive) {
 					this.startNode = this.endNode = shell.stampMaster.cloneNode(true);
+
+					// A row that holds a form control finds its nodes now, while it is as the
+					// template made it, and keeps them for its updates, its events and its
+					// paths: by the time something needs them, a password manager may have put
+					// an icon beside the input, and the nodes found by index from the root
+					// would then be the wrong ones (see Shell.resolveAtCreate).
+					if (shell.resolveAtCreate === true)
+						this.stampSlots(shell.resolveSlots.length - 1);
+				}
 				else {
 					let clone = shell.docFrag.firstChild.cloneNode(true);
 					this.startNode = this.endNode = clone;
@@ -398,8 +407,15 @@ export default class NodeGroup {
 		// slots are non-decreasing in path order (Shell.buildResolveProgram allocates them in
 		// document order), and this loop runs backwards, so the first op to need a node needs
 		// the highest one and later ops fall inside that prefix; the check keeps it honest.
+		// A row that holds a form control has had all of its nodes since it was made (see the
+		// constructor).
 		let slots = shell.resolveSlots, resolved = 1;
-		slots[1] = this.startNode;
+		if (shell.resolveAtCreate === true) {
+			slots = this.stampSlotsCache;
+			resolved = slots.length;
+		}
+		else
+			slots[1] = this.startNode;
 		for (let i = ops.length - 1; i >= 0; i--) {
 			let v = exprs[i];
 			let o = ops[i];
@@ -706,8 +722,13 @@ export default class NodeGroup {
 		// attribPaths behavior; pathOffset!==0 (root grafting) also uses the fallback.
 		let ops = shell.resolveOps, slots = null;
 		if (ops && startingPathDepth === 0) {
-			if (isRootClone) // The root element is also this.startNode, so it seeds slot 1 itself.
-				slots = this.resolveStampSlots(shell);
+			// The root element is also this.startNode, so it seeds slot 1 itself.  A stamped row
+			// that has found some of its nodes already goes on from those, as stampSlots()
+			// explains; a row that holds a form control found them all when it was made.
+			if (isRootClone)
+				slots = this.stampSlotsCache !== null
+					? this.stampSlots(shell.resolveSlots.length - 1)
+					: this.resolveStampSlots(shell);
 			else {
 				slots = shell.resolveSlots;
 				slots[0] = fragment;

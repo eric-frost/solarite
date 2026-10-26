@@ -8807,6 +8807,74 @@ Testimony.test('Solarite.delegation.rowKeepsResolvedNodes', `A list row keeps th
 	el.remove();
 });
 
+Testimony.test('Solarite.delegation.formControlRowFindsNodesAtOnce', `A list row that holds an input, select, textarea or contenteditable element finds its elements when it is drawn, so a node other code puts beside the control before the row's first event or update, as a password manager puts its icon after an input, moves no handler and no update: the row's handler runs for its own element only, and its updates, a template where it had text, and a pooled row drawn again for another item all write into its own elements.  A nested template that holds a control does the same.  A row without a control still finds nothing until something needs it.`, () => {
+	let log = [];
+	let save = (id, e, node) => log.push(id + node.tagName);
+	let click = node => node.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+	let make = () => document.body.appendChild(document.createElement('div'));
+	let icon = () => Object.assign(document.createElement('div'), {className: 'icon'});
+
+	// 1. Each kind of control, with an icon put after it as soon as the row is drawn.
+	let rows = [
+		(el, item) => h(el)`${h.map([item], it => h`<p key=${it.id}><input type=password><button onclick=${[save, it.id]}>b</button><b>${it.text}</b></p>`)}`,
+		(el, item) => h(el)`${h.map([item], it => h`<p key=${it.id}><select><option>o</option></select><button onclick=${[save, it.id]}>b</button><b>${it.text}</b></p>`)}`,
+		(el, item) => h(el)`${h.map([item], it => h`<p key=${it.id}><textarea></textarea><button onclick=${[save, it.id]}>b</button><b>${it.text}</b></p>`)}`,
+		(el, item) => h(el)`${h.map([item], it => h`<p key=${it.id}><span contenteditable></span><button onclick=${[save, it.id]}>b</button><b>${it.text}</b></p>`)}`,
+		(el, item) => h(el)`${h.map([item], it => h`<p key=${it.id}><span contenteditable=${'true'}></span><button onclick=${[save, it.id]}>b</button><b>${it.text}</b></p>`)}`,
+	];
+	for (let render of rows) {
+		log = [];
+		let el = make();
+		render(el, {id: 1, text: 't1'});
+		el.querySelector('p').firstChild.after(icon());
+		click(el.querySelector('.icon'));
+		click(el.querySelector('button'));
+		assert.eq(log.join(), '1BUTTON');
+		render(el, {id: 1, text: 't2'});
+		assert.eq(el.querySelector('b').textContent + el.querySelector('.icon').textContent, 't2');
+		render(el, {id: 1, text: h`<i>t3</i>`});
+		assert.eq(el.querySelector('b').innerHTML + el.querySelector('.icon').innerHTML, '<i>t3</i>');
+		el.remove();
+	}
+
+	// 2. A nested template that holds the control, inside a row that has none.
+	log = [];
+	let el = make();
+	h(el)`${h.map([1], id => h`<p key=${id}>${h`<span><input><button onclick=${[save, id]}>n</button></span>`}</p>`)}`;
+	el.querySelector('input').after(icon());
+	click(el.querySelector('.icon'));
+	click(el.querySelector('button'));
+	assert.eq(log.join(), '1BUTTON');
+	el.remove();
+
+	// 3. A row of an unkeyed list that is removed, kept, and drawn again for another item.
+	el = make();
+	let renderList = items => h(el)`${h.map(items, item => h`<p onclick=${() => {}}><textarea></textarea><b>${item.a}</b><i>${item.b}</i></p>`)}`;
+	let x = {a: 'a1', b: 'b1'}, y = {a: 'a2', b: 'b2'};
+	renderList([x, y]);
+	let second = el.querySelectorAll('p')[1];
+	second.prepend(document.createElement('u'));
+	renderList([x]);
+	renderList([x, {a: 'a3', b: 'b3'}]);
+	assert.eq(el.querySelectorAll('p')[1], second);
+	assert.eq([...second.children].map(c => c.tagName + c.textContent).join(), 'U,TEXTAREA,Ba3,Ib3');
+	el.remove();
+
+	// 4. Only rows with a control find their elements when they are drawn, one call for each row.
+	let count = 0, orig = NodeGroup.prototype.resolveStampSlots;
+	NodeGroup.prototype.resolveStampSlots = function(...args) { count++; return orig.apply(this, args); };
+	let plain = make(), withInput = make();
+	try {
+		h(plain)`${h.map([1, 2], id => h`<p key=${id}><a onclick=${[save, id]}>a</a><b>${id}</b></p>`)}`;
+		assert.eq(count, 0);
+		h(withInput)`${h.map([1, 2], id => h`<p key=${id}><input><a onclick=${[save, id]}>a</a><b>${id}</b></p>`)}`;
+		assert.eq(count, 2);
+	}
+	finally { NodeGroup.prototype.resolveStampSlots = orig; }
+	plain.remove();
+	withInput.remove();
+});
+
 Testimony.test('Solarite.delegation.nestedRows', `Rows nested inside rows each run their own delegated handler once, with the component as this.`, () => {
 	class D95 extends Solarite {
 		hits = [];

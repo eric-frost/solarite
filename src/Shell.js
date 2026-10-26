@@ -83,6 +83,11 @@ export default class Shell {
 	 * with no per-instance Path objects.  See the stampPaths setup in the constructor. */
 	stampable = false;
 
+	/** @type {boolean} True when a stamped row finds all of its nodes as soon as it is made,
+	 * rather than when something first needs one: when the row holds a form control and has
+	 * nodes below its root to find.  See the NodeGroup constructor. */
+	resolveAtCreate = false;
+
 	// The remaining fields are only filled in for some shells (resolve program, stampable),
 	// but they're all declared here so every Shell instance shares one hidden class.
 	// NodeGroup's per-row code (its constructor, applyStamp, resolveStampSlots) reads these
@@ -532,6 +537,16 @@ export default class Shell {
 				// cheaper than in the page's document (the exp2 note in optimization-log.md).
 				let master = this.stampMaster = this.docFrag.firstChild.cloneNode(true);
 				let doc = master.ownerDocument;
+
+				// Password managers, autofill tools and spell checkers put nodes of their own
+				// beside form controls, such as an icon after an input.  A row found by index
+				// from its root after that would find their nodes instead of its own, so a row
+				// that holds a form control finds its nodes as soon as it is made.  Other rows
+				// stay lazy, which is what makes creating them fast.
+				let controls = 'input,select,textarea,[contenteditable]';
+				this.resolveAtCreate = this.resolveSlots.length > 2
+					&& (master.matches(controls) || master.querySelector(controls) !== null
+						|| this.paths.some(p => p.attribName === 'contenteditable'));
 				this.stampMasterTexts = nodesIdx.map(i => {
 					let tn = doc.createTextNode('');
 					Path.resolve(master, this.paths[i].nodeMarkerPath, 1).append(tn);
