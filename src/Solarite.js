@@ -92,8 +92,8 @@ export class Solarite extends HTMLElementAutoDefine {
 	 * right the first time, even for fields that change what render() builds.  This constructor
 	 * can't copy attribs onto fields itself, because subclass field initializers run after it
 	 * finishes and would overwrite them; that's why the subclass does the final assign.
-	 * @param attribs {?Record<string, any>}
-	 * @param types {?Record<string, Function>} */
+	 * @param attribs {?Record<string, any>=}
+	 * @param types {?Record<string, Function>=} */
 	constructor(attribs, types) {
 		super();
 

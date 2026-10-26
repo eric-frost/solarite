@@ -7261,10 +7261,11 @@ let renderTemplateKey = Symbol('solariteRender');
 // Using `arguments` alongside rest params would force the engine to materialize both per call.
 let noArg = Symbol();
 
-// The /** @type {*} */ cast on the default keeps TypeScript from inferring the parameter as
-// `symbol` from noArg: TS can't parse the closure-style @param type below (function() without
-// a return type under noImplicitAny), falls back to the default's type, and then flags every
-// h(this) / h`` call in the codebase as an error.  JetBrains reads the @param fine either way.
+// TypeScript reads the JSDoc below wherever it checks JavaScript that imports this file instead
+// of Solarite.d.ts, as Deno does and as an editor with checkJs does.  So its @overload tags give
+// the same signatures as Solarite.d.ts:  one @param union would reject the TemplateStringsArray
+// of every h`` call and give every call a union return type.  The /** @type {*} */ cast on the
+// default keeps TypeScript from inferring the parameter as `symbol` from noArg.
 /**
  * Convert strings to HTMLNodes.
  * Using h`...` as a tag will always create a Template.
@@ -7296,9 +7297,44 @@ let noArg = Symbol();
  * 5. h()`Hello<b>${'World'}!</b>`
  *
  * 6. h(string, object, ...)           // Used for JSX
- * @param htmlStrings {?HTMLElement|DocumentFragment|string|string[]|function():Template|{render:function()}}
- * @param exprs {*[]|string|Template|Object}
- * @return {Node|HTMLElement|Template|Function} */
+ *
+ * @overload
+ * @param {TemplateStringsArray} htmlStrings
+ * @param {...*} exprs
+ * @return {Template}
+ *
+ * @overload
+ * @param {string|string[]} htmlStrings
+ * @param {...*} exprs
+ * @return {Template}
+ *
+ * @overload
+ * @param {HTMLElement|DocumentFragment} el
+ * @param {RenderOptions} [options]
+ * @return {function(TemplateStringsArray, ...*):(HTMLElement|DocumentFragment)}
+ *
+ * @overload
+ * @param {HTMLElement|DocumentFragment} el
+ * @param {Template} template
+ * @param {RenderOptions} [options]
+ * @return {void}
+ *
+ * @overload
+ * @param {Function|symbol} tag A component class, or Fragment, for JSX.
+ * @param {?Object} props
+ * @param {...*} children
+ * @return {Template}
+ *
+ * @overload
+ * @param {{render:Function}} obj
+ * @return {function(TemplateStringsArray, ...*):void}
+ *
+ * @overload
+ * @return {function(TemplateStringsArray, ...*):(Node|DocumentFragment)}
+ *
+ * @param {*} htmlStrings
+ * @param {...*} exprs
+ * @return {*} */
 function h(htmlStrings=/** @type {*} */(noArg), ...exprs) {
 
 	// 1. Tagged template: h`<div>...</div>`
@@ -7617,8 +7653,8 @@ class Solarite extends HTMLElementAutoDefine {
 	 * right the first time, even for fields that change what render() builds.  This constructor
 	 * can't copy attribs onto fields itself, because subclass field initializers run after it
 	 * finishes and would overwrite them; that's why the subclass does the final assign.
-	 * @param attribs {?Record<string, any>}
-	 * @param types {?Record<string, Function>} */
+	 * @param attribs {?Record<string, any>=}
+	 * @param types {?Record<string, Function>=} */
 	constructor(attribs, types) {
 		super();
 
