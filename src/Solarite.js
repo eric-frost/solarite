@@ -126,8 +126,35 @@ export class Solarite extends HTMLElementAutoDefine {
 	}
 
 	/**
+	 * Schedule render() to run once on the next microtask, coalescing repeated calls in the
+	 * same tick.  A synchronous render of the element cancels the queued microtask and
+	 * resolves the returned Promise, and an element removed from the DOM skips rendering.
+	 * @return {Promise<void>} */
+	'queueRender'() {
+		let promise = Globals.queuedRenders.get(this);
+		if (promise)
+			return promise;
+
+		if (this.isConnected)
+			Globals.connected.add(this);
+		else if (Globals.connected.has(this))
+			return Promise.resolve();
+
+		promise = Promise.resolve().then(() => {
+			if (Globals.queuedRenders.get(this) !== promise)
+				return;
+			Globals.queuedRenders.delete(this);
+			if (!Globals.connected.has(this) || this.isConnected)
+				this.render();
+		});
+		Globals.queuedRenders.set(this, promise);
+		return promise;
+	}
+
+	/**
 	 * Called automatically by the browser. */
 	'connectedCallback'() { // quoted so terser doesn't remove it.
+		Globals.connected.add(this);
 		this.renderFirstTime();
 	}
 

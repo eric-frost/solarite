@@ -16998,3 +16998,224 @@ Testimony.test('Solarite.expr.translated', `After a page translator has replaced
 		assert.eq(u.children.length, on ? 0 : 1);
 	}
 });
+
+Testimony.test('Solarite.queueRender.coalesce', `Repeated queueRender() calls in one tick coalesce into a single microtask render and share one Promise`, async () => {
+	let renders = 0;
+	class QueueCoalesce extends Solarite {
+		count = 0;
+		render() {
+			renders++;
+			h(this)`<button onclick=${this.queueRender}>${this.count}</button>`;
+		}
+	}
+	customElements.define(uniqueTag(), QueueCoalesce);
+
+	let el = new QueueCoalesce();
+	document.body.append(el);
+	assert.eq(renders, 1);
+	assert.eq(el.textContent, '0');
+
+	el.count = 1;
+	let p1 = el.queueRender();
+	el.count = 2;
+	let p2 = el.queueRender();
+	assert.eq(p1, p2);
+	assert.eq(renders, 1);
+	assert.eq(el.textContent, '0');
+
+	await p1;
+	assert.eq(renders, 2);
+	assert.eq(el.textContent, '2');
+
+	// Passing this.queueRender directly as an event handler works and invokes render() with no args.
+	el.count = 3;
+	el.firstElementChild.click();
+	assert.eq(renders, 2);
+	await el.queueRender();
+	assert.eq(renders, 3);
+	assert.eq(el.textContent, '3');
+
+	el.remove();
+});
+
+Testimony.test('Solarite.queueRender.syncCancels', `A synchronous render cancels a queued microtask render and resolves its Promise, including when a parent renders a child`, async () => {
+	let renders = 0;
+	class QueueSync extends Solarite {
+		val = 'a';
+		render() {
+			renders++;
+			h(this)`<span>${this.val}</span>`;
+		}
+	}
+	customElements.define(uniqueTag(), QueueSync);
+
+	let el = new QueueSync();
+	document.body.append(el);
+	assert.eq(renders, 1);
+
+	el.val = 'b';
+	let p = el.queueRender();
+	el.render();
+	assert.eq(renders, 2);
+	assert.eq(el.textContent, 'b');
+
+	await p;
+	await Promise.resolve();
+	assert.eq(renders, 2);
+	el.remove();
+
+	// Parent rendering a child cancels the child's queued render if the child actually renders,
+	// but NOT if the child returns early on !hasChanged().
+	let childDraws = 0;
+	class QueueSyncChild extends Solarite {
+		local = 0;
+		render(fields=null, hasChanged=() => true) {
+			if (!hasChanged())
+				return;
+			childDraws++;
+			h(this)`<b>${this.local}</b>`;
+		}
+	}
+	customElements.define('queue-sync-child', QueueSyncChild);
+
+	class QueueSyncParent extends Solarite {
+		prop = 1;
+		render() {
+			h(this)`<div><queue-sync-child prop=${this.prop}></queue-sync-child></div>`;
+		}
+	}
+	customElements.define('queue-sync-parent', QueueSyncParent);
+
+	let parent = new QueueSyncParent();
+	document.body.append(parent);
+	let child = parent.querySelector('queue-sync-child');
+	assert.eq(childDraws, 1);
+
+	// 1. Parent changes prop -> child redraws synchronously -> queued render is cancelled.
+	child.local = 1;
+	let cp1 = child.queueRender();
+	parent.prop = 2;
+	parent.render();
+	assert.eq(childDraws, 2);
+	await cp1;
+	await Promise.resolve();
+	assert.eq(childDraws, 2);
+	assert.eq(child.textContent, '1');
+
+	// 2. Parent renders with unchanged prop -> child skips via !hasChanged() -> queued render still runs.
+	child.local = 2;
+	let cp2 = child.queueRender();
+	parent.render();
+	assert.eq(childDraws, 2);
+	await cp2;
+	assert.eq(childDraws, 3);
+	assert.eq(child.textContent, '2');
+
+	parent.remove();
+});
+
+Testimony.test('Solarite.queueRender.disconnected', `A component removed from the DOM skips queued renders; re-attaching allows them again; never-connected components still render`, async () => {
+	let renders = 0;
+	class QueueDisconnect extends Solarite {
+		val = 0;
+		render() {
+			renders++;
+			h(this)`<i>${this.val}</i>`;
+		}
+	}
+	customElements.define(uniqueTag(), QueueDisconnect);
+
+	// 1. Connected, queued, then removed before the microtask fires -> skipped.
+	let el = new QueueDisconnect();
+	document.body.append(el);
+	assert.eq(renders, 1);
+
+	el.val = 1;
+	let p1 = el.queueRender();
+	el.remove();
+	await p1;
+	assert.eq(renders, 1);
+
+	// 2. Calling queueRender() after already removed -> skipped and resolves immediately.
+	el.val = 2;
+	await el.queueRender();
+	assert.eq(renders, 1);
+
+	// 3. Re-attaching to the DOM allows queueRender() to render again.
+	document.body.append(el);
+	await el.queueRender();
+	assert.eq(renders, 2);
+	assert.eq(el.textContent, '2');
+	el.remove();
+
+	// 4. Brand-new component never added to the DOM still renders when queueRender() is called.
+	renders = 0;
+	let detached = new QueueDisconnect();
+	detached.val = 9;
+	await detached.queueRender();
+	assert.eq(renders, 1);
+	assert.eq(detached.textContent, '9');
+
+	// 5. Brand-new component queued then appended in the same tick renders once via connectedCallback.
+	renders = 0;
+	let fresh = new QueueDisconnect();
+	fresh.val = 7;
+	let pFresh = fresh.queueRender();
+	document.body.append(fresh);
+	assert.eq(renders, 1);
+	await pFresh;
+	await Promise.resolve();
+	assert.eq(renders, 1);
+	assert.eq(fresh.textContent, '7');
+	fresh.remove();
+});
+
+Testimony.test('Solarite.queueRender.requeueAndErrors', `Queueing inside render() schedules another microtask, and a throwing render() rejects the returned Promise`, async () => {
+	let renders = 0, requeue = false, fail = false, secondPromise = null;
+	class QueueEdge extends Solarite {
+		step = 0;
+		render() {
+			renders++;
+			if (fail)
+				throw new Error('queued boom');
+			h(this)`<em>${this.step}</em>`;
+			if (requeue) {
+				requeue = false;
+				this.step = 2;
+				secondPromise = this.queueRender();
+			}
+		}
+	}
+	customElements.define(uniqueTag(), QueueEdge);
+
+	let el = new QueueEdge();
+	document.body.append(el);
+	assert.eq(renders, 1);
+
+	requeue = true;
+	el.step = 1;
+	let p1 = el.queueRender();
+	await p1;
+	assert(secondPromise && secondPromise !== p1);
+	await secondPromise;
+	assert.eq(renders, 3);
+	assert.eq(el.textContent, '2');
+
+	fail = true;
+	let caught = null;
+	try {
+		await el.queueRender();
+	}
+	catch (e) {
+		caught = e.message;
+	}
+	assert.eq(caught, 'queued boom');
+
+	// After a rejected render, subsequent queued renders work again.
+	fail = false;
+	el.step = 3;
+	await el.queueRender();
+	assert.eq(el.textContent, '3');
+
+	el.remove();
+});

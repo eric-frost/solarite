@@ -47,6 +47,7 @@ Counter.define('my-counter');
 ```
 
 - `Solarite` calls `render()` automatically on first `connectedCallback()` unless `render()` was already called.
+- `this.queueRender()` (on `Solarite`) coalesces multiple render requests in the same tick into one `render()` on the next microtask and returns a `Promise<void>`.  A synchronous render of the component cancels the queued microtask, and a component removed from the DOM skips rendering.
 - Wrapping the template in `<my-counter>...</my-counter>` lets you put attributes, classes, and root event handlers on the host element; the outer tag must exactly match the registered tag name.  Omitting the wrapper tag is allowed if you don't need host attributes in the template.
 - Switching between two different top-level ``h(this)`...` `` templates inside `render()` discards the old template's DOM and internal state.  To keep state across branches, use one root template with a conditional expression inside it.
 - To extend built-in HTML elements (such as `<tr>`), extend `HTMLTableRowElement`, register with `customElements.define('line-item', LineItem, {extends: 'tr'})`, and use `<tr is="line-item" user=${u}></tr>`.  The `is` attribute must be static (never `is=${name}`).

@@ -105,6 +105,11 @@ export class Solarite extends HTMLElement {
      *     comparison only runs when called.  Absent when render() is called directly. */
     render(attribs?: Record<string, any>, hasChanged?: () => boolean): void;
     renderFirstTime(): void;
+    /**
+     * Schedule render() to run once on the next microtask, coalescing repeated calls in the
+     * same tick.  Resolves after the render runs, when a synchronous render satisfies it first,
+     * or immediately if the element was removed from the DOM. */
+    queueRender(): Promise<void>;
     connectedCallback(): void;
     static define(tagName?: string | null): void;
     static getAttribs(el: HTMLElement): Record<string, any>;
@@ -217,6 +222,7 @@ export const Globals: {
     rootNodeGroups: WeakMap<HTMLElement, any>;
     objToEl: WeakMap<any, any>;
     rendered: WeakSet<HTMLElement>;
+    queuedRenders: Map<HTMLElement, Promise<void>>;
     shells: WeakMap<string[], any>;
 };
 

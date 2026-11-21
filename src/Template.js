@@ -71,6 +71,9 @@ export default class Template {
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} el, or what a standalone template made. */
 	'render'(el=null, options={}) {
+		if (el && Globals.queuedRenders.size)
+			Globals.queuedRenders.delete(el);
+
 		let ng = el && Globals.rootNodeGroups.get(el);
 
 		// The expressions the element holds now, when it holds this same template.

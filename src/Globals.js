@@ -53,6 +53,12 @@ let Globals = {
 	rendered: new WeakSet(),
 
 	/**
+	 * Components with a pending queueRender(), mapped to their pending Promise.
+	 * Kept as a Map so Template.render() can check `.size` before doing a lookup.
+	 * @type {Map<HTMLElement, Promise<void>>} */
+	queuedRenders: new Map(),
+
+	/**
 	 * Map from array of Html strings to the Shells created from them, one per parse mode:
 	 * [parsed as html, parsed as svg].
 	 * @type {WeakMap<string[], Shell[]>} */

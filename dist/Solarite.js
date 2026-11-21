@@ -58,6 +58,12 @@ let Globals = {
 	rendered: new WeakSet(),
 
 	/**
+	 * Components with a pending queueRender(), mapped to their pending Promise.
+	 * Kept as a Map so Template.render() can check `.size` before doing a lookup.
+	 * @type {Map<HTMLElement, Promise<void>>} */
+	queuedRenders: new Map(),
+
+	/**
 	 * Map from array of Html strings to the Shells created from them, one per parse mode:
 	 * [parsed as html, parsed as svg].
 	 * @type {WeakMap<string[], Shell[]>} */
@@ -6923,6 +6929,9 @@ class Template {
 	 * @param options {RenderOptions}
 	 * @return {?DocumentFragment|HTMLElement} el, or what a standalone template made. */
 	'render'(el=null, options={}) {
+		if (el && Globals.queuedRenders.size)
+			Globals.queuedRenders.delete(el);
+
 		let ng = el && Globals.rootNodeGroups.get(el);
 
 		// The expressions the element holds now, when it holds this same template.
@@ -7687,8 +7696,35 @@ class Solarite extends HTMLElementAutoDefine {
 	}
 
 	/**
+	 * Schedule render() to run once on the next microtask, coalescing repeated calls in the
+	 * same tick.  A synchronous render of the element cancels the queued microtask and
+	 * resolves the returned Promise, and an element removed from the DOM skips rendering.
+	 * @return {Promise<void>} */
+	'queueRender'() {
+		let promise = Globals.queuedRenders.get(this);
+		if (promise)
+			return promise;
+
+		if (this.isConnected)
+			Globals.connected.add(this);
+		else if (Globals.connected.has(this))
+			return Promise.resolve();
+
+		promise = Promise.resolve().then(() => {
+			if (Globals.queuedRenders.get(this) !== promise)
+				return;
+			Globals.queuedRenders.delete(this);
+			if (!Globals.connected.has(this) || this.isConnected)
+				this.render();
+		});
+		Globals.queuedRenders.set(this, promise);
+		return promise;
+	}
+
+	/**
 	 * Called automatically by the browser. */
 	'connectedCallback'() { // quoted so terser doesn't remove it.
+		Globals.connected.add(this);
 		this.renderFirstTime();
 	}
 

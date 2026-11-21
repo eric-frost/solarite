@@ -928,3 +928,43 @@ Testimony.test('Dist.hasChanged', `hasChanged() works in the minified build.  Th
 	a.render();
 	assert.eq(lastChanged, true);
 });
+
+Testimony.test('Dist.queueRender', `queueRender() survives minification: coalesces calls, cancels on sync render, skips when removed, and returns a Promise`, async () => {
+	let renders = 0;
+	class DistQueueTest extends SolariteMin {
+		n = 0;
+		render() {
+			renders++;
+			hMin(this)`<span>${this.n}</span>`;
+		}
+	}
+	customElements.define('dist-queue-test', DistQueueTest);
+
+	let el = new DistQueueTest();
+	document.body.append(el);
+	assert.eq(renders, 1);
+
+	el.n = 1;
+	let p1 = el.queueRender();
+	el.n = 2;
+	let p2 = el.queueRender();
+	assert.eq(p1, p2);
+	await p1;
+	assert.eq(renders, 2);
+	assert.eq(el.textContent, '2');
+
+	// Sync render cancels queued render.
+	el.n = 3;
+	let p3 = el.queueRender();
+	el.render();
+	await p3;
+	await Promise.resolve();
+	assert.eq(renders, 3);
+
+	// Removed from DOM skips queued render.
+	el.n = 4;
+	let p4 = el.queueRender();
+	el.remove();
+	await p4;
+	assert.eq(renders, 3);
+});
