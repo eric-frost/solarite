@@ -2,6 +2,13 @@
 
 All notable changes to Solarite are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/). While the version is below 1.0, minor releases may include breaking changes; these are called out below.
 
+## [0.10.1] - 2026-11-21
+
+### Fixed
+- `h.selector()` now works on indented multiline row templates (such as ``h`\n  <div key=${row.id} class=${sel.when(...)}>...</div>` ``) and rows with a leading HTML comment.  It previously threw `Solarite: a selector must be on the row's root element.` because the leading whitespace created a text node before the root element.
+- `solarite-jsx` CLI now ends stdout with a trailing newline, and the Babel and Vite plugin READMEs document `--import-source` and `vite.config.mjs`.
+- Replaced a stale `ObjectUtil.assign` comment reference in `Solarite.js` and `Solarite.d.ts` with `Object.assign`.
+
 ## [0.10.0] - 2026-11-21
 
 ### Added
