@@ -26,7 +26,8 @@
   "files": [
     "readme.md",
     "dist",
-    "src"
+    "src",
+    "skills"
   ],
   "workspaces": [
     "packages/*"

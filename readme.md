@@ -53,6 +53,10 @@ It's one of the fastest UI libraries measured.  It scores **1.07** on the [js-fr
 
 The trade-off is that Solarite doesn't track dependencies for you.  It re-renders when you call `render()`.
 
+## AI coding agents
+
+The npm package ships an agent skill at [skills/solarite/SKILL.md](skills/solarite/SKILL.md) (with error references in [skills/solarite/references/errors.md](skills/solarite/references/errors.md)) covering Solarite's API and common pitfalls so coding agents can read it straight from `node_modules/solarite/skills/solarite/SKILL.md`.
+
 ## License
 
 [MIT](LICENSE).  Free for commercial use, no attribution required.
