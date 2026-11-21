@@ -5085,7 +5085,12 @@ class Shell {
 				let componentAttribPaths = [];
 
 				for (let attr of [...node.attributes]) { // Copy the attributes array b/c we remove attributes with placeholders as we go.
-					let name = attr.name, path;
+					let attrName = attr.name, path, isEvent;
+					// Dynamic on* attributes are prefixed with \ufdd0 in addPlaceholders() so template.innerHTML
+					// never parses them as inline event handlers (which violates a strict CSP in Chrome 157+).
+					let name = attrName[0] === '\ufdd0' && attrName.startsWith('on', 1) ? attrName.slice(1) : attrName;
+					if (attrName !== name && node.hasAttribute(name))
+						continue;
 
 					// The value split around its expressions, and null in place of that when the
 					// whole value is one expression.
@@ -5124,7 +5129,7 @@ class Shell {
 
 					// Just the attribute value.
 					else if (parts.length > 1) {
-						let isEvent = Util.isEvent(name);
+						isEvent = Util.isEvent(name);
 						path = isEvent
 							? new PathToEvent(null, node, name, nonEmptyParts)
 							: new PathToAttribValue(null, node, name, nonEmptyParts);
@@ -5148,13 +5153,13 @@ class Shell {
 					// useless empty attribute that costs storage on creation and a slot in the
 					// element's attribute list forever, and apply() writes the real value anyway
 					// (a missing attribute reads back as '', so an empty expression still writes
-					// nothing).  Event attributes must be removed for the same reason plus a
-					// stricter one: an empty onclick="" violates a strict CSP when the event fires.
+					// nothing).  Event attributes are always removed for the same reason plus a
+					// stricter one: an onclick attribute in the shell violates a strict CSP.
 					// In svgMode, setting typed SVG attributes (viewBox, r, etc.) with the
 					// placeholders stripped out makes the browser log parse errors, both here and
 					// when the fragment is cloned, so those are removed whether or not they're whole.
-					if (svgMode || !nonEmptyParts)
-						node.removeAttribute(name);
+					if (svgMode || !nonEmptyParts || isEvent)
+						node.removeAttribute(attrName);
 
 					// setAttribute throws only when the template author wrote a name the browser
 					// refuses, such as one holding a space or a quote.  That name comes from a tagged
@@ -5164,9 +5169,13 @@ class Shell {
 					// because the browser's own DOMException names neither and leaves the author
 					// hunting.  Production ships the bare call and lets that DOMException through: the
 					// friendlier wording is only worth its bytes to whoever can still fix the template.
-					else 
-						node.setAttribute(name, parts.join(''));
-					
+					else {
+						if (attrName !== name)
+							node.removeAttribute(attrName);
+						
+							node.setAttribute(name, parts.join(''));
+						
+					}
 				}
 
 				// Web components
@@ -5443,10 +5452,21 @@ class Shell {
 		// what it returns, and a value would gain a slash.  Whoever writes that means the tag to close itself,
 		// so a space goes before the slash.  A slash meant for the value is written inside the quotes,
 		// href="${base}/".
-		let inTag = tag => tag
-			.replace(isWebComponentTagName, '$&-SOLARITE-PLACEHOLDER')
-			.replace(/(=\s*\0)\/(?=>$)/, '$1 /')
-			.replace(/\0/g, () => '\ufdd0' + String.fromCharCode(attribPlaceholder + index++));
+		let inTag = tag => {
+			// Neutralize dynamic on* attribute names before template.innerHTML so Chrome 157+
+			// does not fire a CSP script-src-attr violation while parsing the template.  Scan
+			// attributes after the tag name so quoted values like title="onclick=${x}" are untouched.
+			if (tag[1] !== '!' && tag[1] !== '?' && tag[1] !== '/' && tag.includes('\0')) {
+				let i = tag.search(/[\s\/>]/);
+				if (i > 0)
+					tag = tag.slice(0, i) + tag.slice(i).replace(tagAttrib, (m, name, val) =>
+						val && val.includes('\0') && /^on/i.test(name) ? '\ufdd0' + m : m);
+			}
+			return tag
+				.replace(isWebComponentTagName, '$&-SOLARITE-PLACEHOLDER')
+				.replace(/(=\s*\0)\/(?=>$)/, '$1 /')
+				.replace(/\0/g, () => '\ufdd0' + String.fromCharCode(attribPlaceholder + index++));
+		};
 
 		// The chunks are joined with a NUL character in every gap an expression goes in, and htmlToken then reads
 		// the whole template as the browser's parser will.  It matches each tag and each comment in one piece,
@@ -5621,6 +5641,10 @@ let htmlToken = /<!--(?:-?>|[^]*?(?:--!?>|$))|(<(script|style|textarea)(?=[\s/>]
 // caps wherever it appears, so that the several copies of it in this project compress well.
 // Ctrl+F "solarite-placeholder" in project to find all code that manages subcomponents.
 let isWebComponentTagName = /^<\/?[a-z][^\s\/>\0]*-[^\s\/>\0]*/i;
+
+// Attributes inside a start tag after its tag name, used by addPlaceholders() to neutralize dynamic
+// on* attributes without touching text inside quoted attribute values.
+let tagAttrib = /([^\s\/>=]+)(\s*=\s*(?:"[^"]*"?|'[^']*'?|[^\s>]*))?/g;
 
 /**
  * Remove whitespace-only text children of table-structure elements, whose whitespace is never

@@ -17219,3 +17219,31 @@ Testimony.test('Solarite.queueRender.requeueAndErrors', `Queueing inside render(
 
 	el.remove();
 });
+
+Testimony.test('Solarite.events.neutralizedOnAttrs', `Dynamic on* attribute neutralization preserves quoted values, non-event on* attributes, uppercase handlers, tight attribute spacing, and duplicate checks`, () => {
+	let clicks = 0;
+	let el = document.createElement('div');
+	document.body.append(el);
+	let x = 'ok';
+	h(el)`<button title="say onclick=${x}" online="status-${x}" class="a"ONCLICK=${() => clicks++}>go</button>`;
+	let btn = el.firstElementChild;
+	assert.eq(btn.getAttribute('title'), 'say onclick=ok');
+	assert.eq(btn.getAttribute('online'), 'status-ok');
+	assert.eq(btn.hasAttribute('onclick'), false);
+	assert.eq(btn.hasAttribute('\ufdd0onclick'), false);
+	assert.eq(btn.hasAttribute('\ufdd0online'), false);
+	btn.click();
+	assert.eq(clicks, 1);
+
+	// Duplicate static + dynamic onclick still throws like duplicate attributes in HTML.
+	let dupThrew = false;
+	try {
+		h(document.createElement('div'))`<button onclick="void 0" onclick=${() => {}}>x</button>`;
+	}
+	catch (e) {
+		dupThrew = e.message.includes('duplicate attribute');
+	}
+	assert.eq(dupThrew, true);
+
+	el.remove();
+});
