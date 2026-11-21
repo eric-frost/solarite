@@ -837,7 +837,7 @@ class SelectorRef {
 		// would be found at bind time and then written somewhere else at set() time.  Catching
 		// it here turns a silently misplaced attribute into a clear message.  It SHIPS: it is not
 		// in a debug-strip block, and it must not be, because the failure it catches is silent.
-		if (parentNg.startNode !== node)
+		if (rowRoot(parentNg) !== node)
 			throw new Error(`Solarite: a selector must be on the row's root element.`);
 
 		let s = this.selector;
@@ -972,10 +972,10 @@ class Selector {
 		if (ng === null)
 			return;
 
-		// The selector owns an attribute on the row's own root element, which for a
-		// single-root row template is exactly the NodeGroup's startNode.
-		let node = ng.startNode;
-		if (node === null || node.nodeType !== 1)
+		// The selector owns an attribute on the row's own root element, which is ng.startNode
+		// when the row template starts with its tag, or the first element after leading whitespace.
+		let node = rowRoot(ng);
+		if (node === null)
 			return;
 
 		if (v === '' || v === false || v === null || v === undefined)
@@ -983,6 +983,19 @@ class Selector {
 		else
 			node.setAttribute(this.attribName, v);
 	}
+}
+
+/**
+ * Find a row's root element: ng.startNode in the common single-root case, or the first element
+ * after any leading whitespace text or comment nodes (such as an indented multiline row template).
+ * @param ng {NodeGroup}
+ * @return {?Element} */
+function rowRoot(ng) {
+	let node = ng.startNode;
+	while (node && node.nodeType !== 1 && node !== ng.endNode
+		&& (node.nodeType === 8 || (node.nodeType === 3 && !node.nodeValue.trim())))
+		node = node.nextSibling;
+	return node?.nodeType === 1 ? node : null;
 }
 
 class PathToAttribValue extends Path {
@@ -7945,7 +7958,7 @@ class Solarite extends HTMLElementAutoDefine {
 
 	/**
 	 * Fill in and fix up the attribs object a component's constructor receives, so the component
-	 * can then copy those values onto its own fields, e.g. with ObjectUtil.assign(this, attribs).
+	 * can then copy those values onto its own fields, e.g. with Object.assign(this, attribs).
 	 *
 	 * 1.  If attribs is an empty object, fill it with the attributes on the DOM element.
 	 *     This happens when the browser creates the element from plain html, because then nothing

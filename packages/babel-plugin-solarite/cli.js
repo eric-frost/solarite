@@ -17,4 +17,4 @@ const { code } = transform(source, {
 	filename: file,
 	importSource: importSourceArg ? importSourceArg.split('=')[1] : undefined,
 });
-process.stdout.write(code);
+process.stdout.write(code.endsWith('\n') ? code : code + '\n');

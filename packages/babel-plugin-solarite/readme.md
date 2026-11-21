@@ -40,6 +40,7 @@ Prints compiled JS to stdout (TypeScript types stripped) — handy for non-Node 
 
 ```sh
 npx solarite-jsx app.tsx > app.js
+npx solarite-jsx app.tsx --import-source=solarite/jsx-runtime > app.js
 ```
 
 ## Options

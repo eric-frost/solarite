@@ -81,7 +81,7 @@ export {h, svg};
 export class Solarite extends HTMLElement {
 	/**
 	 * Fill in and fix up the attribs object a component's constructor receives, so the component
-	 * can then copy those values onto its own fields, e.g. with ObjectUtil.assign(this, attribs).
+	 * can then copy those values onto its own fields, e.g. with Object.assign(this, attribs).
 	 *
 	 * 1.  If attribs is an empty object, fill it with the attributes on the DOM element.
 	 *     This happens when the browser creates the element from plain html, because then nothing

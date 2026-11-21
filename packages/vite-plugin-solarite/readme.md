@@ -12,7 +12,7 @@ npm install --save-dev vite-plugin-solarite
 ```
 
 ```js
-// vite.config.js
+// vite.config.mjs (or vite.config.js with "type": "module" in package.json)
 import solarite from 'vite-plugin-solarite';
 export default { plugins: [solarite()] };
 ```

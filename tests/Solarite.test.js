@@ -17247,3 +17247,44 @@ Testimony.test('Solarite.events.neutralizedOnAttrs', `Dynamic on* attribute neut
 
 	el.remove();
 });
+
+Testimony.test('Solarite.selector.leadingWhitespace', `A selector works on a multiline row template with leading whitespace or a leading comment, while still rejecting nested elements`, () => {
+	let el = document.createElement('div');
+	let sel = h.selector(2);
+	let rows = [{id: 1, name: 'a'}, {id: 2, name: 'b'}, {id: 3, name: 'c'}];
+
+	// 1. Indented multiline row template (leading newline + spaces before root element).
+	let render = () => h(el)`<div>${h.map(rows, r => h`
+		<div key=${r.id} class=${sel.when(r.id, 'row active', 'row')}>
+			${r.name}
+		</div>
+	`)}</div>`;
+	render();
+	let items = () => [...el.querySelectorAll('.row')];
+	assert.eq(items().map(n => n.className).join(), 'row,row active,row');
+
+	sel.set(3);
+	assert.eq(items().map(n => n.className).join(), 'row,row,row active');
+
+	sel.set(null);
+	assert.eq(items().map(n => n.className).join(), 'row,row,row');
+
+	// 2. Leading HTML comment before the root element.
+	let el2 = document.createElement('div');
+	let sel2 = h.selector();
+	h(el2)`<div>${h.map(rows, r => h`<!-- row --><p key=${r.id} class=${sel2.when(r.id, 'on')}>${r.name}</p>`)}</div>`;
+	sel2.set(1);
+	assert.eq([...el2.querySelectorAll('p')].map(n => n.className).join(), 'on,,');
+
+	// 3. Nested element inside a multiline row template still throws.
+	let threw = false;
+	try {
+		h(document.createElement('div'))`<div>${rows.map(r => h`
+			<div key=${r.id}><span class=${sel.when(r.id, 'on')}>${r.name}</span></div>
+		`)}</div>`;
+	}
+	catch (e) {
+		threw = e.message.includes('root element');
+	}
+	assert.eq(threw, true);
+});
