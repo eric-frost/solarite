@@ -9,7 +9,7 @@ description: How to build native web components with Solarite: rendering, attrib
 
 # Solarite
 
-Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that changed.  It's tiny (15.0KB with Brotli) and runs straight in the browser as a standard ES module.
+Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call `render()` when your data changes; Solarite then patches only the DOM that changed.  It's tiny (15.2KB with Brotli) and runs straight in the browser as a standard ES module.
 
 ```javascript
 import h, {Solarite} from './dist/Solarite.min.js';
@@ -171,6 +171,8 @@ The new template replaces everything the previous one put in the element.  The e
 #### Manual Rendering
 
 Unlike many frameworks, Solarite does not automatically re-render when data changes.  You call `render()` when you want the DOM updated.  That means you can change as much data as you like without triggering a render, and nothing redraws at a moment you didn't choose.
+
+If you might trigger several renders in a row and only want the component to redraw once, call `this.queueRender()` on a `Solarite` component instead.  It waits until the current code finishes, runs `render()` once, and returns a `Promise` that resolves when the render is done.  If you call `render()` directly before then, the queued render is skipped, and if the element is removed from the page it won't render at all.
 
 Wrapping the web component's html in its tag name is optional.  But without it you then must set any attributes on your web component manually:
 

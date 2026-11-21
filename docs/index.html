@@ -47,10 +47,10 @@
   </div>
 
   <div class="docs wrap">
-    <nav class="outline" id="outline" aria-label="On this page"><ul><li><a href="#key-features">Key Features</a></li><li><a href="#installation">Installation</a><ul><li><a href="#quick-start">Quick Start</a></li><li><a href="#development-tips">Development Tips</a></li></ul></li><li><a href="#performance">Performance</a></li><li><a href="#core-concepts">Core Concepts</a><ul><li><a href="#web-components">Web Components</a></li><li><a href="#rendering">Rendering</a><ul><li><a href="#how-rendering-works">How Rendering Works</a></li><li><a href="#manual-rendering">Manual Rendering</a></li><li><a href="#svg">SVG</a></li></ul></li><li><a href="#attributes">Attributes</a></li><li><a href="#ids">Id&#39;s</a></li><li><a href="#events">Events</a><ul><li><a href="#event-delegation">Event Delegation</a></li></ul></li><li><a href="#two-way-binding">Two-Way Binding</a><ul><li><a href="#basic-two-way-binding">Basic Two-Way Binding</a></li><li><a href="#shorthand-two-way-binding">Shorthand Two-Way Binding</a></li><li><a href="#form-element-types">Form Element Types</a></li></ul></li><li><a href="#loops">Loops</a><ul><li><a href="#efficient-list-updates">Efficient List Updates</a></li><li><a href="#efficient-list-items">Efficient List Items</a></li><li><a href="#keyed-lists">Keyed Lists</a></li><li><a href="#selection">Selection</a></li></ul></li><li><a href="#scoped-styles">Scoped Styles</a></li><li><a href="#slots">Slots</a><ul><li><a href="#basic-slots">Basic Slots</a></li><li><a href="#named-slots">Named Slots</a></li><li><a href="#slotless-components">Slotless Components</a></li></ul></li><li><a href="#child-components">Child Components</a><ul><li><a href="#passing-data-to-child-components">Passing Data to Child Components</a></li><li><a href="#attribute-name-conversion">Attribute Name Conversion</a></li><li><a href="#assignattributes">assignAttributes()</a></li><li><a href="#component-rendering-hierarchy">Component Rendering Hierarchy</a></li></ul></li><li><a href="#functions">Functions</a><ul><li><a href="#h">h()</a></li><li><a href="#toel">toEl()</a></li><li><a href="#geteventbinding">getEventBinding()</a></li></ul></li></ul></li><li><a href="#advanced-techniques">Advanced Techniques</a><ul><li><a href="#extending-native-html-elements">Extending Native HTML Elements</a></li><li><a href="#manual-dom-operations">Manual DOM Operations</a></li><li><a href="#non-component-elements">Non-Component Elements</a></li></ul></li><li><a href="#jsx">JSX</a><ul><li><a href="#setup">Setup</a></li><li><a href="#speed">Speed</a></li><li><a href="#components">Components</a></li></ul></li><li><a href="#how-solarite-works">How Solarite Works</a><ul><li><a href="#efficient-rendering-algorithm">Efficient Rendering Algorithm</a></li><li><a href="#dom-diffing">DOM Diffing</a></li></ul></li><li><a href="#examples">Examples</a></li><li><a href="#possible-upcoming-features">Possible Upcoming Features</a></li></ul></nav>
+    <nav class="outline" id="outline" aria-label="On this page"><ul><li><a href="#key-features">Key Features</a></li><li><a href="#installation">Installation</a><ul><li><a href="#quick-start">Quick Start</a></li><li><a href="#development-tips">Development Tips</a></li></ul></li><li><a href="#performance">Performance</a></li><li><a href="#core-concepts">Core Concepts</a><ul><li><a href="#web-components">Web Components</a></li><li><a href="#rendering">Rendering</a><ul><li><a href="#how-rendering-works">How Rendering Works</a></li><li><a href="#manual-rendering">Manual Rendering</a></li><li><a href="#svg">SVG</a></li><li><a href="#scripts">Scripts</a></li></ul></li><li><a href="#attributes">Attributes</a></li><li><a href="#ids">Id&#39;s</a></li><li><a href="#events">Events</a><ul><li><a href="#event-delegation">Event Delegation</a></li></ul></li><li><a href="#two-way-binding">Two-Way Binding</a><ul><li><a href="#basic-two-way-binding">Basic Two-Way Binding</a></li><li><a href="#shorthand-two-way-binding">Shorthand Two-Way Binding</a></li><li><a href="#form-element-types">Form Element Types</a></li></ul></li><li><a href="#loops">Loops</a><ul><li><a href="#efficient-list-updates">Efficient List Updates</a></li><li><a href="#efficient-list-items">Efficient List Items</a></li><li><a href="#keyed-lists">Keyed Lists</a></li><li><a href="#selection">Selection</a></li></ul></li><li><a href="#scoped-styles">Scoped Styles</a></li><li><a href="#slots">Slots</a><ul><li><a href="#basic-slots">Basic Slots</a></li><li><a href="#named-slots">Named Slots</a></li><li><a href="#slotless-components">Slotless Components</a></li></ul></li><li><a href="#child-components">Child Components</a><ul><li><a href="#passing-data-to-child-components">Passing Data to Child Components</a></li><li><a href="#attribute-name-conversion">Attribute Name Conversion</a></li><li><a href="#assignattributes">assignAttributes()</a></li><li><a href="#component-rendering-hierarchy">Component Rendering Hierarchy</a></li></ul></li><li><a href="#functions">Functions</a><ul><li><a href="#h">h()</a></li><li><a href="#toel">toEl()</a></li><li><a href="#geteventbinding">getEventBinding()</a></li></ul></li></ul></li><li><a href="#advanced-techniques">Advanced Techniques</a><ul><li><a href="#extending-native-html-elements">Extending Native HTML Elements</a></li><li><a href="#manual-dom-operations">Manual DOM Operations</a></li><li><a href="#page-translation">Page Translation</a></li><li><a href="#non-component-elements">Non-Component Elements</a></li></ul></li><li><a href="#jsx">JSX</a><ul><li><a href="#setup">Setup</a></li><li><a href="#speed">Speed</a></li><li><a href="#components">Components</a></li></ul></li><li><a href="#how-solarite-works">How Solarite Works</a><ul><li><a href="#efficient-rendering-algorithm">Efficient Rendering Algorithm</a></li><li><a href="#dom-diffing">DOM Diffing</a></li></ul></li><li><a href="#examples">Examples</a></li><li><a href="#possible-upcoming-features">Possible Upcoming Features</a></li></ul></nav>
     <main id="main" class="prose">
 
-<p>Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call <code>render()</code> when your data changes; Solarite then patches only the DOM that changed.  It&#39;s tiny (15.0KB with Brotli) and runs straight in the browser as a standard ES module.</p>
+<p>Solarite makes native web components fast to update, with no build step and no signals.  You write plain JavaScript and call <code>render()</code> when your data changes; Solarite then patches only the DOM that changed.  It&#39;s tiny (15.2KB with Brotli) and runs straight in the browser as a standard ES module.</p>
 <pre data-lang="javascript"><code>import h, {Solarite} from './dist/Solarite.min.js';
 
 class ShoppingList extends Solarite { // Solarite extends HTMLElement 
@@ -162,8 +162,17 @@ mc.render();
 <p>Use the <code>h</code> function as a <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals#tagged_templates">tagged template literal</a> to convert HTML strings and embedded expressions into a Solarite <code>Template</code>.  A <code>Template</code> holds the parsed HTML together with the values of its expressions.</p>
 <p>When you call <code>h(this)</code> followed by a template string, it renders that <code>Template</code> as the element&#39;s attributes and children.  This is like assigning to the browser&#39;s built-in <code>this.outerHTML</code> property, except that Solarite replaces only the elements that changed instead of every node, which is much faster.</p>
 <p>When an element is first added to the DOM, <code>render()</code> is called automatically, unless you have already called it yourself.</p>
+<p><code>render()</code> may give the element a different template from one call to the next, for instance a message while the data loads and a list once it has arrived:</p>
+<pre data-lang="javascript"><code>render() {
+  if (!this.rows)
+    h(this)`&lt;p&gt;Loading...&lt;/p&gt;`;
+  else
+    h(this)`&lt;ul&gt;${this.rows.map(row =&gt; h`&lt;li&gt;${row.name}&lt;/li&gt;`)}&lt;/ul&gt;`;
+}</code></pre>
+<p>The new template replaces everything the previous one put in the element.  The elements of the previous template are discarded rather than kept for the next time it is shown, so anything they held, such as text typed into an input or the state of a child component, is lost.  To keep elements across such a change, render one template and put the part that changes in an expression, as in <code>${this.rows ? h`&lt;ul&gt;...&lt;/ul&gt;` : h`&lt;p&gt;Loading...&lt;/p&gt;`}</code>.  Nodes that other code added to the element after the previous template&#39;s own nodes stay, and go to the new template&#39;s slots or to its end, as the children the element was given do.  The render options of <code>h(this, options)</code> are those of its first call: the element keeps them for every later template, including one that replaces another, so pass the same options every time, or give a template options of its own with <code>h(this, template, options)</code>.</p>
 <h4 id="manual-rendering">Manual Rendering</h4>
 <p>Unlike many frameworks, Solarite does not automatically re-render when data changes.  You call <code>render()</code> when you want the DOM updated.  That means you can change as much data as you like without triggering a render, and nothing redraws at a moment you didn&#39;t choose.</p>
+<p>If you might trigger several renders in a row and only want the component to redraw once, call <code>this.queueRender()</code> on a <code>Solarite</code> component instead.  It waits until the current code finishes, runs <code>render()</code> once, and returns a <code>Promise</code> that resolves when the render is done.  If you call <code>render()</code> directly before then, the queued render is skipped, and if the element is removed from the page it won&#39;t render at all.</p>
 <p>Wrapping the web component&#39;s html in its tag name is optional.  But without it you then must set any attributes on your web component manually:</p>
 <pre data-lang="javascript"><code>import h, {Solarite} from './dist/Solarite.min.js';
 
@@ -230,6 +239,10 @@ document.body.append(button);</code></pre>
 <li>Arrays of any of the above.</li>
 <li>Functions that return any of the above.</li>
 </ol>
+<p>A DOM node can only be in one place.  Give it to a different expression on a later render and it moves there.  If one render gives the same node to more than one expression, it is shown in only one of them, the one written last: the expressions of one template are written from the last to the first, and the rows of a list from the first to the last.  A row or nested template whose values did not change is not written again, so it gets the node back only when its own values change.  A node that every render gives to two expressions is also taken out of the document and put back on each of those renders, so an input inside it loses the focus and an iframe loads again: give a node to one place at a time.</p>
+<p>A <code>DocumentFragment</code>, which is also what <code>toEl()</code> returns for html of several nodes, can be given on every render.  Placing its children empties the fragment, and it keeps standing for those nodes until it is given with new children.  To show nothing, give <code>null</code> instead.</p>
+<h4 id="scripts">Scripts</h4>
+<p>A <code>&lt;script&gt;</code> in a template runs once, in the page&#39;s global scope, when the template is first drawn and its expressions have been written, so an expression in the script&#39;s own text is in place when it runs.  Only a script the browser would run is run: one with no <code>type</code>, or a JavaScript type such as <code>text/javascript</code>.  Any other type is left as data and written with its expressions, so <code>&lt;script type=&quot;application/ld+json&quot;&gt;</code> can hold JSON-LD; a <code>type=&quot;module&quot;</code> script is not run either.  Pass the render option <code>scripts: false</code> to run none.  Running one uses <code>eval</code>, which a Content Security Policy without <code>&#39;unsafe-eval&#39;</code> forbids.</p>
 <h3 id="attributes">Attributes</h3>
 <p>Dynamic attributes can be specified by inserting expressions inside a tag.  An expression can be part or all of an attribute value, or a string specifying multiple whole attributes.  For example:</p>
 <pre data-lang="javascript"><code>import h, {toEl} from './dist/Solarite.min.js';
@@ -255,7 +268,8 @@ document.body.append(attributeDemo);
 style = 'width: 100px; height: 40px; background: green';
 setTimeout(attributeDemo.render, 2000);</code></pre>
 <p>Expressions can also toggle the presence of an attribute.  In the last div above, if <code>isEditable</code> is <code>false</code>, <code>null</code>, <code>undefined</code>, or an empty string, the contenteditable attribute is removed rather than left behind as <code>contenteditable=&quot;&quot;</code>.  Zero and the string <code>&quot;0&quot;</code> are ordinary values and are written normally.</p>
-<p>Form elements are the exception, since there an empty string is a real value.  <code>value=${&#39;&#39;}</code> on an <code>&lt;input&gt;</code> clears the field rather than removing anything, and the same goes for any attribute the element exposes as a property, such as <code>checked</code>.</p>
+<p>Form elements are the exception, since there an empty string is a real value.  <code>value=${&#39;&#39;}</code> or <code>value=${null}</code> on an <code>&lt;input&gt;</code> clears the field rather than removing anything, and the same goes for any other property that holds text.  A property that is on or off, such as <code>checked</code>, <code>disabled</code> or <code>required</code>, is turned off by <code>false</code>, <code>null</code>, <code>undefined</code> and an empty string alike.  <code>muted</code> and <code>volume</code> on a <code>&lt;video&gt;</code> or an <code>&lt;audio&gt;</code> are set as the properties they name.</p>
+<p>An expression written without quotes ends at a <code>/&gt;</code> that follows it straight away, so <code>&lt;input oninput=${f}/&gt;</code> and <code>&lt;circle r=${5}/&gt;</code> close their tags as in JSX, although html itself would make the slash part of the value.  To end a value with a slash, write the value in quotes: <code>href=&quot;${base}/&quot;</code>.  A handler must be the whole value of an event attribute: <code>onclick=&quot;${f} &quot;</code>, with text beside it, throws.</p>
 <p>You can also specify multiple attributes at once using an object, where the keys are attribute names and the values are attribute values:</p>
 <pre data-lang="javascript"><code>import h, {Solarite} from './dist/Solarite.min.js';
 
@@ -363,7 +377,8 @@ class LogViewer extends Solarite {
 document.body.append(new LogViewer());</code></pre>
 <p>Only events that bubble are delegated (click, input, keydown, and the like); focus, blur, scroll and other non-bubbling events keep regular listeners.  Pass <code>eventDelegation: [&#39;click&#39;, &#39;input&#39;]</code> as a render option to delegate only specific events, or <code>eventDelegation: false</code> to register every handler with <code>addEventListener</code> while the template renders.</p>
 <p>The rows of a list go one step further.  A row like the <code>&lt;div key=${row.id}&gt;</code> above is cloned from a template, and Solarite stores nothing at all on the elements inside it, not even the property described above, because reaching into every fresh clone to store one is most of what it costs to build a long list.  The row&#39;s root element keeps a single reference back to the row, and when an event starts, the dispatcher finds that reference on the event&#39;s path, works out which of the row&#39;s elements have a handler for that event, and runs each one from the row&#39;s current template when its turn comes, so a row re-rendered earlier in the same event runs its new handler.  The one consequence: moving a whole row elsewhere in the page keeps its handlers, but moving an element out of its row, away from that root element, loses them.  Give such an element a <code>native:</code> handler, described next, and it keeps a regular listener wherever it goes.</p>
-<p>There is one visible difference from a regular listener, and it only matters when your own code also adds a listener to the same element as a template handler.  A delegated handler is attached when the event starts, so it runs after any listener already on that element.  A listener registered while the template rendered would usually have run first.</p>
+<p>A row finds its elements that have a handler or a value by their places in the row&#39;s template, not when the row is drawn but when an event or a changed value first needs them, which is much of why long lists build fast.  It keeps the elements it has found, and finds the others from them.  A row that holds an <code>&lt;input&gt;</code>, <code>&lt;select&gt;</code>, <code>&lt;textarea&gt;</code> or <code>contenteditable</code> element finds all of its elements as soon as it is drawn instead, because that is where password managers, autofill tools and spell checkers put icons and other nodes of their own.  In any other row, a node that other code puts in front of an element the row hasn&#39;t found yet can make the row take the wrong node for it: the handler then runs when the inserted node is clicked, with that node as its element, and not when its own element is, and a changed value is written into the wrong element.  A tooltip library that inserts its tooltip right after the element it belongs to is such code.  Draw your own elements in the row&#39;s template rather than adding them afterward, and where a library adds nodes to a row, wrap the element it adds them beside in an element of its own, as in <code>&lt;span&gt;&lt;a&gt;?&lt;/a&gt;&lt;/span&gt;</code>: what it adds then goes inside the wrapper, where nothing after it has a handler or a value.</p>
+<p>Another difference from a regular listener only matters when your own code also adds a listener to the same element as a template handler.  A delegated handler is attached when the event starts, so it runs after any listener already on that element.  A listener registered while the template rendered would usually have run first.</p>
 <p>When that order matters, prefix the attribute with <code>native:</code>, as in <code>&lt;button native:onclick=${...}&gt;</code>.  Solarite then registers just that handler with <code>addEventListener</code> while the template renders, so it takes its normal place among the element&#39;s listeners, and the rest of the component stays delegated.  Everything else is the same: the <code>(event, element)</code> arguments, <code>this</code>, and the <code>[fn, ...args]</code> array form.  In JSX write it the same way, <code>&lt;button native:onclick={...}&gt;</code>.</p>
 <pre data-lang="JavaScript"><code>// A library adds its own keydown listener to this textarea after render.
 // With native:, the template's handler was registered first, so it runs first.
@@ -371,6 +386,7 @@ h(this)`
 &lt;text-editor&gt;
   &lt;textarea native:onkeydown=${e =&gt; this.handleTab(e)}&gt;&lt;/textarea&gt;
 &lt;/text-editor&gt;`</code></pre>
+<p>A template made by <code>h()</code> or <code>toEl()</code> with several top-level nodes, or with an expression at its top level, has no root element to listen on.  Its nodes come back in a <code>DocumentFragment</code>, which is left empty as soon as they are appended somewhere, so only the document&#39;s listener serves them.  Their handlers run wherever the page&#39;s document sees the event, which is anywhere in the page outside a closed shadow root.  In an element that isn&#39;t in the page yet, inside a closed shadow root, or in another document such as an iframe&#39;s, wrap the nodes in one element or give the handlers the <code>native:</code> prefix.  A handler&#39;s <code>this</code> is then the fragment, which is empty by that time, rather than an element, so use the <code>(event, element)</code> arguments instead.  A template whose only node is a component, as in <code>toEl(h`&lt;my-dialog onclick=${close}&gt;&lt;/my-dialog&gt;`)</code>, gives back the component, but a handler written on the component&#39;s tag belongs to the fragment the template was built in.  It is served the same way, and its <code>this</code> is that fragment, empty by then, rather than the component; use the handler&#39;s second argument, which is the component.  The handlers inside the component are its own, run everywhere, and have the component as <code>this</code>.</p>
 <h3 id="two-way-binding">Two-Way Binding</h3>
 <p>Two-way binding ties a form element to a property of your component.  Rendering writes the property into the element, and the user&#39;s input is written back to the property.</p>
 <h4 id="basic-two-way-binding">Basic Two-Way Binding</h4>
@@ -648,8 +664,10 @@ document.body.append(new UserTable());</code></pre>
 <li>It must be on a top-level element of its template, and a template can have only one.</li>
 <li>Keys are compared with <code>===</code>; numbers, strings, and object references all work.  Keys must be unique within the list.</li>
 <li>The key never appears in the DOM, and components never receive <code>key</code> as a constructor or render argument.  Don&#39;t name component arguments <code>key</code>.</li>
+<li>A row without a key in front of the keyed rows, such as a heading, a plain string or a row an <code>h.map()</code> callback hides by returning <code>null</code>, and a DOM node among the rows, don&#39;t stop the keys from being followed.</li>
 </ul>
 <p><code>h.map()</code> and keys compose: <code>h.map()</code> skips rebuilding unchanged rows&#39; templates, while keys control node identity and movement.</p>
+<p>An element in a row may render the host from its <code>connectedCallback</code> or <code>disconnectedCallback</code>, as a tab that tells its tab set when it comes and goes.  The list is drawn once: the render the element starts draws it, and the render that was putting rows in or taking them out then draws its own list again.</p>
 <h4 id="selection">Selection</h4>
 <p>Highlighting the selected row of a table is common enough to get its own tool.  Storing the selected id as an ordinary field works, but then every change of selection calls <code>render()</code>, and Solarite has to walk the whole list to discover that only two rows differ.  <code>h.selector()</code> skips that: each row&#39;s binding remembers the element it was written to, so changing the selection writes those two attributes and nothing else.</p>
 <pre data-lang="JavaScript"><code>class UserTable extends Solarite {
@@ -719,6 +737,7 @@ class FancyText extends HTMLElement {
 customElements.define('fancy-text', FancyText);
 document.body.append(new FancyText());</code></pre>
 <p>A style tag with the  <code>global</code> attribute defines the style only once in the document head, instead of for every instance of a component.  This improves rendering performance with many instances.  Unlike regular styles, global styles cannot have expressions within them.</p>
+<p>Once means once per component: the first <code>&lt;style global&gt;</code> a component renders stays in the head for the life of the page, and one in a template the component switches to later is dropped.  Put the global rules of all of a component&#39;s templates in one style that each of them includes, or use regular styles, which change with the template.</p>
 <pre data-lang="javascript"><code>import h from './dist/Solarite.min.js';
 
 class FancyText extends HTMLElement {
@@ -789,6 +808,18 @@ document.body.append(toEl(`
 <p>Elements without a <code>slot</code> attribute go into the unnamed (default) slot. Multiple elements can be assigned to the same slot; they appear in the order they are provided.</p>
 <h4 id="slotless-components">Slotless Components</h4>
 <p>If a component has no <code>&lt;slot&gt;</code> elements, any provided children are appended to the end of the component by default.</p>
+<p>The same holds for any element you render into, component or not: what it held before its first render is kept, after what the template draws.  So <code>h(label)`Name` </code> on a <code>&lt;label&gt;</code> that holds an <code>&lt;input&gt;</code> shows the text first and the input after it.</p>
+<p>A custom element that isn&#39;t rendered by Solarite at all, such as one from another library, keeps the children written inside its tag in the same way.  If it has a shadow root, the <code>&lt;slot&gt;</code> elements there show them, as they would for children written in plain html.</p>
+<p>Solarite goes on updating what each <code>${...}</code> inside the tag drew, so such an element has to leave those nodes together, in the order it was given them.  It may:</p>
+<ul>
+<li>change the children themselves: their attributes, classes, styles and listeners;</li>
+<li>put nodes of its own before the first child it was given or after the last one, as an element that renders its own content beside its children does;</li>
+<li>move all of the children together, in the order given: into its shadow root, into a wrapper of its own, to another part of the page, or into a fragment it keeps aside while they are hidden.</li>
+</ul>
+<p>When it takes them apart instead, the next <code>render()</code> of the template throws an error that names it: <code>Solarite: &lt;fancy-list&gt; changed the nodes ${...} drew inside it; wrap the ${...} in an element it leaves alone.</code>  That is what happens when the element replaces its content (sets its own <code>innerHTML</code>), takes some of the children out, sorts or filters them, wraps each of them, puts a node of its own between them, or strips the comments and the white space among them: white space is a node like any other, and Solarite draws an expression between the two nodes that stand beside it in the template.  The render that throws draws nothing in that place, and every later render throws the same error until the element has put the nodes back as they were.  An element that is itself a row of a list, and changed its children while the list had taken it out and kept it for reuse (one that empties itself when it leaves the document, say), throws the error when the list shows it again; the list is then emptied, and that element is not used again.  Whatever else changes those nodes gets the element named too, such as an extension that adds nodes of its own to the page, or the browser&#39;s page translation where it replaces words written beside an expression (see Page Translation).  The translation of the one piece of text an expression drew is not counted.</p>
+<p>As the message says, an expression in an element of its own, <code>&lt;fancy-list&gt;&lt;div&gt;${rows}&lt;/div&gt;&lt;/fancy-list&gt;</code>, leaves the other element free to do what it likes with that <code>&lt;div&gt;</code>: move it, hide it, or throw it away, in which case the expression is updated where nobody sees it.  What it still may not do is reach into the <code>&lt;div&gt;</code> and rearrange what the expression drew there.</p>
+<p>Two things are not looked at.  A DOM node that your own code made and gave to the template is yours to move, here as anywhere else.  And what a list row drew inside itself is known to the row alone: an element that reaches into a row, to remove an item of a list written inside it for example, is not named, and the render that trips over the missing node throws the browser&#39;s own error.  The list is then drawn again from nothing by the next render.</p>
+<p>The children a component was given stay with it when its <code>render()</code> shows a different template: they move to the slots of the new template, or to its end.  A template with nothing in it (<code>h(this)</code> ``) shows none of them, and they are back in place with the next template that is rendered.  Each template shows them in the order they were given, except after a template with named slots: from then on the children it put in named slots come first, slot by slot in that template&#39;s order, then those of its unnamed slot, and a later template with only an unnamed slot shows them in that order.  Nodes your own code appended to the component after its template&#39;s nodes are kept the same way, after the children.</p>
 <h3 id="child-components">Child Components</h3>
 <h4 id="passing-data-to-child-components">Passing Data to Child Components</h4>
 <p>When one web component is embedded within the html of another, its attributes are automatically passed as arguments to the constructor:</p>
@@ -871,11 +902,12 @@ let list = new NotesList([
 document.body.append(list);</code></pre>
 <h4 id="attribute-name-conversion">Attribute Name Conversion</h4>
 <p>Since HTML attributes are case-insensitive, Solarite automatically converts dash-case (kebab-case) attribute names to camelCase when passing them to component constructors. For example, the <code>font-size</code> attribute becomes the <code>fontSize</code> property of  the first argument passed to the constructor and to the <code>render()</code> function.</p>
+<p>The element itself carries the attribute under the name you wrote, <code>font-size</code>, when its value is text, a number or <code>true</code>.  An object, an array or a function is passed as an argument only.  So is a two-way binding such as <code>value=${[this, &#39;name&#39;]}</code>: it passes the current value as the <code>value</code> argument and sets the component&#39;s <code>value</code> property, and writes no attribute.</p>
 <h4 id="assignattributes">assignAttributes()</h4>
 <p>A component can be created three ways, and its values arrive differently each time.</p>
 <p>When you create it with <code>new MyTimer({duration: 7})</code>, or embed it inside a tagged template with bindings like <code>h`&lt;my-timer duration=${7}&gt;` </code>, the values keep their original types and arrive in the constructor&#39;s <code>fields</code> argument.  Here <code>duration</code> is the number <code>7</code>, so you assign <code>fields</code> directly.  These two ways are really the same: both hand the constructor a typed object.</p>
 <p>But when you write plain html like <code>&lt;my-timer duration=&quot;7&quot;&gt;</code>, there is no <code>fields</code> argument.  The values live in the element&#39;s html attribute, and html attributes are always strings, so <code>duration</code> is the string <code>&quot;7&quot;</code>.  <code>assignAttributes()</code> reads those attributes onto your component, casting each string to the type you name.  It only writes to fields that already exist on the component.</p>
-<pre data-lang="javascript"><code>import h, {Solarite, assignAttributes} from './dist/Solarite.min.js';
+<pre data-lang="javascript"><code>import h, {Solarite, toEl, assignAttributes} from './dist/Solarite.min.js';
 
 class MyTimer extends Solarite {
 
@@ -903,8 +935,9 @@ customElements.define('my-timer', MyTimer);</code></pre>
 <pre data-lang="JavaScript"><code>// With new.  Values keep their types and are assigned from fields.
 let timer = new MyTimer({duration: 7, autoStart: true});
 
-// From a tagged template.  Same path: values arrive typed in fields.
-let timer2 = h`&lt;my-timer duration=${7} auto-start=${true}&gt;&lt;/my-timer&gt;`;
+// From a tagged template, made into an element by toEl().
+// Same path: values arrive typed in fields.
+let timer2 = toEl(h`&lt;my-timer duration=${7} auto-start=${true}&gt;&lt;/my-timer&gt;`);
 
 // From plain html.  Attributes are strings, which assignAttributes() casts.
 document.body.innerHTML = `&lt;my-timer duration=&quot;7&quot; auto-start&gt;&lt;/my-timer&gt;`;</code></pre>
@@ -918,7 +951,8 @@ document.body.innerHTML = `&lt;my-timer duration=&quot;7&quot; auto-start&gt;&lt
 <li>The child receives its attributes as an object (first argument) and a <code>hasChanged()</code> function (second argument).</li>
 <li>The child then decides whether to call its own <code>h()</code> function to update.</li>
 </ol>
-<p><code>hasChanged()</code> answers whether the attributes differ from those of the last render that called it.  The comparison is deep, so a field changed inside the same object counts.  It works by running the attributes through <code>JSON.stringify()</code>, which costs time in proportion to the data:  about half a millisecond for 1,000 rows.  So it only runs when the child calls <code>hasChanged()</code>, and a child that doesn&#39;t need it pays nothing.  It answers <code>true</code> on a child&#39;s first render, after a render that didn&#39;t call it, and when called after <code>render()</code> has returned.</p>
+<p><code>hasChanged()</code> answers whether the attributes differ from those of the last render that called it.  The comparison is deep, so a field changed inside the same object counts.  It works by running the attributes through <code>JSON.stringify()</code>, which costs time in proportion to the data:  about half a millisecond for 1,000 rows.  So it only runs when the child calls <code>hasChanged()</code>, and a child that doesn&#39;t need it pays nothing.  It answers <code>true</code> on a child&#39;s first render, after a render that didn&#39;t call it, after a render that threw, and when called after <code>render()</code> has returned.</p>
+<p><code>hasChanged()</code> compares the expressions the parent wrote in the child&#39;s tag, not the values the child ends up with.  Functions and elements are compared by identity, so an element&#39;s own fields are never looked inside, whether the element is passed itself, as in <code>owner=${this}</code>, or through a binding, as in <code>value=${[this, &#39;name&#39;]}</code>.  An arrow function written inline in the tag is a new function on every render, so it makes <code>hasChanged()</code> answer <code>true</code> every time.  That includes event handlers such as <code>onclick=${() =&gt; this.save()}</code>, which the child never receives as data.  To keep the check useful, pass functions the parent made once, such as a method bound in its constructor.</p>
 <p>In the example above, creating <code>&lt;notes-item&gt;</code> via <code>new</code> instead of its tag name is discouraged, as it would cause the component to be recreated on every render:</p>
 <pre data-lang="JavaScript"><code>class NotesList extends HTMLElement {
   render() { 
@@ -945,6 +979,10 @@ let el = h()`&lt;b&gt;Hello ${&quot;World&quot;}!&lt;/b&gt;`;
 // Convert a template string with multiple-top-level nodes to a DocumentFragment
 let el = h()`Hello &lt;b&gt;${&quot;World&quot;}!&lt;/b&gt;`;
 
+// An expression at the top level counts as top-level nodes of its own,
+// so this is a DocumentFragment too, which shows &quot;Total: 5&quot; once appended.
+let el = h()`Total: ${5}`;
+
 // h(HTMLElement)`string`
 // Create template and render its node(s) as a child of HTMLElement el.
 h(el)`&lt;b&gt;Hello ${'World'}&lt;/b&gt;`;</code></pre>
@@ -952,9 +990,10 @@ h(el)`&lt;b&gt;Hello ${'World'}&lt;/b&gt;`;</code></pre>
 <p>The <code>toEl()</code> function converts a string or a template created via the <code>h</code> function into a DOM element.  It enforces these rules:</p>
 <ul>
 <li>If the html begins with a start tag and ends with an end tag (minus whitespace before or after it), that whitespace is trimmed.</li>
-<li>If the HTML contains more than one <code>Node</code>, all nodes will be created with a <code>DocumentFragment</code> as their parent, which will be returned.</li>
-<li>Otherwise a single <code>Node</code> will be returned.</li>
+<li>If the HTML contains more than one <code>Node</code>, all nodes will be created with a <code>DocumentFragment</code> as their parent, which will be returned.  In a template, an expression written at the top level, beside the nodes rather than inside one of them, counts as nodes of its own, whatever it draws.  So <code>toEl(h`Total: ${n}`)</code> and <code>toEl(h`&lt;h1&gt;Fruit&lt;/h1&gt;${rows}`)</code> return a <code>DocumentFragment</code> that holds everything they draw, and so does <code>toEl(h`&lt;b&gt;Hi&lt;/b&gt;${false}`)</code>: a template always returns the same kind of node, whatever its values are.</li>
+<li>Otherwise a single <code>Node</code> will be returned.  When that node is a component in a template, as in <code>toEl(h`&lt;my-list items=${items}&gt;&lt;/my-list&gt;`)</code>, it is the component itself, constructed with those attributes.</li>
 </ul>
+<p>A <code>DocumentFragment</code> is empty once its nodes have been appended somewhere.  When you need an element to keep, to give it a class or remove it later, write the template inside one element, as in <code>toEl(h`&lt;p&gt;Total: ${n}&lt;/p&gt;`)</code>.</p>
 <pre data-lang="javascript"><code>import h, {toEl} from './dist/Solarite.min.js';
 
 let a = toEl('Hello');                             // Create single text node.
@@ -963,10 +1002,11 @@ let c = toEl('&lt;b&gt;Hi&lt;/b&gt;&lt;u&gt;Bye&lt;/u&gt;'); // Create document 
 
 let template = h`&lt;div&gt;${'Waz'+'up'}&lt;/div&gt;`;
 let d = toEl(template)               // Render Template
+let e = toEl(h`Total: ${5}`);        // DocumentFragment of &quot;Total: &quot; and 5
 
-document.body.append(a, b, c, d);</code></pre>
+document.body.append(a, b, c, d, e);</code></pre>
 <h4 id="geteventbinding">getEventBinding()</h4>
-<p><code>getEventBinding(node, key)</code> returns the binding Solarite registered on an element, or <code>undefined</code> if there isn&#39;t one.  The <code>key</code> is the attribute name that created it, without any <code>on</code> prefix: <code>&#39;value&#39;</code> for a two-way binding written as <code>value=${[obj, &#39;field&#39;]}</code>, <code>&#39;click&#39;</code> for an <code>onclick=${...}</code> handler.</p>
+<p><code>getEventBinding(node, key)</code> returns the binding Solarite registered on an element with <code>addEventListener</code>, or <code>undefined</code> if there isn&#39;t one.  The <code>key</code> is the attribute name that created it, without any <code>on</code> prefix: <code>&#39;value&#39;</code> for a two-way binding written as <code>value=${[obj, &#39;field&#39;]}</code>, <code>&#39;click&#39;</code> for an <code>onclick=${...}</code> handler.  A handler has one only when it was registered while the template rendered: one written <code>native:onclick=${...}</code>, one for an event that isn&#39;t delegated, such as <code>onfocus</code>, or any handler of a template rendered with <code>eventDelegation: false</code>.  A delegated handler, the default for <code>onclick</code> and the other bubbling events, has none.</p>
 <p>The returned object has a <code>handleEvent(event)</code> method, the same one the browser calls, so invoking it runs the binding immediately.  This exists for one specific problem: a two-way binding writes back to your data when the element fires its event, so if you need that value written <em>before</em> something else happens in the same tick, you have to trigger the binding yourself rather than wait for the event.</p>
 <p>Type into the field below and click Save without clicking away first.  The <code>input</code> event hasn&#39;t fired yet, so <code>this.name</code> is still the old value until the binding is flushed:</p>
 <pre data-lang="javascript"><code>import h, {Solarite, getEventBinding} from './dist/Solarite.min.js';
@@ -1067,19 +1107,39 @@ list.querySelector('button').setAttribute('title', 'Click me');
 list.querySelector('hr').remove();
 list.render();
 
-// Remove the first &lt;p&gt; element and add it back again.
-// This is fine, because we put it back the way it was before render()
+// Take the first &lt;p&gt; element out and put it back where it was.
+// This is fine, because it's back the way it was before render().
 list.add();
 let p = list.querySelector('p');
-list.append(p); // put it back.
+let next = p.nextSibling;
+p.remove();
+next.before(p); // Put it back.
 list.render();
 
 // Remove the first &lt;p&gt; element.
-// This will cause an error because we're modifying nodes created by an expression.
+// Don't do this, because the &lt;p&gt; was created by an expression.
+// Nothing throws, but Solarite still counts the &lt;p&gt; as shown, so
+// render() doesn't bring it back and that item stays missing.
 // list.querySelector('p').remove();
 // list.render();</code></pre>
+<h3 id="page-translation">Page Translation</h3>
+<p>Browsers can translate a page for the person reading it.  Chrome&#39;s translator replaces each piece of text it translates with a <code>&lt;font&gt;</code> element that holds the translation, and it translates text that appears later as well.  A library that kept hold of the text it drew is then left holding a node that is no longer on the page.</p>
+<p>Solarite handles this for text that has an element to itself.  So when dynamic text sits beside other text, give it an element of its own:</p>
+<pre data-lang="javascript"><code>// On a translated page the name can keep showing its old, translated value.
+h(this)`&lt;p&gt;Hello ${this.name}!&lt;/p&gt;`
+
+// The name shows every new value, translated page or not.
+h(this)`&lt;p&gt;Hello &lt;span&gt;${this.name}&lt;/span&gt;!&lt;/p&gt;`</code></pre>
+<p>Text that is already alone in its element, such as <code>&lt;td&gt;${row.label}&lt;/td&gt;</code> or <code>&lt;button&gt;${label}&lt;/button&gt;</code>, needs nothing more.  A new value appears in the page&#39;s original language until the translator, which watches the page, translates it a moment later.</p>
+<p>Text written straight inside the tag of an element from another library, such as <code>&lt;sl-button&gt;${label}&lt;/sl-button&gt;</code>, needs nothing more either.  Words beside the expression inside such a tag, as in <code>&lt;sl-button&gt;Delete ${n}&lt;/sl-button&gt;</code>, are what Solarite finds the expression&#39;s place by, and once the translator has replaced them the next render throws the error described under Slotless Components; give the expression an element of its own: <code>&lt;sl-button&gt;Delete &lt;span&gt;${n}&lt;/span&gt;&lt;/sl-button&gt;</code>.  Text written straight inside a Solarite component&#39;s tag, as in <code>&lt;my-button&gt;${label}&lt;/my-button&gt;</code>, keeps showing its old translation after it changes; give it a <code>&lt;span&gt;</code> too.</p>
+<p>The same rule covers everything else an expression can draw.  Words that stand directly beside an expression are replaced by the translator too, and they are what Solarite finds the expression&#39;s place by.  So an expression that switches between text and a template (<code>${saved ? &#39;Saved&#39; : h`&lt;b&gt;Not saved&lt;/b&gt;`}</code>), or one that draws a list, can show the old translation next to the new value, or throw an error, when it is written directly beside other text on a translated page.  In an element of its own it can&#39;t, provided that what it draws is text or begins and ends with an element: write a row as <code>h`&lt;li&gt;${tag}&lt;/li&gt;` </code> rather than as a plain string or as <code>h`${tag}, ` </code>.</p>
+<p>Where translation can&#39;t be tolerated at all, turn it off instead, at the price of leaving that text untranslated for the visitors who need it:</p>
+<ul>
+<li><code>translate=&quot;no&quot;</code> on an element turns it off for that element and everything inside it, such as a user name, a code sample or a whole editor: <code>&lt;span translate=&quot;no&quot;&gt;${user.handle}&lt;/span&gt;</code>.  Google&#39;s translator also honors <code>class=&quot;notranslate&quot;</code>.</li>
+<li><code>&lt;meta name=&quot;google&quot; content=&quot;notranslate&quot;&gt;</code> in the page&#39;s <code>&lt;head&gt;</code> turns it off for the whole page in Chrome.</li>
+</ul>
 <h3 id="non-component-elements">Non-Component Elements</h3>
-<p>The <code>toEl()</code> function (discussed above) can also be given an object with a <code>render()</code> method.  The object&#39;s properties and methods become properties and methods of the resulting element.</p>
+<p>The <code>toEl()</code> function (discussed above) can also be given an object with a <code>render()</code> method.  The object&#39;s properties and methods become properties and methods of the resulting element.  When its template has more than one top-level node, or an expression at its top level, the result is a <code>DocumentFragment</code> and they become the fragment&#39;s.  The fragment is empty once it is appended, but <code>render()</code> still updates its nodes wherever they were put, as long as it renders the same template.  To show one thing first and another later, such as a loading message and then a list, choose between them in an expression of that template.</p>
 <pre data-lang="javascript"><code>import h, {toEl} from './dist/Solarite.min.js';
 
 let button = toEl({
@@ -1091,10 +1151,11 @@ let button = toEl({
   },
 
   render() {
-    h(this)`&lt;button onclick=${() =&gt; this.inc()}&gt;I've been clicked ${this.count} times.&lt;/button&gt;`
+    h(this)`&lt;button onclick=${this.inc}&gt;I've been clicked ${this.count} times.&lt;/button&gt;`
   }
 });
 document.body.append(button);</code></pre>
+<p>The first <code>render()</code> runs before the element exists, with <code>this</code> set to the object you gave.  After that <code>this</code> is the element, which gets a copy of the object&#39;s fields and methods.  So give a handler the method itself, as in <code>onclick=${this.inc}</code>, and Solarite calls it with <code>this</code> set to the element.  An arrow function such as <code>onclick=${() =&gt; this.inc()}</code> would be made by that first render and keep calling the object, so the first click would throw.</p>
 <p>If you want multiple instances of such an element, the code above can be wrapped in a function:</p>
 <pre data-lang="javascript"><code>import h, {toEl} from './dist/Solarite.min.js';
 
@@ -1181,6 +1242,7 @@ await esbuild.build({
 <p>You can use your own components as JSX tags:</p>
 <ul>
 <li>A class that extends <code>HTMLElement</code> (for example <code>&lt;MyButton/&gt;</code>) renders as its custom-element tag, just like any other Solarite child component.</li>
+<li>A custom element can also be written by its tag name, <code>&lt;my-button size={3}/&gt;</code>.  Its attributes become the component&#39;s arguments the same way.</li>
 <li>A plain function is called with its props, with its children arriving as <code>props.children</code>, and should return a <code>Template</code>.</li>
 </ul>
 <h2 id="how-solarite-works">How Solarite Works</h2>
